@@ -29777,6 +29777,10 @@ SELECT
     ao.challenger_only_application_id_count,
 
     CASE
+        WHEN p.active_comparison_flag IS DISTINCT FROM TRUE
+          OR p.comparison_group_id IS NULL
+            THEN 'NOT_APPLICABLE_SECTION_13_SKIPPED_NO_ACTIVE_COMPARISON'
+
         WHEN (
             p.baseline_strategy_set_name = p.challenger_strategy_set_name
             AND p.baseline_strategy_name = p.challenger_strategy_name
