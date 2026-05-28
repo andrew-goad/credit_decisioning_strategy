@@ -115,9 +115,9 @@ BASE_POPULATION_V1 matched population discipline
 
 # Module 2: Credit Policy Strategy & Decision Outcome Simulation Engine
 
-[![Module 2 Executive Dashboard](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/docs/module2_executive_dashboard_preview.png)](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/docs/module2_executive_dashboard_preview.png)
+[![Module 2 Executive Dashboard](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png)](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png)
 
-[Open Module 2 dashboard full size](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/docs/module2_executive_dashboard_preview.png)
+[Open Module 2 dashboard full size](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png)
 
 **Module 2 applies governed strategy controls to the Module 1 risk foundation.**
 
@@ -190,14 +190,14 @@ It illustrates how selective feasibility reduces counteroffer / offer exposure a
 
 | Artifact | Location |
 |---|---|
-| Module 2 v1.0 SQL | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql) |
-| Module 2 Executive Dashboard | [`module2_executive_dashboard_preview.png`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/docs/module2_executive_dashboard_preview.png) |
-| Module 2 Strategy Decisions Archive Sample | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_archive.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_archive.csv) |
-| Module 2 M2-01 Latest-Run Strategy Decisions Sample | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_m2_01.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_m2_01.csv) |
-| Module 2 Strategy Run Campaign Registry | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_strategy_run_campaign_registry.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_strategy_run_campaign_registry.csv) |
-| Module 2 Strategy Comparison Campaign Registry | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_strategy_comparison_campaign_registry.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_strategy_comparison_campaign_registry.csv) |
-| Module 2 BRD Placeholder | [`module2_brd_placeholder_coming_soon`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/docs/module2_brd_placeholder_coming_soon) |
-| Module 2 Validation Summary Placeholder | [`module2_validation_summary_placeholder_coming_soon`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/tests/module2_validation_summary_placeholder_coming_soon) |
+| Module 2 v1.0 SQL | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql) |
+| Module 2 Executive Dashboard | [`module2_executive_dashboard_preview.png`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png) |
+| Module 2 Strategy Decisions Archive Sample | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_archive.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_archive.csv) |
+| Module 2 M2-01 Latest-Run Strategy Decisions Sample | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_m2_01.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_m2_01.csv) |
+| Module 2 Strategy Run Campaign Registry | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_strategy_run_campaign_registry.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_strategy_run_campaign_registry.csv) |
+| Module 2 Strategy Comparison Campaign Registry | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_strategy_comparison_campaign_registry.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_strategy_comparison_campaign_registry.csv) |
+| Module 2 BRD Placeholder | [`module2_brd_placeholder_coming_soon`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_brd_placeholder_coming_soon) |
+| Module 2 Validation Summary Placeholder | [`module2_validation_summary_placeholder_coming_soon`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/tests/module2_validation_summary_placeholder_coming_soon) |
 
 ---
 
