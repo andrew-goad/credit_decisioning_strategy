@@ -62,6 +62,7 @@ Current validated Module 1 release.
 
 ### Module 2 — Credit Policy Strategy & Decision Outcome Simulation Engine
 
+#### `v1.0`
 Current Module 2 v1.0 release.
 
 - `docs/`  
@@ -86,7 +87,7 @@ Current Module 2 v1.0 release.
 |---|---|
 | Module 1 current release | `Module_1.../v2.0/` |
 | Module 1 historical baseline | `Module_1.../v1.0/` |
-| Module 2 current release | `Module_2.../` |
+| Module 2 current release | `Module_2.../v1.0/` |
 | Module 2 BRD | Coming soon |
 | Module 2 Validation Summary | Coming soon |
 
@@ -133,7 +134,7 @@ Use this path to understand the system story, dashboard evidence, and current ar
 2. Open the Module 1 executive dashboard  
    `Module_1_Synthetic_Application_&_Risk_Modeling_Engine/v2.0/docs/module1_executive_dashboard_preview.png`
 3. Open the Module 2 executive dashboard  
-   `Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/docs/module2_executive_dashboard_preview.png`
+   `Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png`
 4. Review the Module 1 v2.0 BRD  
    `Module_1_Synthetic_Application_&_Risk_Modeling_Engine/v2.0/docs/Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v2.0.pdf`
 5. Review the Module 1 v2.0 Validation Summary  
@@ -148,9 +149,11 @@ Use this path to inspect how the design is implemented.
 
 1. Start with the Module 1 v2.0 BRD to understand design intent, boundaries, and requirements.
 2. Review the Module 1 v2.0 SQL implementation.
+   `Module_1_Synthetic_Application_&_Risk_Modeling_Engine/v2.0/src/module1_synthetic_application_risk_engine_v2.0.sql`
 3. Review the Module 1 v2.0 Validation Summary to connect design claims to QA evidence.
 4. Review Module 1 outputs and scenario archive samples.
 5. Review the Module 2 SQL implementation.
+   `Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/v1.0/src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`
 6. Review Module 2 campaign registry outputs.
 7. Review Module 2 evidence outputs:
    - strategy run evidence summary
