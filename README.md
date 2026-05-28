@@ -328,10 +328,11 @@ credit_decisioning_strategy/
 │       └── tests/
 │
 └── Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/
-    ├── docs/
-    ├── outputs/
-    ├── src/
-    └── tests/
+    └── v1.0/
+        ├── docs/
+        ├── outputs/
+        ├── src/
+        └── tests/
 ```
 
 For the full repository navigation guide, see:
