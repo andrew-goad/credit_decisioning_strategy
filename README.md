@@ -1,4 +1,4 @@
-# Enterprise Credit Decisioning Strategy Simulatorfdsfd
+# Enterprise Credit Decisioning Strategy Simulator
 
 ## Strategic Intent: Governed Credit Strategy Simulation Without PII
 
