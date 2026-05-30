@@ -1,6 +1,6 @@
-# Enterprise Credit Decisioning Strategy Simulator 🏦⚙️📊
+# Enterprise Credit Decisioning Strategy Simulator
 
-## 🎯 Strategic Intent: Governed Credit Strategy Simulation Without PII
+## Strategic Intent: Governed Credit Strategy Simulation Without PII
 
 How do you test credit policy, affordability, exposure, expected-loss, counteroffer strategy, and decision-outcome tradeoffs before changing a real credit decisioning system?
 
@@ -48,7 +48,7 @@ Synthetic Application Population
 
 ---
 
-# Module 1: Synthetic Application & Risk Modeling Engine
+## Module 1: Synthetic Application & Risk Modeling Engine
 
 [![Module 1 Executive Dashboard](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/docs/module1_executive_dashboard_preview.png)](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/docs/module1_executive_dashboard_preview.png)
 
@@ -69,13 +69,13 @@ Application
 → Expected Loss
 ```
 
-## What the Module 1 dashboard demonstrates
+### Dashboard Evidence
 
-### 1. Baseline Product × Score Risk Surface
+#### 1. Baseline Product × Score Risk Surface
 
 The baseline portfolio is differentiated across both product structure and score quality. Expected Loss is not just a score metric; it is shaped by exposure size, product structure, LGD, affordability, and the synthetic estimated-PD proxy.
 
-### 2. Scenario Lever Matrix
+#### 2. Scenario Lever Matrix
 
 Module 1 is not only a rate-shock engine. It supports multiple governed scenario families:
 
@@ -87,11 +87,11 @@ Module 1 is not only a rate-shock engine. It supports multiple governed scenario
 
 Each scenario is compared against its family reference slice so scenario movement is interpretable.
 
-### 3. Scenario Expected-Loss Impact Decomposition
+#### 3. Scenario Expected-Loss Impact Decomposition
 
 Scenario movement can be decomposed into product-level and product × score drivers, allowing reviewers to understand where risk movement concentrates rather than only seeing aggregate portfolio deltas.
 
-## Module 1 campaign scope
+### Module 1 Campaign Scope
 
 ```text
 19 governed scenarios
@@ -100,7 +100,7 @@ Scenario movement can be decomposed into product-level and product × score driv
 BASE_POPULATION_V1 matched population discipline
 ```
 
-## Module 1 anchor artifacts
+### Module 1 Anchor Artifacts
 
 | Artifact | Location |
 |---|---|
@@ -113,7 +113,7 @@ BASE_POPULATION_V1 matched population discipline
 
 ---
 
-# Module 2: Credit Policy Strategy & Decision Outcome Simulation Engine
+## Module 2: Credit Policy Strategy & Decision Outcome Simulation Engine
 
 [![Module 2 Executive Dashboard](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png)](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png)
 
@@ -143,9 +143,9 @@ Module 1 Applicant / Product / Risk Profile
 → Post-Campaign Acceptance
 ```
 
-## What the Module 2 dashboard demonstrates
+### Dashboard Evidence
 
-### 1. Strategy Frontier
+#### 1. Strategy Frontier
 
 The frontier chart shows where representative strategies sit on access versus approved Expected-Loss density.
 
@@ -157,7 +157,7 @@ vs.
 approved-risk density
 ```
 
-### 2. Baseline-Relative Tradeoffs
+#### 2. Baseline-Relative Tradeoffs
 
 The baseline-relative view shows how selected challenger strategies move:
 
@@ -167,7 +167,7 @@ The baseline-relative view shows how selected challenger strategies move:
 
 relative to the M2-01 baseline on the same `BASELINE_V2` synthetic applicant population.
 
-### 3. Counteroffer Governance
+#### 3. Counteroffer Governance
 
 The counteroffer governance section shows the operational split between:
 
@@ -176,7 +176,7 @@ The counteroffer governance section shows the operational split between:
 
 It illustrates how selective feasibility reduces counteroffer / offer exposure and shifts borderline cases to manual review, while aggressive expansion routes more severe requested structures through governed feasibility safeguards.
 
-## Module 2 campaign scope
+### Module 2 Campaign Scope
 
 ```text
 39 governed strategy runs
@@ -186,7 +186,7 @@ It illustrates how selective feasibility reduces counteroffer / offer exposure a
 7 scenario families
 ```
 
-## Module 2 anchor artifacts
+### Module 2 Anchor Artifacts
 
 | Artifact | Location |
 |---|---|
@@ -201,7 +201,7 @@ It illustrates how selective feasibility reduces counteroffer / offer exposure a
 
 ---
 
-## The Decisioning Framework
+## Decisioning Framework
 
 This project is designed around a staged decision-system architecture rather than a single opaque output table.
 
@@ -257,7 +257,7 @@ The design emphasizes:
 
 ---
 
-## Executive Talk Tracks
+## Executive Interpretation
 
 ### Credit strategy is not a score cutoff.
 
@@ -281,7 +281,7 @@ The system includes QA, archive inventory, frontier summaries, parameter snapsho
 
 ---
 
-## Technical Rigor & Architecture
+## Technical Rigor and Architecture
 
 - **PostgreSQL-first simulation engine**  
   The core system is built in SQL to demonstrate enterprise-style decision logic, staging, archive persistence, comparison, and evidence capture.
@@ -415,7 +415,7 @@ All data is synthetic and intended for portfolio demonstration only.
 
 ---
 
-## Data, Privacy, and Interpretation Boundaries 🔒
+## Data, Privacy, and Interpretation Boundaries
 
 All data in this repository is synthetic or sampled from synthetic simulation archives.
 
