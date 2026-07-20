@@ -4,9 +4,9 @@
 
 How do you test credit policy, affordability, exposure, expected-loss, counteroffer strategy, and decision-outcome tradeoffs before changing a real credit decisioning system?
 
-I built this project as a two-module, portfolio-grade credit decisioning simulator that demonstrates how synthetic application generation, governed scenario design, strategy controls, archive-backed comparison, validation evidence, and executive-ready dashboards can work together in a controlled pre-production environment.
+I built this project as a two-module, portfolio-grade credit decisioning simulator with an interactive Power BI release-validation layer. It demonstrates how synthetic application generation, governed scenario design, strategy controls, archive-backed comparison, independent reconciliation, validation evidence, and executive-ready reporting can work together in a controlled pre-production environment.
 
-This is not a dashboard-only project. It is a governed decision-system design artifact that shows how credit strategy logic can be structured, tested, compared, validated, and explained without exposing PII or using real applicant data.
+This is not a dashboard-only project. The core system is implemented as governed SQL decision infrastructure; Power BI extends that foundation into an interactive semantic model that connects executive release conclusions to variable- and application-level evidence without exposing PII or using real applicant data.
 
 ---
 
@@ -43,8 +43,17 @@ Synthetic Application Population
 → Archive Persistence
 → Matched Comparison
 → Validation Evidence
-→ Executive Evidence
+→ Power BI Release Validation
+→ Executive and Application-Level Evidence
 ```
+
+### Delivery and Evidence Layers
+
+| Layer | Technology | Role |
+|---|---|---|
+| Simulation, persistence, and embedded QA | **PostgreSQL** | Generates deterministic synthetic populations, executes governed strategy logic, persists archives, and captures validation evidence. |
+| Independent release reconciliation | **SAS** | Reconciles final Module 1 V1.0 and V2.0 outputs at the application and variable levels. |
+| Interactive validation and reporting | **Power BI Desktop** | Uses Power Query, a relational semantic model, DAX, conditional formatting, and dynamic narratives to connect portfolio-level release conclusions to application-level evidence. |
 
 ---
 
@@ -100,6 +109,41 @@ Scenario movement can be decomposed into product-level and product × score driv
 BASE_POPULATION_V1 matched population discipline
 ```
 
+### Interactive V1.0 → V2.0 Release Validation in Power BI
+
+To operationalize the automated release-validation layer contemplated in the Module 1 roadmap, I built a Power BI Desktop report that combines the final V1.0 and V2.0 synthetic application outputs with independent SAS reconciliation evidence.
+
+The report preserves the complete 50,000-application denominator and keeps two concepts distinct:
+
+- **21,326 applications affected** by one or more functional changes
+- **58,382 application-variable difference records** across seven changed functional variables
+
+[Download the interactive Power BI report](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/Module1_V1_V2_Release_Validation.pbix) *(requires Power BI Desktop)*
+
+#### Power BI Executive Summary
+
+[![Module 1 Power BI Release Validation Executive Summary](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_validation_executive_summary.png)](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_validation_executive_summary.png)
+
+[Open the Power BI Executive Summary preview full size](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_validation_executive_summary.png)
+
+The Executive Summary provides a portfolio-level release view with matched-population controls, affected and unaffected application counts, application change rate, variable-change records, and functional changes by variable.
+
+#### Power BI Release Impact Explorer
+
+[![Module 1 Power BI Release Impact Explorer](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_impact_explorer.png)](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_impact_explorer.png)
+
+[Open the Power BI Release Impact Explorer preview full size](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_impact_explorer.png)
+
+The Release Impact Explorer supports Application ID lookup, borrower-context review, V1.0-to-V2.0 functional reconciliation, direction-based conditional formatting, and a dynamic DAX analyst interpretation tied to documented V2.0 workstream themes.
+
+#### Power BI Implementation Highlights
+
+- **Power Query:** ingested and typed the raw V1.0 and V2.0 files, remediated text-formatted numeric fields, merged releases one-to-one on `Application_ID`, calculated row-level deltas and change flags, and preserved staging-query lineage.
+- **Semantic model:** related a 50,000-row application comparison fact to a 58,382-row application × changed-variable detail fact using an active `1:*` single-direction relationship.
+- **DAX:** created governed KPI measures for matched applications, affected and unaffected populations, change rate, variable-change records, and dynamic application-level analyst interpretation.
+- **Report design:** developed separate executive and analyst experiences using KPI cards, interactive input slicers, cross-filtering, conditional formatting, and application-level traceability.
+- **Validation discipline:** reconciled every major Power BI metric to the independently verified SAS controls before treating the report as complete.
+
 ### Module 1 Anchor Artifacts
 
 | Artifact | Location |
@@ -108,6 +152,9 @@ BASE_POPULATION_V1 matched population discipline
 | Module 1 v2.0 SQL | [`module1_synthetic_application_risk_engine_v2.0.sql`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/src/module1_synthetic_application_risk_engine_v2.0.sql) |
 | Module 1 v2.0 Validation Summary | [`Enterprise_Credit_Decisioning_Simulator_Module1_Validation_Summary_v2.0.pdf`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/Enterprise_Credit_Decisioning_Simulator_Module1_Validation_Summary_v2.0.pdf) |
 | Module 1 Executive Dashboard | [`module1_executive_dashboard_preview.png`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/docs/module1_executive_dashboard_preview.png) |
+| Power BI Release-Validation Report | [`Module1_V1_V2_Release_Validation.pbix`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/Module1_V1_V2_Release_Validation.pbix) |
+| Power BI Executive Summary Preview | [`module1_v1_v2_release_validation_executive_summary.png`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_validation_executive_summary.png) |
+| Power BI Release Impact Explorer Preview | [`module1_v1_v2_release_impact_explorer.png`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_impact_explorer.png) |
 | Module 1 Final Synthetic Applications Sample | [`module1_synthetic_application_risk_engine_v2.0_OUTPUT_synthetic_applications.csv`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/outputs/module1_synthetic_application_risk_engine_v2.0_OUTPUT_synthetic_applications.csv) |
 | Module 1 Scenario Archive Sample | [`module1_synthetic_application_risk_engine_v2.0_OUTPUT_RANDOM_SAMPLE_synthetic_applications_scenario_archive.csv`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/outputs/module1_synthetic_application_risk_engine_v2.0_OUTPUT_RANDOM_SAMPLE_synthetic_applications_scenario_archive.csv) |
 
@@ -301,8 +348,11 @@ The system includes QA, archive inventory, frontier summaries, parameter snapsho
 - **Matched comparison discipline**  
   Baseline and challenger comparisons preserve Module 1 source-field consistency so observed deltas isolate downstream strategy movement.
 
+- **Power BI semantic and validation layer**  
+  Power Query integrates final release outputs and SAS reconciliation evidence; a controlled one-to-many semantic model and centralized DAX measures support executive KPIs, application-level traceability, conditional formatting, interactive lookup, and dynamic analyst interpretation.
+
 - **Validation and acceptance discipline**  
-  QA and acceptance sections check row grain, lineage, archive completeness, convention integrity, evidence coverage, comparison readiness, source consistency, parameter snapshots, and product-policy audit behavior.
+  QA and acceptance sections check row grain, lineage, archive completeness, convention integrity, evidence coverage, comparison readiness, source consistency, parameter snapshots, product-policy audit behavior, and source-to-report reconciliation.
 
 ---
 
@@ -326,6 +376,10 @@ credit_decisioning_strategy/
 │       ├── outputs/
 │       ├── src/
 │       └── tests/
+│           ├── Module1_V1_V2_Release_Validation.pbix
+│           ├── module1_v1_v2_release_validation_executive_summary.png
+│           ├── module1_v1_v2_release_impact_explorer.png
+│           └── review_queries/
 │
 └── Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/
     └── v1.0/
@@ -345,46 +399,67 @@ For the full repository navigation guide, see:
 
 ### Fast Executive Review
 
-Use this path to understand the system story, dashboard evidence, and artifact status.
+Use this path to understand the system story, release evidence, and current artifact status.
 
-1. Read this root `README.md`
-2. Open the Module 1 executive dashboard
-3. Open the Module 2 executive dashboard
-4. Review the Module 1 v2.0 BRD
-5. Review the Module 1 v2.0 Validation Summary
-6. Review the Module 2 SQL executive snapshot and section map
-7. Note Module 2 documentation status:
-   - Module 2 BRD placeholder is present and marked coming soon
-   - Module 2 Validation Summary placeholder is present and marked coming soon
+1. Read this root `README.md`.
+2. Open the Module 1 executive dashboard.
+3. Review the Power BI Executive Summary preview:  
+   [`module1_v1_v2_release_validation_executive_summary.png`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_validation_executive_summary.png)
+4. Review the Power BI Release Impact Explorer preview:  
+   [`module1_v1_v2_release_impact_explorer.png`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_impact_explorer.png)
+5. Download the interactive Power BI report for application-level exploration:  
+   [`Module1_V1_V2_Release_Validation.pbix`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/Module1_V1_V2_Release_Validation.pbix)
+6. Open the Module 2 executive dashboard.
+7. Review the Module 1 v2.0 BRD and Validation Summary.
+8. Review the Module 2 SQL executive snapshot and section map.
+9. Note Module 2 documentation status:
+   - Module 2 BRD placeholder is present and marked coming soon.
+   - Module 2 Validation Summary placeholder is present and marked coming soon.
 
 ### Technical / Architecture Review
 
-Use this path to inspect how the design is implemented.
+Use this path to inspect how the design is implemented and translated into an analytical product.
 
-1. Start with the Module 1 v2.0 BRD to understand design intent, boundaries, and requirements.
+1. Start with the Module 1 v2.0 BRD to understand design intent, boundaries, workstreams, and requirements.
 2. Review the Module 1 v2.0 SQL implementation.
 3. Review the Module 1 v2.0 Validation Summary to connect design claims to QA evidence.
-4. Review Module 1 outputs and scenario archive samples.
-5. Review the Module 2 SQL implementation.
-6. Review Module 2 campaign registry outputs.
-7. Review Module 2 evidence outputs:
+4. Open the Power BI report and inspect:
+   - Power Query staging, typing, merge, delta, and change-flag logic
+   - the 50,000-row `FactReleaseComparison` table
+   - the 58,382-row `FactReconciliationDetail` table
+   - the active `Application_ID` one-to-many relationship
+   - centralized DAX measures and dynamic analyst interpretation
+   - executive and application-level report experiences
+5. Review Module 1 outputs and scenario archive samples.
+6. Review the Module 2 SQL implementation.
+7. Review Module 2 campaign registry outputs.
+8. Review Module 2 evidence outputs:
    - strategy run evidence summary
    - validation evidence
    - parameter snapshots
    - product × score segment evidence
-8. Review Module 2 random sample outputs:
+9. Review Module 2 random sample outputs:
    - strategy decisions archive sample
    - M2-01 latest-run strategy decisions sample
-9. Note that Module 2 BRD and Validation Summary are intentionally marked as coming soon and will become the formal design / validation anchors for Module 2.
+10. Note that Module 2 BRD and Validation Summary are intentionally marked as coming soon and will become the formal design and validation anchors for Module 2.
 
 ### Governance / Validation Review
 
-Use this path to evaluate auditability, traceability, and evidence discipline.
+Use this path to evaluate auditability, traceability, controlled release comparison, and evidence discipline.
 
 1. Review the Module 1 v2.0 BRD.
 2. Review the Module 1 v2.0 Validation Summary.
-3. Review Module 1 scenario archive sample and QA review outputs.
-4. Review Module 2 SQL Sections 0–17, especially:
+3. Review the Power BI Executive Summary and Release Impact Explorer screenshots.
+4. Open the Power BI report and confirm:
+   - 50,000 matched applications
+   - 21,326 affected applications and 28,674 unaffected applications
+   - 42.65% application change rate
+   - 58,382 application-variable difference records
+   - exact variable-level reconciliation totals
+   - application-level V1.0-to-V2.0 traceability
+   - dynamic interpretation tied to documented workstream themes
+5. Review Module 1 scenario archive samples and QA review outputs.
+6. Review Module 2 SQL Sections 0–17, especially:
    - strategy profile and run selector framework
    - archive persistence
    - matched comparison
@@ -392,9 +467,9 @@ Use this path to evaluate auditability, traceability, and evidence discipline.
    - frontier summary
    - evidence capture
    - post-campaign acceptance
-5. Review Module 2 evidence output CSVs.
-6. Review Module 2 campaign QA outputs for M2-01 through M2-39.
-7. Note Module 2 BRD and Validation Summary placeholders as planned final governance anchors.
+7. Review Module 2 evidence output CSVs.
+8. Review Module 2 campaign QA outputs for M2-01 through M2-39.
+9. Note Module 2 BRD and Validation Summary placeholders as planned final governance anchors.
 
 ---
 
@@ -410,6 +485,8 @@ Included CSVs are compact synthetic samples designed for GitHub review:
 - Module 2 M2-01 latest-run strategy decisions sample
 - Module 2 campaign registry outputs
 - Module 2 evidence and validation outputs
+
+The Power BI Desktop report analyzes synthetic Module 1 release outputs and reconciliation evidence. GitHub-viewable PNG previews are included because `.pbix` files are downloadable binary artifacts rather than browser-rendered reports.
 
 All data is synthetic and intended for portfolio demonstration only.
 
@@ -428,6 +505,7 @@ Important interpretation boundaries:
 - Module 2 outcomes are simulated strategy outcomes, not real underwriting decisions.
 - Reason codes are simulated strategy explanation codes, not customer adverse-action notices.
 - Approved exposure and approved Expected Loss are simulation artifacts, not booked loans or funded accounts.
+- Power BI release metrics describe controlled differences between synthetic V1.0 and V2.0 outputs; they are not production monitoring or regulatory validation results.
 
 ---
 
@@ -442,6 +520,9 @@ Important interpretation boundaries:
 | Module 1 v2.0 | SQL | Complete | Current executable implementation |
 | Module 1 v2.0 | Validation Summary | Complete | QA-backed validation evidence |
 | Module 1 v2.0 | Executive Dashboard | Complete | README / executive evidence view |
+| Module 1 v2.0 | Power BI Executive Summary Preview | Complete | Browser-viewable portfolio-level release-validation evidence |
+| Module 1 v2.0 | Power BI Release Impact Explorer Preview | Complete | Browser-viewable application-level traceability evidence |
+| Module 1 v2.0 | Power BI Release-Validation Report | Complete | Interactive Power Query, semantic-model, DAX, and report-design artifact |
 | Module 2 v1.0 | SQL | Complete | Current executable implementation |
 | Module 2 v1.0 | Executive Dashboard | Complete | README / executive evidence view |
 | Module 2 v1.0 | BRD | Coming soon | Planned design-intent and governance anchor |
@@ -465,7 +546,8 @@ Source population
 → final outcome
 → reason-code traceability
 → archive-backed comparison
-→ executive evidence
+→ Power BI release validation
+→ executive and application-level evidence
 ```
 
 The objective is not merely to produce outputs. The objective is to make the logic, assumptions, tradeoffs, and evidence visible enough for a reviewer to understand why the outputs exist.
@@ -476,4 +558,4 @@ The objective is not merely to produce outputs. The objective is to make the log
 
 **Andrew R. Goad**
 
-Built as a portfolio-grade governed credit analytics and decision-system design artifact.
+Built as a portfolio-grade governed credit analytics, decision-system design, and Power BI release-validation artifact.
