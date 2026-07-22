@@ -17,13 +17,16 @@
 5. `Module_1.../v2.0/tests/Module1_V1_V2_Release_Validation.pbix`  
    Interactive Power BI release-validation report comparing 50,000 matched Module 1 V1.0 and V2.0 applications. Includes portfolio-level release metrics, variable-level impact analysis, application lookup, before-and-after reconciliation, and dynamic analyst interpretation.
 
-6. `Module_2.../docs/module2_executive_dashboard_preview.png`  
+6. `Module_2.../v1.0/docs/Enterprise Credit Decisioning Strategy Module 2 Architecture.png`  
+   Enterprise architecture for the governed strategy decisioning layer, mapping the complete SQL flow across input foundation, strategy controls, decision logic, final outcomes, and governance / evidence / reuse.
+
+7. `Module_2.../docs/module2_executive_dashboard_preview.png`  
    Executive dashboard for the strategy decisioning layer.
 
-7. `Module_1.../v2.0/src/module1_synthetic_application_risk_engine_v2.0.sql`  
+8. `Module_1.../v2.0/src/module1_synthetic_application_risk_engine_v2.0.sql`  
    Final Module 1 SQL implementation.
 
-8. `Module_2.../src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`  
+9. `Module_2.../src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`  
    Final Module 2 SQL implementation.
 
 ---
@@ -85,7 +88,7 @@ Current validated Module 1 release.
 Current Module 2 v1.0 release.
 
 - `docs/`  
-  Module 2 executive dashboard and placeholder documentation for the upcoming BRD and Validation Summary.
+  Module 2 enterprise architecture, executive dashboard, and placeholder documentation for the upcoming BRD and Validation Summary.
 
 - `src/`  
   Final Module 2 SQL implementation.
@@ -110,6 +113,7 @@ Current Module 2 v1.0 release.
 | Module 1 Power BI Release Impact Explorer preview | `Module_1.../v2.0/tests/module1_v1_v2_release_impact_explorer.png` |
 | Module 1 interactive release validation | `Module_1.../v2.0/tests/Module1_V1_V2_Release_Validation.pbix` |
 | Module 2 current release | `Module_2.../v1.0/` |
+| Module 2 enterprise architecture | `Module_2.../v1.0/docs/Enterprise Credit Decisioning Strategy Module 2 Architecture.png` |
 | Module 2 BRD | Coming soon |
 | Module 2 Validation Summary | Coming soon |
 
@@ -201,6 +205,7 @@ The Power BI report uses synthetic Module 1 release-comparison and reconciliatio
 | Module 1 v2.0 | Power BI Release Impact Explorer Preview | Complete | GitHub-viewable application-level traceability evidence |
 | Module 1 v2.0 | Power BI Release-Validation Report | Complete | Interactive portfolio- and application-level release analysis |
 | Module 2 v1.0 | SQL | Complete | Executable strategy and decision-outcome implementation |
+| Module 2 v1.0 | Enterprise Architecture | Complete | Full-system SQL flow, controls, outcomes, and evidence architecture |
 | Module 2 v1.0 | Executive Dashboard | Complete | Portfolio and README evidence view |
 | Module 2 v1.0 | BRD | Coming soon | Planned design-intent and governance anchor |
 | Module 2 v1.0 | Validation Summary | Coming soon | Planned validation and evidence anchor |
@@ -231,16 +236,19 @@ Use this path to understand the system story, dashboard evidence, release impact
 
 7. Use the Release Impact Explorer to inspect individual applications, reconcile functional values, and review the dynamic analyst interpretation.
 
-8. Open the Module 2 executive dashboard:  
+8. Open the Module 2 enterprise architecture:  
+   `Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise Credit Decisioning Strategy Module 2 Architecture.png`
+
+9. Open the Module 2 executive dashboard:  
    `Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png`
 
-9. Review the Module 1 v2.0 BRD:  
-   `Module_1_Synthetic_Application_&_Risk_Modeling_Engine/v2.0/docs/Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v2.0.pdf`
+10. Review the Module 1 v2.0 BRD:  
+    `Module_1_Synthetic_Application_&_Risk_Modeling_Engine/v2.0/docs/Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v2.0.pdf`
 
-10. Review the Module 1 v2.0 Validation Summary:  
+11. Review the Module 1 v2.0 Validation Summary:  
     `Module_1_Synthetic_Application_&_Risk_Modeling_Engine/v2.0/tests/Enterprise_Credit_Decisioning_Simulator_Module1_Validation_Summary_v2.0.pdf`
 
-11. Note the Module 2 documentation status:
+12. Note the Module 2 documentation status:
     - Module 2 BRD placeholder is present and marked coming soon.
     - Module 2 Validation Summary placeholder is present and marked coming soon.
 
@@ -269,22 +277,25 @@ Use this path to inspect how the design is implemented and translated into an an
 
 6. Review Module 1 outputs and scenario-archive samples.
 
-7. Review the Module 2 SQL implementation:  
+7. Review the Module 2 enterprise architecture:  
+   `Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise Credit Decisioning Strategy Module 2 Architecture.png`
+
+8. Review the Module 2 SQL implementation:  
    `Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/v1.0/src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`
 
-8. Review Module 2 campaign-registry outputs.
+9. Review Module 2 campaign-registry outputs.
 
-9. Review Module 2 evidence outputs:
+10. Review Module 2 evidence outputs:
    - strategy-run evidence summary
    - validation evidence
    - parameter snapshots
    - product × score-segment evidence
 
-10. Review Module 2 random-sample outputs:
+11. Review Module 2 random-sample outputs:
     - strategy-decisions archive sample
     - M2-01 latest-run strategy-decisions sample
 
-11. Note that the Module 2 BRD and Validation Summary are intentionally marked as coming soon and will become the formal design and validation anchors for Module 2.
+12. Note that the Module 2 BRD and Validation Summary are intentionally marked as coming soon and will become the formal design and validation anchors for Module 2.
 
 ### 3. Governance / Validation Review
 
@@ -310,7 +321,9 @@ Use this path to evaluate auditability, traceability, controlled release compari
 
 6. Review the Module 1 scenario-archive sample and QA review outputs.
 
-7. Review Module 2 SQL Sections 0–17, especially:
+7. Review the Module 2 enterprise architecture to connect the staged SQL sections to strategy controls, decision logic, outcomes, archive persistence, comparison, QA, and acceptance.
+
+8. Review Module 2 SQL Sections 0–17, especially:
    - strategy profile and run-selector framework
    - archive persistence
    - matched comparison
@@ -319,8 +332,8 @@ Use this path to evaluate auditability, traceability, controlled release compari
    - evidence capture
    - post-campaign acceptance
 
-8. Review Module 2 evidence-output CSVs.
+9. Review Module 2 evidence-output CSVs.
 
-9. Review Module 2 campaign QA outputs for M2-01 through M2-39.
+10. Review Module 2 campaign QA outputs for M2-01 through M2-39.
 
-10. Note the Module 2 BRD and Validation Summary placeholders as planned final governance anchors.
+11. Note the Module 2 BRD and Validation Summary placeholders as planned final governance anchors.
