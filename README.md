@@ -162,6 +162,26 @@ The Release Impact Explorer supports Application ID lookup, borrower-context rev
 
 ## Module 2: Credit Policy Strategy & Decision Outcome Simulation Engine
 
+### Enterprise Architecture
+
+[![Enterprise Credit Decisioning Strategy Module 2 Architecture](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise%20Credit%20Decisioning%20Strategy%20Module%202%20Architecture.png)](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise%20Credit%20Decisioning%20Strategy%20Module%202%20Architecture.png)
+
+[Open the Module 2 enterprise architecture full size](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise%20Credit%20Decisioning%20Strategy%20Module%202%20Architecture.png)
+
+The architecture maps the complete Module 2 SQL flow across five connected layers:
+
+```text
+Input Foundation
+→ Strategy Controls
+→ Decision Logic Engine
+→ Final Outcomes
+→ Governance, Evidence, and Reuse
+```
+
+It connects the Module 1 source population to strategy profiles, policy thresholds, product guardrails, counteroffer controls, diagnostic segmentation, rule triggers, routing, exposure treatment, final outcome resolution, reason-code assignment, archive persistence, matched comparison, validation QA, frontier analysis, and evidence capture.
+
+### Executive Dashboard
+
 [![Module 2 Executive Dashboard](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png)](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png)
 
 [Open Module 2 dashboard full size](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png)
@@ -237,6 +257,7 @@ It illustrates how selective feasibility reduces counteroffer / offer exposure a
 
 | Artifact | Location |
 |---|---|
+| Module 2 Enterprise Architecture | [`Enterprise Credit Decisioning Strategy Module 2 Architecture.png`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise%20Credit%20Decisioning%20Strategy%20Module%202%20Architecture.png) |
 | Module 2 v1.0 SQL | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql) |
 | Module 2 Executive Dashboard | [`module2_executive_dashboard_preview.png`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/module2_executive_dashboard_preview.png) |
 | Module 2 Strategy Decisions Archive Sample | [`module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_archive.csv`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/outputs/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_OUTPUT_RANDOM_SAMPLE_strategy_decisions_archive.csv) |
@@ -384,6 +405,8 @@ credit_decisioning_strategy/
 └── Module_2_Credit_Policy_Strategy_&_Decision_Outcome_Simulation_Engine/
     └── v1.0/
         ├── docs/
+        │   ├── Enterprise Credit Decisioning Strategy Module 2 Architecture.png
+        │   └── module2_executive_dashboard_preview.png
         ├── outputs/
         ├── src/
         └── tests/
@@ -409,10 +432,12 @@ Use this path to understand the system story, release evidence, and current arti
    [`module1_v1_v2_release_impact_explorer.png`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/module1_v1_v2_release_impact_explorer.png)
 5. Download the interactive Power BI report for application-level exploration:  
    [`Module1_V1_V2_Release_Validation.pbix`](./Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/tests/Module1_V1_V2_Release_Validation.pbix)
-6. Open the Module 2 executive dashboard.
-7. Review the Module 1 v2.0 BRD and Validation Summary.
-8. Review the Module 2 SQL executive snapshot and section map.
-9. Note Module 2 documentation status:
+6. Open the Module 2 enterprise architecture:  
+   [`Enterprise Credit Decisioning Strategy Module 2 Architecture.png`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise%20Credit%20Decisioning%20Strategy%20Module%202%20Architecture.png)
+7. Open the Module 2 executive dashboard.
+8. Review the Module 1 v2.0 BRD and Validation Summary.
+9. Review the Module 2 SQL executive snapshot and section map.
+10. Note Module 2 documentation status:
    - Module 2 BRD placeholder is present and marked coming soon.
    - Module 2 Validation Summary placeholder is present and marked coming soon.
 
@@ -431,17 +456,19 @@ Use this path to inspect how the design is implemented and translated into an an
    - centralized DAX measures and dynamic analyst interpretation
    - executive and application-level report experiences
 5. Review Module 1 outputs and scenario archive samples.
-6. Review the Module 2 SQL implementation.
-7. Review Module 2 campaign registry outputs.
-8. Review Module 2 evidence outputs:
+6. Review the Module 2 enterprise architecture:  
+   [`Enterprise Credit Decisioning Strategy Module 2 Architecture.png`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise%20Credit%20Decisioning%20Strategy%20Module%202%20Architecture.png)
+7. Review the Module 2 SQL implementation.
+8. Review Module 2 campaign registry outputs.
+9. Review Module 2 evidence outputs:
    - strategy run evidence summary
    - validation evidence
    - parameter snapshots
    - product × score segment evidence
-9. Review Module 2 random sample outputs:
+10. Review Module 2 random sample outputs:
    - strategy decisions archive sample
    - M2-01 latest-run strategy decisions sample
-10. Note that Module 2 BRD and Validation Summary are intentionally marked as coming soon and will become the formal design and validation anchors for Module 2.
+11. Note that Module 2 BRD and Validation Summary are intentionally marked as coming soon and will become the formal design and validation anchors for Module 2.
 
 ### Governance / Validation Review
 
@@ -459,7 +486,9 @@ Use this path to evaluate auditability, traceability, controlled release compari
    - application-level V1.0-to-V2.0 traceability
    - dynamic interpretation tied to documented workstream themes
 5. Review Module 1 scenario archive samples and QA review outputs.
-6. Review Module 2 SQL Sections 0–17, especially:
+6. Review the Module 2 enterprise architecture:  
+   [`Enterprise Credit Decisioning Strategy Module 2 Architecture.png`](./Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/docs/Enterprise%20Credit%20Decisioning%20Strategy%20Module%202%20Architecture.png)
+7. Review Module 2 SQL Sections 0–17, especially:
    - strategy profile and run selector framework
    - archive persistence
    - matched comparison
@@ -467,9 +496,9 @@ Use this path to evaluate auditability, traceability, controlled release compari
    - frontier summary
    - evidence capture
    - post-campaign acceptance
-7. Review Module 2 evidence output CSVs.
-8. Review Module 2 campaign QA outputs for M2-01 through M2-39.
-9. Note Module 2 BRD and Validation Summary placeholders as planned final governance anchors.
+8. Review Module 2 evidence output CSVs.
+9. Review Module 2 campaign QA outputs for M2-01 through M2-39.
+10. Note Module 2 BRD and Validation Summary placeholders as planned final governance anchors.
 
 ---
 
@@ -524,6 +553,7 @@ Important interpretation boundaries:
 | Module 1 v2.0 | Power BI Release Impact Explorer Preview | Complete | Browser-viewable application-level traceability evidence |
 | Module 1 v2.0 | Power BI Release-Validation Report | Complete | Interactive Power Query, semantic-model, DAX, and report-design artifact |
 | Module 2 v1.0 | SQL | Complete | Current executable implementation |
+| Module 2 v1.0 | Enterprise Architecture | Complete | Full-system SQL architecture, control flow, outcomes, governance, and evidence map |
 | Module 2 v1.0 | Executive Dashboard | Complete | README / executive evidence view |
 | Module 2 v1.0 | BRD | Coming soon | Planned design-intent and governance anchor |
 | Module 2 v1.0 | Validation Summary | Coming soon | Planned validation and evidence anchor |
