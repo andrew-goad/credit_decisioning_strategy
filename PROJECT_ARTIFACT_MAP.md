@@ -29,6 +29,12 @@
 9. `Module_2.../src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`  
    Final Module 2 SQL implementation.
 
+10. [When the Chat Ends, the Work Continues](https://github.com/andrew-goad/andrew-goad/tree/main/When_the_Chat_Ends_the_Work_Continues)  
+    AI leadership case study: handoff preparation, two experienced reviewer chats, and 13 initial Module 2 build-response audits. Presentation and selected PNG previews are in the personal portfolio repository.
+
+11. [`Chat_History/README.md`](./Chat_History/README.md)  
+    Source conversation archive, with a [guided route through the handoff and all 13 audits](./Chat_History/HANDOFF_READING_GUIDE.md).
+
 ---
 
 ## Repository Structure
@@ -101,6 +107,24 @@ Current Module 2 v1.0 release.
   - campaign
   - M2-01 through M2-39
 
+### Chat History — Development and Review Evidence
+
+[`Chat_History/`](./Chat_History/README.md) sits at the repository root alongside the two module folders. It contains 16 complete project conversations and CDS-related exchanges from 34 mixed-purpose conversations, bounded by the supplied export. Branch occurrences retain their sequence and references.
+
+| File or folder | Purpose |
+|---|---|
+| [`README.md`](./Chat_History/README.md) | Archive overview and conversation directory |
+| [`HANDOFF_READING_GUIDE.md`](./Chat_History/HANDOFF_READING_GUIDE.md) | Seven preparation rounds, architecture review, and all 13 audits, linked to prompts, reviews, returned instructions, and successor responses |
+| [`PROJECT_CHRONOLOGY.md`](./Chat_History/PROJECT_CHRONOLOGY.md) | Project timeline and development phases |
+| [`NAVIGATION_AND_SEARCH_GUIDE.md`](./Chat_History/NAVIGATION_AND_SEARCH_GUIDE.md) | How to find conversations and exact message references |
+| [`Conversations/`](./Chat_History/Conversations/) | GitHub-readable Markdown, styled HTML parts, and per-conversation indexes |
+| [`Reader/index.html`](./Chat_History/Reader/index.html) | Styled conversation reader; download the folder and open locally |
+| [`Indexes/`](./Chat_History/Indexes/) and [`Machine_Readable/`](./Chat_History/Machine_Readable/) | Conversation/message indexes, reference maps, and JSONL records for search and audit |
+| [`Attachments/`](./Chat_History/Attachments/) | Recovered final code-capture prompt |
+| [`FORMAT_AND_PROVENANCE.md`](./Chat_History/FORMAT_AND_PROVENANCE.md), [`Provenance/`](./Chat_History/Provenance/), and [`SHA256SUMS.txt`](./Chat_History/SHA256SUMS.txt) | Coverage, source identity, text handling, and file integrity |
+
+The companion [case-study presentation and previews](https://github.com/andrew-goad/andrew-goad/tree/main/When_the_Chat_Ends_the_Work_Continues) live in `andrew-goad/andrew-goad`; this repository holds the underlying project and conversation evidence. Historical proposals and corrections should be read alongside the retained SQL, QA outputs, and release documentation.
+
 ---
 
 ## Current vs. Historical Artifacts
@@ -116,6 +140,8 @@ Current Module 2 v1.0 release.
 | Module 2 enterprise architecture | `Module_2.../v1.0/docs/Enterprise Credit Decisioning Strategy Module 2 Architecture.png` |
 | Module 2 BRD | Coming soon |
 | Module 2 Validation Summary | Coming soon |
+| Development and review history | [`Chat_History/`](./Chat_History/README.md) — historical source record |
+| AI handoff case study | [Presentation and previews](https://github.com/andrew-goad/andrew-goad/tree/main/When_the_Chat_Ends_the_Work_Continues) — published in the personal portfolio repository |
 
 ---
 
@@ -209,6 +235,8 @@ The Power BI report uses synthetic Module 1 release-comparison and reconciliatio
 | Module 2 v1.0 | Executive Dashboard | Complete | Portfolio and README evidence view |
 | Module 2 v1.0 | BRD | Coming soon | Planned design-intent and governance anchor |
 | Module 2 v1.0 | Validation Summary | Coming soon | Planned validation and evidence anchor |
+| Project history | [Chat archive](./Chat_History/README.md) | Published | Development, review, QA, and handoff source conversations |
+| AI leadership case study | [When the Chat Ends, the Work Continues](https://github.com/andrew-goad/andrew-goad/tree/main/When_the_Chat_Ends_the_Work_Continues) | Published | Guided presentation of the handoff and response-audit method |
 
 ---
 
@@ -337,3 +365,10 @@ Use this path to evaluate auditability, traceability, controlled release compari
 10. Review Module 2 campaign QA outputs for M2-01 through M2-39.
 
 11. Note the Module 2 BRD and Validation Summary placeholders as planned final governance anchors.
+
+
+### 4. AI Leadership / Handoff Review
+
+1. Read [When the Chat Ends, the Work Continues](https://github.com/andrew-goad/andrew-goad/blob/main/When_the_Chat_Ends_the_Work_Continues/When_the_Chat_Ends_Case_Study.pdf) for the visual walkthrough.
+2. Use the [handoff reading guide](./Chat_History/HANDOFF_READING_GUIDE.md) to trace preparation and each of the 13 audits through the original messages.
+3. Follow the [Module 2 build](./Chat_History/Conversations/C038/README.md) and [campaign continuation](./Chat_History/Conversations/C040/README.md), then inspect the Module 2 SQL, campaign registries, and QA outputs for final implementation and results.
