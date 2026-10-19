@@ -12,11 +12,9 @@ This is not a dashboard-only project. The core system is implemented as governed
 
 ## Repository Navigation
 
-For a detailed file-by-file guide, see:
+[Artifact map](./PROJECT_ARTIFACT_MAP.md) · [Chat history](./Chat_History/README.md) · [AI handoff case study](https://github.com/andrew-goad/andrew-goad/tree/main/When_the_Chat_Ends_the_Work_Continues)
 
-[`PROJECT_ARTIFACT_MAP.md`](./PROJECT_ARTIFACT_MAP.md)
-
-The artifact map explains the repository structure, current vs historical artifacts, module documentation, sample data, QA outputs, and recommended reviewer paths.
+The artifact map guides reviewers through the releases, documentation, data samples, QA outputs, and development history. `Chat_History/` provides the source conversations; the case-study presentation lives in my personal portfolio repository.
 
 ---
 
@@ -269,6 +267,18 @@ It illustrates how selective feasibility reduces counteroffer / offer exposure a
 
 ---
 
+## AI Leadership: When the Chat Ends, the Work Continues
+
+Before the Module 2 build, Module 1 had two versioned releases and **251 combined pages of business requirements and validation documentation**. I used two experienced Module 1 chats to refine the handoff, then audit the new builder’s **first 13 build responses**. I reconciled their feedback, issued explicit instructions, and checked whether the corrections actually landed.
+
+The case study follows the prompts and review decisions, including a missing source-data consistency requirement restored before full-script assembly. It connects that process to the final release and campaign evidence after execution QA and corrections.
+
+**[Read the presentation](https://github.com/andrew-goad/andrew-goad/blob/main/When_the_Chat_Ends_the_Work_Continues/When_the_Chat_Ends_Case_Study.pdf)** · [Selected page previews](https://github.com/andrew-goad/andrew-goad/tree/main/When_the_Chat_Ends_the_Work_Continues) · [Follow all 13 audits in the source chats](./Chat_History/HANDOFF_READING_GUIDE.md)
+
+The broader [chat archive](./Chat_History/README.md) covers development, documentation, campaign QA, reporting, and later evidence reviews. Final implementation and results remain grounded in the versioned SQL and QA artifacts.
+
+---
+
 ## Decisioning Framework
 
 This project is designed around a staged decision-system architecture rather than a single opaque output table.
@@ -384,6 +394,16 @@ credit_decisioning_strategy/
 │
 ├── README.md
 ├── PROJECT_ARTIFACT_MAP.md
+│
+├── Chat_History/
+│   ├── README.md
+│   ├── HANDOFF_READING_GUIDE.md
+│   ├── Conversations/
+│   ├── Reader/
+│   ├── Indexes/
+│   ├── Machine_Readable/
+│   ├── Attachments/
+│   └── Provenance/
 │
 ├── Module_1_Synthetic_Application_&_Risk_Modeling_Engine/
 │   ├── v1.0/
@@ -523,7 +543,7 @@ All data is synthetic and intended for portfolio demonstration only.
 
 ## Data, Privacy, and Interpretation Boundaries
 
-All data in this repository is synthetic or sampled from synthetic simulation archives.
+All application, risk, and decision data in this repository is synthetic or sampled from synthetic simulation archives. `Chat_History/` preserves the project’s development conversations and review decisions.
 
 This project does **not** use real applicant data, production credit policy, proprietary underwriting thresholds, customer communications, or operational decisioning output.
 
@@ -557,6 +577,8 @@ Important interpretation boundaries:
 | Module 2 v1.0 | Executive Dashboard | Complete | README / executive evidence view |
 | Module 2 v1.0 | BRD | Coming soon | Planned design-intent and governance anchor |
 | Module 2 v1.0 | Validation Summary | Coming soon | Planned validation and evidence anchor |
+| Project history | [Chat archive](./Chat_History/README.md) | Published | Development, review, QA, and handoff source conversations |
+| AI leadership case study | [When the Chat Ends, the Work Continues](https://github.com/andrew-goad/andrew-goad/tree/main/When_the_Chat_Ends_the_Work_Continues) | Published | Presentation and selected previews in the personal portfolio repository |
 
 ---
 
