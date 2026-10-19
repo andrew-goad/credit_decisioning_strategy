@@ -1,0 +1,411 @@
+This is strong. I agree with the Section 13 refinements and the Section 14 Module 2 Validation, QA, and Strategy Outcome Diagnostics layer.
+
+Section 14 should be treated as accepted after the two targeted final patches below are incorporated.
+
+Section 14 correctly:
+- remains read-only
+- validates the completed latest-run Module 2 output
+- preserves Module 1 estimated_pd as the synthetic estimated-PD proxy
+- preserves requested_expected_loss_amount as requested-exposure Expected Loss
+- validates decision distribution
+- validates product, score-band, product × score-band, risk-tier, PTI, DTI, exposure, counteroffer, manual review, decline, reason-code, simulated-offer exposure, and edge-case behavior
+- includes archive and comparison readiness diagnostics
+- avoids modifying strategy parameters
+- avoids modifying product policy parameters
+- avoids recalculating decisions
+- avoids recalculating reason codes
+- avoids recalculating approved exposure
+- avoids recalculating approved Expected Loss
+- avoids modifying latest-run or archive rows
+- avoids drafting the BRD or Validation Summary
+
+Do not rewrite Sections 0–14 in design form again.
+
+We are now moving from incremental section design into full canonical SQL capture.
+
+================================================================================
+1. FINAL TARGETED PATCH — SECTION 13 MATCHED SOURCE-FIELD CONSISTENCY DIAGNOSTIC
+================================================================================
+
+Please add a targeted Section 13 diagnostic to confirm that matched baseline and challenger strategy slices share the same immutable Module 1 source fields.
+
+Reason:
+Matched strategy comparison should isolate Module 2 strategy effects.
+
+If Module 1 source fields differ between baseline and challenger rows, the comparison may reflect population drift, source-selection error, or upstream scenario mismatch rather than true downstream strategy movement.
+
+This diagnostic should be read-only.
+
+For matched baseline and challenger rows, compare at least:
+
+- product_type_policy_key
+- score_band_policy_key
+- credit_score
+- annual_income
+- requested_amount
+- requested_monthly_payment_proxy
+- requested_payment_to_income_ratio
+- amount_to_income_ratio
+- estimated_pd
+- estimated_lgd
+- requested_expected_loss_amount
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+Use IS DISTINCT FROM so NULL handling remains explicit and safe.
+
+The diagnostic query should report:
+
+- matched_application_count
+- source_field_mismatch_count
+- product_type_mismatch_count
+- score_band_mismatch_count
+- credit_score_mismatch_count
+- annual_income_mismatch_count
+- requested_amount_mismatch_count
+- requested_payment_mismatch_count
+- requested_pti_mismatch_count
+- estimated_pd_mismatch_count
+- estimated_lgd_mismatch_count
+- requested_expected_loss_mismatch_count
+- source_consistency_status
+
+Suggested source_consistency_status values:
+
+- SOURCE_FIELDS_MATCH
+- SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED
+- NOT_APPLICABLE_NOT_READY_FOR_MATCHED_COMPARISON
+
+This should not mutate archive rows.
+This should not recalculate any decisions.
+This should not recalculate reason codes.
+This should not recalculate approved exposure.
+This should not recalculate Expected Loss.
+This should not fail execution solely because placeholder comparison parameters are not ready.
+
+================================================================================
+2. FINAL TARGETED PATCH — SECTION 14 VALIDATION STATUS SUMMARY
+================================================================================
+
+Please add a compact validation status summary table or CTE near the end of Section 14.
+
+Recommended name:
+
+tmp_m2_validation_status_summary
+
+Suggested fields:
+
+- validation_area
+- validation_test_name
+- validation_category
+- validation_status
+- observed_value
+- expected_behavior
+- interpretation
+
+Suggested validation_status values:
+
+- PASS
+- REVIEW
+- NOT_APPLICABLE
+
+Use PASS for structural or diagnostic expectations that are satisfied.
+
+Use REVIEW for diagnostic patterns that may be acceptable but should be interpreted, such as:
+- high manual review rate
+- high counteroffer concentration
+- high reason-code concentration
+- unusual product-level decision skew
+- comparison not ready
+- source-field mismatch review required
+- unusual but explainable mixed-signal concentration
+
+Use NOT_APPLICABLE where the test depends on unavailable archive slices, unavailable comparison parameters, or non-ready matched comparison setup.
+
+Do not use FAIL for ordinary diagnostic strategy patterns.
+
+Critical structural failures should already be handled by fail-fast gatekeepers.
+
+The validation summary should include at least these validation areas:
+
+1. Latest-run structural integrity
+2. Decision outcome completeness
+3. Final flag reconciliation
+4. Simulated offer-exposure convention
+5. Approved amount convention
+6. Approved Expected Loss convention
+7. Reason-code completeness
+8. Reason-code family alignment
+9. Prohibited terminology check
+10. Product-level strategy distribution
+11. Score-band strategy distribution
+12. Synthetic risk ordering
+13. Affordability sensitivity
+14. Counteroffer diagnostics
+15. Manual-review diagnostics
+16. Decline / policy-stop diagnostics
+17. Mixed-signal and edge-case diagnostics
+18. Archive persistence readiness
+19. Matched strategy comparison readiness
+20. Matched source-field consistency
+
+This table / CTE should be read-only or temporary only.
+It should not modify latest-run output.
+It should not modify archive output.
+It should not change thresholds or strategy parameters.
+
+================================================================================
+3. SECTION 14 FINAL ACCEPTANCE CRITERIA
+================================================================================
+
+After the targeted Section 13 and Section 14 patches are incorporated, treat Section 14 as accepted if:
+
+- Section 14 remains read-only
+- latest-run structural integrity is validated
+- decision outcomes are summarized
+- product-level outcomes are summarized
+- score-band outcomes are summarized
+- product × score outcomes are summarized
+- synthetic estimated-risk ordering is reviewed
+- affordability sensitivity is reviewed
+- approved exposure and Expected Loss behavior is reviewed
+- counteroffer behavior is reviewed
+- manual review behavior is reviewed
+- decline / policy-stop behavior is reviewed
+- reason-code coverage and concentration are reviewed
+- simulated-offer exposure profile is reviewed
+- mixed-signal and edge-case examples are available
+- archive readiness is reviewed
+- matched strategy comparison readiness is reviewed
+- matched source-field consistency is reviewed
+- tmp_m2_validation_status_summary is created or clearly produced as a final Section 14 validation summary output
+- no strategy parameters are modified
+- no product policy parameters are modified
+- no latest-run rows are modified
+- no archive rows are modified
+- no decisions, reason codes, approved exposure, or Expected Loss values are recalculated
+- no production-decision language appears
+- no booked-account language appears
+- no adverse-action reason-code language appears
+
+================================================================================
+4. NEXT STEP — FULL CANONICAL SQL CODE CAPTURE
+================================================================================
+
+After applying the two targeted patches above, we need to capture the full canonical Module 2 SQL script.
+
+This is now the highest-priority next step.
+
+I have not copied the earlier code out of the chat yet, so please do not assume I can reconstruct it from prior snippets.
+
+Please enter FULL CODE CAPTURE MODE.
+
+The goal is to produce the final integrated SQL script exactly as it should be saved as:
+
+module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+
+================================================================================
+5. FULL CODE CAPTURE RULES
+================================================================================
+
+Please follow these rules exactly:
+
+1. Produce the full integrated SQL script from Section 0 through Section 14.
+
+2. Include every accepted section and every accepted patch.
+
+3. Preserve the valuable commentary and teaching notes from all prior section builds.
+
+4. Do not summarize code.
+
+5. Do not omit any section.
+
+6. Do not use placeholders such as:
+   - same as above
+   - insert prior code here
+   - previously defined
+   - unchanged
+   - omitted for brevity
+   - etc.
+
+7. Do not use ellipses.
+
+8. Do not remove governance comments.
+
+9. Do not remove boundary language.
+
+10. Do not simplify the SQL unless required for internal consistency.
+
+11. If you discover a naming inconsistency while assembling, do not silently change logic.
+
+    Instead:
+    - call it out as an “Assembly Reconciliation Note”
+    - explain the exact issue
+    - state the correction
+    - provide the corrected integrated version in the code
+
+12. Do not introduce new design logic during full code capture unless required to reconcile accepted sections.
+
+13. Do not add new modeling workstreams.
+
+14. Do not draft the BRD or Validation Summary yet.
+
+15. Do not convert this into documentation prose. This is SQL code capture.
+
+================================================================================
+6. REQUIRED FINAL SCRIPT SECTION LIST
+================================================================================
+
+The final integrated code must include all sections:
+
+- Section 0 — Executive Purpose, Module 2 Boundaries, and SQL Section Map
+- Section 1 — Schema Setup / Clean Rerun Reset
+- Section 2 — Strategy Parameter Framework and Product Policy Parameter Framework
+- Section 3 — Fail-Fast Strategy Parameter Gatekeeper
+- Section 4 — Module 1 Source Selection and Lineage Normalization
+- Section 5 — Derived Strategy Segmentation Layer
+- Section 6 — Rule Flag Construction Layer
+- Section 7 — Preliminary Decision Routing Layer
+- Section 8 — Approved Exposure and Counteroffer Feasibility Layer
+- Section 9 — Final Decision Resolution Layer
+- Section 10 — Simulated Reason-Code Assignment Layer
+- Section 11 — Latest-Run Strategy Decision Output Table
+- Section 12 — Strategy Decision Archive Persistence Layer
+- Section 13 — Archive Inventory and Matched Strategy Comparison Framework
+- Section 14 — Module 2 Validation, QA, and Strategy Outcome Diagnostics
+
+================================================================================
+7. CANONICAL OBJECT / STAGE NAME CHECK
+================================================================================
+
+Before beginning code capture, internally verify that the final script consistently uses these canonical object names.
+
+Do not create alternate names.
+
+Core permanent tables:
+- credit_decisioning_sim.strategy_decisions
+- credit_decisioning_sim.strategy_decisions_archive
+
+Parameter tables:
+- tmp_module2_strategy_params
+- tmp_module2_product_policy_params
+- tmp_m2_strategy_comparison_params
+
+Stage tables:
+- tmp_m2_stage_1_source_applications
+- tmp_m2_stage_2_strategy_segments
+- tmp_m2_stage_3_rule_flags
+- tmp_m2_stage_4_preliminary_decision_routing
+- tmp_m2_stage_5_exposure_treatment
+- tmp_m2_stage_6_final_decision_resolution
+- tmp_m2_stage_7_reason_code_assignment
+
+Validation summary object:
+- tmp_m2_validation_status_summary
+
+If any earlier section used a different name, reconcile it during code assembly and call it out as an Assembly Reconciliation Note.
+
+================================================================================
+8. CANONICAL TERMINOLOGY CHECK
+================================================================================
+
+During code assembly, preserve these interpretation boundaries:
+
+- estimated_pd remains the SQL field name, but commentary must describe it as the synthetic estimated-PD proxy.
+- requested_expected_loss_amount means requested-exposure Expected Loss from Module 1.
+- approved_expected_loss_amount means approved-exposure Expected Loss from Module 2.
+- simulated_offer_exposure_flag means simulated positive offer exposure.
+- simulated_offer_exposure_flag does not mean booked exposure, funded exposure, production approval, or real customer treatment.
+- reason codes are simulated strategy explanation codes.
+- reason codes are not adverse-action reasons, regulatory notices, customer communications, or fair-lending conclusions.
+
+Avoid:
+- booked exposure
+- booked account
+- approved book
+- adverse action
+- regulatory reason
+- customer notice
+- production decision
+- calibrated PD
+- recalibrated risk
+
+================================================================================
+9. CHUNKING PROTOCOL TO AVOID LOSING CODE
+================================================================================
+
+Because the full script is long, do not try to force the entire file into one response if it risks truncation.
+
+Use this exact chunking approach:
+
+PART 1:
+- Section 0
+- Section 1
+- Section 2
+- Section 3
+
+PART 2:
+- Section 4
+
+PART 3:
+- Section 5
+- Section 6
+
+PART 4:
+- Section 7
+- Section 8
+
+PART 5:
+- Section 9
+- Section 10
+
+PART 6:
+- Section 11
+- Section 12
+
+PART 7:
+- Section 13
+- Section 14
+
+Each part must begin with:
+
+-- >>> MODULE 2 FULL SQL CODE CAPTURE — PART X OF 7 START
+
+Each part must end with:
+
+-- <<< MODULE 2 FULL SQL CODE CAPTURE — PART X OF 7 END
+
+At the end of each part, also write:
+
+Ready for next part: say CONTINUE FULL CODE PART X+1
+
+Do not skip ahead.
+
+Do not include non-SQL prose inside the SQL code block except SQL comments.
+
+Do not include Parts 2–7 until I ask for them.
+
+================================================================================
+10. START CODE CAPTURE NOW
+================================================================================
+
+Please now provide:
+
+1. A brief Assembly Reconciliation Note, only if needed.
+
+2. Confirmation that the two final patches have been integrated into the canonical capture plan:
+   - Section 13 matched source-field consistency diagnostic
+   - Section 14 validation status summary
+
+3. Then begin FULL CODE CAPTURE PART 1 OF 7 only.
+
+PART 1 should include:
+- Section 0
+- Section 1
+- Section 2
+- Section 3
+
+Do not provide Parts 2–7 until I ask for them.
+
+Do not draft the Module 2 BRD or Validation Summary yet.
