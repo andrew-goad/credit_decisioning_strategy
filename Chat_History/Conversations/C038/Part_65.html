@@ -1,0 +1,4152 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 65</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 65 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_64.html">Previous</a><a href="Part_66.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m01232" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01232 · 2026-05-10T16:00:10.953083-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-10, Module 2 is intentionally driven from <code>tmp_module2_strategy_params</code>, <code>tmp_module2_product_policy_params</code>, and the persistent run / comparison registries. Section 3 then gatekeeps one active strategy row, complete product policy rows, valid source selection, and registry matching before downstream decision logic executes. fileciteturn171file2 fileciteturn171file7</p>
+<p>Below is the reposted <strong>Module 2 campaign parameter run guide</strong> using the now-locked Module 1 campaign scenario names, including the corrected:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<hr>
+<h2>1. Universal Module 2 formal campaign controls</h2>
+<p>Use these for <strong>every formal Module 2 campaign run</strong> unless the specific row says otherwise.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value / rule</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>active_strategy_flag</code></td>
+<td><code>TRUE</code> for exactly one row</td>
+</tr>
+<tr>
+<td><code>module2_model_version</code></td>
+<td><code>MODULE2_V1_0</code></td>
+</tr>
+<tr>
+<td><code>strategy_set_name</code></td>
+<td><code>MODULE2_BASELINE_STRATEGY_SET</code></td>
+</tr>
+<tr>
+<td><code>strategy_version</code></td>
+<td><code>V1_0</code></td>
+</tr>
+<tr>
+<td><code>strategy_run_id</code></td>
+<td>Use pattern: <code>M2-##_STRATEGY_NAME_V1_0_RUN</code></td>
+</tr>
+<tr>
+<td><code>strategy_run_ts</code></td>
+<td><code>CURRENT_TIMESTAMP</code></td>
+</tr>
+<tr>
+<td><code>campaign_registry_required_flag</code></td>
+<td><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>module1_input_source</code></td>
+<td><code>ARCHIVE</code></td>
+</tr>
+<tr>
+<td><code>source_population_id</code></td>
+<td><code>BASE_POPULATION_V1</code></td>
+</tr>
+<tr>
+<td><code>archive_run_flag</code></td>
+<td><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>strategy_archive_reset_mode</code></td>
+<td><code>STRATEGY_SCENARIO_ONLY</code></td>
+</tr>
+<tr>
+<td><code>approve_reason_code</code></td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+</tr>
+<tr>
+<td><code>reason_code_required_flag</code></td>
+<td><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>simulated_offer_exposure_flag_enabled</code></td>
+<td><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>manual_review_approved_amount_convention</code></td>
+<td><code>NULL_UNRESOLVED</code></td>
+</tr>
+<tr>
+<td><code>decline_approved_amount_convention</code></td>
+<td><code>ZERO</code></td>
+</tr>
+<tr>
+<td><code>approved_el_decline_convention</code></td>
+<td><code>ZERO</code></td>
+</tr>
+<tr>
+<td><code>approved_el_manual_review_convention</code></td>
+<td><code>NULL_UNRESOLVED</code></td>
+</tr>
+<tr>
+<td><code>allow_approved_amount_above_requested_flag</code></td>
+<td><code>FALSE</code></td>
+</tr>
+</tbody></table>
+<p>For formal runs, <code>ARCHIVE</code> input should consume a selected slice of <code>credit_decisioning_sim.synthetic_applications_scenario_archive</code>, and Section 3 will require <code>source_module1_scenario_set_name</code>, <code>source_module1_scenario_name</code>, and <code>source_population_id</code> to be populated. fileciteturn172file2</p>
+<hr>
+<h2>2. Common Module 2 rule-control parameters</h2>
+<p>These are not strategy outcomes. They create simulated trigger flags used later by routing, counteroffer feasibility, final decision resolution, and reason-code assignment.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th align="right">Campaign value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>borderline_threshold_buffer_pct</code></td>
+<td align="right"><code>0.050000</code></td>
+</tr>
+<tr>
+<td><code>bankruptcy_policy_stop_enabled</code></td>
+<td align="right"><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>major_derogatory_policy_stop_enabled</code></td>
+<td align="right"><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>severe_delinquency_policy_stop_enabled</code></td>
+<td align="right"><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>severe_delinquency_count_threshold</code></td>
+<td align="right"><code>4</code></td>
+</tr>
+<tr>
+<td><code>high_utilization_review_enabled</code></td>
+<td align="right"><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>high_utilization_review_threshold</code></td>
+<td align="right"><code>0.850000</code></td>
+</tr>
+<tr>
+<td><code>low_score_review_enabled</code></td>
+<td align="right"><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>low_score_review_threshold</code></td>
+<td align="right"><code>580</code></td>
+</tr>
+</tbody></table>
+<p>These rule controls were defined as simulated strategy controls rather than production underwriting policy. fileciteturn172file5</p>
+<hr>
+<h2>3. Module 2 strategy profile parameter table</h2>
+<p>Use this table to update the active row in <code>tmp_module2_strategy_params</code> for each run.</p>
+<table>
+<thead>
+<tr>
+<th>Strategy profile</th>
+<th><code>strategy_name</code></th>
+<th align="right">Approve max estimated-PD proxy</th>
+<th align="right">Counteroffer max estimated-PD proxy</th>
+<th align="right">Review max estimated-PD proxy</th>
+<th align="right">Decline min estimated-PD proxy</th>
+<th align="right">Global approve PTI</th>
+<th align="right">Global review PTI</th>
+<th align="right">Global decline PTI</th>
+<th align="right">Approve DTI</th>
+<th align="right">Review DTI</th>
+<th align="right">Decline DTI</th>
+<th><code>failed_counteroffer_resolution</code></th>
+<th>Product-policy profile</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline</td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right"><code>0.080000</code></td>
+<td align="right"><code>0.160000</code></td>
+<td align="right"><code>0.300000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td align="right"><code>0.430000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Baseline product policy</td>
+</tr>
+<tr>
+<td>Tighter synthetic risk</td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right"><code>0.060000</code></td>
+<td align="right"><code>0.120000</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.300000</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td align="right"><code>0.430000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Baseline product policy</td>
+</tr>
+<tr>
+<td>Growth oriented</td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td align="right"><code>0.100000</code></td>
+<td align="right"><code>0.200000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.280000</code></td>
+<td align="right"><code>0.430000</code></td>
+<td align="right"><code>0.580000</code></td>
+<td align="right"><code>0.460000</code></td>
+<td align="right"><code>0.630000</code></td>
+<td align="right"><code>0.630000</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Growth product policy</td>
+</tr>
+<tr>
+<td>Tighter affordability</td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td align="right"><code>0.080000</code></td>
+<td align="right"><code>0.160000</code></td>
+<td align="right"><code>0.300000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.220000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Affordability-tight product policy</td>
+</tr>
+<tr>
+<td>Counteroffer first</td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td align="right"><code>0.080000</code></td>
+<td align="right"><code>0.160000</code></td>
+<td align="right"><code>0.300000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td align="right"><code>0.430000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Counteroffer-first product policy</td>
+</tr>
+<tr>
+<td>Product guardrails</td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td align="right"><code>0.080000</code></td>
+<td align="right"><code>0.160000</code></td>
+<td align="right"><code>0.300000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td align="right"><code>0.430000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Product-guardrail policy</td>
+</tr>
+<tr>
+<td>Manual-review reduction</td>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td align="right"><code>0.080000</code></td>
+<td align="right"><code>0.160000</code></td>
+<td align="right"><code>0.300000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td align="right"><code>0.430000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td align="right"><code>0.600000</code></td>
+<td><code>DECLINE</code></td>
+<td>Baseline product policy</td>
+</tr>
+</tbody></table>
+<p>The current SQL default example is set to <code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code>, with the tighter estimated-PD proxy thresholds shown above, and Section 3 validates threshold ordering and source configuration before the strategy runs. fileciteturn172file2</p>
+<hr>
+<h2>4. Baseline product-policy parameter table</h2>
+<p>Use this as the baseline <code>tmp_module2_product_policy_params</code> table unless a strategy profile calls for a product-policy overlay.</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Approve PTI</th>
+<th align="right">Review PTI</th>
+<th align="right">Decline PTI</th>
+<th align="right">Counteroffer target PTI</th>
+<th align="right">Approve max requested EL</th>
+<th align="right">Review max requested EL</th>
+<th align="right">Decline min requested EL</th>
+<th align="right">Approved EL cap</th>
+<th align="right">Min approved amount</th>
+<th align="right">Max approved amount</th>
+<th>Counteroffer allowed</th>
+<th>Manual review allowed</th>
+<th align="right">Min counteroffer %</th>
+<th align="right">Max exposure reduction %</th>
+<th>Assignment method</th>
+<th align="right">Rounding</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.450000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td align="right"><code>0.320000</code></td>
+<td align="right"><code>10000</code></td>
+<td align="right"><code>20000</code></td>
+<td align="right"><code>40000</code></td>
+<td align="right"><code>10000</code></td>
+<td align="right"><code>75000</code></td>
+<td align="right"><code>800000</code></td>
+<td><code>TRUE</code></td>
+<td><code>TRUE</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td><code>MOST_CONSERVATIVE_FEASIBLE_AMOUNT</code></td>
+<td align="right"><code>5000</code></td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.450000</code></td>
+<td align="right"><code>0.220000</code></td>
+<td align="right"><code>8000</code></td>
+<td align="right"><code>16000</code></td>
+<td align="right"><code>30000</code></td>
+<td align="right"><code>7000</code></td>
+<td align="right"><code>10000</code></td>
+<td align="right"><code>175000</code></td>
+<td><code>TRUE</code></td>
+<td><code>TRUE</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td><code>MOST_CONSERVATIVE_FEASIBLE_AMOUNT</code></td>
+<td align="right"><code>1000</code></td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right"><code>0.180000</code></td>
+<td align="right"><code>0.280000</code></td>
+<td align="right"><code>0.380000</code></td>
+<td align="right"><code>0.160000</code></td>
+<td align="right"><code>3500</code></td>
+<td align="right"><code>7000</code></td>
+<td align="right"><code>12000</code></td>
+<td align="right"><code>3000</code></td>
+<td align="right"><code>5000</code></td>
+<td align="right"><code>65000</code></td>
+<td><code>TRUE</code></td>
+<td><code>TRUE</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td><code>MOST_CONSERVATIVE_FEASIBLE_AMOUNT</code></td>
+<td align="right"><code>500</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right"><code>0.150000</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.130000</code></td>
+<td align="right"><code>3000</code></td>
+<td align="right"><code>6000</code></td>
+<td align="right"><code>10000</code></td>
+<td align="right"><code>2500</code></td>
+<td align="right"><code>1000</code></td>
+<td align="right"><code>35000</code></td>
+<td><code>TRUE</code></td>
+<td><code>TRUE</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td><code>MOST_CONSERVATIVE_FEASIBLE_AMOUNT</code></td>
+<td align="right"><code>500</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right"><code>0.120000</code></td>
+<td align="right"><code>0.200000</code></td>
+<td align="right"><code>0.300000</code></td>
+<td align="right"><code>0.100000</code></td>
+<td align="right"><code>2000</code></td>
+<td align="right"><code>4000</code></td>
+<td align="right"><code>8000</code></td>
+<td align="right"><code>1800</code></td>
+<td align="right"><code>1000</code></td>
+<td align="right"><code>20000</code></td>
+<td><code>TRUE</code></td>
+<td><code>TRUE</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td><code>MOST_CONSERVATIVE_FEASIBLE_AMOUNT</code></td>
+<td align="right"><code>500</code></td>
+</tr>
+</tbody></table>
+<p>The product-policy table must contain exactly one row for each supported product: <code>MORTGAGE</code>, <code>HELOC</code>, <code>AUTO_LOAN</code>, <code>UNSECURED_PERSONAL_LOAN</code>, and <code>REVOLVING_LINE</code>; Section 3 validates completeness, threshold ordering, exposure bounds, counteroffer controls, assignment method, and rounding. fileciteturn173file9 fileciteturn174file0</p>
+<hr>
+<h2>5. Product-policy overlays by strategy profile</h2>
+<p>These are the campaign overlays to install in <code>tmp_module2_product_policy_params</code> when the selected strategy profile requires product-policy movement.</p>
+<table>
+<thead>
+<tr>
+<th>Product-policy profile</th>
+<th>Used by strategy</th>
+<th>Products affected</th>
+<th>Parameter movement</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline product policy</td>
+<td><code>BASELINE_STRATEGY</code>, <code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code>, <code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td>All products</td>
+<td>Use baseline table above</td>
+</tr>
+<tr>
+<td>Growth product policy</td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>All products</td>
+<td>Increase <code>product_max_approved_amount</code> by ~10%; increase <code>product_approved_el_cap</code> by ~10%; leave counteroffer controls unchanged</td>
+</tr>
+<tr>
+<td>Affordability-tight product policy</td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>All products</td>
+<td>Reduce <code>product_approve_max_pti</code>, <code>product_review_max_pti</code>, <code>product_decline_min_pti</code>, and <code>counteroffer_target_pti</code> by ~2–5 percentage points while preserving ordering</td>
+</tr>
+<tr>
+<td>Counteroffer-first product policy</td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>All products, especially higher-balance products</td>
+<td>Lower <code>counteroffer_target_pti</code>; lower <code>product_approved_el_cap</code> by ~15–25%; lower selected <code>product_max_approved_amount</code>; keep counteroffer allowed</td>
+</tr>
+<tr>
+<td>Product-guardrail policy</td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td><code>UNSECURED_PERSONAL_LOAN</code>, <code>REVOLVING_LINE</code></td>
+<td>Tighten unsecured / revolving caps: UPL max approved amount toward <code>25000–30000</code>, UPL approved EL cap toward <code>2000</code>; revolving max approved amount toward <code>15000–18000</code>, revolving approved EL cap toward <code>1200–1500</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>6. Full Module 2 campaign run map</h2>
+<p>For every row below:</p>
+<pre><code class="language-text">module1_input_source               = ARCHIVE
+source_population_id               = BASE_POPULATION_V1
+strategy_set_name                  = MODULE2_BASELINE_STRATEGY_SET
+strategy_version                   = V1_0
+campaign_registry_required_flag    = TRUE
+archive_run_flag                   = TRUE
+strategy_archive_reset_mode        = STRATEGY_SCENARIO_ONLY
+</code></pre>
+<table>
+<thead>
+<tr>
+<th align="right">M2 run</th>
+<th><code>source_module1_scenario_set_name</code></th>
+<th><code>source_module1_scenario_name</code></th>
+<th><code>strategy_name</code></th>
+<th>Product-policy profile</th>
+<th>Comparison role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">M2-01</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline for CG01–CG06</td>
+</tr>
+<tr>
+<td align="right">M2-02</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Challenger CG01</td>
+</tr>
+<tr>
+<td align="right">M2-03</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>Growth</td>
+<td>Challenger CG02</td>
+</tr>
+<tr>
+<td align="right">M2-04</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>Affordability-tight</td>
+<td>Challenger CG03</td>
+</tr>
+<tr>
+<td align="right">M2-05</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>Counteroffer-first</td>
+<td>Challenger CG04</td>
+</tr>
+<tr>
+<td align="right">M2-06</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Product guardrail</td>
+<td>Challenger CG05</td>
+</tr>
+<tr>
+<td align="right">M2-07</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Challenger CG06</td>
+</tr>
+<tr>
+<td align="right">M2-08</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_200BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG07</td>
+</tr>
+<tr>
+<td align="right">M2-09</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG09</td>
+</tr>
+<tr>
+<td align="right">M2-10</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_300BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG08</td>
+</tr>
+<tr>
+<td align="right">M2-11</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_200BP</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>Affordability-tight</td>
+<td>Challenger CG07</td>
+</tr>
+<tr>
+<td align="right">M2-12</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_300BP</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>Affordability-tight</td>
+<td>Challenger CG08</td>
+</tr>
+<tr>
+<td align="right">M2-13</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>Growth</td>
+<td>Challenger CG09</td>
+</tr>
+<tr>
+<td align="right">M2-14</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_BOX_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Credit-box reference</td>
+</tr>
+<tr>
+<td align="right">M2-15</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>PRIME_GROWTH_SCORE_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Prime-growth baseline</td>
+</tr>
+<tr>
+<td align="right">M2-16</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG10–CG11</td>
+</tr>
+<tr>
+<td align="right">M2-17</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Challenger CG10</td>
+</tr>
+<tr>
+<td align="right">M2-18</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>Counteroffer-first</td>
+<td>Challenger CG11</td>
+</tr>
+<tr>
+<td align="right">M2-19</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG12</td>
+</tr>
+<tr>
+<td align="right">M2-20</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Challenger CG12</td>
+</tr>
+<tr>
+<td align="right">M2-21</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>PORTFOLIO_MIX_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Product-mix reference</td>
+</tr>
+<tr>
+<td align="right">M2-22</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG13</td>
+</tr>
+<tr>
+<td align="right">M2-23</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Product guardrail</td>
+<td>Challenger CG13</td>
+</tr>
+<tr>
+<td align="right">M2-24</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>SECURED_BALANCE_GROWTH_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Secured-balance baseline</td>
+</tr>
+<tr>
+<td align="right">M2-25</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG14</td>
+</tr>
+<tr>
+<td align="right">M2-26</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Product guardrail</td>
+<td>Challenger CG14</td>
+</tr>
+<tr>
+<td align="right">M2-27</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code></td>
+<td><code>EXPOSURE_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Exposure reference</td>
+</tr>
+<tr>
+<td align="right">M2-28</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code></td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG15</td>
+</tr>
+<tr>
+<td align="right">M2-29</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code></td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>Counteroffer-first</td>
+<td>Challenger CG15</td>
+</tr>
+<tr>
+<td align="right">M2-30</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code></td>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Low-balance baseline</td>
+</tr>
+<tr>
+<td align="right">M2-31</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>LGD_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>LGD reference</td>
+</tr>
+<tr>
+<td align="right">M2-32</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>SECURED_SEVERITY_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Secured severity baseline</td>
+</tr>
+<tr>
+<td align="right">M2-33</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG16</td>
+</tr>
+<tr>
+<td align="right">M2-34</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Product guardrail</td>
+<td>Challenger CG16</td>
+</tr>
+<tr>
+<td align="right">M2-35</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Baseline CG17</td>
+</tr>
+<tr>
+<td align="right">M2-36</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Product guardrail</td>
+<td>Challenger CG17</td>
+</tr>
+</tbody></table>
+<p>The persistent campaign registry exists to map the long technical key into stable IDs like <code>M2-02</code>, <code>showcase_id</code>, <code>comparison_group_id</code>, and <code>validation_evidence_group_id</code>; those IDs are documentation and evidence-linkage metadata, not replacements for the technical SQL run key. fileciteturn174file10</p>
+<hr>
+<h2>7. Comparison registry guide</h2>
+<p>Use the comparison registry after both sides of a pair are archived. Section 13 is designed to compare archived baseline and challenger strategy slices on the same Module 1 scenario / population, rather than infer comparison context from the replaceable latest-run table. fileciteturn170file18</p>
+<table>
+<thead>
+<tr>
+<th>Comparison group</th>
+<th align="right">Baseline run</th>
+<th align="right">Challenger run</th>
+<th>Comparison description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CG01</td>
+<td align="right">M2-01</td>
+<td align="right">M2-02</td>
+<td>Baseline vs tighter synthetic risk on <code>BASELINE_V2</code></td>
+</tr>
+<tr>
+<td>CG02</td>
+<td align="right">M2-01</td>
+<td align="right">M2-03</td>
+<td>Baseline vs growth oriented on <code>BASELINE_V2</code></td>
+</tr>
+<tr>
+<td>CG03</td>
+<td align="right">M2-01</td>
+<td align="right">M2-04</td>
+<td>Baseline vs tighter affordability on <code>BASELINE_V2</code></td>
+</tr>
+<tr>
+<td>CG04</td>
+<td align="right">M2-01</td>
+<td align="right">M2-05</td>
+<td>Baseline vs counteroffer-first on <code>BASELINE_V2</code></td>
+</tr>
+<tr>
+<td>CG05</td>
+<td align="right">M2-01</td>
+<td align="right">M2-06</td>
+<td>Baseline vs product guardrails on <code>BASELINE_V2</code></td>
+</tr>
+<tr>
+<td>CG06</td>
+<td align="right">M2-01</td>
+<td align="right">M2-07</td>
+<td>Baseline vs manual-review reduction on <code>BASELINE_V2</code></td>
+</tr>
+<tr>
+<td>CG07</td>
+<td align="right">M2-08</td>
+<td align="right">M2-11</td>
+<td>Rate-up 200bp baseline vs tighter affordability</td>
+</tr>
+<tr>
+<td>CG08</td>
+<td align="right">M2-10</td>
+<td align="right">M2-12</td>
+<td>Rate-up 300bp baseline vs tighter affordability</td>
+</tr>
+<tr>
+<td>CG09</td>
+<td align="right">M2-09</td>
+<td align="right">M2-13</td>
+<td>Rate-down 200bp baseline vs growth oriented</td>
+</tr>
+<tr>
+<td>CG10</td>
+<td align="right">M2-16</td>
+<td align="right">M2-17</td>
+<td>Near-prime expansion baseline vs tighter synthetic risk</td>
+</tr>
+<tr>
+<td>CG11</td>
+<td align="right">M2-16</td>
+<td align="right">M2-18</td>
+<td>Near-prime expansion baseline vs counteroffer-first</td>
+</tr>
+<tr>
+<td>CG12</td>
+<td align="right">M2-19</td>
+<td align="right">M2-20</td>
+<td>Credit-stress mix baseline vs tighter synthetic risk</td>
+</tr>
+<tr>
+<td>CG13</td>
+<td align="right">M2-22</td>
+<td align="right">M2-23</td>
+<td>Unsecured growth baseline vs product guardrails</td>
+</tr>
+<tr>
+<td>CG14</td>
+<td align="right">M2-25</td>
+<td align="right">M2-26</td>
+<td>Revolving expansion baseline vs product guardrails</td>
+</tr>
+<tr>
+<td>CG15</td>
+<td align="right">M2-28</td>
+<td align="right">M2-29</td>
+<td>High-balance appetite baseline vs counteroffer-first</td>
+</tr>
+<tr>
+<td>CG16</td>
+<td align="right">M2-33</td>
+<td align="right">M2-34</td>
+<td>Unsecured severity stress baseline vs product guardrails</td>
+</tr>
+<tr>
+<td>CG17</td>
+<td align="right">M2-35</td>
+<td align="right">M2-36</td>
+<td>Broad LGD stress baseline vs product guardrails</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>8. Strategy profile → run lookup</h2>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>M2 runs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>M2-01, M2-08, M2-09, M2-10, M2-14, M2-15, M2-16, M2-19, M2-21, M2-22, M2-24, M2-25, M2-27, M2-28, M2-30, M2-31, M2-32, M2-33, M2-35</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>M2-02, M2-17, M2-20</td>
+</tr>
+<tr>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>M2-03, M2-13</td>
+</tr>
+<tr>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>M2-04, M2-11, M2-12</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>M2-05, M2-18, M2-29</td>
+</tr>
+<tr>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>M2-06, M2-23, M2-26, M2-34, M2-36</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td>M2-07</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>9. Recommended execution order</h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Runs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Phase 1 — Baseline population pure strategy frontier</td>
+<td>M2-01 through M2-07</td>
+</tr>
+<tr>
+<td>Phase 2 — Rate sensitivity</td>
+<td>M2-08, M2-11; M2-10, M2-12; M2-09, M2-13</td>
+</tr>
+<tr>
+<td>Phase 3 — Credit-box sensitivity</td>
+<td>M2-14; M2-15; M2-16, M2-17, M2-18; M2-19, M2-20</td>
+</tr>
+<tr>
+<td>Phase 4 — Portfolio-mix sensitivity</td>
+<td>M2-21; M2-22, M2-23; M2-24; M2-25, M2-26</td>
+</tr>
+<tr>
+<td>Phase 5 — Exposure-intensity sensitivity</td>
+<td>M2-27; M2-28, M2-29; M2-30</td>
+</tr>
+<tr>
+<td>Phase 6 — LGD severity sensitivity</td>
+<td>M2-31; M2-32; M2-33, M2-34; M2-35, M2-36</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>10. After each Module 2 run</h2>
+<p>After each run, review these in order:</p>
+<table>
+<thead>
+<tr>
+<th align="right">Step</th>
+<th>Review object / section</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">1</td>
+<td>Section 3.5 active strategy and registry diagnostics</td>
+<td>Confirm the active row, source scope, thresholds, product policy, and registry match</td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td>Section 12 archive diagnostics</td>
+<td>Confirm the latest-run slice was archived under the intended replacement key</td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td>Section 13, when a pair exists</td>
+<td>Confirm matched comparison readiness and source-field consistency</td>
+</tr>
+<tr>
+<td align="right">4</td>
+<td>Section 14 validation outputs</td>
+<td>Review latest-run structural, product, score, risk, affordability, counteroffer, manual-review, decline, reason-code, and edge-case QA</td>
+</tr>
+<tr>
+<td align="right">5</td>
+<td>Section 15 frontier output</td>
+<td>Review archive-backed strategy frontier and baseline-relative deltas</td>
+</tr>
+<tr>
+<td align="right">6</td>
+<td>Section 16.8 evidence packet</td>
+<td>Confirm executive evidence, validation evidence, parameter snapshot, product × score evidence, and registry linkage</td>
+</tr>
+</tbody></table>
+<p>Section 16 snapshots the active strategy parameter card, product-policy card, and run-story metadata as JSONB, then stores a <code>parameter_snapshot_hash</code>, which is exactly what we want for campaign evidence traceability. fileciteturn170file5</p>
+</div></article><article id="c038-m01234" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01234 · 2026-05-10T16:33:16.487000-04:00 · active path</p><div class="body"><p>it&#39;s hard to know the variable associated with each of these line items.  please update section 2 with line level comments that detail what each variable/parameter is and any pertinent information about populating them. i shouldn&#39;t have to scroll to figure out what parameter I am looking at.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(170).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01242" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01242 · 2026-05-10T16:39:05.233818-04:00 · active path</p><div class="body"><p>Using your uploaded Section 2 as the base, the main usability issue is the <code>VALUES (...)</code> pattern in the editable parameter inserts: the column names are far above the values, so during campaign execution it is too easy to lose track of what each line controls. fileciteturn176file2</p>
+<p>I recommend replacing the two most frequently edited operator-facing blocks, <strong>Section 2.2</strong> and <strong>Section 2.4</strong>, with the versions below. They preserve the same parameter logic, but change the inserts to named <code>SELECT</code> statements so each value sits beside its variable name and an inline comment.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 2.2 — INSERT ACTIVE STRATEGY PARAMETER ROW
+****************************************************************************************************
+
+PURPOSE:
+    Insert the current active Module 2 strategy configuration.
+
+USER ACTION:
+    This is the primary operator-edited Module 2 strategy card.
+
+    For each Module 2 campaign run, update this block first.
+
+    The most common fields to change are:
+        strategy_name
+        strategy_run_id
+        source_module1_scenario_set_name
+        source_module1_scenario_name
+        source_population_id
+        synthetic estimated-risk thresholds
+        global PTI thresholds
+        DTI thresholds
+        failed_counteroffer_resolution
+        product-policy table values in Section 2.4, when the strategy requires product overlays.
+
+WHY THIS VERSION USES INSERT ... SELECT INSTEAD OF VALUES:
+    The original VALUES layout required the user to scroll up to match each value to its column.
+
+    This version keeps every value adjacent to:
+        the target variable name,
+        the business meaning,
+        and the population guidance.
+
+    That makes campaign operation safer.
+
+CURRENT DEFAULT:
+    The row below is currently configured as:
+
+        Module 1 source:
+            MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+
+        Module 2 strategy:
+            MODULE2_BASELINE_STRATEGY_SET / TIGHTER_SYNTHETIC_RISK_STRATEGY / V1_0
+
+        Module 2 run:
+            M2-02_TIGHTER_SYNTHETIC_RISK_STRATEGY_V1_0_RUN
+
+    To run another campaign row, change the named values below according to the Module 2 campaign
+    run guide.
+
+FORMAL CAMPAIGN REQUIREMENT:
+    For formal campaign runs:
+        campaign_registry_required_flag = TRUE
+        module1_input_source = &#39;ARCHIVE&#39;
+        archive_run_flag = TRUE
+        strategy_archive_reset_mode = &#39;STRATEGY_SCENARIO_ONLY&#39;
+
+    The technical run key must match exactly one active row in:
+        credit_decisioning_sim.strategy_run_campaign_registry
+
+TECHNICAL RUN KEY:
+    The current strategy run is identified by:
+
+        source_module1_scenario_set_name
+        source_module1_scenario_name
+        source_population_id
+        strategy_set_name
+        strategy_name
+        strategy_version
+
+    strategy_run_id and strategy_run_ts are traceability metadata.
+
+    They do not replace the archive replacement key, comparison key, registry technical key, or
+    application-level grain.
+
+CREDIT RISK TEACHING POINT:
+    This row defines strategy posture.
+
+    It does not prove the strategy behaved correctly.
+
+    Strategy behavior is observed later through:
+        final decision distribution,
+        simulated offer-exposure rate,
+        approved exposure,
+        approved Expected Loss,
+        affordability movement,
+        reason-code movement,
+        product × score behavior,
+        Section 15 frontier evidence,
+        and Section 16 executive evidence capture.
+
+****************************************************************************************************/
+
+INSERT INTO tmp_module2_strategy_params (
+    active_strategy_flag,
+
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    campaign_registry_required_flag,
+
+    module1_input_source,
+    source_module1_scenario_set_name,
+    source_module1_scenario_name,
+    source_population_id,
+
+    archive_run_flag,
+    strategy_archive_reset_mode,
+
+    approve_max_estimated_pd_proxy,
+    counteroffer_max_estimated_pd_proxy,
+    review_max_estimated_pd_proxy,
+    decline_min_estimated_pd_proxy,
+
+    global_approve_max_pti,
+    global_review_max_pti,
+    global_decline_min_pti,
+
+    approve_max_dti,
+    review_max_dti,
+    decline_min_dti,
+
+    borderline_threshold_buffer_pct,
+
+    bankruptcy_policy_stop_enabled,
+    major_derogatory_policy_stop_enabled,
+    severe_delinquency_policy_stop_enabled,
+    severe_delinquency_count_threshold,
+    high_utilization_review_enabled,
+    high_utilization_review_threshold,
+    low_score_review_enabled,
+    low_score_review_threshold,
+
+    approve_reason_code,
+    reason_code_required_flag,
+    simulated_offer_exposure_flag_enabled,
+    manual_review_approved_amount_convention,
+    decline_approved_amount_convention,
+    approved_el_decline_convention,
+    approved_el_manual_review_convention,
+    allow_approved_amount_above_requested_flag,
+
+    failed_counteroffer_resolution
+)
+SELECT
+    /***********************************************************************************************
+    active_strategy_flag:
+        TRUE marks this row as the one active Module 2 strategy card for the current execution.
+
+    Populate as:
+        TRUE for exactly one row.
+        FALSE only if you intentionally keep inactive reference rows.
+
+    Section 3 gatekeeper:
+        fails if active row count is not exactly one.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS active_strategy_flag,
+
+
+    /***********************************************************************************************
+    module2_model_version:
+        Version label for the Module 2 SQL engine.
+
+    Populate as:
+        &#39;MODULE2_V1_0&#39; for the current campaign.
+
+    Do not use this as a comparison key by itself.
+    ***********************************************************************************************/
+    &#39;MODULE2_V1_0&#39;::TEXT AS module2_model_version,
+
+
+    /***********************************************************************************************
+    strategy_set_name:
+        Strategy family / campaign grouping.
+
+    Populate as:
+        &#39;MODULE2_BASELINE_STRATEGY_SET&#39; for the current Module 2 campaign.
+
+    This is part of:
+        archive replacement key,
+        matched comparison key,
+        evidence-capture key,
+        campaign registry technical key.
+    ***********************************************************************************************/
+    &#39;MODULE2_BASELINE_STRATEGY_SET&#39;::TEXT AS strategy_set_name,
+
+
+    /***********************************************************************************************
+    strategy_name:
+        Specific Module 2 strategy posture to run.
+
+    Common campaign values:
+        &#39;BASELINE_STRATEGY&#39;
+        &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;
+        &#39;GROWTH_ORIENTED_STRATEGY&#39;
+        &#39;TIGHTER_AFFORDABILITY_STRATEGY&#39;
+        &#39;COUNTEROFFER_FIRST_EXPOSURE_STRATEGY&#39;
+        &#39;PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY&#39;
+        &#39;MANUAL_REVIEW_REDUCTION_STRATEGY&#39;
+
+    Update this for each Module 2 run.
+    ***********************************************************************************************/
+    &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;::TEXT AS strategy_name,
+
+
+    /***********************************************************************************************
+    strategy_version:
+        Version label for the strategy definition.
+
+    Populate as:
+        &#39;V1_0&#39; for the current campaign.
+
+    Future strategy versions should be explicitly versioned so archived strategy slices remain
+    comparable and auditable.
+    ***********************************************************************************************/
+    &#39;V1_0&#39;::TEXT AS strategy_version,
+
+
+    /***********************************************************************************************
+    strategy_run_id:
+        Human-readable run traceability ID.
+
+    Populate using the Module 2 run guide pattern:
+        &#39;M2-##_STRATEGY_NAME_V1_0_RUN&#39;
+
+    Example:
+        &#39;M2-02_TIGHTER_SYNTHETIC_RISK_STRATEGY_V1_0_RUN&#39;
+
+    This is audit metadata.
+    It is not the archive replacement key.
+    ***********************************************************************************************/
+    &#39;M2-02_TIGHTER_SYNTHETIC_RISK_STRATEGY_V1_0_RUN&#39;::TEXT AS strategy_run_id,
+
+
+    /***********************************************************************************************
+    strategy_run_ts:
+        Timestamp for the current execution.
+
+    Populate as:
+        CURRENT_TIMESTAMP for ordinary campaign runs.
+
+    This is audit metadata.
+    It is not a comparison key.
+    ***********************************************************************************************/
+    CURRENT_TIMESTAMP AS strategy_run_ts,
+
+
+    /***********************************************************************************************
+    campaign_registry_required_flag:
+        Controls whether the technical run key must match the formal campaign registry.
+
+    Populate as:
+        TRUE for formal campaign runs.
+        FALSE only for ad hoc development.
+
+    If TRUE:
+        Section 3 and Section 16 expect exactly one matching active row in:
+            credit_decisioning_sim.strategy_run_campaign_registry
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS campaign_registry_required_flag,
+
+
+    /***********************************************************************************************
+    module1_input_source:
+        Selects the upstream Module 1 source.
+
+    Allowed values:
+        &#39;LATEST&#39;
+            consumes credit_decisioning_sim.synthetic_applications.
+
+        &#39;ARCHIVE&#39;
+            consumes credit_decisioning_sim.synthetic_applications_scenario_archive.
+
+    Populate as:
+        &#39;ARCHIVE&#39; for formal campaign runs so Module 2 consumes a controlled Module 1 scenario slice.
+    ***********************************************************************************************/
+    &#39;ARCHIVE&#39;::TEXT AS module1_input_source,
+
+
+    /***********************************************************************************************
+    source_module1_scenario_set_name:
+        Module 1 scenario-set identifier to consume when module1_input_source = &#39;ARCHIVE&#39;.
+
+    Populate from the locked Module 1 campaign inventory.
+
+    Examples:
+        &#39;MODULE1_V2_BASELINE_SET&#39;
+        &#39;MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET&#39;
+        &#39;MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET&#39;
+        &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+        &#39;MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET&#39;
+
+    This is part of the technical run key.
+    ***********************************************************************************************/
+    &#39;MODULE1_V2_BASELINE_SET&#39;::TEXT AS source_module1_scenario_set_name,
+
+
+    /***********************************************************************************************
+    source_module1_scenario_name:
+        Specific Module 1 scenario slice to consume when module1_input_source = &#39;ARCHIVE&#39;.
+
+    Populate from the locked Module 1 campaign inventory.
+
+    Examples:
+        &#39;BASELINE_V2&#39;
+        &#39;RATE_UP_200BP&#39;
+        &#39;NEAR_PRIME_EXPANSION_MIX&#39;
+        &#39;UNSECURED_GROWTH_MIX&#39;
+        &#39;HIGH_BALANCE_APPETITE&#39;
+        &#39;BROAD_LGD_STRESS&#39;
+
+    This is part of the technical run key.
+    ***********************************************************************************************/
+    &#39;BASELINE_V2&#39;::TEXT AS source_module1_scenario_name,
+
+
+    /***********************************************************************************************
+    source_population_id:
+        Module 1 population identifier.
+
+    Populate as:
+        &#39;BASE_POPULATION_V1&#39; for the current formal campaign.
+
+    Matched comparisons require the same population_id.
+    ***********************************************************************************************/
+    &#39;BASE_POPULATION_V1&#39;::TEXT AS source_population_id,
+
+
+    /***********************************************************************************************
+    archive_run_flag:
+        Controls whether Section 12 persists the completed latest-run output.
+
+    Populate as:
+        TRUE for formal campaign runs.
+
+    If FALSE:
+        Section 12 skips archive insert.
+        Section 13 / 15 / 16 may not have historical evidence for the run.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS archive_run_flag,
+
+
+    /***********************************************************************************************
+    strategy_archive_reset_mode:
+        Controls archive replacement behavior before inserting the current latest-run slice.
+
+    Recommended formal campaign value:
+        &#39;STRATEGY_SCENARIO_ONLY&#39;
+
+    Meaning:
+        Replace only the current:
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            Module 1 scenario set,
+            Module 1 scenario name,
+            population_id.
+
+    Other allowed values:
+        &#39;NONE&#39;
+        &#39;STRATEGY_SET_ONLY&#39;
+        &#39;ALL&#39;
+    ***********************************************************************************************/
+    &#39;STRATEGY_SCENARIO_ONLY&#39;::TEXT AS strategy_archive_reset_mode,
+
+
+    /***********************************************************************************************
+    approve_max_estimated_pd_proxy:
+        Global synthetic estimated-PD proxy ceiling for clean approval eligibility.
+
+    Current tighter synthetic-risk value:
+        0.060000
+
+    Baseline strategy value:
+        0.080000
+
+    Lower values tighten risk appetite.
+    ***********************************************************************************************/
+    0.060000::NUMERIC(12,6) AS approve_max_estimated_pd_proxy,
+
+
+    /***********************************************************************************************
+    counteroffer_max_estimated_pd_proxy:
+        Global synthetic estimated-PD proxy ceiling for counteroffer risk band.
+
+    Current tighter synthetic-risk value:
+        0.120000
+
+    Baseline strategy value:
+        0.160000
+
+    Rows above approve_max_estimated_pd_proxy and at or below this value may be counteroffer
+    candidates if other conditions allow.
+    ***********************************************************************************************/
+    0.120000::NUMERIC(12,6) AS counteroffer_max_estimated_pd_proxy,
+
+
+    /***********************************************************************************************
+    review_max_estimated_pd_proxy:
+        Global synthetic estimated-PD proxy ceiling for review-zone risk band.
+
+    Current tighter synthetic-risk value:
+        0.250000
+
+    Baseline strategy value:
+        0.300000
+
+    Rows above counteroffer risk tolerance but below decline minimum can route toward review depending
+    on the downstream hierarchy.
+    ***********************************************************************************************/
+    0.250000::NUMERIC(12,6) AS review_max_estimated_pd_proxy,
+
+
+    /***********************************************************************************************
+    decline_min_estimated_pd_proxy:
+        Global synthetic estimated-PD proxy floor for severe synthetic-risk decline trigger.
+
+    Current tighter synthetic-risk value:
+        0.300000
+
+    Baseline strategy value:
+        0.350000
+
+    Rows at or above this threshold are treated as severe synthetic-risk triggers.
+    ***********************************************************************************************/
+    0.300000::NUMERIC(12,6) AS decline_min_estimated_pd_proxy,
+
+
+    /***********************************************************************************************
+    global_approve_max_pti:
+        Global high-level clean approval PTI tolerance.
+
+    PTI:
+        payment-to-income ratio.
+
+    Current baseline value:
+        0.250000
+
+    Product-specific PTI thresholds in Section 2.4 drive product-aware rules.
+    This global value is a strategy-level control and validation reference.
+    ***********************************************************************************************/
+    0.250000::NUMERIC(12,6) AS global_approve_max_pti,
+
+
+    /***********************************************************************************************
+    global_review_max_pti:
+        Global high-level review-zone PTI reference.
+
+    Current baseline value:
+        0.400000
+
+    Higher requested PTI indicates greater payment burden.
+    ***********************************************************************************************/
+    0.400000::NUMERIC(12,6) AS global_review_max_pti,
+
+
+    /***********************************************************************************************
+    global_decline_min_pti:
+        Global high-level severe requested-PTI reference.
+
+    Current baseline value:
+        0.550000
+
+    Product-specific decline PTI thresholds still drive product-aware behavior.
+    ***********************************************************************************************/
+    0.550000::NUMERIC(12,6) AS global_decline_min_pti,
+
+
+    /***********************************************************************************************
+    approve_max_dti:
+        Existing-obligation DTI ceiling for clean DTI capacity.
+
+    Current baseline value:
+        0.430000
+
+    DTI is not directly fixed by reducing requested exposure in Module 2 V1.0.
+    ***********************************************************************************************/
+    0.430000::NUMERIC(12,6) AS approve_max_dti,
+
+
+    /***********************************************************************************************
+    review_max_dti:
+        Existing-obligation DTI review-zone reference.
+
+    Current baseline value:
+        0.600000
+
+    This may equal decline_min_dti when the design intentionally creates a direct severe-DTI boundary.
+    ***********************************************************************************************/
+    0.600000::NUMERIC(12,6) AS review_max_dti,
+
+
+    /***********************************************************************************************
+    decline_min_dti:
+        Existing-obligation DTI floor for severe DTI trigger.
+
+    Current baseline value:
+        0.600000
+
+    Rows at or above this threshold are treated as severe DTI capacity triggers.
+    ***********************************************************************************************/
+    0.600000::NUMERIC(12,6) AS decline_min_dti,
+
+
+    /***********************************************************************************************
+    borderline_threshold_buffer_pct:
+        Diagnostic buffer for threshold-adjacent profiles.
+
+    Current value:
+        0.050000
+
+    Interpretation:
+        within 5% of a relevant strategy threshold.
+
+    Used for:
+        borderline_profile_flag in Section 5.
+
+    Not a production tolerance.
+    ***********************************************************************************************/
+    0.050000::NUMERIC(12,6) AS borderline_threshold_buffer_pct,
+
+
+    /***********************************************************************************************
+    bankruptcy_policy_stop_enabled:
+        Enables simulated bankruptcy policy-stop trigger.
+
+    Populate as:
+        TRUE for current campaign.
+
+    Uses Module 1 bankruptcy_flag downstream.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS bankruptcy_policy_stop_enabled,
+
+
+    /***********************************************************************************************
+    major_derogatory_policy_stop_enabled:
+        Enables simulated major-derogatory policy-stop trigger.
+
+    Populate as:
+        TRUE for current campaign.
+
+    Uses Module 1 major_derogatory_flag downstream.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS major_derogatory_policy_stop_enabled,
+
+
+    /***********************************************************************************************
+    severe_delinquency_policy_stop_enabled:
+        Enables simulated severe-delinquency policy-stop trigger.
+
+    Populate as:
+        TRUE for current campaign.
+
+    Uses delinquency_count_12m downstream.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS severe_delinquency_policy_stop_enabled,
+
+
+    /***********************************************************************************************
+    severe_delinquency_count_threshold:
+        Delinquency-count threshold for severe-delinquency trigger.
+
+    Current value:
+        4
+
+    Downstream interpretation:
+        delinquency_count_12m &gt;= 4 when severe_delinquency_policy_stop_enabled = TRUE.
+    ***********************************************************************************************/
+    4::INTEGER AS severe_delinquency_count_threshold,
+
+
+    /***********************************************************************************************
+    high_utilization_review_enabled:
+        Enables supplemental high-utilization review trigger.
+
+    Populate as:
+        TRUE for current campaign.
+
+    This is a simulated diagnostic review trigger, not production policy.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS high_utilization_review_enabled,
+
+
+    /***********************************************************************************************
+    high_utilization_review_threshold:
+        Utilization threshold for supplemental review trigger.
+
+    Current value:
+        0.850000
+
+    Downstream interpretation:
+        utilization_ratio &gt;= 85% when high_utilization_review_enabled = TRUE.
+    ***********************************************************************************************/
+    0.850000::NUMERIC(12,6) AS high_utilization_review_threshold,
+
+
+    /***********************************************************************************************
+    low_score_review_enabled:
+        Enables supplemental low-score review trigger.
+
+    Populate as:
+        TRUE for current campaign.
+
+    This is a simulated diagnostic review trigger, not production policy.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS low_score_review_enabled,
+
+
+    /***********************************************************************************************
+    low_score_review_threshold:
+        Credit-score threshold for supplemental review trigger.
+
+    Current value:
+        580
+
+    Downstream interpretation:
+        credit_score &lt; 580 when low_score_review_enabled = TRUE.
+    ***********************************************************************************************/
+    580::INTEGER AS low_score_review_threshold,
+
+
+    /***********************************************************************************************
+    approve_reason_code:
+        Required primary reason code for clean APPROVE outcomes.
+
+    Populate as:
+        &#39;APPROVED_AS_REQUESTED&#39;
+
+    This is a simulated strategy explanation code.
+    It is not customer communication text.
+    ***********************************************************************************************/
+    &#39;APPROVED_AS_REQUESTED&#39;::TEXT AS approve_reason_code,
+
+
+    /***********************************************************************************************
+    reason_code_required_flag:
+        Controls whether reason-code completeness is required downstream.
+
+    Populate as:
+        TRUE for formal campaign runs.
+
+    Section 10 and Section 14 expect reason-code evidence for every row.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS reason_code_required_flag,
+
+
+    /***********************************************************************************************
+    simulated_offer_exposure_flag_enabled:
+        Controls simulated offer-exposure flag convention.
+
+    Populate as:
+        TRUE for current campaign.
+
+    Downstream convention:
+        TRUE for APPROVE and COUNTEROFFER.
+        FALSE for MANUAL_REVIEW and DECLINE.
+    ***********************************************************************************************/
+    TRUE::BOOLEAN AS simulated_offer_exposure_flag_enabled,
+
+
+    /***********************************************************************************************
+    manual_review_approved_amount_convention:
+        Approved amount convention for final MANUAL_REVIEW rows.
+
+    Populate as:
+        &#39;NULL_UNRESOLVED&#39;
+
+    Meaning:
+        manual review remains unresolved and does not receive approved exposure.
+    ***********************************************************************************************/
+    &#39;NULL_UNRESOLVED&#39;::TEXT AS manual_review_approved_amount_convention,
+
+
+    /***********************************************************************************************
+    decline_approved_amount_convention:
+        Approved amount convention for final DECLINE rows.
+
+    Populate as:
+        &#39;ZERO&#39;
+
+    Meaning:
+        decline follows zero-exposure convention.
+    ***********************************************************************************************/
+    &#39;ZERO&#39;::TEXT AS decline_approved_amount_convention,
+
+
+    /***********************************************************************************************
+    approved_el_decline_convention:
+        Approved Expected Loss convention for final DECLINE rows.
+
+    Populate as:
+        &#39;ZERO&#39;
+
+    Meaning:
+        declined rows have approved_expected_loss_amount = 0.
+    ***********************************************************************************************/
+    &#39;ZERO&#39;::TEXT AS approved_el_decline_convention,
+
+
+    /***********************************************************************************************
+    approved_el_manual_review_convention:
+        Approved Expected Loss convention for final MANUAL_REVIEW rows.
+
+    Populate as:
+        &#39;NULL_UNRESOLVED&#39;
+
+    Meaning:
+        manual-review rows remain unresolved and do not receive approved Expected Loss.
+    ***********************************************************************************************/
+    &#39;NULL_UNRESOLVED&#39;::TEXT AS approved_el_manual_review_convention,
+
+
+    /***********************************************************************************************
+    allow_approved_amount_above_requested_flag:
+        Controls whether approved exposure may exceed requested exposure.
+
+    Populate as:
+        FALSE for current campaign.
+
+    Current Module 2 convention:
+        approved exposure should never exceed requested exposure.
+    ***********************************************************************************************/
+    FALSE::BOOLEAN AS allow_approved_amount_above_requested_flag,
+
+
+    /***********************************************************************************************
+    failed_counteroffer_resolution:
+        Final-resolution policy when a preliminary COUNTEROFFER fails feasibility in Section 8.
+
+    Allowed values:
+        &#39;MANUAL_REVIEW&#39;
+        &#39;DECLINE&#39;
+
+    Common campaign values:
+        &#39;MANUAL_REVIEW&#39; for baseline and most challenger strategies.
+        &#39;DECLINE&#39; for MANUAL_REVIEW_REDUCTION_STRATEGY.
+
+    This parameter changes final outcome mix and should be documented carefully.
+    ***********************************************************************************************/
+    &#39;MANUAL_REVIEW&#39;::TEXT AS failed_counteroffer_resolution;
+</code></pre>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 2.4 — INSERT PRODUCT POLICY DEFAULTS
+****************************************************************************************************
+
+DEFAULT INTERPRETATION:
+    These are initial simulated product-policy defaults.
+
+    They are not:
+        production underwriting limits,
+        final approved credit policy,
+        empirical calibration,
+        real customer treatment rules,
+        regulatory thresholds,
+        or actual product approval rules.
+
+WHY THIS VERSION USES A NAMED PRODUCT_POLICY_SEED CTE:
+    The original VALUES block required the user to scroll to the INSERT column list to determine
+    what each number meant.
+
+    This version labels every value with:
+        the target variable name,
+        the product context,
+        and population guidance.
+
+    That makes product-policy campaign edits safer.
+
+PRODUCT POLICY INTERPRETATION:
+    Product parameters make the strategy simulator product-aware.
+
+    Each supported product receives distinct:
+        affordability thresholds,
+        requested Expected Loss thresholds,
+        approved Expected Loss caps,
+        approved exposure limits,
+        counteroffer controls,
+        manual-review controls,
+        and rounding increments.
+
+SUPPORTED PRODUCT SET:
+    MORTGAGE
+    HELOC
+    AUTO_LOAN
+    UNSECURED_PERSONAL_LOAN
+    REVOLVING_LINE
+
+CAMPAIGN EDIT GUIDANCE:
+    Use the baseline product policy below for:
+        BASELINE_STRATEGY
+        TIGHTER_SYNTHETIC_RISK_STRATEGY
+        MANUAL_REVIEW_REDUCTION_STRATEGY
+
+    For:
+        GROWTH_ORIENTED_STRATEGY
+        TIGHTER_AFFORDABILITY_STRATEGY
+        COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+        PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+
+    edit the relevant named values below before running the strategy.
+
+SQL MECHANICS:
+    product_policy_seed creates one named row per product using UNION ALL.
+
+    The final INSERT copies those named columns into tmp_module2_product_policy_params.
+
+    Section 3 validates:
+        exactly one row per supported product,
+        no unsupported products,
+        threshold ordering,
+        exposure limits,
+        counteroffer settings,
+        exposure assignment method,
+        and rounding controls.
+
+****************************************************************************************************/
+
+WITH product_policy_seed AS (
+
+    /***********************************************************************************************
+    PRODUCT POLICY ROW — MORTGAGE
+
+    Business interpretation:
+        Large secured installment exposure.
+
+    Product-policy posture:
+        Higher PTI tolerance than unsecured products because mortgage structure is secured and
+        long-term.
+
+        Larger approved exposure range, but still constrained by approved Expected Loss cap and
+        product max approved amount.
+    ***********************************************************************************************/
+    SELECT
+        /*******************************************************************************************
+        product_type:
+            Must match product_type_policy_key produced in Section 4.
+        *******************************************************************************************/
+        &#39;MORTGAGE&#39;::TEXT AS product_type,
+
+        /*******************************************************************************************
+        product_approve_max_pti:
+            Maximum requested PTI for product-level clean affordability posture.
+
+        Mortgage baseline:
+            0.350000
+        *******************************************************************************************/
+        0.350000::NUMERIC(12,6) AS product_approve_max_pti,
+
+        /*******************************************************************************************
+        product_review_max_pti:
+            Product-level review-zone PTI reference.
+
+        Mortgage baseline:
+            0.450000
+        *******************************************************************************************/
+        0.450000::NUMERIC(12,6) AS product_review_max_pti,
+
+        /*******************************************************************************************
+        product_decline_min_pti:
+            Severe requested PTI threshold for product-level affordability stress.
+
+        Mortgage baseline:
+            0.550000
+        *******************************************************************************************/
+        0.550000::NUMERIC(12,6) AS product_decline_min_pti,
+
+        /*******************************************************************************************
+        counteroffer_target_pti:
+            Target approved PTI used in reduced-exposure feasibility testing.
+
+        Mortgage baseline:
+            0.320000
+        *******************************************************************************************/
+        0.320000::NUMERIC(12,6) AS counteroffer_target_pti,
+
+        /*******************************************************************************************
+        product_approve_max_requested_el:
+            Requested-exposure Expected Loss threshold for clean product approval posture.
+
+        Mortgage baseline:
+            10000.00
+        *******************************************************************************************/
+        10000.00::NUMERIC(18,2) AS product_approve_max_requested_el,
+
+        /*******************************************************************************************
+        product_review_max_requested_el:
+            Requested-exposure Expected Loss review-zone reference.
+
+        Mortgage baseline:
+            20000.00
+        *******************************************************************************************/
+        20000.00::NUMERIC(18,2) AS product_review_max_requested_el,
+
+        /*******************************************************************************************
+        product_decline_min_requested_el:
+            Severe requested-exposure Expected Loss threshold.
+
+        Mortgage baseline:
+            40000.00
+        *******************************************************************************************/
+        40000.00::NUMERIC(18,2) AS product_decline_min_requested_el,
+
+        /*******************************************************************************************
+        product_approved_el_cap:
+            Approved-exposure Expected Loss cap used in counteroffer feasibility testing.
+
+        Mortgage baseline:
+            10000.00
+        *******************************************************************************************/
+        10000.00::NUMERIC(18,2) AS product_approved_el_cap,
+
+        /*******************************************************************************************
+        product_min_approved_amount:
+            Minimum viable approved exposure for this product.
+
+        Mortgage baseline:
+            75000.00
+        *******************************************************************************************/
+        75000.00::NUMERIC(18,2) AS product_min_approved_amount,
+
+        /*******************************************************************************************
+        product_max_approved_amount:
+            Maximum simulated approved exposure for this product.
+
+        Mortgage baseline:
+            800000.00
+        *******************************************************************************************/
+        800000.00::NUMERIC(18,2) AS product_max_approved_amount,
+
+        /*******************************************************************************************
+        counteroffer_allowed_flag:
+            TRUE allows reduced-exposure treatment for this product.
+        *******************************************************************************************/
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,
+
+        /*******************************************************************************************
+        manual_review_allowed_flag:
+            TRUE allows unresolved manual-review outcome for this product.
+        *******************************************************************************************/
+        TRUE::BOOLEAN AS manual_review_allowed_flag,
+
+        /*******************************************************************************************
+        product_min_counteroffer_pct:
+            Minimum counteroffer amount as a percentage of requested amount.
+
+        Mortgage baseline:
+            0.500000 means counteroffer must be at least 50% of requested amount.
+        *******************************************************************************************/
+        0.500000::NUMERIC(12,6) AS product_min_counteroffer_pct,
+
+        /*******************************************************************************************
+        product_max_exposure_reduction_pct:
+            Maximum exposure reduction allowed for a viable counteroffer.
+
+        Mortgage baseline:
+            0.500000 means no more than 50% reduction from requested amount.
+        *******************************************************************************************/
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,
+
+        /*******************************************************************************************
+        exposure_assignment_method:
+            Method label used by Section 8 to select the feasible approved amount.
+
+        Current allowed campaign value:
+            &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;
+        *******************************************************************************************/
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+
+        /*******************************************************************************************
+        approved_amount_rounding_increment:
+            Rounding increment used for approved amount.
+
+        Mortgage baseline:
+            5000.00
+        *******************************************************************************************/
+        5000.00::NUMERIC(18,2) AS approved_amount_rounding_increment
+
+
+    UNION ALL
+
+
+    /***********************************************************************************************
+    PRODUCT POLICY ROW — HELOC
+
+    Business interpretation:
+        Secured revolving exposure.
+
+    Product-policy posture:
+        Lower PTI tolerance than mortgage, but higher exposure range than small unsecured products.
+    ***********************************************************************************************/
+    SELECT
+        &#39;HELOC&#39;::TEXT AS product_type,                                  -- product_type
+        0.250000::NUMERIC(12,6) AS product_approve_max_pti,             -- clean requested PTI threshold
+        0.350000::NUMERIC(12,6) AS product_review_max_pti,              -- review-zone requested PTI reference
+        0.450000::NUMERIC(12,6) AS product_decline_min_pti,             -- severe requested PTI threshold
+        0.220000::NUMERIC(12,6) AS counteroffer_target_pti,             -- target approved PTI for counteroffer testing
+
+        8000.00::NUMERIC(18,2) AS product_approve_max_requested_el,     -- clean requested Expected Loss threshold
+        16000.00::NUMERIC(18,2) AS product_review_max_requested_el,     -- requested Expected Loss review reference
+        30000.00::NUMERIC(18,2) AS product_decline_min_requested_el,    -- severe requested Expected Loss threshold
+        7000.00::NUMERIC(18,2) AS product_approved_el_cap,              -- approved Expected Loss cap
+
+        10000.00::NUMERIC(18,2) AS product_min_approved_amount,         -- minimum viable approved exposure
+        175000.00::NUMERIC(18,2) AS product_max_approved_amount,        -- maximum simulated approved exposure
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,                     -- allow reduced-exposure treatment
+        TRUE::BOOLEAN AS manual_review_allowed_flag,                    -- allow unresolved manual review
+        0.400000::NUMERIC(12,6) AS product_min_counteroffer_pct,        -- minimum counteroffer percentage
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,  -- maximum exposure reduction percentage
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        1000.00::NUMERIC(18,2) AS approved_amount_rounding_increment    -- approved amount rounding increment
+
+
+    UNION ALL
+
+
+    /***********************************************************************************************
+    PRODUCT POLICY ROW — AUTO_LOAN
+
+    Business interpretation:
+        Secured installment exposure with moderate payment sensitivity.
+
+    Product-policy posture:
+        Tighter PTI and Expected Loss settings than mortgage because balance sizes are smaller and
+        repayment terms are shorter.
+    ***********************************************************************************************/
+    SELECT
+        &#39;AUTO_LOAN&#39;::TEXT AS product_type,                              -- product_type
+        0.180000::NUMERIC(12,6) AS product_approve_max_pti,             -- clean requested PTI threshold
+        0.280000::NUMERIC(12,6) AS product_review_max_pti,              -- review-zone requested PTI reference
+        0.380000::NUMERIC(12,6) AS product_decline_min_pti,             -- severe requested PTI threshold
+        0.160000::NUMERIC(12,6) AS counteroffer_target_pti,             -- target approved PTI for counteroffer testing
+
+        3500.00::NUMERIC(18,2) AS product_approve_max_requested_el,     -- clean requested Expected Loss threshold
+        7000.00::NUMERIC(18,2) AS product_review_max_requested_el,      -- requested Expected Loss review reference
+        12000.00::NUMERIC(18,2) AS product_decline_min_requested_el,    -- severe requested Expected Loss threshold
+        3000.00::NUMERIC(18,2) AS product_approved_el_cap,              -- approved Expected Loss cap
+
+        5000.00::NUMERIC(18,2) AS product_min_approved_amount,          -- minimum viable approved exposure
+        65000.00::NUMERIC(18,2) AS product_max_approved_amount,         -- maximum simulated approved exposure
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,                     -- allow reduced-exposure treatment
+        TRUE::BOOLEAN AS manual_review_allowed_flag,                    -- allow unresolved manual review
+        0.500000::NUMERIC(12,6) AS product_min_counteroffer_pct,        -- minimum counteroffer percentage
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,  -- maximum exposure reduction percentage
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        500.00::NUMERIC(18,2) AS approved_amount_rounding_increment     -- approved amount rounding increment
+
+
+    UNION ALL
+
+
+    /***********************************************************************************************
+    PRODUCT POLICY ROW — UNSECURED_PERSONAL_LOAN
+
+    Business interpretation:
+        Smaller unsecured installment exposure.
+
+    Product-policy posture:
+        Higher loss severity and no collateral support justify tighter PTI tolerance, lower approved
+        exposure cap, and lower approved Expected Loss cap.
+    ***********************************************************************************************/
+    SELECT
+        &#39;UNSECURED_PERSONAL_LOAN&#39;::TEXT AS product_type,                -- product_type
+        0.150000::NUMERIC(12,6) AS product_approve_max_pti,             -- clean requested PTI threshold
+        0.250000::NUMERIC(12,6) AS product_review_max_pti,              -- review-zone requested PTI reference
+        0.350000::NUMERIC(12,6) AS product_decline_min_pti,             -- severe requested PTI threshold
+        0.130000::NUMERIC(12,6) AS counteroffer_target_pti,             -- target approved PTI for counteroffer testing
+
+        3000.00::NUMERIC(18,2) AS product_approve_max_requested_el,     -- clean requested Expected Loss threshold
+        6000.00::NUMERIC(18,2) AS product_review_max_requested_el,      -- requested Expected Loss review reference
+        10000.00::NUMERIC(18,2) AS product_decline_min_requested_el,    -- severe requested Expected Loss threshold
+        2500.00::NUMERIC(18,2) AS product_approved_el_cap,              -- approved Expected Loss cap
+
+        1000.00::NUMERIC(18,2) AS product_min_approved_amount,          -- minimum viable approved exposure
+        35000.00::NUMERIC(18,2) AS product_max_approved_amount,         -- maximum simulated approved exposure
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,                     -- allow reduced-exposure treatment
+        TRUE::BOOLEAN AS manual_review_allowed_flag,                    -- allow unresolved manual review
+        0.500000::NUMERIC(12,6) AS product_min_counteroffer_pct,        -- minimum counteroffer percentage
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,  -- maximum exposure reduction percentage
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        500.00::NUMERIC(18,2) AS approved_amount_rounding_increment     -- approved amount rounding increment
+
+
+    UNION ALL
+
+
+    /***********************************************************************************************
+    PRODUCT POLICY ROW — REVOLVING_LINE
+
+    Business interpretation:
+        Unsecured revolving exposure.
+
+    Product-policy posture:
+        Highest structural caution in the baseline product policy because unsecured revolving exposure
+        has high LGD and APR-sensitive payment proxy behavior upstream.
+    ***********************************************************************************************/
+    SELECT
+        &#39;REVOLVING_LINE&#39;::TEXT AS product_type,                         -- product_type
+        0.120000::NUMERIC(12,6) AS product_approve_max_pti,             -- clean requested PTI threshold
+        0.200000::NUMERIC(12,6) AS product_review_max_pti,              -- review-zone requested PTI reference
+        0.300000::NUMERIC(12,6) AS product_decline_min_pti,             -- severe requested PTI threshold
+        0.100000::NUMERIC(12,6) AS counteroffer_target_pti,             -- target approved PTI for counteroffer testing
+
+        2000.00::NUMERIC(18,2) AS product_approve_max_requested_el,     -- clean requested Expected Loss threshold
+        4000.00::NUMERIC(18,2) AS product_review_max_requested_el,      -- requested Expected Loss review reference
+        8000.00::NUMERIC(18,2) AS product_decline_min_requested_el,     -- severe requested Expected Loss threshold
+        1800.00::NUMERIC(18,2) AS product_approved_el_cap,              -- approved Expected Loss cap
+
+        1000.00::NUMERIC(18,2) AS product_min_approved_amount,          -- minimum viable approved exposure
+        20000.00::NUMERIC(18,2) AS product_max_approved_amount,         -- maximum simulated approved exposure
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,                     -- allow reduced-exposure treatment
+        TRUE::BOOLEAN AS manual_review_allowed_flag,                    -- allow unresolved manual review
+        0.500000::NUMERIC(12,6) AS product_min_counteroffer_pct,        -- minimum counteroffer percentage
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,  -- maximum exposure reduction percentage
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        500.00::NUMERIC(18,2) AS approved_amount_rounding_increment     -- approved amount rounding increment
+)
+
+INSERT INTO tmp_module2_product_policy_params (
+    product_type,
+
+    product_approve_max_pti,
+    product_review_max_pti,
+    product_decline_min_pti,
+    counteroffer_target_pti,
+
+    product_approve_max_requested_el,
+    product_review_max_requested_el,
+    product_decline_min_requested_el,
+    product_approved_el_cap,
+
+    product_min_approved_amount,
+    product_max_approved_amount,
+
+    counteroffer_allowed_flag,
+    manual_review_allowed_flag,
+    product_min_counteroffer_pct,
+    product_max_exposure_reduction_pct,
+    exposure_assignment_method,
+    approved_amount_rounding_increment
+)
+SELECT
+    product_type,
+
+    product_approve_max_pti,
+    product_review_max_pti,
+    product_decline_min_pti,
+    counteroffer_target_pti,
+
+    product_approve_max_requested_el,
+    product_review_max_requested_el,
+    product_decline_min_requested_el,
+    product_approved_el_cap,
+
+    product_min_approved_amount,
+    product_max_approved_amount,
+
+    counteroffer_allowed_flag,
+    manual_review_allowed_flag,
+    product_min_counteroffer_pct,
+    product_max_exposure_reduction_pct,
+    exposure_assignment_method,
+    approved_amount_rounding_increment
+FROM product_policy_seed;
+</code></pre>
+<p>These two replacements should make the main campaign-editable variables self-identifying at the line where you edit them, instead of forcing you to cross-reference the column list.</p>
+</div></article><article id="c038-m01244" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01244 · 2026-05-10T18:09:48.680000-04:00 · active path</p><div class="body"><p>can you provide specific recommendations for the affordability-tight product policy parameter values instead of saying reduce by ~2-5% while preserving ordering?  do the same for counteroffer-first product policy and product guardrail policy.</p>
+</div></article><article id="c038-m01248" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01248 · 2026-05-10T18:12:32.943719-04:00 · active path</p><div class="body"><p>Yes. I would replace the vague overlay language with <strong>specific product-policy profiles</strong>. These values are designed to be campaign-operable: you can copy them into Section 2.4 when the active <code>strategy_name</code> calls for that profile.</p>
+<p>The logic is consistent with your Module 2 design: Section 2 centralizes product-policy controls, Section 8 uses those controls for counteroffer feasibility, and Section 14 validates final counteroffer / exposure / PTI / Expected Loss behavior. fileciteturn177file0 fileciteturn177file47 fileciteturn177file14</p>
+<h2>1. Baseline product policy reference</h2>
+<p>Use this as the unchanged reference.</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Approve PTI</th>
+<th align="right">Review PTI</th>
+<th align="right">Decline PTI</th>
+<th align="right">Counteroffer target PTI</th>
+<th align="right">Approve max requested EL</th>
+<th align="right">Review max requested EL</th>
+<th align="right">Decline min requested EL</th>
+<th align="right">Approved EL cap</th>
+<th align="right">Min approved amount</th>
+<th align="right">Max approved amount</th>
+<th align="right">Min counteroffer %</th>
+<th align="right">Max exposure reduction %</th>
+<th align="right">Rounding</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right">0.350000</td>
+<td align="right">0.450000</td>
+<td align="right">0.550000</td>
+<td align="right">0.320000</td>
+<td align="right">10000</td>
+<td align="right">20000</td>
+<td align="right">40000</td>
+<td align="right">10000</td>
+<td align="right">75000</td>
+<td align="right">800000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">5000</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right">0.250000</td>
+<td align="right">0.350000</td>
+<td align="right">0.450000</td>
+<td align="right">0.220000</td>
+<td align="right">8000</td>
+<td align="right">16000</td>
+<td align="right">30000</td>
+<td align="right">7000</td>
+<td align="right">10000</td>
+<td align="right">175000</td>
+<td align="right">0.400000</td>
+<td align="right">0.500000</td>
+<td align="right">1000</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">0.180000</td>
+<td align="right">0.280000</td>
+<td align="right">0.380000</td>
+<td align="right">0.160000</td>
+<td align="right">3500</td>
+<td align="right">7000</td>
+<td align="right">12000</td>
+<td align="right">3000</td>
+<td align="right">5000</td>
+<td align="right">65000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">0.150000</td>
+<td align="right">0.250000</td>
+<td align="right">0.350000</td>
+<td align="right">0.130000</td>
+<td align="right">3000</td>
+<td align="right">6000</td>
+<td align="right">10000</td>
+<td align="right">2500</td>
+<td align="right">1000</td>
+<td align="right">35000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">0.120000</td>
+<td align="right">0.200000</td>
+<td align="right">0.300000</td>
+<td align="right">0.100000</td>
+<td align="right">2000</td>
+<td align="right">4000</td>
+<td align="right">8000</td>
+<td align="right">1800</td>
+<td align="right">1000</td>
+<td align="right">20000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>2. Affordability-tight product policy</h1>
+<p>Use this profile for:</p>
+<pre><code class="language-text">TIGHTER_AFFORDABILITY_STRATEGY
+</code></pre>
+<h2>Design intent</h2>
+<p>This profile should isolate <strong>affordability discipline</strong>. It tightens product PTI thresholds and counteroffer target PTI while leaving exposure caps and Expected Loss thresholds unchanged.</p>
+<p>That gives you a clean read on:</p>
+<pre><code class="language-text">What happens when the strategy is stricter about payment burden, without also tightening product exposure caps or Expected Loss caps?
+</code></pre>
+<h2>Recommended exact values</h2>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Approve PTI</th>
+<th align="right">Review PTI</th>
+<th align="right">Decline PTI</th>
+<th align="right">Counteroffer target PTI</th>
+<th align="right">Approve max requested EL</th>
+<th align="right">Review max requested EL</th>
+<th align="right">Decline min requested EL</th>
+<th align="right">Approved EL cap</th>
+<th align="right">Min approved amount</th>
+<th align="right">Max approved amount</th>
+<th align="right">Min counteroffer %</th>
+<th align="right">Max exposure reduction %</th>
+<th align="right">Rounding</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right">0.320000</td>
+<td align="right">0.420000</td>
+<td align="right">0.520000</td>
+<td align="right">0.290000</td>
+<td align="right">10000</td>
+<td align="right">20000</td>
+<td align="right">40000</td>
+<td align="right">10000</td>
+<td align="right">75000</td>
+<td align="right">800000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">5000</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right">0.220000</td>
+<td align="right">0.320000</td>
+<td align="right">0.420000</td>
+<td align="right">0.190000</td>
+<td align="right">8000</td>
+<td align="right">16000</td>
+<td align="right">30000</td>
+<td align="right">7000</td>
+<td align="right">10000</td>
+<td align="right">175000</td>
+<td align="right">0.400000</td>
+<td align="right">0.500000</td>
+<td align="right">1000</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">0.160000</td>
+<td align="right">0.250000</td>
+<td align="right">0.350000</td>
+<td align="right">0.140000</td>
+<td align="right">3500</td>
+<td align="right">7000</td>
+<td align="right">12000</td>
+<td align="right">3000</td>
+<td align="right">5000</td>
+<td align="right">65000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">0.130000</td>
+<td align="right">0.220000</td>
+<td align="right">0.320000</td>
+<td align="right">0.110000</td>
+<td align="right">3000</td>
+<td align="right">6000</td>
+<td align="right">10000</td>
+<td align="right">2500</td>
+<td align="right">1000</td>
+<td align="right">35000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">0.100000</td>
+<td align="right">0.180000</td>
+<td align="right">0.280000</td>
+<td align="right">0.080000</td>
+<td align="right">2000</td>
+<td align="right">4000</td>
+<td align="right">8000</td>
+<td align="right">1800</td>
+<td align="right">1000</td>
+<td align="right">20000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+</tbody></table>
+<h2>Expected behavior</h2>
+<p>This should generally increase:</p>
+<pre><code class="language-text">manual-review pressure
+counteroffer pressure
+PTI-related reason-code concentration
+affordability REVIEW diagnostics
+</code></pre>
+<p>It should generally reduce or constrain:</p>
+<pre><code class="language-text">approval rate
+approved PTI on offer rows
+simulated offer exposure in high-PTI segments
+</code></pre>
+<hr>
+<h1>3. Counteroffer-first product policy</h1>
+<p>Use this profile for:</p>
+<pre><code class="language-text">COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+</code></pre>
+<h2>Design intent</h2>
+<p>This profile should push more rows toward <strong>reduced-exposure treatment</strong> instead of clean approval, while still keeping counteroffers feasible.</p>
+<p>The important design choice is that we do <strong>not</strong> simply tighten everything. If the caps are too tight and the counteroffer feasibility rules are too restrictive, preliminary counteroffers will fail and route to <code>MANUAL_REVIEW</code> or <code>DECLINE</code>. So this profile tightens approved exposure and approved Expected Loss, but also allows somewhat larger reductions.</p>
+<h2>Recommended exact values</h2>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Approve PTI</th>
+<th align="right">Review PTI</th>
+<th align="right">Decline PTI</th>
+<th align="right">Counteroffer target PTI</th>
+<th align="right">Approve max requested EL</th>
+<th align="right">Review max requested EL</th>
+<th align="right">Decline min requested EL</th>
+<th align="right">Approved EL cap</th>
+<th align="right">Min approved amount</th>
+<th align="right">Max approved amount</th>
+<th align="right">Min counteroffer %</th>
+<th align="right">Max exposure reduction %</th>
+<th align="right">Rounding</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right">0.330000</td>
+<td align="right">0.450000</td>
+<td align="right">0.550000</td>
+<td align="right">0.300000</td>
+<td align="right">8500</td>
+<td align="right">18000</td>
+<td align="right">40000</td>
+<td align="right">8000</td>
+<td align="right">75000</td>
+<td align="right">700000</td>
+<td align="right">0.400000</td>
+<td align="right">0.600000</td>
+<td align="right">5000</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right">0.235000</td>
+<td align="right">0.350000</td>
+<td align="right">0.450000</td>
+<td align="right">0.200000</td>
+<td align="right">6800</td>
+<td align="right">14500</td>
+<td align="right">30000</td>
+<td align="right">5600</td>
+<td align="right">10000</td>
+<td align="right">150000</td>
+<td align="right">0.350000</td>
+<td align="right">0.600000</td>
+<td align="right">1000</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">0.170000</td>
+<td align="right">0.280000</td>
+<td align="right">0.380000</td>
+<td align="right">0.145000</td>
+<td align="right">3000</td>
+<td align="right">6300</td>
+<td align="right">12000</td>
+<td align="right">2400</td>
+<td align="right">5000</td>
+<td align="right">57500</td>
+<td align="right">0.450000</td>
+<td align="right">0.550000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">0.140000</td>
+<td align="right">0.250000</td>
+<td align="right">0.350000</td>
+<td align="right">0.115000</td>
+<td align="right">2500</td>
+<td align="right">5400</td>
+<td align="right">10000</td>
+<td align="right">2000</td>
+<td align="right">1000</td>
+<td align="right">30000</td>
+<td align="right">0.400000</td>
+<td align="right">0.600000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">0.110000</td>
+<td align="right">0.200000</td>
+<td align="right">0.300000</td>
+<td align="right">0.090000</td>
+<td align="right">1700</td>
+<td align="right">3600</td>
+<td align="right">8000</td>
+<td align="right">1400</td>
+<td align="right">1000</td>
+<td align="right">17500</td>
+<td align="right">0.400000</td>
+<td align="right">0.600000</td>
+<td align="right">500</td>
+</tr>
+</tbody></table>
+<h2>Expected behavior</h2>
+<p>This should generally increase:</p>
+<pre><code class="language-text">counteroffer rate
+counteroffer share of offers
+exposure reduction amount
+counteroffer reason-code concentration
+approved amount capture discipline
+</code></pre>
+<p>It should generally reduce:</p>
+<pre><code class="language-text">clean approval rate
+average approved amount on offer rows
+approved Expected Loss
+approved PTI on counteroffer rows
+</code></pre>
+<h2>Important QA focus</h2>
+<p>For this strategy, watch Section 14.11 closely. You want more counteroffer behavior, but you do <strong>not</strong> want an explosion of failed preliminary counteroffers.</p>
+<p>Strong review triggers:</p>
+<pre><code class="language-text">high failed_counteroffers
+low counteroffer_feasibility_pass_rate
+COUNTEROFFER_BELOW_PRODUCT_MINIMUM concentration
+COUNTEROFFER_PTI_STILL_ABOVE_TARGET concentration
+COUNTEROFFER_APPROVED_EL_ABOVE_PRODUCT_CAP concentration
+</code></pre>
+<hr>
+<h1>4. Product-specific guardrail policy</h1>
+<p>Use this profile for:</p>
+<pre><code class="language-text">PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+</code></pre>
+<h2>Design intent</h2>
+<p>This profile should isolate product-specific tightening for unsecured / revolving risk pools.</p>
+<p>Keep these products at baseline:</p>
+<pre><code class="language-text">MORTGAGE
+HELOC
+AUTO_LOAN
+</code></pre>
+<p>Tighten these products:</p>
+<pre><code class="language-text">UNSECURED_PERSONAL_LOAN
+REVOLVING_LINE
+</code></pre>
+<p>This gives you a clean story:</p>
+<pre><code class="language-text">What happens when the strategy adds product-specific guardrails to higher-LGD unsecured and revolving exposure, while leaving secured and auto products largely unchanged?
+</code></pre>
+<h2>Recommended exact values</h2>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Approve PTI</th>
+<th align="right">Review PTI</th>
+<th align="right">Decline PTI</th>
+<th align="right">Counteroffer target PTI</th>
+<th align="right">Approve max requested EL</th>
+<th align="right">Review max requested EL</th>
+<th align="right">Decline min requested EL</th>
+<th align="right">Approved EL cap</th>
+<th align="right">Min approved amount</th>
+<th align="right">Max approved amount</th>
+<th align="right">Min counteroffer %</th>
+<th align="right">Max exposure reduction %</th>
+<th align="right">Rounding</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right">0.350000</td>
+<td align="right">0.450000</td>
+<td align="right">0.550000</td>
+<td align="right">0.320000</td>
+<td align="right">10000</td>
+<td align="right">20000</td>
+<td align="right">40000</td>
+<td align="right">10000</td>
+<td align="right">75000</td>
+<td align="right">800000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">5000</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right">0.250000</td>
+<td align="right">0.350000</td>
+<td align="right">0.450000</td>
+<td align="right">0.220000</td>
+<td align="right">8000</td>
+<td align="right">16000</td>
+<td align="right">30000</td>
+<td align="right">7000</td>
+<td align="right">10000</td>
+<td align="right">175000</td>
+<td align="right">0.400000</td>
+<td align="right">0.500000</td>
+<td align="right">1000</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">0.180000</td>
+<td align="right">0.280000</td>
+<td align="right">0.380000</td>
+<td align="right">0.160000</td>
+<td align="right">3500</td>
+<td align="right">7000</td>
+<td align="right">12000</td>
+<td align="right">3000</td>
+<td align="right">5000</td>
+<td align="right">65000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">0.130000</td>
+<td align="right">0.220000</td>
+<td align="right">0.320000</td>
+<td align="right">0.110000</td>
+<td align="right">2500</td>
+<td align="right">5000</td>
+<td align="right">8500</td>
+<td align="right">2000</td>
+<td align="right">1000</td>
+<td align="right">27500</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">0.100000</td>
+<td align="right">0.180000</td>
+<td align="right">0.280000</td>
+<td align="right">0.080000</td>
+<td align="right">1500</td>
+<td align="right">3200</td>
+<td align="right">6500</td>
+<td align="right">1400</td>
+<td align="right">1000</td>
+<td align="right">16000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+</tbody></table>
+<h2>Expected behavior</h2>
+<p>This should generally increase tightening specifically in:</p>
+<pre><code class="language-text">UNSECURED_PERSONAL_LOAN
+REVOLVING_LINE
+</code></pre>
+<p>You should expect movement in:</p>
+<pre><code class="language-text">unsecured approved amount share
+revolving approved amount share
+unsecured / revolving approved Expected Loss
+product-specific counteroffer rates
+product-specific decline rates
+product-specific policy-stop or guardrail reason codes
+</code></pre>
+<p>You should <strong>not</strong> expect major direct changes in:</p>
+<pre><code class="language-text">MORTGAGE
+HELOC
+AUTO_LOAN
+</code></pre>
+<p>unless the broader strategy thresholds also move.</p>
+<hr>
+<h1>5. Profile summary table</h1>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>Main lever</th>
+<th align="right">Tightens PTI?</th>
+<th align="right">Tightens requested EL?</th>
+<th align="right">Tightens approved EL cap?</th>
+<th align="right">Tightens max approved amount?</th>
+<th align="right">Makes counteroffers easier?</th>
+<th>Best used for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline</td>
+<td>Reference</td>
+<td align="right">No</td>
+<td align="right">No</td>
+<td align="right">No</td>
+<td align="right">No</td>
+<td align="right">Neutral</td>
+<td>Baseline comparison</td>
+</tr>
+<tr>
+<td>Affordability-tight</td>
+<td>PTI discipline</td>
+<td align="right">Yes</td>
+<td align="right">No</td>
+<td align="right">No</td>
+<td align="right">No</td>
+<td align="right">Neutral</td>
+<td>Rate stress / affordability pressure</td>
+</tr>
+<tr>
+<td>Counteroffer-first</td>
+<td>Reduced-exposure treatment</td>
+<td align="right">Mildly</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+<td>Exposure management / preserving access through smaller offers</td>
+</tr>
+<tr>
+<td>Product guardrail</td>
+<td>Product-specific unsecured / revolving controls</td>
+<td align="right">Yes for UPL + revolving</td>
+<td align="right">Yes for UPL + revolving</td>
+<td align="right">Yes for UPL + revolving</td>
+<td align="right">Yes for UPL + revolving</td>
+<td align="right">Neutral</td>
+<td>Unsecured growth, revolving expansion, LGD stress</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>6. How I would document these in Section 2</h1>
+<p>I would add a short profile note above Section 2.4:</p>
+<pre><code class="language-text">PRODUCT POLICY PROFILE SELECTION GUIDE
+
+Use BASELINE_PRODUCT_POLICY for:
+    BASELINE_STRATEGY
+    TIGHTER_SYNTHETIC_RISK_STRATEGY
+    MANUAL_REVIEW_REDUCTION_STRATEGY
+
+Use AFFORDABILITY_TIGHT_PRODUCT_POLICY for:
+    TIGHTER_AFFORDABILITY_STRATEGY
+
+Use COUNTEROFFER_FIRST_PRODUCT_POLICY for:
+    COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+
+Use PRODUCT_GUARDRAIL_POLICY for:
+    PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+</code></pre>
+<p>Then, when running each strategy, replace the Section 2.4 product values with the exact profile table above.</p>
+</div></article><article id="c038-m01249" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01249 · 2026-05-10T19:09:49.509000-04:00 · active path</p><div class="body"><p>help me trouble shoot this error while trying to run M2-29: SQL Error [P0001]: ERROR: Module 2 Section 3 failure: campaign_registry_required_flag = TRUE but current run key did not match exactly one active campaign registry row. Match status: RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW.
+  Where: PL/pgSQL function inline_code_block line 33 at RAISE
+  ERROR: Module 2 Section 3 failure: campaign_registry_required_flag = TRUE but current run key did not match exactly one active campaign registry row. Match status: RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW.
+  Where: PL/pgSQL function inline_code_block line 33 at RAISE</p>
+</div></article><article id="c038-m01254" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01254 · 2026-05-10T19:12:39.064788-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-10, this is almost certainly a <strong>scenario-set-name mismatch in the campaign registry</strong>, not a problem with the M2-29 product-policy values.</p>
+<p>Section 3 is doing exactly what we designed it to do: when <code>campaign_registry_required_flag = TRUE</code>, the active technical run key must match <strong>exactly one active row</strong> in <code>credit_decisioning_sim.strategy_run_campaign_registry</code>; otherwise it raises the failure you saw. The fail-fast logic explicitly raises this error when <code>registry_match_count &lt;&gt; 1</code>. fileciteturn178file3</p>
+<p>For <strong>M2-29</strong>, your active parameter row is probably using the corrected locked Module 1 scenario set:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<p>But the registry row in the retrieved Module 2 code still shows M2-29 using the older name:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SET
+</code></pre>
+<p>The retrieved M2-29 registry row is:</p>
+<pre><code class="language-text">module1_run_id: M1-14
+module2_run_id: M2-29
+module1_scenario_set_name: MODULE1_V2_EXPOSURE_INTENSITY_SET
+module1_scenario_name: HIGH_BALANCE_APPETITE
+strategy_name: COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+</code></pre>
+<p>That old scenario-set value would cause <code>RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW</code> once your active strategy params use the corrected <code>_SENSITIVITY_SET</code> name. fileciteturn178file6</p>
+<h2>Expected M2-29 technical run key</h2>
+<p>For M2-29, the active strategy row and campaign registry row should match this exactly:</p>
+<pre><code class="language-text">source_module1_scenario_set_name / module1_scenario_set_name:
+    MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+
+source_module1_scenario_name / module1_scenario_name:
+    HIGH_BALANCE_APPETITE
+
+source_population_id / population_id:
+    BASE_POPULATION_V1
+
+strategy_set_name:
+    MODULE2_BASELINE_STRATEGY_SET
+
+strategy_name:
+    COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+
+strategy_version:
+    V1_0
+</code></pre>
+<h2>Step 1 — Confirm the active strategy parameter row</h2>
+<p>Run this after Section 2 and before Section 3:</p>
+<pre><code class="language-sql">SELECT
+    active_strategy_flag,
+
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+
+    campaign_registry_required_flag,
+
+    module1_input_source,
+    source_module1_scenario_set_name,
+    source_module1_scenario_name,
+    source_population_id,
+
+    archive_run_flag,
+    strategy_archive_reset_mode
+FROM tmp_module2_strategy_params
+WHERE active_strategy_flag IS TRUE;
+</code></pre>
+<p>For M2-29, confirm you see:</p>
+<pre><code class="language-text">strategy_name = COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+source_module1_scenario_set_name = MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+source_module1_scenario_name = HIGH_BALANCE_APPETITE
+source_population_id = BASE_POPULATION_V1
+campaign_registry_required_flag = TRUE
+</code></pre>
+<h2>Step 2 — Inspect the persistent registry row for M2-29</h2>
+<pre><code class="language-sql">SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    registry_active_flag,
+    registry_created_ts,
+    registry_updated_ts
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE module2_run_id = &#39;M2-29&#39;;
+</code></pre>
+<p>If this shows:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SET
+</code></pre>
+<p>instead of:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<p>that is the cause.</p>
+<h2>Step 3 — Run the exact match diagnostic</h2>
+<p>This tells you whether the active parameter row can match the registry.</p>
+<pre><code class="language-sql">WITH active_run_key AS (
+    SELECT
+        source_module1_scenario_set_name AS module1_scenario_set_name,
+        source_module1_scenario_name AS module1_scenario_name,
+        source_population_id AS population_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        campaign_registry_required_flag
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+),
+
+registry_matches AS (
+    SELECT
+        r.*
+    FROM credit_decisioning_sim.strategy_run_campaign_registry r
+    JOIN active_run_key k
+        ON r.module1_scenario_set_name = k.module1_scenario_set_name
+       AND r.module1_scenario_name = k.module1_scenario_name
+       AND r.population_id = k.population_id
+       AND r.strategy_set_name = k.strategy_set_name
+       AND r.strategy_name = k.strategy_name
+       AND r.strategy_version = k.strategy_version
+    WHERE r.registry_active_flag IS TRUE
+)
+
+SELECT
+    k.module1_scenario_set_name AS active_param_module1_scenario_set_name,
+    k.module1_scenario_name AS active_param_module1_scenario_name,
+    k.population_id AS active_param_population_id,
+    k.strategy_set_name AS active_param_strategy_set_name,
+    k.strategy_name AS active_param_strategy_name,
+    k.strategy_version AS active_param_strategy_version,
+    k.campaign_registry_required_flag,
+
+    COUNT(r.*) AS exact_active_registry_match_count,
+
+    CASE
+        WHEN COUNT(r.*) = 1
+            THEN &#39;RUN_REGISTRY_MATCHED&#39;
+        WHEN COUNT(r.*) = 0 AND k.campaign_registry_required_flag IS TRUE
+            THEN &#39;RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW&#39;
+        WHEN COUNT(r.*) &gt; 1
+            THEN &#39;RUN_REGISTRY_DUPLICATE_MATCH_REVIEW_REQUIRED&#39;
+        ELSE &#39;RUN_REGISTRY_MATCH_STATUS_REVIEW&#39;
+    END AS diagnostic_match_status
+FROM active_run_key k
+LEFT JOIN registry_matches r
+    ON TRUE
+GROUP BY
+    k.module1_scenario_set_name,
+    k.module1_scenario_name,
+    k.population_id,
+    k.strategy_set_name,
+    k.strategy_name,
+    k.strategy_version,
+    k.campaign_registry_required_flag;
+</code></pre>
+<p>Expected after the fix:</p>
+<pre><code class="language-text">exact_active_registry_match_count = 1
+diagnostic_match_status = RUN_REGISTRY_MATCHED
+</code></pre>
+<h2>Step 4 — Patch SC05 campaign registry rows</h2>
+<p>Because we standardized SC05 to:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<p>patch all SC05 M2 rows, not just M2-29.</p>
+<pre><code class="language-sql">BEGIN;
+
+/* Preview current SC05 campaign registry rows. */
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE module2_run_id IN (&#39;M2-27&#39;, &#39;M2-28&#39;, &#39;M2-29&#39;, &#39;M2-30&#39;)
+ORDER BY run_sequence_number;
+
+
+/* Patch old SC05 scenario-set name to canonical scenario-set name. */
+UPDATE credit_decisioning_sim.strategy_run_campaign_registry
+SET
+    module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;,
+    registry_updated_ts = CURRENT_TIMESTAMP
+WHERE module2_run_id IN (&#39;M2-27&#39;, &#39;M2-28&#39;, &#39;M2-29&#39;, &#39;M2-30&#39;)
+  AND module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+RETURNING
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag;
+
+
+/* Verify patched SC05 campaign registry rows. */
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE module2_run_id IN (&#39;M2-27&#39;, &#39;M2-28&#39;, &#39;M2-29&#39;, &#39;M2-30&#39;)
+ORDER BY run_sequence_number;
+
+COMMIT;
+</code></pre>
+<p>Important: also patch the <strong>canonical Section 2.6 SQL text</strong>. If Section 2.6 still contains the old string, rerunning the full script can upsert the old value back into the registry. Section 2.6 uses <code>INSERT ... ON CONFLICT (module2_run_id) DO UPDATE</code>, so the script itself can overwrite your manual database patch if the SQL file still has the old value. The registry seeding block is intentionally rerunnable and updates existing run IDs when they already exist. fileciteturn178file0</p>
+<p>In Section 2.6, replace this for M2-27 through M2-30:</p>
+<pre><code class="language-sql">&#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+</code></pre>
+<p>with:</p>
+<pre><code class="language-sql">&#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+</code></pre>
+<h2>Step 5 — Patch CG15 comparison registry too</h2>
+<p>This does not cause the Section 3 error, but it will matter later for Section 13 matched comparison.</p>
+<pre><code class="language-sql">BEGIN;
+
+/* Preview CG15. */
+SELECT
+    comparison_group_id,
+    comparison_set_name,
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    baseline_strategy_name,
+    challenger_strategy_name,
+    active_comparison_flag,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+WHERE comparison_group_id = &#39;CG15&#39;;
+
+
+/* Patch CG15 to canonical SC05 scenario-set name. */
+UPDATE credit_decisioning_sim.strategy_comparison_campaign_registry
+SET
+    module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;,
+    registry_updated_ts = CURRENT_TIMESTAMP
+WHERE comparison_group_id = &#39;CG15&#39;
+  AND module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+RETURNING
+    comparison_group_id,
+    comparison_set_name,
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    baseline_strategy_name,
+    challenger_strategy_name,
+    active_comparison_flag,
+    registry_active_flag;
+
+COMMIT;
+</code></pre>
+<p>The comparison registry is the governed selection layer for Section 13; it stores <code>comparison_group_id</code>, baseline/challenger run IDs, baseline/challenger strategy keys, and the matched Module 1 scenario / population key. fileciteturn179file6</p>
+<p>Also patch the <strong>canonical Section 2.8 / comparison registry seed</strong> for CG15 if it still uses the old name.</p>
+<h2>Step 6 — Confirm the Module 1 source archive exists</h2>
+<p>Since M2-29 consumes <code>HIGH_BALANCE_APPETITE</code>, make sure the corrected Module 1 archive slice exists:</p>
+<pre><code class="language-sql">SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS archived_rows
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND scenario_name = &#39;HIGH_BALANCE_APPETITE&#39;
+  AND population_id = &#39;BASE_POPULATION_V1&#39;
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">archived_rows = 50000
+</code></pre>
+<h2>Step 7 — Rerun from Section 1 or Section 2</h2>
+<p>After patching the canonical SQL and/or the live registry table, rerun the Module 2 file. Section 3 should now match M2-29 to one active campaign registry row.</p>
+<p>For M2-29, the critical fields should reconcile as:</p>
+<pre><code class="language-text">tmp_module2_strategy_params:
+    source_module1_scenario_set_name = MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+    source_module1_scenario_name     = HIGH_BALANCE_APPETITE
+    source_population_id             = BASE_POPULATION_V1
+    strategy_set_name                = MODULE2_BASELINE_STRATEGY_SET
+    strategy_name                    = COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+    strategy_version                 = V1_0
+
+strategy_run_campaign_registry:
+    module1_scenario_set_name        = MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+    module1_scenario_name            = HIGH_BALANCE_APPETITE
+    population_id                    = BASE_POPULATION_V1
+    strategy_set_name                = MODULE2_BASELINE_STRATEGY_SET
+    strategy_name                    = COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+    strategy_version                 = V1_0
+    registry_active_flag             = TRUE
+</code></pre>
+<p>The most likely fix is: <strong>replace the old SC05 scenario-set name in Section 2.6 and Section 2.8, then rerun.</strong></p>
+</div></article><article id="c038-m01255" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01255 · 2026-05-10T19:16:35.711000-04:00 · active path</p><div class="body"><p>module1 archive has: MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET and HIGH_BALANCE_APPETITE - which is what I had in my module 2.2 parameter section.</p>
+</div></article><article id="c038-m01258" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01258 · 2026-05-10T19:19:00.887715-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-10, that narrows the issue: if the Module 1 archive has <code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET / HIGH_BALANCE_APPETITE</code> and your Section 2.2 active strategy parameter row has the same values, then the problem is almost certainly the <strong>persistent Module 2 campaign registry row</strong>, not the Module 1 archive or the active source-selection parameters.</p>
+<p>Section 3 is failing before Module 2 consumes the Module 1 archive. It checks whether the active technical run key matches exactly one active row in <code>credit_decisioning_sim.strategy_run_campaign_registry</code>. The registry table is keyed by the technical fields <code>module1_scenario_set_name</code>, <code>module1_scenario_name</code>, <code>population_id</code>, <code>strategy_set_name</code>, <code>strategy_name</code>, and <code>strategy_version</code>, with <code>module2_run_id</code> as the compact run identifier. fileciteturn181file8</p>
+<p>The key detail: your uploaded registry seed still shows SC05 rows using the old scenario set name in at least the comparison registry, and an earlier patched registry seed shows M2-29 itself using the old value:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SET
+</code></pre>
+<p>instead of:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<p>For M2-29, the retrieved seed row shows:</p>
+<pre><code class="language-text">M2-29
+HIGH_BALANCE_APPETITE
+COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+MODULE1_V2_EXPOSURE_INTENSITY_SET
+</code></pre>
+<p>which would not match your corrected Section 2.2 active key. fileciteturn182file15</p>
+<p>Also, Section 2.6 uses <code>INSERT ... ON CONFLICT (module2_run_id) DO UPDATE</code>, meaning if the canonical SQL still contains the old SC05 value, rerunning Section 2 can overwrite a manual database patch and put the old value back into the persistent registry. fileciteturn181file0</p>
+<h2>Run this first: exact active parameter vs registry diagnostic</h2>
+<p>Run this after Section 2 and before Section 3, in the same session where the temp table exists.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+M2-29 REGISTRY MATCH DIAGNOSTIC
+
+Purpose:
+    Compare the active tmp_module2_strategy_params technical run key to the persistent M2-29
+    campaign registry row.
+
+Expected:
+    All mismatch flags should be FALSE.
+    exact_active_registry_match_count should be 1.
+***************************************************************************************************/
+
+WITH active_params AS (
+    SELECT
+        source_module1_scenario_set_name,
+        source_module1_scenario_name,
+        source_population_id,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        strategy_run_id,
+        campaign_registry_required_flag
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+),
+
+m2_29_registry AS (
+    SELECT
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        registry_active_flag
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE module2_run_id = &#39;M2-29&#39;
+),
+
+exact_registry_match AS (
+    SELECT
+        COUNT(*) AS exact_active_registry_match_count
+    FROM credit_decisioning_sim.strategy_run_campaign_registry r
+    CROSS JOIN active_params p
+    WHERE r.registry_active_flag IS TRUE
+      AND r.module1_scenario_set_name = p.source_module1_scenario_set_name
+      AND r.module1_scenario_name = p.source_module1_scenario_name
+      AND r.population_id = p.source_population_id
+      AND r.strategy_set_name = p.strategy_set_name
+      AND r.strategy_name = p.strategy_name
+      AND r.strategy_version = p.strategy_version
+)
+
+SELECT
+    p.strategy_run_id,
+    p.campaign_registry_required_flag,
+
+    r.module2_run_id,
+    r.registry_active_flag,
+
+    p.source_module1_scenario_set_name AS active_param_scenario_set_name,
+    r.module1_scenario_set_name AS registry_scenario_set_name,
+    r.module1_scenario_set_name IS DISTINCT FROM p.source_module1_scenario_set_name
+        AS scenario_set_name_mismatch,
+
+    p.source_module1_scenario_name AS active_param_scenario_name,
+    r.module1_scenario_name AS registry_scenario_name,
+    r.module1_scenario_name IS DISTINCT FROM p.source_module1_scenario_name
+        AS scenario_name_mismatch,
+
+    p.source_population_id AS active_param_population_id,
+    r.population_id AS registry_population_id,
+    r.population_id IS DISTINCT FROM p.source_population_id
+        AS population_id_mismatch,
+
+    p.strategy_set_name AS active_param_strategy_set_name,
+    r.strategy_set_name AS registry_strategy_set_name,
+    r.strategy_set_name IS DISTINCT FROM p.strategy_set_name
+        AS strategy_set_name_mismatch,
+
+    p.strategy_name AS active_param_strategy_name,
+    r.strategy_name AS registry_strategy_name,
+    r.strategy_name IS DISTINCT FROM p.strategy_name
+        AS strategy_name_mismatch,
+
+    p.strategy_version AS active_param_strategy_version,
+    r.strategy_version AS registry_strategy_version,
+    r.strategy_version IS DISTINCT FROM p.strategy_version
+        AS strategy_version_mismatch,
+
+    e.exact_active_registry_match_count,
+
+    CASE
+        WHEN e.exact_active_registry_match_count = 1
+            THEN &#39;RUN_REGISTRY_MATCHED&#39;
+        WHEN e.exact_active_registry_match_count = 0
+            THEN &#39;RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW&#39;
+        ELSE &#39;RUN_REGISTRY_DUPLICATE_MATCH_REVIEW_REQUIRED&#39;
+    END AS diagnostic_match_status
+
+FROM active_params p
+LEFT JOIN m2_29_registry r
+    ON TRUE
+CROSS JOIN exact_registry_match e;
+</code></pre>
+<p>The likely bad output will be:</p>
+<pre><code class="language-text">scenario_set_name_mismatch = true
+registry_scenario_set_name = MODULE1_V2_EXPOSURE_INTENSITY_SET
+active_param_scenario_set_name = MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+exact_active_registry_match_count = 0
+</code></pre>
+<h2>Patch the live campaign registry</h2>
+<p>If that diagnostic confirms the mismatch, patch the SC05 registry rows:</p>
+<pre><code class="language-sql">BEGIN;
+
+/* Preview current SC05 rows. */
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE module2_run_id IN (&#39;M2-27&#39;, &#39;M2-28&#39;, &#39;M2-29&#39;, &#39;M2-30&#39;)
+ORDER BY run_sequence_number;
+
+
+/* Patch SC05 to the canonical scenario set name. */
+UPDATE credit_decisioning_sim.strategy_run_campaign_registry
+SET
+    module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;,
+    registry_active_flag = TRUE,
+    registry_updated_ts = CURRENT_TIMESTAMP
+WHERE module2_run_id IN (&#39;M2-27&#39;, &#39;M2-28&#39;, &#39;M2-29&#39;, &#39;M2-30&#39;)
+  AND module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+RETURNING
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag;
+
+COMMIT;
+</code></pre>
+<p>Then patch CG15 too, because Section 13 comparison will need it later:</p>
+<pre><code class="language-sql">BEGIN;
+
+UPDATE credit_decisioning_sim.strategy_comparison_campaign_registry
+SET
+    module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;,
+    registry_updated_ts = CURRENT_TIMESTAMP
+WHERE comparison_group_id = &#39;CG15&#39;
+  AND module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+RETURNING
+    comparison_group_id,
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    baseline_strategy_name,
+    challenger_strategy_name,
+    active_comparison_flag,
+    registry_active_flag;
+
+COMMIT;
+</code></pre>
+<h2>Patch the canonical SQL too</h2>
+<p>Do not rely only on the database update. Patch Section 2.6 and Section 2.8 in the SQL file, otherwise rerunning the full file can re-upsert the old value.</p>
+<p>Replace every SC05 occurrence of:</p>
+<pre><code class="language-sql">&#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+</code></pre>
+<p>with:</p>
+<pre><code class="language-sql">&#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+</code></pre>
+<p>At minimum, this applies to:</p>
+<pre><code class="language-text">M2-27
+M2-28
+M2-29
+M2-30
+CG15
+</code></pre>
+<p>Your Section 2.2 and Module 1 archive can both be correct and Section 3 can still fail if Section 2.6’s persistent registry row is stale. Section 3 is matching the active run key against the registry; it is not simply checking that the Module 1 archive slice exists.</p>
+<p>After patching, rerun the exact diagnostic. You want:</p>
+<pre><code class="language-text">exact_active_registry_match_count = 1
+diagnostic_match_status = RUN_REGISTRY_MATCHED
+</code></pre>
+<p>Then rerun Section 3.</p>
+</div></article><article id="c038-m01259" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01259 · 2026-05-10T19:23:15.783000-04:00 · active path</p><div class="body"><p>results attached</p>
+<p><strong>Attachments in export:</strong> <code>_M2_29_REGISTRY_MATCH_DIAGNOSTIC_Purpose_Compare_the_active_tmp__202605101922.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01261" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01261 · 2026-05-10T19:25:53.161148-04:00 · active path</p><div class="body"><p>The attached diagnostic confirms the cause exactly: <strong>your active Section 2.2 parameter row is correct, but the persistent campaign registry row for M2-29 is still using the old SC05 scenario-set name</strong>. The only mismatch is <code>scenario_set_name</code>; everything else matches. fileciteturn182file0</p>
+<p>Your diagnostic shows:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Active parameter value</th>
+<th>Registry value</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Scenario set</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code></td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><strong>Mismatch</strong></td>
+</tr>
+<tr>
+<td>Scenario name</td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td>Match</td>
+</tr>
+<tr>
+<td>Population</td>
+<td><code>BASE_POPULATION_V1</code></td>
+<td><code>BASE_POPULATION_V1</code></td>
+<td>Match</td>
+</tr>
+<tr>
+<td>Strategy set</td>
+<td><code>MODULE2_BASELINE_STRATEGY_SET</code></td>
+<td><code>MODULE2_BASELINE_STRATEGY_SET</code></td>
+<td>Match</td>
+</tr>
+<tr>
+<td>Strategy name</td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>Match</td>
+</tr>
+<tr>
+<td>Strategy version</td>
+<td><code>V1_0</code></td>
+<td><code>V1_0</code></td>
+<td>Match</td>
+</tr>
+</tbody></table>
+<p>The decisive fields are:</p>
+<pre><code class="language-text">scenario_set_name_mismatch = TRUE
+exact_active_registry_match_count = 0
+diagnostic_match_status = RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW
+</code></pre>
+<p>So the error is not Module 1 archive availability and not the active M2-29 strategy parameters. It is the <strong>M2-29 campaign registry row</strong> still carrying:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SET
+</code></pre>
+<p>instead of:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<h2>Patch the live registry rows</h2>
+<p>Run this:</p>
+<pre><code class="language-sql">BEGIN;
+
+/*-----------------------------------------------------------------------------------------------
+Preview current SC05 Module 2 campaign registry rows.
+
+Expected before patch:
+    M2-27 through M2-30 may still show MODULE1_V2_EXPOSURE_INTENSITY_SET.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE module2_run_id IN (&#39;M2-27&#39;, &#39;M2-28&#39;, &#39;M2-29&#39;, &#39;M2-30&#39;)
+ORDER BY run_sequence_number;
+
+
+/*-----------------------------------------------------------------------------------------------
+Patch SC05 campaign registry rows to the canonical scenario-set name.
+-----------------------------------------------------------------------------------------------*/
+
+UPDATE credit_decisioning_sim.strategy_run_campaign_registry
+SET
+    module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;,
+    registry_active_flag = TRUE,
+    registry_updated_ts = CURRENT_TIMESTAMP
+WHERE module2_run_id IN (&#39;M2-27&#39;, &#39;M2-28&#39;, &#39;M2-29&#39;, &#39;M2-30&#39;)
+  AND module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+RETURNING
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag;
+
+
+/*-----------------------------------------------------------------------------------------------
+Verify patched SC05 campaign registry rows.
+
+Expected after patch:
+    M2-27 through M2-30 should show MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE module2_run_id IN (&#39;M2-27&#39;, &#39;M2-28&#39;, &#39;M2-29&#39;, &#39;M2-30&#39;)
+ORDER BY run_sequence_number;
+
+COMMIT;
+</code></pre>
+<h2>Patch CG15 comparison registry too</h2>
+<p>This will not fix the Section 3 failure directly, but it prevents Section 13 from failing or selecting the wrong comparison later.</p>
+<pre><code class="language-sql">BEGIN;
+
+/* Preview CG15 before patch. */
+SELECT
+    comparison_group_id,
+    comparison_set_name,
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    baseline_strategy_name,
+    challenger_strategy_name,
+    active_comparison_flag,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+WHERE comparison_group_id = &#39;CG15&#39;;
+
+
+/* Patch CG15 to canonical SC05 scenario-set name. */
+UPDATE credit_decisioning_sim.strategy_comparison_campaign_registry
+SET
+    module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;,
+    registry_updated_ts = CURRENT_TIMESTAMP
+WHERE comparison_group_id = &#39;CG15&#39;
+  AND module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+RETURNING
+    comparison_group_id,
+    comparison_set_name,
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    baseline_strategy_name,
+    challenger_strategy_name,
+    active_comparison_flag,
+    registry_active_flag;
+
+COMMIT;
+</code></pre>
+<h2>Patch the canonical SQL file too</h2>
+<p>This is important. If Section 2.6 / Section 2.8 in your SQL file still contains the old SC05 string, rerunning the full file can re-seed or update the persistent registry back to the wrong value.</p>
+<p>Search the full Module 2 SQL for:</p>
+<pre><code class="language-sql">&#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;
+</code></pre>
+<p>Replace every SC05 occurrence with:</p>
+<pre><code class="language-sql">&#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+</code></pre>
+<p>At minimum, update:</p>
+<pre><code class="language-text">M2-27
+M2-28
+M2-29
+M2-30
+CG15
+</code></pre>
+<h2>Rerun the diagnostic</h2>
+<p>After the live patch and canonical SQL patch, rerun the M2-29 diagnostic. Expected result:</p>
+<pre><code class="language-text">scenario_set_name_mismatch = FALSE
+exact_active_registry_match_count = 1
+diagnostic_match_status = RUN_REGISTRY_MATCHED
+</code></pre>
+<p>Then rerun Section 3. The prior failure should clear.</p>
+</div></article><article id="c038-m01263" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01263 · 2026-05-10T19:59:43.499000-04:00 · active path</p><div class="body"><p>please give me exact parameter values for this again.  I&#39;m not sure what you had above is accurate: Product-guardrail policy
+PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+UNSECURED_PERSONAL_LOAN, REVOLVING_LINE
+Tighten unsecured / revolving caps: UPL max approved amount toward 25000–30000, UPL approved EL cap toward 2000; revolving max approved amount toward 15000–18000, revolving approved EL cap toward 1200–1500</p>
+</div></article><article id="c038-m01265" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01265 · 2026-05-10T20:01:59.217488-04:00 · active path</p><div class="body"><p>Yes. For <strong><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></strong>, I would use the following as the <strong>exact canonical product-guardrail policy</strong>.</p>
+<p>Important first point: this policy is <strong>not</strong> for M2-29. M2-29 is:</p>
+<pre><code class="language-text">COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+</code></pre>
+<p>The <strong>product-guardrail policy</strong> should be used for:</p>
+<pre><code class="language-text">M2-06
+M2-23
+M2-26
+M2-34
+M2-36
+</code></pre>
+<p>The design intent is to keep the secured / auto products at baseline and tighten only:</p>
+<pre><code class="language-text">UNSECURED_PERSONAL_LOAN
+REVOLVING_LINE
+</code></pre>
+<p>That keeps the test clean: the strategy is asking, “What happens when we apply product-specific guardrails to higher-LGD unsecured and revolving exposure?” Section 2 is the governed product-policy layer, Section 8 uses those product controls for exposure and counteroffer feasibility, and Section 14 validates the final counteroffer / affordability / approved Expected Loss conventions. fileciteturn182file0 fileciteturn182file56 fileciteturn182file14</p>
+<h2>Exact product-guardrail policy values</h2>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Approve PTI</th>
+<th align="right">Review PTI</th>
+<th align="right">Decline PTI</th>
+<th align="right">Counteroffer target PTI</th>
+<th align="right">Approve max requested EL</th>
+<th align="right">Review max requested EL</th>
+<th align="right">Decline min requested EL</th>
+<th align="right">Approved EL cap</th>
+<th align="right">Min approved amount</th>
+<th align="right">Max approved amount</th>
+<th align="right">Min counteroffer %</th>
+<th align="right">Max exposure reduction %</th>
+<th align="right">Rounding</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.450000</code></td>
+<td align="right"><code>0.550000</code></td>
+<td align="right"><code>0.320000</code></td>
+<td align="right"><code>10000.00</code></td>
+<td align="right"><code>20000.00</code></td>
+<td align="right"><code>40000.00</code></td>
+<td align="right"><code>10000.00</code></td>
+<td align="right"><code>75000.00</code></td>
+<td align="right"><code>800000.00</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>5000.00</code></td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.450000</code></td>
+<td align="right"><code>0.220000</code></td>
+<td align="right"><code>8000.00</code></td>
+<td align="right"><code>16000.00</code></td>
+<td align="right"><code>30000.00</code></td>
+<td align="right"><code>7000.00</code></td>
+<td align="right"><code>10000.00</code></td>
+<td align="right"><code>175000.00</code></td>
+<td align="right"><code>0.400000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>1000.00</code></td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right"><code>0.180000</code></td>
+<td align="right"><code>0.280000</code></td>
+<td align="right"><code>0.380000</code></td>
+<td align="right"><code>0.160000</code></td>
+<td align="right"><code>3500.00</code></td>
+<td align="right"><code>7000.00</code></td>
+<td align="right"><code>12000.00</code></td>
+<td align="right"><code>3000.00</code></td>
+<td align="right"><code>5000.00</code></td>
+<td align="right"><code>65000.00</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>500.00</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right"><code>0.130000</code></td>
+<td align="right"><code>0.220000</code></td>
+<td align="right"><code>0.320000</code></td>
+<td align="right"><code>0.110000</code></td>
+<td align="right"><code>2500.00</code></td>
+<td align="right"><code>5000.00</code></td>
+<td align="right"><code>8500.00</code></td>
+<td align="right"><code>2000.00</code></td>
+<td align="right"><code>1000.00</code></td>
+<td align="right"><code>27500.00</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>500.00</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right"><code>0.100000</code></td>
+<td align="right"><code>0.180000</code></td>
+<td align="right"><code>0.280000</code></td>
+<td align="right"><code>0.080000</code></td>
+<td align="right"><code>1500.00</code></td>
+<td align="right"><code>3200.00</code></td>
+<td align="right"><code>6500.00</code></td>
+<td align="right"><code>1400.00</code></td>
+<td align="right"><code>1000.00</code></td>
+<td align="right"><code>16000.00</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>0.500000</code></td>
+<td align="right"><code>500.00</code></td>
+</tr>
+</tbody></table>
+<h2>What changed versus baseline</h2>
+<p>Only these two products change:</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th>Field</th>
+<th align="right">Baseline</th>
+<th align="right">Product-guardrail value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Approve PTI</td>
+<td align="right"><code>0.150000</code></td>
+<td align="right"><code>0.130000</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Review PTI</td>
+<td align="right"><code>0.250000</code></td>
+<td align="right"><code>0.220000</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Decline PTI</td>
+<td align="right"><code>0.350000</code></td>
+<td align="right"><code>0.320000</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Counteroffer target PTI</td>
+<td align="right"><code>0.130000</code></td>
+<td align="right"><code>0.110000</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Approve max requested EL</td>
+<td align="right"><code>3000.00</code></td>
+<td align="right"><code>2500.00</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Review max requested EL</td>
+<td align="right"><code>6000.00</code></td>
+<td align="right"><code>5000.00</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Decline min requested EL</td>
+<td align="right"><code>10000.00</code></td>
+<td align="right"><code>8500.00</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Approved EL cap</td>
+<td align="right"><code>2500.00</code></td>
+<td align="right"><code>2000.00</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>Max approved amount</td>
+<td align="right"><code>35000.00</code></td>
+<td align="right"><code>27500.00</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Approve PTI</td>
+<td align="right"><code>0.120000</code></td>
+<td align="right"><code>0.100000</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Review PTI</td>
+<td align="right"><code>0.200000</code></td>
+<td align="right"><code>0.180000</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Decline PTI</td>
+<td align="right"><code>0.300000</code></td>
+<td align="right"><code>0.280000</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Counteroffer target PTI</td>
+<td align="right"><code>0.100000</code></td>
+<td align="right"><code>0.080000</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Approve max requested EL</td>
+<td align="right"><code>2000.00</code></td>
+<td align="right"><code>1500.00</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Review max requested EL</td>
+<td align="right"><code>4000.00</code></td>
+<td align="right"><code>3200.00</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Decline min requested EL</td>
+<td align="right"><code>8000.00</code></td>
+<td align="right"><code>6500.00</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Approved EL cap</td>
+<td align="right"><code>1800.00</code></td>
+<td align="right"><code>1400.00</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td>Max approved amount</td>
+<td align="right"><code>20000.00</code></td>
+<td align="right"><code>16000.00</code></td>
+</tr>
+</tbody></table>
+<p>I would <strong>not</strong> change <code>product_min_counteroffer_pct</code> or <code>product_max_exposure_reduction_pct</code> for this profile. Keeping those at baseline isolates the test to <strong>product guardrails</strong>, not counteroffer mechanics.</p>
+<h2>Copy-paste product policy seed for <code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></h2>
+<p>Use this as the exact Section 2.4 product-policy profile when running product-guardrail strategy runs.</p>
+<pre><code class="language-sql">WITH product_policy_seed AS (
+
+    SELECT
+        &#39;MORTGAGE&#39;::TEXT AS product_type,
+
+        0.350000::NUMERIC(12,6) AS product_approve_max_pti,
+        0.450000::NUMERIC(12,6) AS product_review_max_pti,
+        0.550000::NUMERIC(12,6) AS product_decline_min_pti,
+        0.320000::NUMERIC(12,6) AS counteroffer_target_pti,
+
+        10000.00::NUMERIC(18,2) AS product_approve_max_requested_el,
+        20000.00::NUMERIC(18,2) AS product_review_max_requested_el,
+        40000.00::NUMERIC(18,2) AS product_decline_min_requested_el,
+        10000.00::NUMERIC(18,2) AS product_approved_el_cap,
+
+        75000.00::NUMERIC(18,2) AS product_min_approved_amount,
+        800000.00::NUMERIC(18,2) AS product_max_approved_amount,
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,
+        TRUE::BOOLEAN AS manual_review_allowed_flag,
+        0.500000::NUMERIC(12,6) AS product_min_counteroffer_pct,
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        5000.00::NUMERIC(18,2) AS approved_amount_rounding_increment
+
+    UNION ALL
+
+    SELECT
+        &#39;HELOC&#39;::TEXT AS product_type,
+
+        0.250000::NUMERIC(12,6) AS product_approve_max_pti,
+        0.350000::NUMERIC(12,6) AS product_review_max_pti,
+        0.450000::NUMERIC(12,6) AS product_decline_min_pti,
+        0.220000::NUMERIC(12,6) AS counteroffer_target_pti,
+
+        8000.00::NUMERIC(18,2) AS product_approve_max_requested_el,
+        16000.00::NUMERIC(18,2) AS product_review_max_requested_el,
+        30000.00::NUMERIC(18,2) AS product_decline_min_requested_el,
+        7000.00::NUMERIC(18,2) AS product_approved_el_cap,
+
+        10000.00::NUMERIC(18,2) AS product_min_approved_amount,
+        175000.00::NUMERIC(18,2) AS product_max_approved_amount,
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,
+        TRUE::BOOLEAN AS manual_review_allowed_flag,
+        0.400000::NUMERIC(12,6) AS product_min_counteroffer_pct,
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        1000.00::NUMERIC(18,2) AS approved_amount_rounding_increment
+
+    UNION ALL
+
+    SELECT
+        &#39;AUTO_LOAN&#39;::TEXT AS product_type,
+
+        0.180000::NUMERIC(12,6) AS product_approve_max_pti,
+        0.280000::NUMERIC(12,6) AS product_review_max_pti,
+        0.380000::NUMERIC(12,6) AS product_decline_min_pti,
+        0.160000::NUMERIC(12,6) AS counteroffer_target_pti,
+
+        3500.00::NUMERIC(18,2) AS product_approve_max_requested_el,
+        7000.00::NUMERIC(18,2) AS product_review_max_requested_el,
+        12000.00::NUMERIC(18,2) AS product_decline_min_requested_el,
+        3000.00::NUMERIC(18,2) AS product_approved_el_cap,
+
+        5000.00::NUMERIC(18,2) AS product_min_approved_amount,
+        65000.00::NUMERIC(18,2) AS product_max_approved_amount,
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,
+        TRUE::BOOLEAN AS manual_review_allowed_flag,
+        0.500000::NUMERIC(12,6) AS product_min_counteroffer_pct,
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        500.00::NUMERIC(18,2) AS approved_amount_rounding_increment
+
+    UNION ALL
+
+    SELECT
+        &#39;UNSECURED_PERSONAL_LOAN&#39;::TEXT AS product_type,
+
+        0.130000::NUMERIC(12,6) AS product_approve_max_pti,
+        0.220000::NUMERIC(12,6) AS product_review_max_pti,
+        0.320000::NUMERIC(12,6) AS product_decline_min_pti,
+        0.110000::NUMERIC(12,6) AS counteroffer_target_pti,
+
+        2500.00::NUMERIC(18,2) AS product_approve_max_requested_el,
+        5000.00::NUMERIC(18,2) AS product_review_max_requested_el,
+        8500.00::NUMERIC(18,2) AS product_decline_min_requested_el,
+        2000.00::NUMERIC(18,2) AS product_approved_el_cap,
+
+        1000.00::NUMERIC(18,2) AS product_min_approved_amount,
+        27500.00::NUMERIC(18,2) AS product_max_approved_amount,
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,
+        TRUE::BOOLEAN AS manual_review_allowed_flag,
+        0.500000::NUMERIC(12,6) AS product_min_counteroffer_pct,
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        500.00::NUMERIC(18,2) AS approved_amount_rounding_increment
+
+    UNION ALL
+
+    SELECT
+        &#39;REVOLVING_LINE&#39;::TEXT AS product_type,
+
+        0.100000::NUMERIC(12,6) AS product_approve_max_pti,
+        0.180000::NUMERIC(12,6) AS product_review_max_pti,
+        0.280000::NUMERIC(12,6) AS product_decline_min_pti,
+        0.080000::NUMERIC(12,6) AS counteroffer_target_pti,
+
+        1500.00::NUMERIC(18,2) AS product_approve_max_requested_el,
+        3200.00::NUMERIC(18,2) AS product_review_max_requested_el,
+        6500.00::NUMERIC(18,2) AS product_decline_min_requested_el,
+        1400.00::NUMERIC(18,2) AS product_approved_el_cap,
+
+        1000.00::NUMERIC(18,2) AS product_min_approved_amount,
+        16000.00::NUMERIC(18,2) AS product_max_approved_amount,
+
+        TRUE::BOOLEAN AS counteroffer_allowed_flag,
+        TRUE::BOOLEAN AS manual_review_allowed_flag,
+        0.500000::NUMERIC(12,6) AS product_min_counteroffer_pct,
+        0.500000::NUMERIC(12,6) AS product_max_exposure_reduction_pct,
+        &#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;::TEXT AS exposure_assignment_method,
+        500.00::NUMERIC(18,2) AS approved_amount_rounding_increment
+)
+
+INSERT INTO tmp_module2_product_policy_params (
+    product_type,
+
+    product_approve_max_pti,
+    product_review_max_pti,
+    product_decline_min_pti,
+    counteroffer_target_pti,
+
+    product_approve_max_requested_el,
+    product_review_max_requested_el,
+    product_decline_min_requested_el,
+    product_approved_el_cap,
+
+    product_min_approved_amount,
+    product_max_approved_amount,
+
+    counteroffer_allowed_flag,
+    manual_review_allowed_flag,
+    product_min_counteroffer_pct,
+    product_max_exposure_reduction_pct,
+    exposure_assignment_method,
+    approved_amount_rounding_increment
+)
+SELECT
+    product_type,
+
+    product_approve_max_pti,
+    product_review_max_pti,
+    product_decline_min_pti,
+    counteroffer_target_pti,
+
+    product_approve_max_requested_el,
+    product_review_max_requested_el,
+    product_decline_min_requested_el,
+    product_approved_el_cap,
+
+    product_min_approved_amount,
+    product_max_approved_amount,
+
+    counteroffer_allowed_flag,
+    manual_review_allowed_flag,
+    product_min_counteroffer_pct,
+    product_max_exposure_reduction_pct,
+    exposure_assignment_method,
+    approved_amount_rounding_increment
+FROM product_policy_seed;
+</code></pre>
+<p>For this strategy, keep the <strong>strategy-level global thresholds</strong> at the baseline values. The product-specific effect should come from the product-policy rows, not from changing global synthetic-risk thresholds.</p>
+</div></article><article id="c038-m01267" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01267 · 2026-05-11T09:02:23.130000-04:00 · active path</p><div class="body"><p>while running m2-21: SQL Error [P0001]: ERROR: Module 2 Section 3 failure: campaign_registry_required_flag = TRUE but current run key did not match exactly one active campaign registry row. Match status: RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW.
+  Where: PL/pgSQL function inline_code_block line 33 at RAISE
+  ERROR: Module 2 Section 3 failure: campaign_registry_required_flag = TRUE but current run key did not match exactly one active campaign registry row. Match status: RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW.
+  Where: PL/pgSQL function inline_code_block line 33 at RAISE</p>
+</div></article><article id="c038-m01270" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01270 · 2026-05-11T09:04:13.811488-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-10, this M2-21 error is almost certainly the same class of issue as M2-29: <strong>the active Section 2.2 run key does not exactly match the persistent campaign registry row</strong>. For M2-21, the likely mismatch is the <strong>Module 1 scenario name</strong>.</p>
+<p>Your locked Module 1 archive uses:</p>
+<pre><code class="language-text">MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET
+PORTFOLIO_MIX_BASELINE_REFERENCE
+BASE_POPULATION_V1
+</code></pre>
+<p>But your current Module 2 campaign registry seed still shows <strong>M2-21</strong> as:</p>
+<pre><code class="language-text">MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET
+PRODUCT_MIX_BASELINE_REFERENCE
+BASE_POPULATION_V1
+</code></pre>
+<p>That <code>PRODUCT_MIX_BASELINE_REFERENCE</code> value will not match if your active Section 2.2 parameter row correctly uses <code>PORTFOLIO_MIX_BASELINE_REFERENCE</code>. The retrieved M2-21 registry seed explicitly shows <code>PRODUCT_MIX_BASELINE_REFERENCE</code> for M2-21. fileciteturn183file3</p>
+<p>Section 3 is failing correctly because formal campaign runs require the current technical run key to match exactly one active row in <code>credit_decisioning_sim.strategy_run_campaign_registry</code>; the Section 3 gatekeeper is designed to stop the run when registry linkage is missing. fileciteturn182file29</p>
+<h2>Expected M2-21 run key</h2>
+<p>For M2-21, these values should match exactly between Section 2.2 and <code>strategy_run_campaign_registry</code>:</p>
+<pre><code class="language-text">source_module1_scenario_set_name / module1_scenario_set_name:
+    MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET
+
+source_module1_scenario_name / module1_scenario_name:
+    PORTFOLIO_MIX_BASELINE_REFERENCE
+
+source_population_id / population_id:
+    BASE_POPULATION_V1
+
+strategy_set_name:
+    MODULE2_BASELINE_STRATEGY_SET
+
+strategy_name:
+    BASELINE_STRATEGY
+
+strategy_version:
+    V1_0
+</code></pre>
+<h2>Run this diagnostic first</h2>
+<p>Run this after Section 2 and before Section 3:</p>
+<pre><code class="language-sql">/***************************************************************************************************
+M2-21 REGISTRY MATCH DIAGNOSTIC
+
+Purpose:
+    Compare the active tmp_module2_strategy_params technical run key to the persistent M2-21
+    campaign registry row.
+
+Expected:
+    All mismatch flags should be FALSE.
+    exact_active_registry_match_count should be 1.
+***************************************************************************************************/
+
+WITH active_params AS (
+    SELECT
+        source_module1_scenario_set_name,
+        source_module1_scenario_name,
+        source_population_id,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        strategy_run_id,
+        campaign_registry_required_flag
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+),
+
+m2_21_registry AS (
+    SELECT
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        registry_active_flag
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE module2_run_id = &#39;M2-21&#39;
+),
+
+exact_registry_match AS (
+    SELECT
+        COUNT(*) AS exact_active_registry_match_count
+    FROM credit_decisioning_sim.strategy_run_campaign_registry r
+    CROSS JOIN active_params p
+    WHERE r.registry_active_flag IS TRUE
+      AND r.module1_scenario_set_name = p.source_module1_scenario_set_name
+      AND r.module1_scenario_name = p.source_module1_scenario_name
+      AND r.population_id = p.source_population_id
+      AND r.strategy_set_name = p.strategy_set_name
+      AND r.strategy_name = p.strategy_name
+      AND r.strategy_version = p.strategy_version
+)
+
+SELECT
+    p.strategy_run_id,
+    p.campaign_registry_required_flag,
+
+    r.module2_run_id,
+    r.registry_active_flag,
+
+    p.source_module1_scenario_set_name AS active_param_scenario_set_name,
+    r.module1_scenario_set_name AS registry_scenario_set_name,
+    r.module1_scenario_set_name IS DISTINCT FROM p.source_module1_scenario_set_name
+        AS scenario_set_name_mismatch,
+
+    p.source_module1_scenario_name AS active_param_scenario_name,
+    r.module1_scenario_name AS registry_scenario_name,
+    r.module1_scenario_name IS DISTINCT FROM p.source_module1_scenario_name
+        AS scenario_name_mismatch,
+
+    p.source_population_id AS active_param_population_id,
+    r.population_id AS registry_population_id,
+    r.population_id IS DISTINCT FROM p.source_population_id
+        AS population_id_mismatch,
+
+    p.strategy_set_name AS active_param_strategy_set_name,
+    r.strategy_set_name AS registry_strategy_set_name,
+    r.strategy_set_name IS DISTINCT FROM p.strategy_set_name
+        AS strategy_set_name_mismatch,
+
+    p.strategy_name AS active_param_strategy_name,
+    r.strategy_name AS registry_strategy_name,
+    r.strategy_name IS DISTINCT FROM p.strategy_name
+        AS strategy_name_mismatch,
+
+    p.strategy_version AS active_param_strategy_version,
+    r.strategy_version AS registry_strategy_version,
+    r.strategy_version IS DISTINCT FROM p.strategy_version
+        AS strategy_version_mismatch,
+
+    e.exact_active_registry_match_count,
+
+    CASE
+        WHEN e.exact_active_registry_match_count = 1
+            THEN &#39;RUN_REGISTRY_MATCHED&#39;
+        WHEN e.exact_active_registry_match_count = 0
+            THEN &#39;RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW&#39;
+        ELSE &#39;RUN_REGISTRY_DUPLICATE_MATCH_REVIEW_REQUIRED&#39;
+    END AS diagnostic_match_status
+
+FROM active_params p
+LEFT JOIN m2_21_registry r
+    ON TRUE
+CROSS JOIN exact_registry_match e;
+</code></pre>
+<p>Expected bad result before patch:</p>
+<pre><code class="language-text">scenario_name_mismatch = TRUE
+registry_scenario_name = PRODUCT_MIX_BASELINE_REFERENCE
+active_param_scenario_name = PORTFOLIO_MIX_BASELINE_REFERENCE
+exact_active_registry_match_count = 0
+</code></pre>
+<h2>Patch the live campaign registry</h2>
+<pre><code class="language-sql">BEGIN;
+
+/*-----------------------------------------------------------------------------------------------
+Preview current M2-21 campaign registry row.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE module2_run_id = &#39;M2-21&#39;;
+
+
+/*-----------------------------------------------------------------------------------------------
+Patch M2-21 to the locked Module 1 scenario name.
+
+This aligns the registry row to the actual Module 1 archive slice:
+    PORTFOLIO_MIX_BASELINE_REFERENCE
+-----------------------------------------------------------------------------------------------*/
+
+UPDATE credit_decisioning_sim.strategy_run_campaign_registry
+SET
+    module1_scenario_name = &#39;PORTFOLIO_MIX_BASELINE_REFERENCE&#39;,
+    registry_active_flag = TRUE,
+    registry_updated_ts = CURRENT_TIMESTAMP
+WHERE module2_run_id = &#39;M2-21&#39;
+  AND module1_scenario_name = &#39;PRODUCT_MIX_BASELINE_REFERENCE&#39;
+RETURNING
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag;
+
+
+/*-----------------------------------------------------------------------------------------------
+Verify patched M2-21 campaign registry row.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    registry_active_flag
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE module2_run_id = &#39;M2-21&#39;;
+
+COMMIT;
+</code></pre>
+<h2>Patch the canonical SQL file too</h2>
+<p>Search your full Module 2 SQL for:</p>
+<pre><code class="language-sql">&#39;PRODUCT_MIX_BASELINE_REFERENCE&#39;
+</code></pre>
+<p>Replace the M2-21 occurrence with:</p>
+<pre><code class="language-sql">&#39;PORTFOLIO_MIX_BASELINE_REFERENCE&#39;
+</code></pre>
+<p>At minimum, patch the M2-21 registry seed row in Section 2.6. I would also patch any fallback-label / reference-list mentions so the canonical naming stays consistent.</p>
+<h2>Confirm Module 1 archive source exists</h2>
+<pre><code class="language-sql">SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS archived_rows
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET&#39;
+  AND scenario_name = &#39;PORTFOLIO_MIX_BASELINE_REFERENCE&#39;
+  AND population_id = &#39;BASE_POPULATION_V1&#39;
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">archived_rows = 50000
+</code></pre>
+<h2>Rerun diagnostic, then Section 3</h2>
+<p>After the live registry patch and canonical SQL patch, rerun the M2-21 diagnostic. You want:</p>
+<pre><code class="language-text">scenario_name_mismatch = FALSE
+exact_active_registry_match_count = 1
+diagnostic_match_status = RUN_REGISTRY_MATCHED
+</code></pre>
+<p>Then rerun Section 3. The error should clear.</p>
+</div></article><article id="c038-m01271" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01271 · 2026-05-11T12:25:04.847000-04:00 · active path</p><div class="body"><p>all campaign runs are complete.  please provide me queries that you&#39;d like to see to test the results</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

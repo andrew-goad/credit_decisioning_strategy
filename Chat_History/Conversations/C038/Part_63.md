@@ -1,0 +1,3625 @@
+# Module 2 Decision Simulator Build
+
+## Part 63
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_62.md) · [Next](Part_64.md)
+
+<a id="c038-m01081"></a>
+
+### C038-M01081
+
+**ChatGPT** · 2026-05-10T12:13:00.233561-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01081 -->
+According to a document from 2026-05-10, here is the full copy-paste replacement for **Section 16.8**, with the commentary and inline SQL teaching raised to the same elite level as the prior Section 16 passes. fileciteturn140file0
+
+```sql
+/***************************************************************************************************
+SECTION 16.8 — EVIDENCE CAPTURE DIAGNOSTICS AND EXPORT-READY VIEWS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide compact, review-ready outputs after Section 16 evidence capture.
+
+    Section 16.8 answers:
+
+        "What evidence was captured for this current run, what registry IDs identify it, what should
+         be reviewed before documentation, and what rows are ready for export or summary?"
+
+SQL PURPOSE:
+    1. Show evidence row counts for the current run across all Section 16 evidence tables.
+    2. Display the current run's one-row executive evidence summary.
+    3. Display validation evidence rows with REVIEW or NOT_APPLICABLE status.
+    4. Display product × score segment evidence for the current run.
+    5. Display parameter snapshot capture flags and parameter snapshot hash.
+    6. Display registry-linkage consistency diagnostics across evidence tables.
+
+INPUTS:
+    tmp_m2_current_run_key
+    tmp_m2_current_run_story_params
+    credit_decisioning_sim.strategy_run_evidence_summary
+    credit_decisioning_sim.strategy_run_validation_evidence
+    credit_decisioning_sim.strategy_run_parameter_snapshot
+    credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+OUTPUTS:
+    Review result sets only.
+
+WHEN TO RUN THIS SECTION:
+    Run Section 16.8 after Section 16.7 has completed successfully.
+
+    Section 16.7 is the local evidence-capture gatekeeper.
+
+    Section 16.8 is the evidence-review and export-readiness display layer.
+
+WHY THIS SECTION EXISTS:
+    Section 16.3 through Section 16.6 persist evidence.
+
+    Section 16.7 confirms that the evidence was captured correctly.
+
+    Section 16.8 then displays the captured evidence in review-ready form so the user does not have
+    to manually query four different evidence tables after every campaign run.
+
+    This section is especially useful during a multi-run campaign because it gives a consistent
+    post-run evidence package for:
+        run tracking,
+        validation-summary drafting,
+        README result summaries,
+        LinkedIn storyline preparation,
+        executive review,
+        and future Module 3 planning.
+
+REGISTRY PATCH:
+    Section 16.8 surfaces campaign registry fields in the review outputs:
+
+        module1_run_id
+        module2_run_id
+        run_sequence_number
+        showcase_id
+        showcase_name
+        comparison_group_id
+        validation_evidence_group_id
+        readme_storyline_label
+        linkedin_post_sequence
+        validation_summary_section_hint
+        run_registry_match_status
+
+    These fields connect the SQL evidence layer to the formal campaign roadmap.
+
+    They allow the same completed run to be referenced consistently across:
+        the SQL output,
+        Section 13 comparison,
+        Section 14 validation evidence,
+        Section 15 frontier evidence,
+        Section 16 persistent evidence,
+        the future written Validation Summary,
+        README documentation,
+        LinkedIn campaign posts,
+        and executive-facing summaries.
+
+HOW TO USE AFTER EACH MODULE 2 RUN:
+    1. Review Section 16.8A to confirm each evidence table has current-run rows.
+    2. Review Section 16.8B as the main executive evidence row.
+    3. Review Section 16.8C to identify validation items requiring interpretation.
+    4. Review Section 16.8D for product × score segment drivers.
+    5. Review Section 16.8E to confirm parameter snapshots were captured.
+    6. Review Section 16.8F to confirm registry linkage is consistent across evidence tables.
+
+DOCUMENTATION ROLE:
+    Section 16.8 outputs are the immediate post-run evidence review package.
+
+    These outputs support:
+        validation-summary notes,
+        README result summaries,
+        LinkedIn storyline preparation,
+        campaign-run tracking,
+        comparison group review,
+        executive strategy review,
+        product × score segment explanation,
+        and future Module 3 economics planning.
+
+CREDIT RISK INTERPRETATION:
+    Section 16.8 helps reviewers interpret the completed strategy run across the main credit strategy
+    dimensions:
+
+        Access:
+            simulated_offer_exposure_rate, approval_rate, counteroffer_rate.
+
+        Exposure:
+            total_requested_amount, total_approved_amount, approved_amount_capture_rate.
+
+        Risk:
+            synthetic estimated-PD proxy, LGD, requested Expected Loss, approved Expected Loss.
+
+        Affordability:
+            requested PTI and approved PTI evidence.
+
+        Treatment:
+            APPROVE, COUNTEROFFER, MANUAL_REVIEW, and DECLINE outcome rates.
+
+        Explainability:
+            top reason codes, non-approval reason codes, policy-stop reason codes, and reason-code
+            movement versus baseline.
+
+        Segmentation:
+            product, score-band, and product × score evidence.
+
+        Validation:
+            PASS, REVIEW, and NOT_APPLICABLE evidence from Section 14.
+
+        Future economics:
+            APR proxy, term, product mix, approved exposure, and approved Expected Loss readiness
+            fields for future Module 3 design.
+
+WHAT TO LOOK FOR:
+    Section 16.8A:
+        Confirms the four evidence tables contain current-run evidence rows.
+
+    Section 16.8B:
+        Main executive evidence row for the completed run.
+
+    Section 16.8C:
+        REVIEW and NOT_APPLICABLE validation items that should be interpreted before documentation.
+
+    Section 16.8D:
+        Product × score segment evidence, especially high approved Expected Loss segments.
+
+    Section 16.8E:
+        Parameter snapshot capture flags and parameter_snapshot_hash.
+
+    Section 16.8F:
+        Registry-linkage consistency across evidence tables.
+
+REVIEW TRIGGERS:
+    Missing evidence rows:
+        Review Sections 16.3 through 16.6 and Section 16.7 gatekeeper output.
+
+    REVIEW validation rows:
+        Interpret before writing the Validation Summary, README, or executive narrative.
+
+    NOT_APPLICABLE validation rows:
+        Confirm whether the test depended on unavailable comparison setup, unavailable archive slices,
+        or non-ready matched comparison context.
+
+    High approved Expected Loss segment:
+        Review product, score band, LGD, approved amount, synthetic estimated-risk proxy, and
+        reason-code fields.
+
+    Registry linkage review status:
+        Confirm that the persistent evidence tables are tied to the intended campaign run IDs.
+
+INTERPRETATION BOUNDARIES:
+    REVIEW validation rows are documentation prompts, not automatic invalidation.
+
+    NOT_APPLICABLE validation rows show tests that were not evaluable in the current run context.
+
+    simulated_offer_exposure_rate is simulated positive offer exposure, not booked or funded exposure.
+
+    approved_amount is simulated approved exposure, not booked exposure, funded exposure, account
+    creation, or production approval.
+
+    approved_expected_loss_rate is a synthetic strategy evidence metric, not a production loss-rate
+    forecast.
+
+    estimated_pd remains the SQL field name and is interpreted as the synthetic estimated-PD proxy.
+
+    Reason-code fields are simulated strategy explanation codes only.
+
+    They are not customer communications, regulatory notices, adverse-action reasons, fair-lending
+    conclusions, or production compliance determinations.
+
+    Module 3 readiness fields are readiness indicators only, not revenue or profitability results.
+
+READ-ONLY BOUNDARY:
+    Section 16.8 does not insert evidence rows.
+    Section 16.8 does not delete evidence rows.
+    Section 16.8 does not update evidence rows.
+    Section 16.8 does not modify latest-run output.
+    Section 16.8 does not modify archive rows.
+    Section 16.8 does not modify campaign registry rows.
+    Section 16.8 does not modify strategy parameters.
+    Section 16.8 does not modify product policy parameters.
+    Section 16.8 does not recalculate decisions.
+    Section 16.8 does not recalculate approved exposure.
+    Section 16.8 does not recalculate approved Expected Loss.
+    Section 16.8 does not reassign simulated reason codes.
+    Section 16.8 does not implement Module 3 revenue, earnings, pricing, funding-cost, profitability,
+    capital, or risk-adjusted margin logic.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CTE:
+        Creates one-row current-run context helpers before each review query.
+
+    JOIN to tmp_m2_current_run_key:
+        Scopes persistent evidence tables to the current run key so historical campaign evidence does
+        not mix into the current review output.
+
+    CROSS JOIN:
+        Attaches the one active story / registry row to object-level diagnostic rows.
+
+    UNION ALL:
+        Stacks row-count diagnostics and registry-linkage diagnostics across multiple evidence
+        tables.
+
+    COUNT(*):
+        Counts evidence rows captured for the current run.
+
+    COUNT(DISTINCT COALESCE(...)):
+        Detects whether registry identity is consistent inside each evidence object.
+
+    FILTER:
+        Counts missing critical registry-linkage fields inside each evidence object.
+
+    CASE:
+        Converts registry diagnostic counts into readable status labels.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 16.8A — EVIDENCE OBJECT ROW-COUNT DIAGNOSTIC FOR CURRENT RUN
+****************************************************************************************************
+
+PURPOSE:
+    Confirm that the current run has persisted evidence rows in each Section 16 evidence table.
+
+BUSINESS PURPOSE:
+    Provide a compact "did evidence capture land?" diagnostic after Section 16.7 has passed.
+
+EXPECTED INTERPRETATION:
+    strategy_run_evidence_summary:
+        exactly one row.
+
+    strategy_run_validation_evidence:
+        one row per Section 14 validation status summary row.
+
+    strategy_run_parameter_snapshot:
+        exactly one row.
+
+    strategy_run_segment_evidence_summary:
+        one row per product × score segment present in the latest-run output.
+
+REGISTRY PATCH:
+    The diagnostic includes the current run IDs and registry status so evidence object row counts can
+    be tied directly to campaign tracking.
+
+WHAT TO LOOK FOR:
+    current_run_evidence_rows:
+        Confirms how many rows were captured in each evidence object for the current run key.
+
+    module2_run_id:
+        Confirms which formal Module 2 campaign run the evidence belongs to.
+
+    validation_evidence_group_id:
+        Confirms which future Validation Summary evidence group can reference the output.
+
+REVIEW TRIGGERS:
+    strategy_run_evidence_summary <> 1:
+        Executive evidence is missing or duplicated.
+
+    strategy_run_parameter_snapshot <> 1:
+        Parameter traceability is missing or duplicated.
+
+    strategy_run_segment_evidence_summary = 0:
+        Product × score companion evidence was not captured.
+
+    Missing module2_run_id:
+        Registry linkage should be reviewed before documentation.
+
+SQL MECHANICS:
+    k:
+        Loads the current technical run key.
+
+    story:
+        Loads the active current-run registry / story metadata row.
+
+    evidence_counts:
+        Uses scalar COUNT(*) subqueries so each evidence object is displayed even if a count is zero.
+
+    CROSS JOIN:
+        Attaches registry / story fields to each evidence object count.
+
+BOUNDARY:
+    This query displays counts only.
+
+    Local gatekeepers in Section 16.7 already enforce critical count expectations.
+
+***************************************************************************************************/
+
+WITH k AS (
+    /***********************************************************************************************
+    Current run key.
+
+    This CTE scopes all evidence counts to the latest completed strategy / Module 1 scenario /
+    population slice.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_key
+    LIMIT 1
+),
+
+story AS (
+    /***********************************************************************************************
+    Current run registry / story metadata.
+
+    This CTE supplies the formal run IDs and documentation linkage fields shown with the row-count
+    diagnostic.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_story_params
+    WHERE active_story_flag IS TRUE
+    LIMIT 1
+),
+
+evidence_counts AS (
+    /***********************************************************************************************
+    Evidence object counts.
+
+    SQL mechanics:
+        Each SELECT returns one row for one persistent evidence object.
+
+        Scalar subqueries count rows for the current technical run key.
+
+    Why this pattern is used:
+        It keeps the diagnostic compact and makes missing or zero-row evidence objects visible.
+    ***********************************************************************************************/
+    SELECT
+        'strategy_run_evidence_summary' AS evidence_object_name,
+
+        (
+            SELECT COUNT(*)
+            FROM credit_decisioning_sim.strategy_run_evidence_summary e
+            JOIN k
+                ON e.strategy_set_name = k.strategy_set_name
+               AND e.strategy_name = k.strategy_name
+               AND e.strategy_version = k.strategy_version
+               AND e.module1_scenario_set_name = k.module1_scenario_set_name
+               AND e.module1_scenario_name = k.module1_scenario_name
+               AND e.population_id = k.population_id
+        ) AS current_run_evidence_rows
+
+    UNION ALL
+
+    SELECT
+        'strategy_run_validation_evidence' AS evidence_object_name,
+
+        (
+            SELECT COUNT(*)
+            FROM credit_decisioning_sim.strategy_run_validation_evidence e
+            JOIN k
+                ON e.strategy_set_name = k.strategy_set_name
+               AND e.strategy_name = k.strategy_name
+               AND e.strategy_version = k.strategy_version
+               AND e.module1_scenario_set_name = k.module1_scenario_set_name
+               AND e.module1_scenario_name = k.module1_scenario_name
+               AND e.population_id = k.population_id
+        ) AS current_run_evidence_rows
+
+    UNION ALL
+
+    SELECT
+        'strategy_run_parameter_snapshot' AS evidence_object_name,
+
+        (
+            SELECT COUNT(*)
+            FROM credit_decisioning_sim.strategy_run_parameter_snapshot e
+            JOIN k
+                ON e.strategy_set_name = k.strategy_set_name
+               AND e.strategy_name = k.strategy_name
+               AND e.strategy_version = k.strategy_version
+               AND e.module1_scenario_set_name = k.module1_scenario_set_name
+               AND e.module1_scenario_name = k.module1_scenario_name
+               AND e.population_id = k.population_id
+        ) AS current_run_evidence_rows
+
+    UNION ALL
+
+    SELECT
+        'strategy_run_segment_evidence_summary' AS evidence_object_name,
+
+        (
+            SELECT COUNT(*)
+            FROM credit_decisioning_sim.strategy_run_segment_evidence_summary e
+            JOIN k
+                ON e.strategy_set_name = k.strategy_set_name
+               AND e.strategy_name = k.strategy_name
+               AND e.strategy_version = k.strategy_version
+               AND e.module1_scenario_set_name = k.module1_scenario_set_name
+               AND e.module1_scenario_name = k.module1_scenario_name
+               AND e.population_id = k.population_id
+        ) AS current_run_evidence_rows
+)
+
+SELECT
+    /***********************************************************************************************
+    Campaign registry / run-story identity.
+
+    These fields make the row-count diagnostic immediately traceable to the campaign roadmap.
+    ***********************************************************************************************/
+    story.module1_run_id,
+    story.module2_run_id,
+    story.run_sequence_number,
+    story.showcase_id,
+    story.showcase_name,
+    story.comparison_group_id,
+    story.validation_evidence_group_id,
+    story.run_registry_match_status,
+
+    /***********************************************************************************************
+    Evidence object row count.
+    ***********************************************************************************************/
+    c.evidence_object_name,
+    c.current_run_evidence_rows
+
+FROM evidence_counts c
+
+CROSS JOIN story
+
+ORDER BY c.evidence_object_name;
+
+
+
+/***************************************************************************************************
+SECTION 16.8B — CURRENT RUN EXECUTIVE EVIDENCE SUMMARY ROW
+****************************************************************************************************
+
+PURPOSE:
+    Display the primary one-row executive evidence record for the current run.
+
+BUSINESS PURPOSE:
+    Provide the compact current-run story row that can be exported, summarized, or referenced after
+    evidence capture.
+
+WHY THIS QUERY IS SCOPED TO tmp_m2_current_run_key:
+    The evidence summary table persists rows across the full campaign.
+
+    Filtering to the current run key prevents this diagnostic from accidentally showing a different
+    run if historical or later evidence rows also exist.
+
+REGISTRY PATCH:
+    The first fields displayed are the registry and campaign linkage fields.
+
+    These fields should be used to tie the SQL evidence row to:
+        the run roadmap,
+        comparison group,
+        validation evidence group,
+        README storyline,
+        LinkedIn post sequence,
+        and Validation Summary section.
+
+HOW TO USE:
+    This is the main post-run evidence row to export or summarize.
+
+REVIEW FOCUS:
+    registry identity,
+    scenario identity,
+    strategy identity,
+    outcome rates,
+    simulated offer exposure,
+    approved amount,
+    approved Expected Loss,
+    top reason-code fields,
+    frontier posture,
+    product / score / segment drivers,
+    validation counts,
+    and Module 3 readiness notes.
+
+CREDIT RISK INTERPRETATION:
+    This output gives the run-level story across:
+        access,
+        exposure,
+        risk,
+        affordability,
+        treatment,
+        explainability,
+        validation,
+        and future economics readiness.
+
+SQL MECHANICS:
+    k:
+        Loads the current technical run key.
+
+    JOIN:
+        Filters the persistent evidence table to the current run key.
+
+    ORDER BY evidence_snapshot_ts DESC LIMIT 1:
+        Displays the most recent evidence row for the current run key.
+
+        Section 16.7 should already have confirmed exactly one row for the key, but this ordering
+        keeps the display deterministic if a development artifact ever left multiple rows behind.
+
+BOUNDARY:
+    This query reads persisted executive evidence only.
+
+    It does not recalculate portfolio metrics or frontier fields.
+
+***************************************************************************************************/
+
+WITH k AS (
+    /***********************************************************************************************
+    Current run key.
+
+    This CTE scopes the persistent executive evidence table to the completed latest-run slice.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_key
+    LIMIT 1
+)
+
+SELECT
+    e.evidence_snapshot_ts,
+
+    /***********************************************************************************************
+    Campaign registry / run-story identity.
+
+    These fields provide the bridge from SQL evidence to the formal run roadmap and later
+    documentation artifacts.
+    ***********************************************************************************************/
+    e.campaign_registry_required_flag,
+    e.registry_match_count,
+    e.run_registry_match_status,
+
+    e.module1_run_id,
+    e.module2_run_id,
+    e.run_sequence_number,
+
+    e.showcase_id,
+    e.showcase_name,
+    e.comparison_group_id,
+    e.validation_evidence_group_id,
+
+    e.readme_storyline_label,
+    e.linkedin_post_sequence,
+    e.validation_summary_section_hint,
+
+    /***********************************************************************************************
+    Module 1 scenario / population lineage.
+
+    These fields identify the upstream synthetic scenario and population.
+    ***********************************************************************************************/
+    e.module1_scenario_set_name,
+    e.module1_scenario_name,
+    e.population_id,
+
+    /***********************************************************************************************
+    Module 2 strategy identity.
+
+    These fields identify the downstream strategy applied to the Module 1 population.
+    ***********************************************************************************************/
+    e.strategy_set_name,
+    e.strategy_name,
+    e.strategy_version,
+
+    /***********************************************************************************************
+    Story-family labels.
+
+    These fields help reviewers connect parameter changes to the expected and observed run narrative.
+    ***********************************************************************************************/
+    e.module1_parameter_family_changed,
+    e.module2_strategy_family_changed,
+
+    e.expected_storyline,
+    e.observed_storyline,
+
+    /***********************************************************************************************
+    Portfolio size.
+
+    applications should reflect the current latest-run population size.
+    ***********************************************************************************************/
+    e.applications,
+
+    /***********************************************************************************************
+    Final decision outcome rates.
+
+    These are run-level final strategy outcome rates.
+    ***********************************************************************************************/
+    e.approval_rate,
+    e.counteroffer_rate,
+    e.manual_review_rate,
+    e.decline_rate,
+    e.simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    Requested and approved exposure.
+
+    approved_amount_capture_rate shows how much requested exposure survived final simulated strategy
+    treatment.
+    ***********************************************************************************************/
+    e.total_requested_amount,
+    e.total_approved_amount,
+    e.approved_amount_capture_rate,
+
+    /***********************************************************************************************
+    Offer-row risk and affordability profile.
+
+    These fields focus on rows with simulated positive offer exposure.
+    ***********************************************************************************************/
+    e.avg_synthetic_estimated_pd_proxy_offer_rows,
+    e.avg_approved_payment_to_income_ratio_offer_rows,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss.
+
+    approved_expected_loss_rate is a synthetic strategy evidence metric.
+
+    It is not a production loss-rate forecast.
+    ***********************************************************************************************/
+    e.total_requested_expected_loss_amount,
+    e.total_approved_expected_loss_amount,
+    e.approved_expected_loss_rate,
+    e.approved_amount_per_approved_expected_loss_dollar,
+
+    /***********************************************************************************************
+    Simulated reason-code story fields.
+
+    These fields explain what most commonly drove the strategy outcomes.
+    ***********************************************************************************************/
+    e.top_primary_reason_code,
+    e.top_primary_reason_population_share,
+
+    e.top_non_approval_primary_reason_code,
+    e.top_non_approval_reason_population_share,
+
+    e.top_policy_stop_primary_reason_code,
+    e.top_policy_stop_reason_population_share,
+
+    e.top_reason_code_delta_driver_code,
+    e.top_reason_code_delta_population_share,
+
+    /***********************************************************************************************
+    Strategy frontier posture.
+
+    These fields come from Section 15 and should be interpreted as diagnostic story labels, not
+    production recommendations.
+    ***********************************************************************************************/
+    e.frontier_position_type,
+    e.executive_frontier_quadrant,
+    e.frontier_interpretation_note,
+
+    /***********************************************************************************************
+    Product / score / product × score driver fields.
+
+    These fields identify where the run-level result concentrated.
+    ***********************************************************************************************/
+    e.top_approved_amount_product,
+    e.top_approved_expected_loss_product,
+
+    e.top_approved_amount_score_band,
+    e.top_approved_expected_loss_score_band,
+
+    e.top_approved_el_product_score_segment,
+
+    /***********************************************************************************************
+    Baseline-relative movement drivers.
+
+    These fields may be NULL for baseline runs or when no matching baseline exists.
+    ***********************************************************************************************/
+    e.largest_delta_approved_amount_product,
+    e.largest_delta_approved_el_product,
+    e.largest_delta_offer_rate_score_band,
+    e.largest_delta_decline_rate_score_band,
+    e.largest_delta_approved_el_product_score_segment,
+
+    /***********************************************************************************************
+    Validation rollup.
+
+    REVIEW and NOT_APPLICABLE items should be interpreted before documentation.
+    ***********************************************************************************************/
+    e.validation_pass_count,
+    e.validation_review_count,
+    e.validation_not_applicable_count,
+    e.validation_review_items,
+
+    /***********************************************************************************************
+    Module 3 readiness boundary fields.
+
+    These are readiness indicators only.
+
+    They are not profitability or revenue metrics.
+    ***********************************************************************************************/
+    e.module3_growth_inputs_available_flag,
+    e.module3_growth_input_gap_note,
+    e.module3_boundary_note
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary e
+
+JOIN k
+    ON e.strategy_set_name = k.strategy_set_name
+   AND e.strategy_name = k.strategy_name
+   AND e.strategy_version = k.strategy_version
+   AND e.module1_scenario_set_name = k.module1_scenario_set_name
+   AND e.module1_scenario_name = k.module1_scenario_name
+   AND e.population_id = k.population_id
+
+ORDER BY e.evidence_snapshot_ts DESC
+
+LIMIT 1;
+
+
+
+/***************************************************************************************************
+SECTION 16.8C — CURRENT RUN VALIDATION ITEMS REQUIRING INTERPRETATION
+****************************************************************************************************
+
+PURPOSE:
+    Display validation evidence rows with REVIEW or NOT_APPLICABLE status for the current run.
+
+BUSINESS PURPOSE:
+    Identify the exact validation evidence rows that should be discussed before documentation.
+
+VALIDATION STATUS INTERPRETATION:
+    REVIEW:
+        The pattern should be interpreted before documentation.
+
+        REVIEW does not automatically mean the strategy run is invalid.
+
+    NOT_APPLICABLE:
+        The test depended on unavailable comparison setup, unavailable archive slices, or conditions
+        not present in the current run context.
+
+IMPORTANT:
+    REVIEW and NOT_APPLICABLE are not automatic failures.
+
+    They are prompts for validation narrative, evidence review, and documentation discipline.
+
+REGISTRY PATCH:
+    Validation rows include module2_run_id and validation_evidence_group_id so each item can be
+    carried directly into the future Validation Summary.
+
+WHAT TO LOOK FOR:
+    validation_area:
+        The broad area of the validation framework.
+
+    validation_test_name:
+        The specific check or diagnostic.
+
+    observed_value:
+        The evidence value captured from Section 14.
+
+    expected_behavior:
+        The intended interpretation boundary or expectation.
+
+    interpretation:
+        Plain-English guidance for reviewers.
+
+REVIEW TRIGGERS:
+    High manual-review rate:
+        Explain operational burden and failed-counteroffer resolution behavior.
+
+    High counteroffer concentration:
+        Explain reduced-exposure treatment and product / affordability drivers.
+
+    High reason-code concentration:
+        Explain whether the concentration is expected for the selected strategy.
+
+    Comparison not ready:
+        Explain missing baseline / challenger readiness before writing comparison claims.
+
+SQL MECHANICS:
+    JOIN to k:
+        Restricts persistent validation evidence to the current run key.
+
+    WHERE validation_status IN (...):
+        Shows only the rows requiring interpretation or context.
+
+    ORDER BY:
+        Places REVIEW rows before NOT_APPLICABLE rows.
+
+BOUNDARY:
+    This query reads persisted validation evidence only.
+
+    It does not rerun Section 14 validation logic.
+
+***************************************************************************************************/
+
+WITH k AS (
+    /***********************************************************************************************
+    Current run key.
+
+    Used to scope the persistent validation evidence table to the current completed run.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_key
+    LIMIT 1
+)
+
+SELECT
+    /***********************************************************************************************
+    Campaign registry / validation evidence linkage.
+
+    These fields let each validation row be tied directly to the formal campaign run and Validation
+    Summary evidence group.
+    ***********************************************************************************************/
+    e.module1_run_id,
+    e.module2_run_id,
+    e.run_sequence_number,
+    e.showcase_id,
+    e.showcase_name,
+    e.comparison_group_id,
+    e.validation_evidence_group_id,
+    e.validation_summary_section_hint,
+    e.run_registry_match_status,
+
+    /***********************************************************************************************
+    Validation evidence detail.
+
+    These are the fields most directly reusable in a future written Validation Summary.
+    ***********************************************************************************************/
+    e.validation_area,
+    e.validation_test_name,
+    e.validation_category,
+    e.validation_status,
+    e.observed_value,
+    e.expected_behavior,
+    e.interpretation
+
+FROM credit_decisioning_sim.strategy_run_validation_evidence e
+
+JOIN k
+    ON e.strategy_set_name = k.strategy_set_name
+   AND e.strategy_name = k.strategy_name
+   AND e.strategy_version = k.strategy_version
+   AND e.module1_scenario_set_name = k.module1_scenario_set_name
+   AND e.module1_scenario_name = k.module1_scenario_name
+   AND e.population_id = k.population_id
+
+WHERE e.validation_status IN ('REVIEW', 'NOT_APPLICABLE')
+
+ORDER BY
+    CASE e.validation_status
+        WHEN 'REVIEW' THEN 1
+        WHEN 'NOT_APPLICABLE' THEN 2
+        ELSE 99
+    END,
+    e.validation_area,
+    e.validation_test_name;
+
+
+
+/***************************************************************************************************
+SECTION 16.8D — CURRENT RUN PRODUCT × SCORE SEGMENT EVIDENCE
+****************************************************************************************************
+
+PURPOSE:
+    Display the product × score companion evidence rows captured in Section 16.5.
+
+BUSINESS PURPOSE:
+    Provide the segment-level drill-down behind the one-row executive evidence summary.
+
+    Section 16.8D answers:
+
+        "Which product × score segments drove approved exposure, approved Expected Loss, offer
+         exposure, counteroffer behavior, no-offer behavior, and reason-code concentration?"
+
+WHY PRODUCT × SCORE MATTERS:
+    Portfolio-level averages can hide concentration.
+
+    Product type shapes:
+        exposure size,
+        payment mechanics,
+        LGD,
+        counteroffer feasibility,
+        product caps,
+        and approved Expected Loss.
+
+    Score band shapes:
+        borrower-quality segmentation,
+        synthetic estimated-risk proxy,
+        offer-exposure rate,
+        policy-stop behavior,
+        and no-offer concentration.
+
+    Product × score intersections often explain the true strategy story.
+
+REVIEW FOCUS:
+    registry IDs,
+    product × score segment,
+    applications,
+    final decision rates,
+    simulated offer-exposure rate,
+    total approved amount,
+    total approved Expected Loss,
+    approved Expected Loss rate,
+    APR proxy,
+    term,
+    offered-population synthetic estimated-risk proxy,
+    offered-population approved PTI,
+    and segment reason-code fields.
+
+ORDERING:
+    Segments are sorted by total approved Expected Loss descending because the highest approved
+    Expected Loss segments are typically most important for risk / exposure storytelling.
+
+WHAT TO LOOK FOR:
+    High total_approved_expected_loss_amount:
+        Segment contributes materially to approved-exposure Expected Loss.
+
+    High approved_expected_loss_rate:
+        Segment has high approved Expected Loss per approved exposure dollar.
+
+    High simulated_offer_exposure_rate in weaker score bands:
+        Review risk posture and approved Expected Loss.
+
+    High counteroffer or decline rates:
+        Review product caps, affordability, approved Expected Loss caps, and reason codes.
+
+MODULE 3 READINESS:
+    Segment-level APR proxy and term fields are preserved because future economics assumptions will
+    likely vary by product and borrower-quality segment.
+
+    These fields are not revenue or profitability metrics.
+
+BOUNDARY:
+    Segment evidence is persistent evidence, not a new decision model.
+
+    It does not imply production segmentation or customer treatment.
+
+SQL MECHANICS:
+    JOIN to k:
+        Restricts segment evidence to the current run key.
+
+    ORDER BY total_approved_expected_loss_amount DESC:
+        Prioritizes the risk-impact segment review.
+
+***************************************************************************************************/
+
+WITH k AS (
+    /***********************************************************************************************
+    Current run key.
+
+    Used to scope the persistent segment evidence table to the current completed run.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_key
+    LIMIT 1
+)
+
+SELECT
+    /***********************************************************************************************
+    Campaign registry / segment evidence linkage.
+
+    These fields make every segment row traceable to the formal run and evidence group.
+    ***********************************************************************************************/
+    e.module1_run_id,
+    e.module2_run_id,
+    e.showcase_id,
+    e.showcase_name,
+    e.comparison_group_id,
+    e.validation_evidence_group_id,
+    e.run_registry_match_status,
+
+    /***********************************************************************************************
+    Segment identity.
+
+    Product × score is the primary segment drill-down layer for explaining concentration.
+    ***********************************************************************************************/
+    e.product_type_policy_key,
+    e.score_band_policy_key,
+    e.product_score_policy_segment,
+
+    /***********************************************************************************************
+    Segment population and outcome rates.
+
+    These fields show access, counteroffer, review, and no-offer behavior within the segment.
+    ***********************************************************************************************/
+    e.applications,
+
+    e.approval_rate,
+    e.counteroffer_rate,
+    e.manual_review_rate,
+    e.decline_rate,
+    e.simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    Segment exposure and approved Expected Loss.
+
+    These fields identify the exposure and risk contribution of each segment.
+    ***********************************************************************************************/
+    e.total_approved_amount,
+    e.total_approved_expected_loss_amount,
+    e.approved_expected_loss_rate,
+
+    /***********************************************************************************************
+    Module 3 readiness inputs by segment.
+
+    These fields are basis inputs only.
+
+    They are not revenue, pricing, yield, profitability, or margin outputs.
+    ***********************************************************************************************/
+    e.approved_amount_weighted_apr_proxy,
+    e.approved_amount_weighted_term_months,
+
+    /***********************************************************************************************
+    Segment risk and affordability.
+
+    These fields describe offered-population synthetic risk and approved affordability pressure.
+    ***********************************************************************************************/
+    e.avg_synthetic_estimated_pd_proxy_offer_rows,
+    e.avg_approved_payment_to_income_ratio_offer_rows,
+
+    /***********************************************************************************************
+    Segment simulated reason-code story.
+
+    These fields help explain why the segment behaved as it did.
+    ***********************************************************************************************/
+    e.top_primary_reason_code,
+    e.top_primary_reason_population_share,
+    e.top_non_approval_primary_reason_code,
+    e.top_non_approval_reason_population_share
+
+FROM credit_decisioning_sim.strategy_run_segment_evidence_summary e
+
+JOIN k
+    ON e.strategy_set_name = k.strategy_set_name
+   AND e.strategy_name = k.strategy_name
+   AND e.strategy_version = k.strategy_version
+   AND e.module1_scenario_set_name = k.module1_scenario_set_name
+   AND e.module1_scenario_name = k.module1_scenario_name
+   AND e.population_id = k.population_id
+
+ORDER BY
+    e.total_approved_expected_loss_amount DESC NULLS LAST,
+    e.product_type_policy_key,
+    e.score_band_policy_key;
+
+
+
+/***************************************************************************************************
+SECTION 16.8E — PARAMETER SNAPSHOT DIAGNOSTIC
+****************************************************************************************************
+
+PURPOSE:
+    Confirm that the temporary active parameter tables and current-run story metadata were captured
+    into persistent evidence.
+
+BUSINESS PURPOSE:
+    A completed run should be traceable not only to results, but also to the exact strategy and
+    product-policy configuration that produced those results.
+
+    Section 16.8E answers:
+
+        "Was the parameter evidence payload captured, and what fingerprint identifies the captured
+         strategy / product-policy / story payload?"
+
+WHY PARAMETER SNAPSHOT MATTERS:
+    The temporary parameter tables are execution artifacts.
+
+    They can change in later runs.
+
+    The persistent parameter snapshot preserves:
+        the active Module 2 strategy parameter card,
+        the product-policy parameter card,
+        current-run story metadata,
+        registry linkage,
+        and a compact hash fingerprint.
+
+REGISTRY PATCH:
+    The parameter snapshot displays:
+        module1_run_id,
+        module2_run_id,
+        showcase_id,
+        comparison_group_id,
+        validation_evidence_group_id,
+        and run_registry_match_status.
+
+REVIEW FOCUS:
+    parameter_snapshot_hash,
+    strategy_params_captured_flag,
+    product_policy_params_captured_flag,
+    run_story_params_captured_flag.
+
+WHAT TO LOOK FOR:
+    strategy_params_captured_flag = TRUE:
+        Active strategy parameter card was captured.
+
+    product_policy_params_captured_flag = TRUE:
+        Product policy parameter card was captured.
+
+    run_story_params_captured_flag = TRUE:
+        Current run registry / story metadata was captured.
+
+    parameter_snapshot_hash:
+        Compact fingerprint for comparing parameter payloads across evidence rows.
+
+BOUNDARY:
+    parameter_snapshot_hash is a compact fingerprint.
+
+    The full JSONB payload remains the authoritative parameter evidence.
+
+SQL MECHANICS:
+    IS NOT NULL:
+        Converts JSONB payload presence into readable TRUE / FALSE capture flags.
+
+    JOIN to k:
+        Restricts parameter snapshot evidence to the current run key.
+
+***************************************************************************************************/
+
+WITH k AS (
+    /***********************************************************************************************
+    Current run key.
+
+    Used to scope the persistent parameter snapshot table to the current completed run.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_key
+    LIMIT 1
+)
+
+SELECT
+    e.evidence_snapshot_ts,
+
+    /***********************************************************************************************
+    Campaign registry / parameter evidence linkage.
+
+    These fields connect the captured parameter payload to the formal campaign run.
+    ***********************************************************************************************/
+    e.campaign_registry_required_flag,
+    e.registry_match_count,
+    e.run_registry_match_status,
+
+    e.module1_run_id,
+    e.module2_run_id,
+    e.run_sequence_number,
+
+    e.showcase_id,
+    e.showcase_name,
+    e.comparison_group_id,
+    e.validation_evidence_group_id,
+
+    e.readme_storyline_label,
+    e.linkedin_post_sequence,
+    e.validation_summary_section_hint,
+
+    /***********************************************************************************************
+    Technical run key.
+
+    These fields preserve the SQL evidence grain alongside the registry metadata.
+    ***********************************************************************************************/
+    e.strategy_set_name,
+    e.strategy_name,
+    e.strategy_version,
+
+    e.module1_scenario_set_name,
+    e.module1_scenario_name,
+    e.population_id,
+
+    /***********************************************************************************************
+    Parameter snapshot fingerprint and payload flags.
+
+    TRUE values indicate that the JSONB payload was captured.
+    ***********************************************************************************************/
+    e.parameter_snapshot_hash,
+
+    e.strategy_params_jsonb IS NOT NULL AS strategy_params_captured_flag,
+    e.product_policy_params_jsonb IS NOT NULL AS product_policy_params_captured_flag,
+    e.run_story_params_jsonb IS NOT NULL AS run_story_params_captured_flag
+
+FROM credit_decisioning_sim.strategy_run_parameter_snapshot e
+
+JOIN k
+    ON e.strategy_set_name = k.strategy_set_name
+   AND e.strategy_name = k.strategy_name
+   AND e.strategy_version = k.strategy_version
+   AND e.module1_scenario_set_name = k.module1_scenario_set_name
+   AND e.module1_scenario_name = k.module1_scenario_name
+   AND e.population_id = k.population_id;
+
+
+
+/***************************************************************************************************
+SECTION 16.8F — REGISTRY-LINKAGE CONSISTENCY DIAGNOSTIC ACROSS EVIDENCE TABLES
+****************************************************************************************************
+
+PURPOSE:
+    Provide a compact post-capture view showing whether each persistent evidence table carries a
+    single, consistent registry identity for the current run.
+
+BUSINESS PURPOSE:
+    Confirm that the evidence layer does not require manual reconstruction of run IDs.
+
+    Section 16.8F answers:
+
+        "Do the executive, validation, parameter, and segment evidence tables all carry one coherent
+         campaign identity for the current run?"
+
+WHY THIS MATTERS:
+    Evidence tables are useful for documentation only if they can be tied back to the same completed
+    campaign run.
+
+    A mismatch in module2_run_id, registry status, validation_evidence_group_id, or showcase fields
+    could cause a future Validation Summary or README note to reference the wrong run.
+
+EXPECTED EVIDENCE OBJECT BEHAVIOR:
+    Each evidence object should show:
+        at least one current-run row,
+        one module2_run_id,
+        one registry match status,
+        one validation evidence group identity when formal registry evidence is present,
+        and zero missing critical registry ID rows.
+
+STATUS LOGIC:
+    REGISTRY_LINKAGE_CAPTURED:
+        Evidence object has at least one current-run row, one distinct module2_run_id, one distinct
+        run_registry_match_status, and no missing critical run ID fields.
+
+    REGISTRY_LINKAGE_REVIEW_REQUIRED:
+        Evidence object is missing rows, has multiple registry identities, or has missing critical
+        registry fields.
+
+FORMAL CAMPAIGN NOTE:
+    Section 16.7 already enforces stronger formal-campaign rules when
+    campaign_registry_required_flag = TRUE.
+
+    Section 16.8F is a compact display diagnostic for review and export.
+
+AD HOC DEVELOPMENT NOTE:
+    If registry fallback is allowed, validation_evidence_group_id may be NULL.
+
+    In that case, review run_registry_match_status so the output is not mistaken for a formal
+    registry-matched campaign run.
+
+SQL MECHANICS:
+    registry_profile:
+        Uses UNION ALL to stack one registry profile row per evidence table.
+
+    COUNT(DISTINCT COALESCE(...)):
+        Detects whether each evidence object carries one unique value or multiple values.
+
+    COUNT(*) FILTER:
+        Counts rows with missing critical registry fields.
+
+    MIN(...):
+        Displays representative registry values after consistency counts confirm uniqueness.
+
+    CASE:
+        Converts profile counts into a readable registry_linkage_status.
+
+BOUNDARY:
+    This query reads evidence tables only.
+
+    It does not modify evidence, archive, latest-run output, or registry rows.
+
+***************************************************************************************************/
+
+WITH k AS (
+    /***********************************************************************************************
+    Current run key.
+
+    Used to scope all evidence-table registry profiles to the current completed run.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_key
+    LIMIT 1
+),
+
+registry_profile AS (
+    /***********************************************************************************************
+    Registry profile for the executive evidence summary.
+
+    Expected:
+        One current-run row and one coherent registry identity.
+    ***********************************************************************************************/
+    SELECT
+        'strategy_run_evidence_summary' AS evidence_object_name,
+
+        COUNT(*) AS current_run_evidence_rows,
+
+        COUNT(DISTINCT COALESCE(module2_run_id, '<NULL>'))
+            AS distinct_module2_run_id_count,
+
+        COUNT(DISTINCT COALESCE(run_registry_match_status, '<NULL>'))
+            AS distinct_registry_match_status_count,
+
+        COUNT(DISTINCT COALESCE(validation_evidence_group_id, '<NULL>'))
+            AS distinct_validation_evidence_group_id_count,
+
+        COUNT(*) FILTER (
+            WHERE module1_run_id IS NULL
+               OR module2_run_id IS NULL
+               OR run_registry_match_status IS NULL
+        ) AS missing_critical_registry_field_rows,
+
+        MIN(module1_run_id) AS module1_run_id,
+        MIN(module2_run_id) AS module2_run_id,
+        MIN(run_sequence_number) AS run_sequence_number,
+        MIN(showcase_id) AS showcase_id,
+        MIN(showcase_name) AS showcase_name,
+        MIN(comparison_group_id) AS comparison_group_id,
+        MIN(validation_evidence_group_id) AS validation_evidence_group_id,
+        MIN(run_registry_match_status) AS run_registry_match_status
+
+    FROM credit_decisioning_sim.strategy_run_evidence_summary e
+
+    JOIN k
+        ON e.strategy_set_name = k.strategy_set_name
+       AND e.strategy_name = k.strategy_name
+       AND e.strategy_version = k.strategy_version
+       AND e.module1_scenario_set_name = k.module1_scenario_set_name
+       AND e.module1_scenario_name = k.module1_scenario_name
+       AND e.population_id = k.population_id
+
+    UNION ALL
+
+    /***********************************************************************************************
+    Registry profile for validation evidence detail.
+
+    Expected:
+        One coherent registry identity across all validation evidence rows for the current run.
+    ***********************************************************************************************/
+    SELECT
+        'strategy_run_validation_evidence' AS evidence_object_name,
+
+        COUNT(*) AS current_run_evidence_rows,
+
+        COUNT(DISTINCT COALESCE(module2_run_id, '<NULL>'))
+            AS distinct_module2_run_id_count,
+
+        COUNT(DISTINCT COALESCE(run_registry_match_status, '<NULL>'))
+            AS distinct_registry_match_status_count,
+
+        COUNT(DISTINCT COALESCE(validation_evidence_group_id, '<NULL>'))
+            AS distinct_validation_evidence_group_id_count,
+
+        COUNT(*) FILTER (
+            WHERE module1_run_id IS NULL
+               OR module2_run_id IS NULL
+               OR run_registry_match_status IS NULL
+        ) AS missing_critical_registry_field_rows,
+
+        MIN(module1_run_id) AS module1_run_id,
+        MIN(module2_run_id) AS module2_run_id,
+        MIN(run_sequence_number) AS run_sequence_number,
+        MIN(showcase_id) AS showcase_id,
+        MIN(showcase_name) AS showcase_name,
+        MIN(comparison_group_id) AS comparison_group_id,
+        MIN(validation_evidence_group_id) AS validation_evidence_group_id,
+        MIN(run_registry_match_status) AS run_registry_match_status
+
+    FROM credit_decisioning_sim.strategy_run_validation_evidence e
+
+    JOIN k
+        ON e.strategy_set_name = k.strategy_set_name
+       AND e.strategy_name = k.strategy_name
+       AND e.strategy_version = k.strategy_version
+       AND e.module1_scenario_set_name = k.module1_scenario_set_name
+       AND e.module1_scenario_name = k.module1_scenario_name
+       AND e.population_id = k.population_id
+
+    UNION ALL
+
+    /***********************************************************************************************
+    Registry profile for parameter snapshot evidence.
+
+    Expected:
+        One current-run row and one coherent registry identity.
+    ***********************************************************************************************/
+    SELECT
+        'strategy_run_parameter_snapshot' AS evidence_object_name,
+
+        COUNT(*) AS current_run_evidence_rows,
+
+        COUNT(DISTINCT COALESCE(module2_run_id, '<NULL>'))
+            AS distinct_module2_run_id_count,
+
+        COUNT(DISTINCT COALESCE(run_registry_match_status, '<NULL>'))
+            AS distinct_registry_match_status_count,
+
+        COUNT(DISTINCT COALESCE(validation_evidence_group_id, '<NULL>'))
+            AS distinct_validation_evidence_group_id_count,
+
+        COUNT(*) FILTER (
+            WHERE module1_run_id IS NULL
+               OR module2_run_id IS NULL
+               OR run_registry_match_status IS NULL
+        ) AS missing_critical_registry_field_rows,
+
+        MIN(module1_run_id) AS module1_run_id,
+        MIN(module2_run_id) AS module2_run_id,
+        MIN(run_sequence_number) AS run_sequence_number,
+        MIN(showcase_id) AS showcase_id,
+        MIN(showcase_name) AS showcase_name,
+        MIN(comparison_group_id) AS comparison_group_id,
+        MIN(validation_evidence_group_id) AS validation_evidence_group_id,
+        MIN(run_registry_match_status) AS run_registry_match_status
+
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot e
+
+    JOIN k
+        ON e.strategy_set_name = k.strategy_set_name
+       AND e.strategy_name = k.strategy_name
+       AND e.strategy_version = k.strategy_version
+       AND e.module1_scenario_set_name = k.module1_scenario_set_name
+       AND e.module1_scenario_name = k.module1_scenario_name
+       AND e.population_id = k.population_id
+
+    UNION ALL
+
+    /***********************************************************************************************
+    Registry profile for product × score segment evidence.
+
+    Expected:
+        One coherent registry identity across all product × score segment rows for the current run.
+    ***********************************************************************************************/
+    SELECT
+        'strategy_run_segment_evidence_summary' AS evidence_object_name,
+
+        COUNT(*) AS current_run_evidence_rows,
+
+        COUNT(DISTINCT COALESCE(module2_run_id, '<NULL>'))
+            AS distinct_module2_run_id_count,
+
+        COUNT(DISTINCT COALESCE(run_registry_match_status, '<NULL>'))
+            AS distinct_registry_match_status_count,
+
+        COUNT(DISTINCT COALESCE(validation_evidence_group_id, '<NULL>'))
+            AS distinct_validation_evidence_group_id_count,
+
+        COUNT(*) FILTER (
+            WHERE module1_run_id IS NULL
+               OR module2_run_id IS NULL
+               OR run_registry_match_status IS NULL
+        ) AS missing_critical_registry_field_rows,
+
+        MIN(module1_run_id) AS module1_run_id,
+        MIN(module2_run_id) AS module2_run_id,
+        MIN(run_sequence_number) AS run_sequence_number,
+        MIN(showcase_id) AS showcase_id,
+        MIN(showcase_name) AS showcase_name,
+        MIN(comparison_group_id) AS comparison_group_id,
+        MIN(validation_evidence_group_id) AS validation_evidence_group_id,
+        MIN(run_registry_match_status) AS run_registry_match_status
+
+    FROM credit_decisioning_sim.strategy_run_segment_evidence_summary e
+
+    JOIN k
+        ON e.strategy_set_name = k.strategy_set_name
+       AND e.strategy_name = k.strategy_name
+       AND e.strategy_version = k.strategy_version
+       AND e.module1_scenario_set_name = k.module1_scenario_set_name
+       AND e.module1_scenario_name = k.module1_scenario_name
+       AND e.population_id = k.population_id
+)
+
+SELECT
+    /***********************************************************************************************
+    Evidence object name and row count.
+
+    current_run_evidence_rows should be greater than zero for every evidence object.
+    ***********************************************************************************************/
+    evidence_object_name,
+    current_run_evidence_rows,
+
+    /***********************************************************************************************
+    Representative registry fields.
+
+    These values are shown after distinct-count diagnostics confirm whether each evidence object is
+    carrying one coherent registry identity.
+    ***********************************************************************************************/
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+    run_registry_match_status,
+
+    /***********************************************************************************************
+    Registry consistency counts.
+
+    Counts greater than one suggest mixed registry identities inside the evidence object.
+    ***********************************************************************************************/
+    distinct_module2_run_id_count,
+    distinct_registry_match_status_count,
+    distinct_validation_evidence_group_id_count,
+    missing_critical_registry_field_rows,
+
+    /***********************************************************************************************
+    Registry linkage status.
+
+    REGISTRY_LINKAGE_CAPTURED:
+        Evidence object has current-run rows, one module2_run_id, one registry match status, one
+        validation evidence group identity, and no missing critical registry fields.
+
+    REGISTRY_LINKAGE_REVIEW_REQUIRED:
+        Evidence object requires review before documentation.
+    ***********************************************************************************************/
+    CASE
+        WHEN current_run_evidence_rows > 0
+         AND distinct_module2_run_id_count = 1
+         AND distinct_registry_match_status_count = 1
+         AND distinct_validation_evidence_group_id_count = 1
+         AND missing_critical_registry_field_rows = 0
+            THEN 'REGISTRY_LINKAGE_CAPTURED'
+
+        ELSE 'REGISTRY_LINKAGE_REVIEW_REQUIRED'
+    END AS registry_linkage_status
+
+FROM registry_profile
+
+ORDER BY evidence_object_name;
+
+
+
+/***************************************************************************************************
+END OF SECTION 16 — STRATEGY RUN EVIDENCE CAPTURE AND EXECUTIVE STORY REGISTER
+
+If execution reaches this point:
+    1. Persistent executive run evidence summary has been created or reused.
+    2. Persistent validation evidence detail has been created or reused.
+    3. Persistent strategy and product-policy parameter snapshot evidence has been created or reused.
+    4. Persistent product × score segment evidence summary has been created or reused.
+    5. Prior evidence rows for the current run key were replaced in the evidence tables only.
+    6. Current Section 14 validation evidence detail was persisted.
+    7. Current strategy, product-policy, and story parameter snapshots were persisted.
+    8. Current product × score segment evidence was persisted.
+    9. Current one-row executive evidence summary was persisted.
+    10. Local Section 16 evidence-capture gatekeepers passed.
+    11. Evidence object row-count diagnostics are available.
+    12. Current executive evidence summary output is available.
+    13. REVIEW / NOT_APPLICABLE validation evidence rows are available for documentation review.
+    14. Product × score companion evidence is available for executive driver review.
+    15. Parameter snapshot diagnostics are available.
+    16. Registry-linkage consistency diagnostics are available.
+    17. Module 3 readiness fields have been captured for future growth / economics design.
+
+Registry evidence now carries:
+    module1_run_id
+    module2_run_id
+    run_sequence_number
+    showcase_id
+    showcase_name
+    comparison_group_id
+    validation_evidence_group_id
+    readme_storyline_label
+    linkedin_post_sequence
+    validation_summary_section_hint
+    run_registry_match_status
+
+Section 16 established:
+    1. Persistent executive story evidence.
+    2. Persistent validation evidence detail.
+    3. Persistent strategy and product-policy parameter snapshots.
+    4. Persistent product × score segment evidence.
+    5. Module 3 readiness fields for future growth / earnings design.
+    6. Product, score-band, and product × score executive driver fields.
+    7. Reason-code storytelling fields for executive interpretation.
+    8. Compact export-ready diagnostics after every run.
+    9. Registry-backed evidence traceability for campaign and validation documentation.
+
+No latest-run output rows have been modified.
+No archive rows have been modified.
+No campaign registry rows have been modified.
+No strategy parameter rows have been modified.
+No product policy parameter rows have been modified.
+No decision outcomes have been recalculated.
+No approved exposure values have been recalculated.
+No approved Expected Loss values have been recalculated.
+No simulated reason codes have been reassigned.
+No revenue logic has been implemented.
+No earnings logic has been implemented.
+No pricing optimization logic has been implemented.
+No funding-cost logic has been implemented.
+No profitability logic has been implemented.
+No capital logic has been implemented.
+No risk-adjusted margin logic has been implemented.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M01081 -->
+
+
+---
+
+<a id="c038-m01083"></a>
+
+### C038-M01083
+
+**Andrew** · 2026-05-10T12:23:52.947000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01083 -->
+Here is the full code after our two commentary and run id hardening passes.  please evaluate.
+<!-- END_MESSAGE C038-M01083 -->
+
+
+**Attachments in export:** `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_patched.sql`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c038-m01118"></a>
+
+### C038-M01118
+
+**ChatGPT** · 2026-05-10T12:32:08.282667-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01118 -->
+I reviewed the uploaded full patched Module 2 SQL as a static code/artifact review. Overall, the file is **very close**, and the run-ID / evidence-traceability architecture is materially stronger than before. I would **not start the full campaign run yet**, because I see two hard blockers and a few important cleanup items. The main file reviewed is your patched SQL upload. fileciteturn141file0
+
+## Executive evaluation
+
+The code now has a strong governance structure:
+
+The **front matter and Section 0/1** are much stronger than a normal SQL script. They clearly explain Module 2’s purpose, boundaries, relation to Module 1, archive grain, evidence grain, campaign registry role, and how the script should be operated. The opening sections now read like a system design artifact, not just executable SQL. fileciteturn141file29
+
+The **run-ID architecture** is conceptually sound. Section 2 establishes the campaign registry and comparison registry framework; Section 3 validates registry readiness; Section 13 uses the comparison registry rather than latest-run inference; Section 15 enriches frontier output with registry metadata; and Section 16 persists registry-linked executive, validation, parameter, and segment evidence. This is exactly the right direction for tying code output to the future Validation Summary. fileciteturn141file28turn141file27turn141file84turn141file76turn141file7
+
+The **commentary level** is generally strong across Sections 0–13 and 15–16. The comments now teach business purpose, SQL purpose, credit-risk interpretation, SQL mechanics, and boundaries. That said, the final stitched file still has one clear Section 14 continuity gap and one hard SQL syntax issue.
+
+## Blocking issues to fix before full campaign run
+
+### 1. Section 16.1D has a SQL syntax error: missing data type
+
+In the persistent table definition for:
+
+```sql
+credit_decisioning_sim.strategy_run_segment_evidence_summary
+```
+
+this column is missing a type:
+
+```sql
+avg_apr_proxy_offer_rows,
+```
+
+It should be:
+
+```sql
+avg_apr_proxy_offer_rows NUMERIC,
+```
+
+Because this is inside `CREATE TABLE IF NOT EXISTS`, it will fail on a fresh environment where that persistent table does not already exist. This is a true blocker.
+
+### 2. Section 14.11–14.13 are missing from the final stitched file
+
+The file jumps from:
+
+```sql
+SECTION 14.10 — APPROVED EXPOSURE AND EXPECTED LOSS QA
+```
+
+directly to:
+
+```sql
+SECTION 14.14 — REASON-CODE COVERAGE AND ALIGNMENT
+```
+
+The end of Section 14.10 even says the next section should be Section 14.11 for counteroffer feasibility / counteroffer reason-code review, but the next actual header is 14.14. That means the standalone QA blocks for the middle of Section 14 were not stitched into the final code.
+
+The validation status summary near the end still contains counteroffer, manual-review, and decline diagnostic logic, but the user-facing result grids for those topics are missing. Given the stated goal of elite instructional SQL, I would restore these before campaign execution:
+
+```text
+SECTION 14.11 — COUNTEROFFER VALIDATION DIAGNOSTICS
+SECTION 14.12 — MANUAL-REVIEW VALIDATION DIAGNOSTICS
+SECTION 14.13 — DECLINE / POLICY-STOP VALIDATION DIAGNOSTICS
+```
+
+This is not just numbering cosmetics. These sections are important review surfaces for interpreting counteroffer feasibility, unresolved manual-review behavior, and final no-offer / policy-stop behavior.
+
+## Important non-blocking fixes
+
+### 3. Section 16 schema hardening is not fully migration-safe
+
+The evidence tables are persistent and intentionally not dropped by Section 1. That is good governance. But `CREATE TABLE IF NOT EXISTS` will not alter an existing evidence table. Section 16.1E adds many registry-linkage columns, but it does **not** add every column that later inserts may reference.
+
+The most visible gap I found is:
+
+```sql
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+```
+
+adds `showcase_id`, but does **not** add:
+
+```sql
+showcase_name
+```
+
+even though Section 16 inserts and queries it. If your local database already has an older `strategy_run_evidence_summary` table without `showcase_name`, Section 16 can fail even though the fresh `CREATE TABLE` definition includes the field.
+
+Recommended fix: either do a one-time drop/recreate of Section 16 evidence tables before the formal campaign, or expand Section 16.1E into a full schema-hardening block for every column used by the current inserts.
+
+For a formal governed script, I prefer expanding the `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` block so reruns are safe.
+
+### 4. Section 16.1F creates unique indexes before Section 16.2 deletes/replaces current-run evidence
+
+The script creates unique indexes before deleting/replacing evidence rows for the current run key. On a clean database, this is fine. On an iterative development database, if duplicate evidence rows already exist from earlier drafts, unique index creation can fail before Section 16.2 gets the chance to clean up the current key.
+
+This is acceptable if you want the index to function as a hard governance gate, but operationally it can be frustrating during development. Two options:
+
+Keep as-is if you want duplicate evidence rows anywhere in the table to fail fast.
+
+Move unique index creation after Section 16.2 if you want current-key replacement to clean up prior duplicates before enforcing uniqueness.
+
+For the campaign run, I would either dedupe/drop evidence tables first or keep the index order and treat any failure as a real cleanup requirement.
+
+### 5. Section 15 baseline join is adequate for V1_0 but should be version-explicit for future versions
+
+In Section 15.3, `baseline_reference` is selected as `strategy_name = 'BASELINE_STRATEGY'` and later joined by strategy set and Module 1 scenario / population. It does not appear to require matching `strategy_version`.
+
+For the current `V1_0` campaign, this is probably fine. For future campaigns where multiple baseline versions may exist in the archive, this can duplicate rows or compare a challenger to the wrong baseline version.
+
+Recommended future hardening: include baseline version selection explicitly, or enforce one active baseline version per strategy set / Module 1 scenario / population frontier group.
+
+## Commentary / documentation assessment
+
+The code is now much closer to the “elite commentary” level you wanted. The best parts are:
+
+Section 0 now clearly states purpose, non-use boundaries, estimated-PD proxy interpretation, archive/evidence architecture, and operating workflow. fileciteturn141file45
+
+Section 2 now properly frames parameters and campaign registry IDs as governed metadata, not substitutes for technical lineage. fileciteturn141file28
+
+Section 13 is much stronger because comparison is no longer inferred from the latest-run table. It uses the persistent comparison registry and includes the source-field consistency diagnostic. fileciteturn141file17
+
+Section 15 is directionally strong: it explains frontier concepts, archive dependency, baseline-relative deltas, registry enrichment, reason-code movement, and executive frontier interpretation. fileciteturn141file9
+
+Section 16 is now conceptually excellent: it defines persistent evidence, carries run IDs into validation / parameter / segment / executive evidence, and makes Module 3 readiness explicit without pretending to calculate profitability. fileciteturn141file7
+
+The main commentary weakness is not style; it is stitching consistency. The missing Section 14.11–14.13 block creates a visible discontinuity and removes important instructional QA outputs.
+
+## My readiness recommendation
+
+I would mark this as:
+
+```text
+STATUS: NOT YET CAMPAIGN-RUN READY
+REASON: TWO REQUIRED PATCHES BEFORE FULL RUN
+```
+
+Required before full campaign run:
+
+```text
+1. Add NUMERIC type to avg_apr_proxy_offer_rows in strategy_run_segment_evidence_summary.
+2. Restore Section 14.11, 14.12, and 14.13 into the final stitched file.
+```
+
+Strongly recommended before full campaign run:
+
+```text
+3. Add showcase_name to Section 16.1E evidence_summary schema hardening.
+4. Consider full evidence-table schema hardening or one-time evidence-table rebuild.
+5. Decide whether unique indexes should remain before Section 16.2 cleanup.
+```
+
+Once those are fixed, I would run a staged test:
+
+```text
+1. Fresh database / clean schema smoke test through Section 16.
+2. Rerun same current strategy key to test archive replacement and evidence replacement.
+3. Run baseline strategy + tighter synthetic-risk strategy to confirm Section 13 comparison.
+4. Run Section 14 and confirm tmp_m2_validation_status_summary is populated.
+5. Run Section 15 and confirm frontier registry linkage.
+6. Run Section 16 and confirm evidence tables carry module1_run_id, module2_run_id, showcase_id, comparison_group_id, and validation_evidence_group_id.
+```
+
+My overall conclusion: the design is strong and the hardening passes materially improved traceability, but the final stitched SQL needs a small technical patch and a Section 14 content restoration before it is safe to use as the canonical campaign-run file.
+<!-- END_MESSAGE C038-M01118 -->
+
+
+---
+
+<a id="c038-m01120"></a>
+
+### C038-M01120
+
+**Andrew** · 2026-05-10T12:37:16.521000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01120 -->
+you are right.  we forgot 14.11 - 14.13.  please don't give me a download and keep this elite level! let's do one more pass for commentary. Please note that besides the headers we want instructional commentary that details how the sql logic is working. the commentary/headers are supposed to do 3 main things: 1) Advise on the who/what/why/how to run and interpret the code and parameters; 2) teach the credit risk concepts and nuts and bolts; 3) teach how the sql logic is working. folks going through this code should not only understand how to use/interpret but also should learn about credit risk analytics and SQL. this is the elite level we are striving for. besides header comments, we expect in line comments explaining the sql logic and line by line process. here is the sections 14.11-14.13 again. if suggested changes, return the full copy paste of those sections in one copy paste block.
+<!-- END_MESSAGE C038-M01120 -->
+
+
+**Attachments in export:** `Pasted text(169).txt`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c038-m01123"></a>
+
+### C038-M01123
+
+**ChatGPT** · 2026-05-10T12:42:27.591238-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01123 -->
+Using your uploaded **Sections 14.11–14.13** as the base, I recommend inserting the following full copy-paste block between **Section 14.10** and **Section 14.14**. I preserved the diagnostic intent and strengthened the commentary, SQL teaching, interpretation guidance, and convention checks. I also tightened a few convention diagnostics with `IS DISTINCT FROM` and explicit `NULL` checks so missing values are not accidentally ignored by SQL three-valued logic. fileciteturn142file15
+
+```sql
+/***************************************************************************************************
+SECTION 14.11 — COUNTEROFFER VALIDATION DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that final COUNTEROFFER outcomes are feasible, explainable, and consistent with the
+    governed reduced-exposure treatment framework.
+
+    Section 14.11 answers:
+
+        "When Module 2 assigns a final COUNTEROFFER outcome, did the row pass reduced-exposure
+         feasibility testing, and does the final exposure treatment behave as intended?"
+
+SQL PURPOSE:
+    1. Summarize preliminary and final counteroffer populations.
+    2. Calculate counteroffer feasibility pass / fail counts and pass rate.
+    3. Review final counteroffer exposure reduction, requested PTI, approved PTI, requested Expected
+       Loss, approved Expected Loss, and approved Expected Loss reduction.
+    4. Review failed preliminary counteroffer reasons.
+    5. Review counteroffer feasibility by product.
+    6. Review counteroffer feasibility by score band.
+    7. Validate final counteroffer output conventions.
+    8. Review final COUNTEROFFER simulated reason-code distribution.
+
+WHY THIS SECTION MATTERS:
+    A preliminary COUNTEROFFER route is not a final counteroffer.
+
+    Module 2 intentionally separates:
+        preliminary routing,
+        exposure treatment,
+        feasibility testing,
+        final decision resolution,
+        and simulated reason-code assignment.
+
+    Section 14.11 verifies that this staged design produced coherent final counteroffer outcomes.
+
+COUNTEROFFER CREDIT RISK CONCEPT:
+    A counteroffer is a reduced-exposure strategy treatment.
+
+    It is intended to preserve some simulated positive offer exposure while reducing:
+        approved amount,
+        approved PTI,
+        approved Expected Loss,
+        or product-level exposure pressure.
+
+    It can be a useful simulated strategy tool when a full requested approval is too risky or too
+    unaffordable, but a smaller approved exposure is still feasible.
+
+EXPECTED FINAL COUNTEROFFER BEHAVIOR:
+    Final COUNTEROFFER rows should generally show:
+        approved_amount > 0;
+        approved_amount < requested_amount;
+        counteroffer_amount = approved_amount;
+        exposure_reduction_flag = TRUE;
+        exposure_reduction_pct > 0;
+        approved_payment_to_income_ratio <= counteroffer_target_pti;
+        approved_expected_loss_amount <= product_approved_el_cap;
+        counteroffer_feasibility_pass_flag = TRUE;
+        primary_reason_family = COUNTEROFFER.
+
+WHAT TO LOOK FOR:
+    final_counteroffer_rows:
+        How many rows resolved to final reduced-exposure positive offer outcomes.
+
+    preliminary_counteroffer_rows:
+        How many rows were initially routed for counteroffer feasibility testing.
+
+    feasible_counteroffers:
+        How many preliminary counteroffer rows passed feasibility testing.
+
+    failed_counteroffers:
+        How many preliminary counteroffer rows failed feasibility testing and therefore had to be
+        resolved to MANUAL_REVIEW or DECLINE by Section 9.
+
+    counteroffer_feasibility_pass_rate:
+        The share of preliminary counteroffer candidates that became feasible.
+
+    avg_pti_reduction_for_final_counteroffers:
+        Whether counteroffer treatment improved affordability.
+
+    avg_approved_el_reduction_pct_for_final_counteroffers:
+        Whether counteroffer treatment reduced approved-exposure Expected Loss.
+
+REVIEW TRIGGERS:
+    final_counteroffer_without_feasibility_pass_rows > 0:
+        Final counteroffer outcomes may be bypassing feasibility checks.
+
+    final_counteroffer_amount_violation_rows > 0:
+        Final counteroffer exposure conventions may be broken.
+
+    final_counteroffer_approved_pti_above_target_rows > 0:
+        Reduced exposure did not satisfy governed approved PTI target.
+
+    final_counteroffer_approved_el_above_product_cap_rows > 0:
+        Reduced exposure did not satisfy product approved Expected Loss cap.
+
+    final_counteroffer_reason_family_violation_rows > 0:
+        Final reason-code family does not reconcile to final decision outcome.
+
+COUNTEROFFER BOUNDARY:
+    COUNTEROFFER is a simulated positive offer-exposure outcome for synthetic applicants.
+
+    It does not imply:
+        operational negotiation,
+        booked exposure,
+        funded exposure,
+        production approval,
+        operational account creation,
+        customer communication,
+        real applicant treatment,
+        or real adverse-action treatment.
+
+APPROVED PTI BOUNDARY:
+    approved_payment_to_income_ratio is a Module 2 strategy-simulation affordability proxy.
+
+    It is not:
+        a contractual payment ratio,
+        a servicing calculation,
+        a billing-engine output,
+        or a customer payment quote.
+
+EXPECTED LOSS BOUNDARY:
+    requested_expected_loss_amount is requested-exposure Expected Loss carried from Module 1.
+
+    approved_expected_loss_amount is approved-exposure Expected Loss after Module 2 final exposure
+    treatment.
+
+    Section 14.11 validates behavior and conventions.
+
+    It does not recalculate Expected Loss.
+
+REASON-CODE BOUNDARY:
+    COUNTEROFFER reason codes are simulated strategy explanation codes.
+
+    They support:
+        QA review,
+        transparency,
+        strategy interpretation,
+        decision-path traceability,
+        executive evidence capture,
+        and validation documentation.
+
+    They are not:
+        regulatory notices,
+        customer communications,
+        adverse-action reasons,
+        fair-lending conclusions,
+        or production compliance determinations.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    COUNT(*) FILTER:
+        Counts rows that meet specific conditions inside one aggregate query.
+
+    AVG(...) FILTER:
+        Calculates averages only for the relevant final decision outcome.
+
+    NULLIF:
+        Prevents divide-by-zero when calculating feasibility pass rates.
+
+    ROUND:
+        Makes percentage outputs easier to read.
+
+    GROUP BY:
+        Converts applicant-level rows into product, score-band, failure-reason, or reason-code
+        summaries.
+
+    IS DISTINCT FROM:
+        Performs NULL-safe convention checks.
+
+READ-ONLY BOUNDARY:
+    Section 14.11 does not modify latest-run rows.
+    Section 14.11 does not modify archive rows.
+    Section 14.11 does not recalculate decisions.
+    Section 14.11 does not recalculate counteroffer exposure.
+    Section 14.11 does not recalculate approved PTI.
+    Section 14.11 does not recalculate approved Expected Loss.
+    Section 14.11 does not reassign simulated reason codes.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11A Counteroffer summary.
+
+Business purpose:
+    Provide the primary counteroffer feasibility and treatment profile for the latest-run output.
+
+SQL logic:
+    This query reads the applicant-level latest-run table and calculates:
+        preliminary counteroffer count,
+        feasible preliminary counteroffer count,
+        failed preliminary counteroffer count,
+        final counteroffer count,
+        final counteroffer exposure reduction,
+        final counteroffer PTI movement,
+        and final counteroffer Expected Loss movement.
+
+How to interpret:
+    preliminary_counteroffer_rows:
+        Rows routed to reduced-exposure feasibility testing.
+
+    feasible_counteroffers:
+        Preliminary counteroffer rows that passed Section 8 feasibility testing.
+
+    failed_counteroffers:
+        Preliminary counteroffer rows that failed Section 8 feasibility testing.
+
+    final_counteroffer_rows:
+        Rows resolved to final COUNTEROFFER after Section 9 final decision resolution.
+
+Review trigger:
+    If preliminary_counteroffer_rows is materially larger than final_counteroffer_rows, review
+    Section 8 failure reasons and Section 9 failed_counteroffer_resolution behavior.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    Final COUNTEROFFER rows:
+        final reduced-exposure positive offer outcomes.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS final_counteroffer_rows,
+
+    /***********************************************************************************************
+    Preliminary COUNTEROFFER rows:
+        rows sent to reduced-exposure feasibility testing before final decision resolution.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE preliminary_decision_outcome = 'COUNTEROFFER')
+        AS preliminary_counteroffer_rows,
+
+    /***********************************************************************************************
+    Feasible preliminary counteroffers:
+        preliminary counteroffer candidates that passed Section 8 feasibility rules.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    ) AS feasible_counteroffers,
+
+    /***********************************************************************************************
+    Failed preliminary counteroffers:
+        preliminary counteroffer candidates that could not support a viable reduced-exposure offer.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS FALSE
+    ) AS failed_counteroffers,
+
+    /***********************************************************************************************
+    Feasibility pass rate:
+        feasible preliminary counteroffers / preliminary counteroffer candidates.
+
+    SQL mechanics:
+        NULLIF prevents divide-by-zero when no preliminary counteroffers exist.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    )::NUMERIC
+    / NULLIF(
+        COUNT(*) FILTER (WHERE preliminary_decision_outcome = 'COUNTEROFFER'),
+        0
+    ) AS counteroffer_feasibility_pass_rate,
+
+    /***********************************************************************************************
+    Average exposure reduction for final counteroffers.
+
+    Interpretation:
+        Higher values mean counteroffers reduced requested exposure more aggressively.
+    ***********************************************************************************************/
+    AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_exposure_reduction_pct_for_final_counteroffers,
+
+    /***********************************************************************************************
+    Requested PTI for final counteroffers.
+
+    Interpretation:
+        Shows the original requested affordability burden before reduced-exposure treatment.
+    ***********************************************************************************************/
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_requested_pti_for_final_counteroffers,
+
+    /***********************************************************************************************
+    Approved PTI for final counteroffers.
+
+    Interpretation:
+        Should generally be lower than requested PTI and at or below counteroffer target.
+    ***********************************************************************************************/
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_pti_for_final_counteroffers,
+
+    /***********************************************************************************************
+    PTI reduction for final counteroffers.
+
+    Formula:
+        requested PTI - approved PTI
+    ***********************************************************************************************/
+    AVG(
+        requested_payment_to_income_ratio - approved_payment_to_income_ratio
+    ) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_pti_reduction_for_final_counteroffers,
+
+    /***********************************************************************************************
+    Requested Expected Loss for final counteroffers.
+
+    Interpretation:
+        Requested-exposure risk before Module 2 reduced exposure.
+    ***********************************************************************************************/
+    AVG(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_requested_expected_loss_for_final_counteroffers,
+
+    /***********************************************************************************************
+    Approved Expected Loss for final counteroffers.
+
+    Interpretation:
+        Approved-exposure Expected Loss after reduced exposure.
+    ***********************************************************************************************/
+    AVG(approved_expected_loss_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_expected_loss_for_final_counteroffers,
+
+    /***********************************************************************************************
+    Approved Expected Loss reduction percentage for final counteroffers.
+
+    Interpretation:
+        Quantifies how much approved-exposure Expected Loss was reduced relative to requested
+        exposure.
+    ***********************************************************************************************/
+    AVG(approved_el_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_el_reduction_pct_for_final_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11B Counteroffer feasibility failure reason distribution.
+
+Business purpose:
+    Explain why preliminary COUNTEROFFER rows failed feasibility testing.
+
+SQL logic:
+    The WHERE clause restricts the population to preliminary counteroffer rows that failed Section 8
+    feasibility testing.
+
+    GROUP BY creates one row per feasibility failure reason.
+
+    The window SUM(COUNT(*)) OVER () creates the denominator for the percent-of-failed-candidates
+    calculation.
+
+What to look for:
+    Concentration in one failure reason may explain why preliminary counteroffer candidates did not
+    become final counteroffer outcomes.
+
+Review triggers:
+    High concentration in:
+        COUNTEROFFER_PTI_STILL_ABOVE_TARGET:
+            approved exposure still did not satisfy affordability.
+
+        COUNTEROFFER_APPROVED_EL_ABOVE_PRODUCT_CAP:
+            approved exposure still exceeded approved Expected Loss cap.
+
+        COUNTEROFFER_BELOW_PRODUCT_MINIMUM:
+            feasible reduced exposure fell below product minimum.
+
+        COUNTEROFFER_EXCEEDS_MAX_REDUCTION:
+            required exposure reduction was too large.
+
+Boundary:
+    counteroffer_feasibility_failure_reason is a Section 8 feasibility diagnostic.
+
+    It is not a final simulated reason code and not customer-facing language.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_feasibility_failure_reason,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_failed_preliminary_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+  AND counteroffer_feasibility_pass_flag IS FALSE
+
+GROUP BY counteroffer_feasibility_failure_reason
+
+ORDER BY
+    row_count DESC,
+    counteroffer_feasibility_failure_reason;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11C Product × counteroffer feasibility summary.
+
+Business purpose:
+    Review how counteroffer feasibility varies by product.
+
+Credit risk interpretation:
+    Product type can materially affect counteroffer feasibility because product policies define:
+        maximum approved amount,
+        minimum approved amount,
+        minimum counteroffer percentage,
+        maximum exposure reduction,
+        approved Expected Loss cap,
+        and counteroffer target PTI.
+
+SQL logic:
+    The WHERE clause restricts the query to preliminary counteroffer candidates.
+
+    GROUP BY product_type_policy_key and counteroffer_feasibility_pass_flag separates passed and
+    failed counteroffer candidates by product.
+
+What to look for:
+    Products with low feasibility pass rates may be constrained by product caps, product minimums,
+    approved Expected Loss caps, or affordability targets.
+
+Review trigger:
+    If one product dominates failed counteroffers, review Section 2 product-policy parameters and
+    Section 8 feasibility failure reasons.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag,
+
+    /***********************************************************************************************
+    Preliminary counteroffer candidates by product and feasibility result.
+    ***********************************************************************************************/
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    /***********************************************************************************************
+    Requested exposure profile for counteroffer candidates.
+    ***********************************************************************************************/
+    AVG(requested_amount) AS avg_requested_amount,
+
+    /***********************************************************************************************
+    Approved exposure profile for final counteroffers.
+
+    FILTER keeps this average focused on rows that actually became final COUNTEROFFER.
+    ***********************************************************************************************/
+    AVG(approved_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_amount_for_final_counteroffers,
+
+    AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_exposure_reduction_pct_for_final_counteroffers,
+
+    /***********************************************************************************************
+    Requested and approved affordability profile.
+    ***********************************************************************************************/
+    AVG(requested_payment_to_income_ratio)
+        AS avg_requested_payment_to_income_ratio,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_pti_for_final_counteroffers,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss profile.
+
+    requested_expected_loss_amount:
+        requested-exposure Expected Loss.
+
+    approved_expected_loss_amount:
+        approved-exposure Expected Loss after counteroffer treatment.
+    ***********************************************************************************************/
+    AVG(requested_expected_loss_amount)
+        AS avg_requested_expected_loss_amount,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_expected_loss_for_final_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag
+
+ORDER BY
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11D Score band × counteroffer feasibility summary.
+
+Business purpose:
+    Review how counteroffer feasibility varies by borrower-quality segment.
+
+Credit risk interpretation:
+    Score band affects synthetic estimated-risk ordering and often affects whether a reduced-exposure
+    treatment can satisfy approved Expected Loss constraints.
+
+SQL logic:
+    The WHERE clause restricts the query to preliminary counteroffer candidates.
+
+    GROUP BY score_band_policy_key and counteroffer_feasibility_pass_flag separates passed and failed
+    counteroffer candidates by borrower-quality segment.
+
+What to look for:
+    Lower score bands may show lower feasibility if approved Expected Loss remains above product cap
+    even after reduced exposure.
+
+Review trigger:
+    If weaker score bands have high preliminary counteroffer volume but low feasibility, review:
+        synthetic estimated-risk thresholds,
+        product approved Expected Loss caps,
+        approved exposure reductions,
+        and final reason-code distribution.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+    counteroffer_feasibility_pass_flag,
+
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    /***********************************************************************************************
+    Synthetic estimated-risk proxy and requested affordability profile by score band.
+    ***********************************************************************************************/
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+
+    /***********************************************************************************************
+    Approved PTI for rows that became final COUNTEROFFER.
+    ***********************************************************************************************/
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_pti_for_final_counteroffers,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss profile.
+    ***********************************************************************************************/
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_expected_loss_for_final_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    score_band_policy_key,
+    counteroffer_feasibility_pass_flag
+
+ORDER BY
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11E Final counteroffer convention diagnostic.
+
+Business purpose:
+    Validate that every final COUNTEROFFER row follows the locked final-output conventions.
+
+Expected result:
+    All violation counts should be zero.
+
+SQL logic:
+    Each COUNT(*) FILTER checks one final counteroffer convention.
+
+    IS DISTINCT FROM is used where NULL-safe equality matters.
+
+Important patch:
+    The approved PTI and approved Expected Loss checks explicitly count NULL values as violations.
+
+    Without explicit NULL checks, SQL comparisons such as approved_payment_to_income_ratio >
+    counteroffer_target_pti would not count NULL values as true violations because SQL treats them as
+    unknown.
+
+Review trigger:
+    Any non-zero count should be reviewed before documentation.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    Final counteroffers should have passed Section 8 feasibility testing.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS DISTINCT FROM TRUE
+    ) AS final_counteroffer_without_feasibility_pass_rows,
+
+    /***********************************************************************************************
+    Final counteroffers should have positive approved amount below requested amount.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_amount IS NULL
+             OR approved_amount <= 0
+             OR approved_amount >= requested_amount
+          )
+    ) AS final_counteroffer_amount_violation_rows,
+
+    /***********************************************************************************************
+    counteroffer_amount should equal approved_amount for final counteroffers.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_amount IS DISTINCT FROM approved_amount
+    ) AS final_counteroffer_amount_mismatch_rows,
+
+    /***********************************************************************************************
+    Exposure reduction should be present for final counteroffers.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND exposure_reduction_flag IS DISTINCT FROM TRUE
+    ) AS final_counteroffer_exposure_reduction_flag_violation_rows,
+
+    /***********************************************************************************************
+    Exposure reduction percentage should be positive for final counteroffers.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                exposure_reduction_pct IS NULL
+             OR exposure_reduction_pct <= 0
+          )
+    ) AS final_counteroffer_exposure_reduction_pct_violation_rows,
+
+    /***********************************************************************************************
+    Approved PTI should exist and should not exceed the governed target.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_payment_to_income_ratio IS NULL
+             OR approved_payment_to_income_ratio > counteroffer_target_pti
+          )
+    ) AS final_counteroffer_approved_pti_above_target_rows,
+
+    /***********************************************************************************************
+    Approved Expected Loss should exist and should not exceed product approved-exposure cap.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_expected_loss_amount IS NULL
+             OR approved_expected_loss_amount > product_approved_el_cap
+          )
+    ) AS final_counteroffer_approved_el_above_product_cap_rows,
+
+    /***********************************************************************************************
+    Final COUNTEROFFER rows should use COUNTEROFFER reason family.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND primary_reason_family IS DISTINCT FROM 'COUNTEROFFER'
+    ) AS final_counteroffer_reason_family_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11F Counteroffer primary reason-code distribution.
+
+Business purpose:
+    Show which simulated counteroffer explanation codes dominate final COUNTEROFFER rows.
+
+SQL logic:
+    The WHERE clause restricts the population to final COUNTEROFFER rows.
+
+    GROUP BY primary_reason_code produces one row per simulated explanation code.
+
+    The window SUM(COUNT(*)) OVER () calculates the denominator for percent-of-final-counteroffers.
+
+What to look for:
+    High concentration in one reason code may be expected for a targeted strategy, but it should be
+    explained.
+
+Review trigger:
+    If one reason code dominates counteroffers, review whether the strategy parameter change was
+    intended to create that concentration.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    primary_reason_code,
+
+    COUNT(*) AS final_counteroffer_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_final_counteroffer_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'COUNTEROFFER'
+
+GROUP BY primary_reason_code
+
+ORDER BY
+    final_counteroffer_rows DESC,
+    primary_reason_code;
+
+
+
+/***************************************************************************************************
+SECTION 14.12 — MANUAL REVIEW VALIDATION DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that MANUAL_REVIEW outcomes remain unresolved, explainable, and concentrated in
+    strategy patterns where automated final approval, counteroffer, or no-offer resolution was not
+    completed.
+
+    Section 14.12 answers:
+
+        "Are final MANUAL_REVIEW rows behaving like unresolved simulated strategy outcomes, and are
+         they explainable through routing, reason codes, mixed-signal profiles, borderline profiles,
+         or failed counteroffer feasibility?"
+
+SQL PURPOSE:
+    1. Summarize final MANUAL_REVIEW rows and manual-review rate.
+    2. Review average synthetic estimated-risk proxy, DTI, requested PTI, and requested Expected Loss
+       for manual-review rows.
+    3. Count failed preliminary counteroffers that resolved to MANUAL_REVIEW.
+    4. Count mixed-signal manual-review rows.
+    5. Count borderline manual-review rows.
+    6. Review manual-review rows by decision path.
+    7. Review manual-review rows by primary reason code.
+    8. Review manual-review rows by mixed-signal profile type.
+    9. Review manual-review rows by borderline profile flag.
+    10. Review failed-counteroffer-to-manual-review diagnostics.
+    11. Validate unresolved-exposure conventions for final MANUAL_REVIEW rows.
+    12. Validate manual-review reason-family alignment.
+
+WHY MANUAL REVIEW EXISTS IN THIS SIMULATION:
+    MANUAL_REVIEW is used when the simulated strategy does not produce:
+        a clean final APPROVE,
+        a feasible final COUNTEROFFER,
+        or a final no-offer / policy-stop outcome.
+
+    It is intentionally unresolved.
+
+CREDIT RISK INTERPRETATION:
+    Manual review may concentrate in:
+        borderline synthetic risk profiles,
+        mixed-signal profiles,
+        severe requested-structure stress,
+        residual cases,
+        or failed counteroffer cases when failed_counteroffer_resolution = MANUAL_REVIEW.
+
+    A high manual-review rate may represent operational burden in a real strategy design context,
+    but in this module it remains a simulated unresolved strategy outcome.
+
+EXPECTED FINAL MANUAL-REVIEW BEHAVIOR:
+    Final MANUAL_REVIEW rows should generally show:
+        approved_amount IS NULL;
+        counteroffer_amount IS NULL;
+        approved_monthly_payment_proxy IS NULL;
+        approved_payment_to_income_ratio IS NULL;
+        approved_expected_loss_amount IS NULL;
+        approved_el_reduction_amount IS NULL;
+        approved_el_reduction_pct IS NULL;
+        simulated_offer_exposure_flag = FALSE;
+        primary_reason_family = MANUAL_REVIEW.
+
+WHAT TO LOOK FOR:
+    manual_review_rate:
+        Overall unresolved outcome burden.
+
+    failed_counteroffer_to_manual_review_rows:
+        How many unresolved rows came from failed counteroffer feasibility.
+
+    mixed_signal_manual_review_rows:
+        Whether realistic overlapping signals explain manual-review routing.
+
+    borderline_manual_review_rows:
+        Whether threshold-adjacent profiles explain manual-review routing.
+
+    manual_review_exposure_convention_violation_rows:
+        Should be zero.
+
+    manual_review_reason_family_alignment_violation_rows:
+        Should be zero.
+
+REVIEW TRIGGERS:
+    High manual_review_rate:
+        Review routing hierarchy, failed_counteroffer_resolution, mixed-signal behavior, and product
+        / score concentration.
+
+    High failed_counteroffer_to_manual_review_rows:
+        Review Section 8 feasibility failure reasons and whether strategy should resolve failed
+        counteroffers to MANUAL_REVIEW or DECLINE.
+
+    manual_review_exposure_convention_violation_rows > 0:
+        Final unresolved-output conventions are broken.
+
+    manual_review_reason_family_alignment_violation_rows > 0:
+        Reason-code assignment does not reconcile to final outcome.
+
+MANUAL REVIEW BOUNDARY:
+    MANUAL_REVIEW is a simulated unresolved strategy outcome.
+
+    It is not:
+        a real operational review queue,
+        a completed underwriting review,
+        a production hold queue,
+        real applicant treatment,
+        customer communication,
+        or a final adverse-action decision.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    FILTER:
+        Separates manual-review rows from the full latest-run population.
+
+    GROUP BY:
+        Summarizes manual-review rows by path, reason code, mixed-signal type, and borderline flag.
+
+    ROUND:
+        Presents percent-of-manual-review rows for readable diagnostics.
+
+    IS DISTINCT FROM:
+        Performs NULL-safe reason-family and convention validation.
+
+READ-ONLY BOUNDARY:
+    Section 14.12 does not modify latest-run rows.
+    Section 14.12 does not modify archive rows.
+    Section 14.12 does not resolve manual-review rows.
+    Section 14.12 does not recalculate final decisions.
+    Section 14.12 does not recalculate approved exposure.
+    Section 14.12 does not recalculate approved Expected Loss.
+    Section 14.12 does not reassign simulated reason codes.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12A Manual review summary.
+
+Business purpose:
+    Provide the primary unresolved-outcome profile for the latest-run output.
+
+SQL logic:
+    This query calculates manual-review count, rate, average risk / affordability profile, and key
+    diagnostic source counts.
+
+How to interpret:
+    manual_review_rows:
+        Number of rows with unresolved final simulated outcome.
+
+    manual_review_rate:
+        Unresolved share of the current latest-run population.
+
+    failed_counteroffer_to_manual_review_rows:
+        Preliminary counteroffer rows that failed feasibility and resolved to MANUAL_REVIEW.
+
+    mixed_signal_manual_review_rows:
+        Manual-review rows with realistic conflicting applicant / product / affordability signals.
+
+    borderline_manual_review_rows:
+        Manual-review rows near governed thresholds.
+
+Review trigger:
+    Large manual-review populations should be explained before executive or validation narrative.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS manual_review_rows,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+    /***********************************************************************************************
+    Synthetic risk, DTI, affordability, and requested Expected Loss profile for unresolved rows.
+    ***********************************************************************************************/
+    AVG(estimated_pd) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_synthetic_estimated_pd_proxy_manual_review,
+
+    AVG(debt_to_income_ratio) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_debt_to_income_ratio_manual_review,
+
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_requested_payment_to_income_ratio_manual_review,
+
+    AVG(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_requested_expected_loss_amount_manual_review,
+
+    /***********************************************************************************************
+    Failed counteroffer-to-manual-review count.
+
+    Interpretation:
+        These rows were routed to counteroffer, failed feasibility, and were resolved to unresolved
+        manual review.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS FALSE
+    ) AS failed_counteroffer_to_manual_review_rows,
+
+    /***********************************************************************************************
+    Mixed-signal manual-review count.
+
+    Interpretation:
+        Mixed profiles can be valid unresolved cases when signals conflict.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND mixed_signal_profile_type <> 'NO_MIXED_SIGNAL_PROFILE'
+    ) AS mixed_signal_manual_review_rows,
+
+    /***********************************************************************************************
+    Borderline manual-review count.
+
+    Interpretation:
+        Threshold-adjacent cases may route to unresolved manual review depending on strategy rules.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND borderline_profile_flag IS TRUE
+    ) AS borderline_manual_review_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12B Manual review by decision path.
+
+Business purpose:
+    Identify which final decision paths explain unresolved MANUAL_REVIEW outcomes.
+
+SQL logic:
+    The WHERE clause restricts the result to final MANUAL_REVIEW rows.
+
+    GROUP BY decision_path and decision_resolution_source shows how manual-review outcomes were
+    produced.
+
+What to look for:
+    High concentration in failed-counteroffer paths may indicate that counteroffer feasibility is
+    driving unresolved outcome burden.
+
+    High concentration in residual or mixed-signal paths may indicate routing hierarchy conservatism.
+
+Boundary:
+    decision_path is an internal simulated strategy diagnostic, not external communication text.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_path,
+    decision_resolution_source,
+
+    COUNT(*) AS manual_review_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_manual_review_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+
+GROUP BY
+    decision_path,
+    decision_resolution_source
+
+ORDER BY
+    manual_review_rows DESC,
+    decision_path,
+    decision_resolution_source;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12C Manual review by primary reason code.
+
+Business purpose:
+    Show which simulated explanation codes dominate final MANUAL_REVIEW rows.
+
+SQL logic:
+    The WHERE clause restricts the result to final MANUAL_REVIEW rows.
+
+    GROUP BY primary_reason_code creates one row per simulated explanation code.
+
+What to look for:
+    A dominant manual-review reason code may be expected for a specific strategy, but it should be
+    explainable through routing, mixed-signal profiles, or failed counteroffer behavior.
+
+Boundary:
+    These reason codes are simulated strategy explanation codes only.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    primary_reason_code,
+
+    COUNT(*) AS manual_review_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_manual_review_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+
+GROUP BY primary_reason_code
+
+ORDER BY
+    manual_review_rows DESC,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12D Mixed-signal profile × manual review count.
+
+Business purpose:
+    Determine whether manual-review outcomes are concentrated in realistic overlapping-risk profiles.
+
+Credit risk interpretation:
+    Mixed-signal profiles preserve realistic borrower overlap, such as:
+        strong credit with high PTI,
+        weak credit with low PTI,
+        large exposure with low risk,
+        high risk with low exposure,
+        high DTI with low requested PTI,
+        or multiple mixed signals.
+
+SQL logic:
+    The WHERE clause restricts to final MANUAL_REVIEW rows.
+
+    GROUP BY mixed_signal_profile_type summarizes unresolved rows by mixed-signal category.
+
+What to look for:
+    Manual review may reasonably appear in mixed-signal profiles.
+
+    A high share of manual review in MULTIPLE_MIXED_SIGNALS may be expected and should be explained.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    mixed_signal_profile_type,
+
+    COUNT(*) AS manual_review_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_manual_review_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+
+GROUP BY mixed_signal_profile_type
+
+ORDER BY
+    CASE mixed_signal_profile_type
+        WHEN 'NO_MIXED_SIGNAL_PROFILE' THEN 1
+        WHEN 'STRONG_CREDIT_HIGH_PTI' THEN 2
+        WHEN 'WEAK_CREDIT_LOW_PTI' THEN 3
+        WHEN 'LARGE_EXPOSURE_LOW_RISK' THEN 4
+        WHEN 'HIGH_RISK_LOW_EXPOSURE' THEN 5
+        WHEN 'HIGH_DTI_LOW_REQUESTED_PTI' THEN 6
+        WHEN 'MULTIPLE_MIXED_SIGNALS' THEN 7
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12E Borderline profile × manual review count.
+
+Business purpose:
+    Determine whether unresolved manual-review outcomes are concentrated near governed thresholds.
+
+SQL logic:
+    The WHERE clause restricts to final MANUAL_REVIEW rows.
+
+    GROUP BY borderline_profile_flag separates threshold-adjacent unresolved rows from non-borderline
+    unresolved rows.
+
+What to look for:
+    A material TRUE share can be reasonable if the strategy intentionally treats threshold-adjacent
+    cases conservatively.
+
+Review trigger:
+    If nearly all manual-review rows are borderline, review borderline_threshold_buffer_pct and
+    manual-review routing logic.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    borderline_profile_flag,
+
+    COUNT(*) AS manual_review_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_manual_review_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+
+GROUP BY borderline_profile_flag
+
+ORDER BY borderline_profile_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12F Failed-counteroffer-to-manual-review diagnostic.
+
+Business purpose:
+    Explain unresolved manual-review rows that originated as preliminary counteroffer candidates.
+
+SQL logic:
+    The WHERE clause isolates rows with:
+        final MANUAL_REVIEW,
+        preliminary COUNTEROFFER,
+        failed counteroffer feasibility.
+
+    GROUP BY failure reason and primary reason code connects Section 8 feasibility diagnostics to
+    Section 10 simulated explanation codes.
+
+What to look for:
+    Concentrated failure reasons may explain operational review burden.
+
+Review trigger:
+    If failed-counteroffer-to-manual-review rows are high, review:
+        product caps,
+        product minimums,
+        maximum exposure reduction,
+        approved PTI target,
+        approved Expected Loss cap,
+        and failed_counteroffer_resolution.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_feasibility_failure_reason,
+    primary_reason_code,
+
+    COUNT(*) AS failed_counteroffer_to_manual_review_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+  AND preliminary_decision_outcome = 'COUNTEROFFER'
+  AND counteroffer_feasibility_pass_flag IS FALSE
+
+GROUP BY
+    counteroffer_feasibility_failure_reason,
+    primary_reason_code
+
+ORDER BY
+    failed_counteroffer_to_manual_review_rows DESC,
+    counteroffer_feasibility_failure_reason,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12G Manual review unresolved-exposure convention check.
+
+Business purpose:
+    Confirm that final MANUAL_REVIEW rows remain unresolved and do not carry approved exposure,
+    approved affordability, or approved Expected Loss fields.
+
+Expected result:
+    manual_review_exposure_convention_violation_rows = 0
+
+SQL logic:
+    The WHERE clause identifies final MANUAL_REVIEW rows where any approved-exposure field is
+    incorrectly populated.
+
+Review trigger:
+    Any non-zero count suggests the final output convention is broken and should be reviewed before
+    documentation.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) AS manual_review_exposure_convention_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+  AND (
+        approved_amount IS NOT NULL
+     OR counteroffer_amount IS NOT NULL
+     OR approved_monthly_payment_proxy IS NOT NULL
+     OR approved_payment_to_income_ratio IS NOT NULL
+     OR approved_expected_loss_amount IS NOT NULL
+     OR approved_el_reduction_amount IS NOT NULL
+     OR approved_el_reduction_pct IS NOT NULL
+  );
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12H Manual review reason-family alignment check.
+
+Business purpose:
+    Confirm that final MANUAL_REVIEW rows carry MANUAL_REVIEW-family simulated reason codes.
+
+Expected result:
+    manual_review_reason_family_alignment_violation_rows = 0
+
+SQL logic:
+    IS DISTINCT FROM catches both non-MANUAL_REVIEW values and NULL reason-family values.
+
+Review trigger:
+    Any non-zero count means final outcome and simulated reason-code family are misaligned.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) AS manual_review_reason_family_alignment_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+  AND primary_reason_family IS DISTINCT FROM 'MANUAL_REVIEW';
+
+
+
+/***************************************************************************************************
+SECTION 14.13 — DECLINE / POLICY-STOP VALIDATION DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that final DECLINE outcomes follow the locked no-offer conventions and are explainable
+    through simulated policy-stop, severe risk, severe capacity, failed-counteroffer, affordability,
+    requested Expected Loss, or exposure-limit drivers.
+
+    Section 14.13 answers:
+
+        "Are final DECLINE rows coherent as simulated no-offer outcomes, and do their reason codes,
+         trigger families, and zero-exposure conventions align to the intended strategy design?"
+
+SQL PURPOSE:
+    1. Summarize final DECLINE rows and decline rate.
+    2. Review average synthetic estimated-risk proxy, DTI, requested PTI, and requested Expected Loss
+       for final decline rows.
+    3. Count decline rows by major simulated policy-stop and risk-trigger families.
+    4. Review decline rows by decision path.
+    5. Review decline rows by primary reason code.
+    6. Review hard simulated policy-stop flag combinations among declines.
+    7. Assign a compact decline driver diagnostic family.
+    8. Validate locked zero-exposure conventions for final DECLINE rows.
+    9. Validate POLICY_STOP reason-family alignment for final DECLINE rows.
+
+CREDIT RISK INTERPRETATION:
+    DECLINE is the final simulated no-offer outcome.
+
+    It may be driven by:
+        hard simulated policy-stop triggers,
+        severe synthetic estimated-risk proxy,
+        severe DTI capacity pressure,
+        high requested PTI,
+        high requested Expected Loss,
+        requested exposure limit pressure,
+        failed counteroffer feasibility resolved to decline,
+        or residual no-offer routing.
+
+EXPECTED FINAL DECLINE BEHAVIOR:
+    Final DECLINE rows should generally show:
+        approved_amount = 0;
+        counteroffer_amount IS NULL;
+        approved_monthly_payment_proxy = 0;
+        approved_payment_to_income_ratio = 0;
+        approved_expected_loss_amount = 0;
+        approved_el_reduction_amount = requested_expected_loss_amount;
+        approved_el_reduction_pct = 1.0 when requested_expected_loss_amount > 0;
+        approved_el_reduction_pct = 0 when requested_expected_loss_amount = 0;
+        simulated_offer_exposure_flag = FALSE;
+        primary_reason_family = POLICY_STOP.
+
+WHAT TO LOOK FOR:
+    decline_rate:
+        Final no-offer share of the latest-run population.
+
+    hard_policy_stop_decline_rows:
+        Declines driven by bankruptcy, major derogatory, or severe delinquency policy stops.
+
+    synthetic_risk_decline_trigger_decline_rows:
+        Declines involving severe synthetic estimated-risk trigger.
+
+    dti_decline_trigger_decline_rows:
+        Declines involving severe existing-obligation capacity pressure.
+
+    requested_pti_decline_trigger_decline_rows:
+        Declines involving severe requested affordability pressure.
+
+    requested_el_decline_trigger_decline_rows:
+        Declines involving requested-exposure Expected Loss pressure.
+
+    requested_exposure_extreme_decline_rows:
+        Declines involving requested exposure extremes.
+
+REVIEW TRIGGERS:
+    decline_exposure_convention_violation_rows > 0:
+        Locked no-offer output conventions are broken.
+
+    decline_reason_family_alignment_violation_rows > 0:
+        Final outcome and simulated reason-code family are misaligned.
+
+    High DECLINE_RESIDUAL_OR_OTHER_TRIGGER concentration:
+        Review whether more specific trigger labels or reason codes should explain the decline path.
+
+DECLINE BOUNDARY:
+    DECLINE is a simulated no-offer strategy outcome for a synthetic applicant.
+
+    It is not:
+        a real applicant decision,
+        an operational underwriting decision,
+        customer communication,
+        a regulatory notice,
+        an adverse-action reason,
+        a fair-lending conclusion,
+        or production compliance determination.
+
+ZERO-EXPOSURE CONVENTION:
+    DECLINE rows follow the locked zero-exposure convention.
+
+    This convention makes no-offer outcomes easy to summarize consistently in portfolio-level
+    approved exposure and approved Expected Loss calculations.
+
+REASON-CODE BOUNDARY:
+    POLICY_STOP reason codes are simulated strategy explanation codes only.
+
+    They are internal diagnostics for this synthetic strategy simulator.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CASE:
+        Assigns a compact diagnostic family based on prioritized decline trigger logic.
+
+    GROUP BY:
+        Summarizes decline rows by path, reason code, policy-stop flag combination, or diagnostic
+        family.
+
+    COUNT(*) FILTER:
+        Calculates trigger-specific counts inside one summary query.
+
+    IS DISTINCT FROM:
+        Performs NULL-safe output-convention checks.
+
+READ-ONLY BOUNDARY:
+    Section 14.13 does not modify latest-run rows.
+    Section 14.13 does not modify archive rows.
+    Section 14.13 does not recalculate decline decisions.
+    Section 14.13 does not recalculate zero-exposure conventions.
+    Section 14.13 does not recalculate approved Expected Loss.
+    Section 14.13 does not reassign simulated reason codes.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13A Decline summary.
+
+Business purpose:
+    Provide the primary no-offer outcome profile for the latest-run output.
+
+SQL logic:
+    This query calculates decline count, decline rate, average risk / capacity / affordability
+    profile, and major trigger-family counts.
+
+How to interpret:
+    High decline rates may be expected for tighter risk strategies, but they should be explained by
+    synthetic risk, DTI, requested PTI, requested Expected Loss, exposure, product, score band, or
+    failed-counteroffer diagnostics.
+
+Review trigger:
+    If decline rate is high, use Sections 14.13B through 14.13E to explain the no-offer drivers.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS decline_rows,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    /***********************************************************************************************
+    Synthetic risk, capacity, affordability, and requested Expected Loss profile for declines.
+    ***********************************************************************************************/
+    AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_synthetic_estimated_pd_proxy_declines,
+
+    AVG(debt_to_income_ratio) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_debt_to_income_ratio_declines,
+
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_requested_payment_to_income_ratio_declines,
+
+    AVG(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_requested_expected_loss_amount_declines,
+
+    /***********************************************************************************************
+    Major no-offer trigger family counts.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND hard_policy_stop_flag IS TRUE
+    ) AS hard_policy_stop_decline_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND synthetic_risk_decline_trigger_flag IS TRUE
+    ) AS synthetic_risk_decline_trigger_decline_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND dti_decline_trigger_flag IS TRUE
+    ) AS dti_decline_trigger_decline_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND requested_pti_decline_trigger_flag IS TRUE
+    ) AS requested_pti_decline_trigger_decline_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND requested_el_decline_trigger_flag IS TRUE
+    ) AS requested_el_decline_trigger_decline_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND requested_exposure_extreme_flag IS TRUE
+    ) AS requested_exposure_extreme_decline_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13B Declines by decision path.
+
+Business purpose:
+    Show which final decision paths produced final DECLINE outcomes.
+
+SQL logic:
+    The WHERE clause restricts the query to final DECLINE rows.
+
+    GROUP BY decision_path and decision_resolution_source shows how decline outcomes were produced.
+
+What to look for:
+    Concentration in severe synthetic risk, severe DTI, hard policy-stop, or failed-counteroffer
+    paths should be consistent with the active strategy.
+
+Boundary:
+    decision_path is an internal simulated strategy diagnostic, not external communication text.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_path,
+    decision_resolution_source,
+
+    COUNT(*) AS decline_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_decline_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'DECLINE'
+
+GROUP BY
+    decision_path,
+    decision_resolution_source
+
+ORDER BY
+    decline_rows DESC,
+    decision_path,
+    decision_resolution_source;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13C Declines by primary reason code.
+
+Business purpose:
+    Show which simulated policy-stop explanation codes dominate final DECLINE rows.
+
+SQL logic:
+    The WHERE clause restricts the query to final DECLINE rows.
+
+    GROUP BY primary_reason_code creates one row per no-offer simulated explanation code.
+
+What to look for:
+    High concentration in one policy-stop reason may be expected for a targeted risk-tightening
+    strategy, but it should be explained through rule triggers and segment behavior.
+
+Boundary:
+    These are simulated strategy explanation codes only.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    primary_reason_code,
+
+    COUNT(*) AS decline_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_decline_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'DECLINE'
+
+GROUP BY primary_reason_code
+
+ORDER BY
+    decline_rows DESC,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13D Hard simulated policy-stop flags among declines.
+
+Business purpose:
+    Review whether final DECLINE rows were driven by hard simulated policy-stop triggers.
+
+SQL logic:
+    The WHERE clause restricts to final DECLINE rows.
+
+    GROUP BY the hard stop flags reveals whether declines came from bankruptcy, major derogatory,
+    severe delinquency, combinations of those flags, or non-hard-stop drivers.
+
+What to look for:
+    TRUE hard_policy_stop_flag values should be explainable through the component hard-stop flags.
+
+Review trigger:
+    hard_policy_stop_flag = TRUE with all component flags FALSE should not occur.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    hard_policy_stop_flag,
+    bankruptcy_policy_stop_flag,
+    major_derogatory_policy_stop_flag,
+    severe_delinquency_policy_stop_flag,
+
+    COUNT(*) AS decline_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'DECLINE'
+
+GROUP BY
+    hard_policy_stop_flag,
+    bankruptcy_policy_stop_flag,
+    major_derogatory_policy_stop_flag,
+    severe_delinquency_policy_stop_flag
+
+ORDER BY
+    hard_policy_stop_flag DESC,
+    bankruptcy_policy_stop_flag DESC,
+    major_derogatory_policy_stop_flag DESC,
+    severe_delinquency_policy_stop_flag DESC;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13E Decline driver diagnostic by major trigger family.
+
+Business purpose:
+    Assign a compact diagnostic family to each final DECLINE row so no-offer outcomes can be
+    summarized by the most visible driver family.
+
+SQL logic:
+    1. decline_driver CTE filters to final DECLINE rows.
+    2. CASE assigns each row to the first matching major driver family.
+    3. The outer query groups those diagnostic families into a compact distribution.
+
+Why order matters:
+    CASE evaluates from top to bottom.
+
+    Hard policy stops are evaluated first because they are highest-priority simulated no-offer
+    conditions.
+
+    Residual / other triggers are evaluated last.
+
+Interpretation:
+    This diagnostic helps explain decline concentration without replacing the more granular
+    primary_reason_code distribution.
+
+Boundary:
+    decline_driver_diagnostic_family is a QA label only.
+
+    It does not change decision_outcome or primary_reason_code.
+-----------------------------------------------------------------------------------------------*/
+
+WITH decline_driver AS (
+    SELECT
+        CASE
+            WHEN bankruptcy_policy_stop_flag IS TRUE
+                THEN 'BANKRUPTCY_POLICY_STOP_TRIGGER'
+
+            WHEN major_derogatory_policy_stop_flag IS TRUE
+                THEN 'MAJOR_DEROGATORY_POLICY_STOP_TRIGGER'
+
+            WHEN severe_delinquency_policy_stop_flag IS TRUE
+                THEN 'SEVERE_DELINQUENCY_POLICY_STOP_TRIGGER'
+
+            WHEN synthetic_risk_decline_trigger_flag IS TRUE
+                THEN 'SEVERE_SYNTHETIC_RISK_TRIGGER'
+
+            WHEN dti_decline_trigger_flag IS TRUE
+                THEN 'SEVERE_DTI_TRIGGER'
+
+            WHEN requested_pti_decline_trigger_flag IS TRUE
+                THEN 'HIGH_REQUESTED_PTI_TRIGGER'
+
+            WHEN requested_el_decline_trigger_flag IS TRUE
+                THEN 'HIGH_REQUESTED_EXPECTED_LOSS_TRIGGER'
+
+            WHEN requested_exposure_extreme_flag IS TRUE
+              OR exposure_policy_stop_candidate_flag IS TRUE
+                THEN 'EXPOSURE_LIMIT_TRIGGER'
+
+            WHEN preliminary_decision_outcome = 'COUNTEROFFER'
+             AND counteroffer_feasibility_pass_flag IS FALSE
+                THEN 'FAILED_COUNTEROFFER_TO_DECLINE_TRIGGER'
+
+            ELSE 'DECLINE_RESIDUAL_OR_OTHER_TRIGGER'
+        END AS decline_driver_diagnostic_family
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    WHERE decision_outcome = 'DECLINE'
+)
+
+SELECT
+    decline_driver_diagnostic_family,
+
+    COUNT(*) AS decline_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_decline_rows
+
+FROM decline_driver
+
+GROUP BY decline_driver_diagnostic_family
+
+ORDER BY
+    decline_rows DESC,
+    decline_driver_diagnostic_family;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13F Decline zero-exposure convention check.
+
+Business purpose:
+    Confirm that final DECLINE rows follow the locked no-offer zero-exposure convention.
+
+Expected result:
+    decline_exposure_convention_violation_rows = 0
+
+SQL logic:
+    The WHERE clause identifies final DECLINE rows where any zero-exposure convention is violated.
+
+    IS DISTINCT FROM is used to make NULL comparisons explicit and safe.
+
+Review trigger:
+    Any non-zero count indicates a final output convention issue that should be reviewed before
+    documentation.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) AS decline_exposure_convention_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'DECLINE'
+  AND (
+        approved_amount IS DISTINCT FROM 0::NUMERIC
+     OR counteroffer_amount IS NOT NULL
+     OR approved_monthly_payment_proxy IS DISTINCT FROM 0::NUMERIC
+     OR approved_payment_to_income_ratio IS DISTINCT FROM 0::NUMERIC
+     OR approved_expected_loss_amount IS DISTINCT FROM 0::NUMERIC
+     OR approved_el_reduction_amount IS DISTINCT FROM requested_expected_loss_amount
+     OR approved_el_reduction_pct IS DISTINCT FROM
+        CASE
+            WHEN requested_expected_loss_amount > 0 THEN 1.0::NUMERIC
+            ELSE 0::NUMERIC
+        END
+  );
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13G Decline reason-family alignment check.
+
+Business purpose:
+    Confirm that final DECLINE rows carry POLICY_STOP-family simulated reason codes.
+
+Expected result:
+    decline_reason_family_alignment_violation_rows = 0
+
+SQL logic:
+    IS DISTINCT FROM catches both non-POLICY_STOP values and NULL reason-family values.
+
+Review trigger:
+    Any non-zero count means final outcome and simulated reason-code family are misaligned.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) AS decline_reason_family_alignment_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'DECLINE'
+  AND primary_reason_family IS DISTINCT FROM 'POLICY_STOP';
+
+
+
+/***************************************************************************************************
+END OF SECTION 14.13 — DECLINE / POLICY-STOP VALIDATION DIAGNOSTICS
+
+If execution reaches this point:
+    1. Counteroffer feasibility and final counteroffer conventions have been reviewed.
+    2. Counteroffer failure reasons have been summarized.
+    3. Product-level and score-band-level counteroffer feasibility patterns have been reviewed.
+    4. Final COUNTEROFFER reason-code distribution has been reviewed.
+    5. Manual-review unresolved outcome behavior has been reviewed.
+    6. Manual-review exposure conventions have been validated.
+    7. Manual-review reason-family alignment has been validated.
+    8. Decline / policy-stop behavior has been reviewed.
+    9. Decline zero-exposure conventions have been validated.
+    10. Decline reason-family alignment has been validated.
+    11. Section 14 remains read-only.
+
+No latest-run output rows have been modified.
+No archive rows have been modified.
+No strategy parameter rows have been modified.
+No product policy parameter rows have been modified.
+No decision outcomes have been recalculated.
+No approved exposure values have been recalculated.
+No approved Expected Loss values have been recalculated.
+No simulated reason codes have been reassigned.
+No BRD or written Validation Summary documentation has been drafted.
+
+Next section:
+    Section 14.14 should continue with reason-code coverage, alignment, concentration, and boundary
+    diagnostics.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M01123 -->
+
+
+---
+
+<a id="c038-m01124"></a>
+
+### C038-M01124
+
+**Andrew** · 2026-05-10T12:48:35.310000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01124 -->
+Do this: For a formal governed script, I prefer expanding the ALTER TABLE ... ADD COLUMN IF NOT EXISTS block so reruns are safe. (provide full copy paste of before and after code).  I will also drop evidence tables before the campaign runs.  please talk more about 5. Section 15 baseline join is adequate for V1_0 but should be version-explicit for future versions and your recommended approach. updated code after addressing blocker and missing 14.11-14.13 attached.  please re-evaluate.
+<!-- END_MESSAGE C038-M01124 -->
+
+
+**Attachments in export:** `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_patched(1).sql`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_62.md) · [Next](Part_64.md)

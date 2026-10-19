@@ -1,0 +1,2420 @@
+# Module 2 Decision Simulator Build
+
+## Part 78
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_77.md) · [Next](Part_79.md)
+
+<a id="c038-m01554"></a>
+
+### C038-M01554
+
+**ChatGPT** · 2026-05-12T10:35:46.287857-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01554 -->
+According to the current 2026-05-12 SQL capture, Section 8 is the approved exposure / counteroffer feasibility layer that consumes `tmp_m2_stage_4_preliminary_decision_routing` and produces `tmp_m2_stage_5_exposure_treatment`; Section 9 then consumes that exposure-treatment table for final decision resolution. fileciteturn235file1turn234file26
+
+```sql
+/***************************************************************************************************
+SECTION 8 — APPROVED EXPOSURE AND COUNTEROFFER FEASIBILITY LAYER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Calculate preliminary approved-exposure economics and counteroffer feasibility after preliminary
+    routing has identified which rows require exposure treatment.
+
+    Section 8 answers:
+
+        "Given the preliminary route, what approved exposure treatment would be economically and
+         structurally feasible?"
+
+    Section 8 does not answer:
+
+        "What is the final simulated strategy outcome?"
+
+    This section is the exposure-treatment layer.
+
+    It converts preliminary routing into preliminary approved exposure, preliminary approved payment,
+    preliminary approved PTI, preliminary approved Expected Loss, and counteroffer feasibility
+    diagnostics.
+
+SQL PURPOSE:
+    1. Confirm required Section 8 dependency objects exist.
+    2. Read from tmp_m2_stage_4_preliminary_decision_routing.
+    3. Preserve all prior source, lineage, Module 2 strategy metadata, segmentation, rule-trigger,
+       and preliminary routing fields.
+    4. Calculate preliminary approved exposure treatment by preliminary route.
+    5. Evaluate reduced-exposure counteroffer feasibility for preliminary COUNTEROFFER rows.
+    6. Calculate preliminary approved payment proxy and preliminary approved PTI only where
+       appropriate.
+    7. Calculate preliminary approved Expected Loss only where appropriate.
+    8. Preserve failed counteroffers as unresolved for later final decision resolution.
+    9. Validate exposure-treatment conventions and feasibility logic.
+    10. Confirm that final decision fields and simulated reason-code fields are not created yet.
+    11. Provide local exposure-treatment diagnostics before Section 9 final decision resolution.
+
+WHO SHOULD REVIEW THIS SECTION:
+    Credit strategy reviewers:
+        Confirm that exposure treatment, counteroffer feasibility, product caps, PTI targets,
+        approved Expected Loss caps, minimum counteroffer rules, and maximum exposure-reduction rules
+        behave as intended.
+
+    Model governance / validation reviewers:
+        Confirm that Section 8 remains a preliminary exposure-treatment layer and does not assign
+        final simulated outcomes or reason codes.
+
+    SQL reviewers:
+        Confirm that the CTE chain makes counteroffer feasibility auditable and avoids same-SELECT
+        alias reuse problems.
+
+    Portfolio / executive reviewers:
+        Use Section 8 diagnostics to understand how much approved exposure, payment burden, and
+        approved Expected Loss would be reduced before final outcome assignment.
+
+WHEN TO RUN THIS SECTION:
+    Run Section 8 after:
+
+        Section 7 — Preliminary Decision Routing Layer
+
+    Section 8 should be run before:
+
+        Section 9 — Final Decision Resolution Layer
+
+    Section 8 depends on:
+
+        tmp_m2_stage_4_preliminary_decision_routing
+
+INPUT:
+    tmp_m2_stage_4_preliminary_decision_routing
+
+OUTPUT:
+    tmp_m2_stage_5_exposure_treatment
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+WHY APPROVED EXPOSURE TREATMENT IS SEPARATED FROM PRELIMINARY ROUTING:
+    Section 7 identifies the preliminary route.
+
+    Section 8 tests whether the preliminary route can support coherent approved-exposure treatment.
+
+    This separation matters because route assignment and exposure feasibility are different questions:
+
+        Section 7 asks:
+            "Where should the row go next?"
+
+        Section 8 asks:
+            "What exposure treatment is economically and structurally feasible?"
+
+    The separation makes counteroffer behavior transparent, testable, and auditable.
+
+WHY PRELIMINARY COUNTEROFFER DOES NOT GUARANTEE A VIABLE COUNTEROFFER:
+    A preliminary COUNTEROFFER route only means:
+
+        "This row should be tested for reduced-exposure feasibility."
+
+    It does not mean:
+        approved_amount exists,
+        counteroffer_amount exists,
+        approved monthly payment proxy exists,
+        approved PTI exists,
+        approved Expected Loss exists,
+        or a viable counteroffer has been created.
+
+    A viable preliminary counteroffer must satisfy:
+        product counteroffer permission,
+        product maximum approved amount,
+        product minimum approved amount,
+        minimum counteroffer percent,
+        maximum exposure reduction,
+        approved PTI target,
+        approved Expected Loss cap,
+        and product rounding requirements.
+
+WHY APPROVED AMOUNT IS STILL PRELIMINARY:
+    Section 8 calculates approved_amount_preliminary.
+
+    Section 9 later resolves final decision_outcome and final approved exposure fields.
+
+    This distinction prevents the module from treating a feasibility calculation as a completed final
+    simulated strategy outcome.
+
+WHY APPROVED PAYMENT AND APPROVED PTI ARE STRATEGY-SIMULATION PROXIES:
+    approved_monthly_payment_proxy_preliminary scales the requested monthly payment proxy
+    proportionally with preliminary approved exposure.
+
+    approved_payment_to_income_ratio_preliminary then compares that preliminary payment proxy to
+    income through the already-staged requested PTI relationship.
+
+    This is not:
+        a contractual amortization schedule,
+        a servicing calculation,
+        a billing-engine output,
+        or a production payment quote.
+
+    It is a strategy-simulation affordability proxy.
+
+WHY APPROVED EXPECTED LOSS IS BASED ON APPROVED EXPOSURE:
+    requested_expected_loss_amount uses requested exposure from Module 1.
+
+    approved_expected_loss_amount_preliminary uses preliminary approved exposure from Module 2.
+
+    Conceptual formula:
+        approved_expected_loss_amount_preliminary
+            = approved_amount_preliminary × estimated_pd × estimated_lgd
+
+    estimated_pd remains the Module 1 SQL field and is interpreted as the synthetic estimated-PD
+    proxy.
+
+WHY ESTIMATED_PD IS NOT RECALCULATED:
+    Module 2 V1.0 does not create a post-decision risk model.
+
+    Exposure treatment changes approved exposure and simulated approved-exposure Expected Loss.
+
+    It does not recalculate the synthetic estimated-PD proxy.
+
+WHY FAILED COUNTEROFFERS ARE NOT RESOLVED HERE:
+    Failed counteroffers require a governed final-resolution policy:
+
+        MANUAL_REVIEW
+        or
+        DECLINE
+
+    That final resolution occurs in Section 9 using failed_counteroffer_resolution.
+
+    Section 8 only identifies whether preliminary COUNTEROFFER exposure treatment passed or failed.
+
+MANUAL REVIEW BOUNDARY:
+    Preliminary MANUAL_REVIEW rows remain unresolved by design.
+
+    They receive:
+        approved_amount_preliminary = NULL
+        counteroffer_amount_preliminary = NULL
+        approved_monthly_payment_proxy_preliminary = NULL
+        approved_payment_to_income_ratio_preliminary = NULL
+        approved_expected_loss_amount_preliminary = NULL
+
+DECLINE BOUNDARY:
+    Preliminary DECLINE rows receive the zero-exposure convention in this exposure-treatment stage.
+
+    Final DECLINE is still not assigned until Section 9.
+
+REASON-CODE BOUNDARY:
+    Section 8 does not assign simulated reason codes.
+
+    It does not create:
+        primary_reason_code
+        secondary_reason_code
+        tertiary_reason_code
+        triggered_reason_code_list
+        reason_priority_rank
+        primary_reason_family
+        reason_code_count
+
+    counteroffer_feasibility_failure_reason is a diagnostic field only.
+
+    It is not a final simulated reason code.
+    It is not customer communication language.
+    It is not an adverse-action reason.
+
+FINAL OUTCOME BOUNDARY:
+    Section 8 does not create:
+        decision_outcome
+        decision_path
+        approval_flag
+        decline_flag
+        manual_review_flag
+        counteroffer_flag
+        simulated_offer_exposure_flag
+
+APPROVED-EXPOSURE BOUNDARY:
+    Section 8 creates preliminary exposure-treatment fields only.
+
+    Final approved exposure fields are created later:
+        approved_amount
+        counteroffer_amount
+        approved_monthly_payment_proxy
+        approved_payment_to_income_ratio
+        approved_expected_loss_amount
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CTE chain:
+        Breaks feasibility testing into auditable steps:
+            exposure_inputs
+            counteroffer_components
+            counteroffer_raw
+            counteroffer_rounding
+            counteroffer_test_economics
+            counteroffer_feasibility
+            exposure_amount_assignment
+            approved_affordability
+            approved_economics
+            final_exposure_treatment
+
+    LEAST:
+        Chooses the most conservative upper bound among product cap, PTI target amount, and approved
+        Expected Loss cap amount.
+
+    GREATEST:
+        Chooses the strictest minimum viable counteroffer amount across product minimum, minimum
+        counteroffer percent, and maximum exposure-reduction constraints.
+
+    FLOOR:
+        Rounds the raw counteroffer amount down to the governed product rounding increment.
+
+    NULLIF:
+        Prevents divide-by-zero behavior when scaling payment, PTI, or Expected Loss values.
+
+    CASE:
+        Applies route-specific exposure-treatment conventions.
+
+    IS DISTINCT FROM:
+        Used in gatekeepers to compare NULL safely.
+
+GOVERNANCE ROLE:
+    Section 8 makes counteroffer feasibility transparent.
+
+    It shows which constraints created a feasible reduced-exposure treatment and which constraints
+    caused preliminary counteroffers to fail.
+
+COMMON MISUSE TO AVOID:
+    Do not interpret approved_amount_preliminary as final approved_amount.
+    Do not interpret counteroffer_amount_preliminary as final counteroffer_amount.
+    Do not interpret counteroffer_feasibility_failure_reason as a final reason code.
+    Do not interpret preliminary DECLINE exposure convention as final decision_outcome.
+    Do not interpret preliminary approved PTI as a contractual payment obligation.
+    Do not interpret preliminary approved Expected Loss as a production forecast.
+    Do not treat Section 8 as latest-run output.
+    Do not treat Section 8 as archive persistence.
+    Do not treat Section 8 as final QA.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 8.0 — SECTION 8 DEPENDENCY PREFLIGHT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that Section 7 preliminary-routing output exists and is populated before exposure
+    treatment begins.
+
+    Section 8.0 answers:
+
+        "Can Section 8 safely calculate approved-exposure treatment and counteroffer feasibility from
+         the Section 7 preliminary-routing layer?"
+
+SQL PURPOSE:
+    1. Confirm tmp_m2_stage_4_preliminary_decision_routing exists.
+    2. Confirm tmp_m2_stage_4_preliminary_decision_routing contains rows.
+    3. Confirm application_id is unique before exposure-treatment fields are added.
+    4. Confirm key Section 7 exposure-routing fields are populated.
+    5. Confirm requested exposure, payment, PTI, synthetic risk, LGD, Expected Loss, and product-policy
+       controls needed by exposure treatment are populated.
+    6. Fail clearly if Section 7 has not been run.
+
+BOUNDARY:
+    Section 8.0 does not create exposure treatment.
+    Section 8.0 does not assign final outcomes.
+    Section 8.0 does not assign reason codes.
+    Section 8.0 does not modify persistent tables.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage4_exists BOOLEAN;
+    v_stage4_row_count BIGINT;
+    v_stage4_distinct_application_count BIGINT;
+    v_required_exposure_input_gap_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Dependency check: Section 7 preliminary-routing stage must exist.
+
+    SQL mechanics:
+        TO_REGCLASS checks whether the temporary object exists.
+
+    Business interpretation:
+        Section 8 must consume preliminary routing from Section 7, not earlier rule flags or
+        segmentation tables.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS('pg_temp.tmp_m2_stage_4_preliminary_decision_routing'),
+        TO_REGCLASS('tmp_m2_stage_4_preliminary_decision_routing')
+    ) IS NOT NULL
+    INTO v_stage4_exists;
+
+    IF v_stage4_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: tmp_m2_stage_4_preliminary_decision_routing is required. Run Section 7 before Section 8.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 7 preliminary-routing stage must contain rows.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage4_row_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing;
+
+    IF v_stage4_row_count <= 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: tmp_m2_stage_4_preliminary_decision_routing contains zero rows.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id must be unique before exposure treatment is added.
+
+    Section 8 should add exposure-treatment fields only.
+
+    It should not repair upstream row-grain problems.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage4_distinct_application_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing;
+
+    IF v_stage4_distinct_application_count <> v_stage4_row_count THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: tmp_m2_stage_4_preliminary_decision_routing is not unique at application_id. Rows=%, distinct application_id=%.',
+            v_stage4_row_count,
+            v_stage4_distinct_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required exposure-treatment input fields must be populated.
+
+    Business interpretation:
+        Section 8 needs both:
+            route instructions from Section 7;
+            product-policy controls carried forward from Section 5;
+            borrower / requested-structure values from Module 1.
+
+    Missing values here would make approved exposure, approved PTI, or approved Expected Loss
+    partially undefined.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_required_exposure_input_gap_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing
+    WHERE preliminary_decision_outcome IS NULL
+       OR preliminary_decision_outcome NOT IN ('APPROVE', 'COUNTEROFFER', 'MANUAL_REVIEW', 'DECLINE')
+       OR preliminary_decision_path IS NULL
+       OR requires_counteroffer_feasibility_flag IS NULL
+       OR requires_approved_exposure_calculation_flag IS NULL
+
+       OR requested_amount IS NULL
+       OR requested_amount <= 0
+       OR requested_monthly_payment_proxy IS NULL
+       OR requested_payment_to_income_ratio IS NULL
+       OR requested_expected_loss_amount IS NULL
+       OR estimated_pd IS NULL
+       OR estimated_lgd IS NULL
+
+       OR product_min_approved_amount IS NULL
+       OR product_max_approved_amount IS NULL
+       OR product_min_approved_amount <= 0
+       OR product_max_approved_amount <= product_min_approved_amount
+
+       OR counteroffer_allowed_flag IS NULL
+       OR product_min_counteroffer_pct IS NULL
+       OR product_min_counteroffer_pct < 0
+       OR product_min_counteroffer_pct > 1
+
+       OR product_max_exposure_reduction_pct IS NULL
+       OR product_max_exposure_reduction_pct < 0
+       OR product_max_exposure_reduction_pct > 1
+
+       OR counteroffer_target_pti IS NULL
+       OR counteroffer_target_pti < 0
+
+       OR product_approved_el_cap IS NULL
+       OR product_approved_el_cap < 0
+
+       OR approved_amount_rounding_increment IS NULL
+       OR approved_amount_rounding_increment <= 0;
+
+    IF v_required_exposure_input_gap_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: % Section 7 row(s) are missing required exposure-treatment inputs.',
+            v_required_exposure_input_gap_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 8.1 — CLEAN RESET OF SECTION 8 STAGING OBJECT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Drop the Section 8 exposure-treatment stage before rebuilding it.
+
+SQL PURPOSE:
+    Remove only the temporary Section 8 staging table.
+
+WHY THIS MATTERS:
+    A partial rerun should not allow stale exposure-treatment rows to remain available to Section 9.
+
+    Section 9 assumes tmp_m2_stage_5_exposure_treatment reflects the current:
+        Section 7 preliminary routing output,
+        active strategy parameter state already carried forward,
+        product policy thresholds already carried forward,
+        and current exposure-treatment logic.
+
+SQL MECHANICS:
+    DROP TABLE IF EXISTS makes the reset rerunnable.
+
+    If the table does not exist, PostgreSQL does not error.
+
+BOUNDARY:
+    This drop affects only the temporary Section 8 staging object.
+
+    It does not modify Module 1 outputs.
+    It does not modify Module 2 latest-run output.
+    It does not modify Module 2 archive output.
+    It does not modify evidence tables.
+    It does not modify registry tables.
+
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_stage_5_exposure_treatment;
+
+
+
+/***************************************************************************************************
+SECTION 8.2 — CREATE APPROVED EXPOSURE AND COUNTEROFFER FEASIBILITY TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_m2_stage_5_exposure_treatment
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+INPUT:
+    tmp_m2_stage_4_preliminary_decision_routing
+
+OUTPUT:
+    All Section 7 fields plus:
+        exposure_treatment_status
+        exposure_treatment_path
+        approved_amount_preliminary
+        counteroffer_amount_preliminary
+        exposure_reduction_flag_preliminary
+        exposure_reduction_amount_preliminary
+        exposure_reduction_pct_preliminary
+        approved_monthly_payment_proxy_preliminary
+        approved_payment_to_income_ratio_preliminary
+        approved_expected_loss_amount_preliminary
+        approved_el_reduction_amount_preliminary
+        approved_el_reduction_pct_preliminary
+        counteroffer feasibility component fields
+        counteroffer feasibility diagnostics
+
+SQL DESIGN:
+    This section uses a CTE chain so each exposure-treatment calculation is visible.
+
+    The chain is:
+
+        exposure_inputs
+            preserves Section 7 output.
+
+        counteroffer_components
+            calculates the product cap, PTI target amount, approved Expected Loss cap amount, and
+            minimum viable counteroffer amount.
+
+        counteroffer_raw
+            identifies the most conservative raw feasible amount.
+
+        counteroffer_rounding
+            rounds the raw amount down using the product rounding increment.
+
+        counteroffer_test_economics
+            calculates test payment, test PTI, and test approved Expected Loss for the rounded
+            counteroffer amount.
+
+        counteroffer_feasibility
+            evaluates pass / fail and assigns feasibility failure diagnostics.
+
+        exposure_amount_assignment
+            assigns preliminary approved amount, counteroffer amount, and exposure reduction fields.
+
+        approved_affordability
+            assigns preliminary approved payment and preliminary approved PTI.
+
+        approved_economics
+            assigns preliminary approved Expected Loss and preliminary EL reduction diagnostics.
+
+        final_exposure_treatment
+            assigns exposure_treatment_status and exposure_treatment_path.
+
+WHY SELECT * IS ACCEPTABLE HERE:
+    This is a temporary staging layer, not a permanent output table.
+
+    Section 8 intentionally preserves all prior fields plus exposure-treatment diagnostics for
+    Section 9 final decision resolution.
+
+    Permanent output selection is handled later with an explicit field list in Section 11.
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_stage_5_exposure_treatment
+ON COMMIT PRESERVE ROWS
+AS
+WITH exposure_inputs AS (
+    /***********************************************************************************************
+    CTE: exposure_inputs
+
+    Purpose:
+        Preserve all Section 7 preliminary-routing rows and fields.
+
+    Boundary:
+        No exposure treatment is calculated here.
+    ***********************************************************************************************/
+    SELECT
+        r.*
+    FROM tmp_m2_stage_4_preliminary_decision_routing r
+),
+
+counteroffer_components AS (
+    /***********************************************************************************************
+    CTE: counteroffer_components
+
+    Purpose:
+        Calculate independent counteroffer amount constraints for preliminary COUNTEROFFER rows.
+
+    Counteroffer upper bounds:
+        product cap amount;
+        PTI target amount;
+        approved Expected Loss cap amount.
+
+    Counteroffer minimum viable amount:
+        strictest of product minimum, minimum counteroffer percent, and maximum exposure-reduction
+        constraint.
+
+    Boundary:
+        These are feasibility components only.
+
+        They do not assign final counteroffer outcomes.
+    ***********************************************************************************************/
+    SELECT
+        ei.*,
+
+        /*******************************************************************************************
+        Product cap amount.
+
+        The preliminary approved exposure cannot exceed:
+            original requested_amount
+            or product_max_approved_amount.
+        *******************************************************************************************/
+        CASE
+            WHEN ei.preliminary_decision_outcome = 'COUNTEROFFER'
+                THEN LEAST(ei.requested_amount, ei.product_max_approved_amount)
+            ELSE NULL::NUMERIC
+        END AS counteroffer_product_cap_amount,
+
+
+        /*******************************************************************************************
+        PTI target amount.
+
+        Because Module 2 V1.0 scales payment proportionally with exposure, this estimates the
+        exposure amount that would bring requested PTI down to the product-specific counteroffer
+        target PTI.
+
+        Formula:
+            requested_amount × counteroffer_target_pti / requested_payment_to_income_ratio
+
+        If requested PTI is zero or lower, PTI does not constrain the counteroffer amount.
+        *******************************************************************************************/
+        CASE
+            WHEN ei.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND ei.requested_payment_to_income_ratio > 0
+                THEN ei.requested_amount
+                     * ei.counteroffer_target_pti
+                     / NULLIF(ei.requested_payment_to_income_ratio, 0)
+
+            WHEN ei.preliminary_decision_outcome = 'COUNTEROFFER'
+                THEN ei.requested_amount
+
+            ELSE NULL::NUMERIC
+        END AS counteroffer_pti_target_amount,
+
+
+        /*******************************************************************************************
+        Approved Expected Loss cap amount.
+
+        Conceptual formula:
+            approved_expected_loss_amount_preliminary
+                = approved_amount_preliminary × estimated_pd × estimated_lgd
+
+        Rearranged cap amount:
+            product_approved_el_cap / (estimated_pd × estimated_lgd)
+
+        If estimated_pd × estimated_lgd is zero, approved Expected Loss does not constrain exposure.
+        *******************************************************************************************/
+        CASE
+            WHEN ei.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND (ei.estimated_pd * ei.estimated_lgd) > 0
+                THEN ei.product_approved_el_cap
+                     / NULLIF((ei.estimated_pd * ei.estimated_lgd), 0)
+
+            WHEN ei.preliminary_decision_outcome = 'COUNTEROFFER'
+                THEN LEAST(ei.requested_amount, ei.product_max_approved_amount)
+
+            ELSE NULL::NUMERIC
+        END AS counteroffer_el_cap_amount,
+
+
+        /*******************************************************************************************
+        Minimum viable counteroffer amount.
+
+        A feasible counteroffer must be large enough to satisfy:
+            product minimum approved amount;
+            minimum counteroffer percent;
+            maximum exposure-reduction limit.
+
+        Example:
+            product_max_exposure_reduction_pct = 0.60
+
+            The approved amount must be at least:
+                requested_amount × (1 - 0.60)
+        *******************************************************************************************/
+        CASE
+            WHEN ei.preliminary_decision_outcome = 'COUNTEROFFER'
+                THEN GREATEST(
+                    ei.product_min_approved_amount,
+                    ei.requested_amount * ei.product_min_counteroffer_pct,
+                    ei.requested_amount * (1.0 - ei.product_max_exposure_reduction_pct)
+                )
+            ELSE NULL::NUMERIC
+        END AS counteroffer_min_viable_amount
+
+    FROM exposure_inputs ei
+),
+
+counteroffer_raw AS (
+    /***********************************************************************************************
+    CTE: counteroffer_raw
+
+    Purpose:
+        Select the most conservative raw maximum feasible counteroffer amount.
+
+    SQL mechanics:
+        LEAST chooses the lowest upper bound.
+
+    Business interpretation:
+        A counteroffer must satisfy all upper-bound constraints at once, so the most conservative
+        upper bound controls the raw feasible amount.
+    ***********************************************************************************************/
+    SELECT
+        cc.*,
+
+        CASE
+            WHEN cc.preliminary_decision_outcome = 'COUNTEROFFER'
+                THEN LEAST(
+                    cc.counteroffer_product_cap_amount,
+                    cc.counteroffer_pti_target_amount,
+                    cc.counteroffer_el_cap_amount
+                )
+            ELSE NULL::NUMERIC
+        END AS counteroffer_raw_max_feasible_amount
+
+    FROM counteroffer_components cc
+),
+
+counteroffer_rounding AS (
+    /***********************************************************************************************
+    CTE: counteroffer_rounding
+
+    Purpose:
+        Round the raw maximum feasible counteroffer amount down to the governed product rounding
+        increment.
+
+    Why round down:
+        Rounding down prevents the rounded amount from accidentally exceeding the raw feasible amount.
+
+    Boundary:
+        A rounded amount can become infeasible if rounding pushes it below the minimum viable amount.
+        The next CTE tests that explicitly.
+    ***********************************************************************************************/
+    SELECT
+        cr.*,
+
+        CASE
+            WHEN cr.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND cr.counteroffer_raw_max_feasible_amount IS NOT NULL
+             AND cr.approved_amount_rounding_increment > 0
+                THEN FLOOR(
+                        cr.counteroffer_raw_max_feasible_amount
+                        / NULLIF(cr.approved_amount_rounding_increment, 0)
+                     )
+                     * cr.approved_amount_rounding_increment
+
+            ELSE NULL::NUMERIC
+        END AS counteroffer_rounded_amount
+
+    FROM counteroffer_raw cr
+),
+
+counteroffer_test_economics AS (
+    /***********************************************************************************************
+    CTE: counteroffer_test_economics
+
+    Purpose:
+        Calculate payment, PTI, and Expected Loss for the rounded counteroffer amount.
+
+    Credit risk interpretation:
+        This is where reduced exposure is translated into:
+            lower payment burden;
+            lower approved PTI;
+            lower approved Expected Loss.
+
+    Boundary:
+        These are test economics for feasibility.
+
+        They become preliminary approved economics only if the counteroffer passes.
+    ***********************************************************************************************/
+    SELECT
+        crd.*,
+
+        CASE
+            WHEN crd.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND crd.counteroffer_rounded_amount IS NOT NULL
+             AND crd.requested_amount > 0
+                THEN crd.requested_monthly_payment_proxy
+                     * crd.counteroffer_rounded_amount
+                     / NULLIF(crd.requested_amount, 0)
+
+            ELSE NULL::NUMERIC
+        END AS counteroffer_test_monthly_payment_proxy,
+
+
+        CASE
+            WHEN crd.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND crd.counteroffer_rounded_amount IS NOT NULL
+             AND crd.requested_amount > 0
+                THEN crd.requested_payment_to_income_ratio
+                     * crd.counteroffer_rounded_amount
+                     / NULLIF(crd.requested_amount, 0)
+
+            ELSE NULL::NUMERIC
+        END AS counteroffer_test_payment_to_income_ratio,
+
+
+        CASE
+            WHEN crd.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND crd.counteroffer_rounded_amount IS NOT NULL
+                THEN crd.counteroffer_rounded_amount
+                     * crd.estimated_pd
+                     * crd.estimated_lgd
+
+            ELSE NULL::NUMERIC
+        END AS counteroffer_test_expected_loss_amount
+
+    FROM counteroffer_rounding crd
+),
+
+counteroffer_feasibility AS (
+    /***********************************************************************************************
+    CTE: counteroffer_feasibility
+
+    Purpose:
+        Evaluate whether the rounded counteroffer amount is feasible.
+
+    A preliminary counteroffer passes only when it satisfies:
+        product counteroffer permission,
+        positive rounded amount,
+        reduction below requested amount,
+        product minimum,
+        minimum counteroffer percent,
+        maximum exposure-reduction limit,
+        product maximum approved amount,
+        counteroffer target PTI,
+        product approved Expected Loss cap.
+
+    Boundary:
+        counteroffer_feasibility_pass_flag is not final decision_outcome.
+    ***********************************************************************************************/
+    SELECT
+        cte.*,
+
+        /*******************************************************************************************
+        counteroffer_feasibility_pass_flag.
+
+        TRUE / FALSE only for preliminary COUNTEROFFER rows.
+
+        NULL for non-counteroffer preliminary routes.
+        *******************************************************************************************/
+        CASE
+            WHEN cte.preliminary_decision_outcome <> 'COUNTEROFFER'
+                THEN NULL::BOOLEAN
+
+            ELSE (
+                cte.counteroffer_allowed_flag IS TRUE
+                AND cte.counteroffer_rounded_amount IS NOT NULL
+                AND cte.counteroffer_rounded_amount > 0
+                AND cte.counteroffer_rounded_amount < cte.requested_amount
+                AND cte.counteroffer_rounded_amount >= cte.product_min_approved_amount
+                AND cte.counteroffer_rounded_amount >= cte.requested_amount * cte.product_min_counteroffer_pct
+                AND cte.counteroffer_rounded_amount >= cte.requested_amount * (1.0 - cte.product_max_exposure_reduction_pct)
+                AND cte.counteroffer_rounded_amount <= cte.product_max_approved_amount
+                AND cte.counteroffer_test_payment_to_income_ratio <= cte.counteroffer_target_pti
+                AND cte.counteroffer_test_expected_loss_amount <= cte.product_approved_el_cap
+            )
+        END AS counteroffer_feasibility_pass_flag,
+
+
+        /*******************************************************************************************
+        counteroffer_feasibility_constraint_count.
+
+        Counts how many feasibility constraints failed.
+
+        NULL for non-counteroffer preliminary routes.
+        *******************************************************************************************/
+        CASE
+            WHEN cte.preliminary_decision_outcome <> 'COUNTEROFFER'
+                THEN NULL::INTEGER
+
+            ELSE
+                (
+                    CASE WHEN cte.counteroffer_allowed_flag IS DISTINCT FROM TRUE THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_raw_max_feasible_amount IS NULL THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_rounded_amount IS NULL THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_rounded_amount <= 0 THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_rounded_amount >= cte.requested_amount THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_rounded_amount < cte.product_min_approved_amount THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_rounded_amount < cte.requested_amount * cte.product_min_counteroffer_pct THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_rounded_amount < cte.requested_amount * (1.0 - cte.product_max_exposure_reduction_pct) THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_rounded_amount > cte.product_max_approved_amount THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_test_payment_to_income_ratio IS NULL THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_test_payment_to_income_ratio > cte.counteroffer_target_pti THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_test_expected_loss_amount IS NULL THEN 1 ELSE 0 END
+                    + CASE WHEN cte.counteroffer_test_expected_loss_amount > cte.product_approved_el_cap THEN 1 ELSE 0 END
+                )
+        END AS counteroffer_feasibility_constraint_count,
+
+
+        /*******************************************************************************************
+        counteroffer_feasibility_failure_reason.
+
+        First failing constraint in priority order.
+
+        This is a feasibility diagnostic only.
+        It is not a final simulated reason code.
+        *******************************************************************************************/
+        CASE
+            WHEN cte.preliminary_decision_outcome <> 'COUNTEROFFER'
+                THEN NULL::TEXT
+
+            WHEN cte.counteroffer_allowed_flag IS DISTINCT FROM TRUE
+                THEN 'COUNTEROFFER_NOT_ALLOWED_BY_PRODUCT_POLICY'
+
+            WHEN cte.counteroffer_raw_max_feasible_amount IS NULL
+                THEN 'COUNTEROFFER_RAW_AMOUNT_NULL'
+
+            WHEN cte.counteroffer_rounded_amount IS NULL
+                THEN 'COUNTEROFFER_ROUNDED_AMOUNT_NULL'
+
+            WHEN cte.counteroffer_rounded_amount <= 0
+                THEN 'COUNTEROFFER_ROUNDED_AMOUNT_NONPOSITIVE'
+
+            WHEN cte.counteroffer_rounded_amount >= cte.requested_amount
+                THEN 'COUNTEROFFER_NOT_BELOW_REQUESTED_AMOUNT'
+
+            WHEN cte.counteroffer_rounded_amount < cte.product_min_approved_amount
+                THEN 'COUNTEROFFER_BELOW_PRODUCT_MINIMUM'
+
+            WHEN cte.counteroffer_rounded_amount < cte.requested_amount * cte.product_min_counteroffer_pct
+                THEN 'COUNTEROFFER_BELOW_MINIMUM_REQUESTED_PERCENT'
+
+            WHEN cte.counteroffer_rounded_amount < cte.requested_amount * (1.0 - cte.product_max_exposure_reduction_pct)
+                THEN 'COUNTEROFFER_EXCEEDS_MAX_REDUCTION'
+
+            WHEN cte.counteroffer_rounded_amount > cte.product_max_approved_amount
+                THEN 'COUNTEROFFER_EXCEEDS_PRODUCT_CAP'
+
+            WHEN cte.counteroffer_test_payment_to_income_ratio IS NULL
+                THEN 'COUNTEROFFER_TEST_PTI_NULL'
+
+            WHEN cte.counteroffer_test_payment_to_income_ratio > cte.counteroffer_target_pti
+                THEN 'COUNTEROFFER_PTI_STILL_ABOVE_TARGET'
+
+            WHEN cte.counteroffer_test_expected_loss_amount IS NULL
+                THEN 'COUNTEROFFER_TEST_EXPECTED_LOSS_NULL'
+
+            WHEN cte.counteroffer_test_expected_loss_amount > cte.product_approved_el_cap
+                THEN 'COUNTEROFFER_APPROVED_EL_ABOVE_CAP'
+
+            WHEN NOT (
+                cte.counteroffer_allowed_flag IS TRUE
+                AND cte.counteroffer_rounded_amount IS NOT NULL
+                AND cte.counteroffer_rounded_amount > 0
+                AND cte.counteroffer_rounded_amount < cte.requested_amount
+                AND cte.counteroffer_rounded_amount >= cte.product_min_approved_amount
+                AND cte.counteroffer_rounded_amount >= cte.requested_amount * cte.product_min_counteroffer_pct
+                AND cte.counteroffer_rounded_amount >= cte.requested_amount * (1.0 - cte.product_max_exposure_reduction_pct)
+                AND cte.counteroffer_rounded_amount <= cte.product_max_approved_amount
+                AND cte.counteroffer_test_payment_to_income_ratio <= cte.counteroffer_target_pti
+                AND cte.counteroffer_test_expected_loss_amount <= cte.product_approved_el_cap
+            )
+                THEN 'COUNTEROFFER_FEASIBILITY_UNKNOWN'
+
+            ELSE NULL::TEXT
+        END AS counteroffer_feasibility_failure_reason
+
+    FROM counteroffer_test_economics cte
+),
+
+exposure_amount_assignment AS (
+    /***********************************************************************************************
+    CTE: exposure_amount_assignment
+
+    Purpose:
+        Assign preliminary approved exposure and exposure-reduction fields by preliminary route.
+
+    Route conventions:
+        APPROVE:
+            approve as requested.
+
+        COUNTEROFFER:
+            use rounded feasible reduced exposure only if feasibility passes.
+
+        DECLINE:
+            apply preliminary zero-exposure convention.
+
+        MANUAL_REVIEW:
+            remain unresolved with NULL exposure economics.
+
+        Failed COUNTEROFFER:
+            remain unresolved with NULL exposure economics until Section 9 resolves the final outcome.
+    ***********************************************************************************************/
+    SELECT
+        cf.*,
+
+        CASE
+            WHEN cf.preliminary_decision_outcome = 'APPROVE'
+                THEN cf.requested_amount
+
+            WHEN cf.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND cf.counteroffer_feasibility_pass_flag IS TRUE
+                THEN cf.counteroffer_rounded_amount
+
+            WHEN cf.preliminary_decision_outcome = 'DECLINE'
+                THEN 0::NUMERIC
+
+            WHEN cf.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN NULL::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_amount_preliminary,
+
+
+        CASE
+            WHEN cf.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND cf.counteroffer_feasibility_pass_flag IS TRUE
+                THEN cf.counteroffer_rounded_amount
+            ELSE NULL::NUMERIC
+        END AS counteroffer_amount_preliminary,
+
+
+        CASE
+            WHEN cf.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND cf.counteroffer_feasibility_pass_flag IS TRUE
+                THEN TRUE
+            ELSE FALSE
+        END AS exposure_reduction_flag_preliminary,
+
+
+        CASE
+            WHEN cf.preliminary_decision_outcome = 'APPROVE'
+                THEN 0::NUMERIC
+
+            WHEN cf.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND cf.counteroffer_feasibility_pass_flag IS TRUE
+                THEN cf.requested_amount - cf.counteroffer_rounded_amount
+
+            WHEN cf.preliminary_decision_outcome = 'DECLINE'
+                THEN cf.requested_amount
+
+            WHEN cf.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN NULL::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS exposure_reduction_amount_preliminary,
+
+
+        CASE
+            WHEN cf.preliminary_decision_outcome = 'APPROVE'
+                THEN 0::NUMERIC
+
+            WHEN cf.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND cf.counteroffer_feasibility_pass_flag IS TRUE
+                THEN (cf.requested_amount - cf.counteroffer_rounded_amount)
+                     / NULLIF(cf.requested_amount, 0)
+
+            WHEN cf.preliminary_decision_outcome = 'DECLINE'
+                THEN 1.0::NUMERIC
+
+            WHEN cf.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN NULL::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS exposure_reduction_pct_preliminary
+
+    FROM counteroffer_feasibility cf
+),
+
+approved_affordability AS (
+    /***********************************************************************************************
+    CTE: approved_affordability
+
+    Purpose:
+        Assign preliminary approved payment proxy and preliminary approved PTI.
+
+    Boundary:
+        These remain preliminary exposure-treatment values.
+
+        Final approved payment and final approved PTI are created in Section 9.
+    ***********************************************************************************************/
+    SELECT
+        eaa.*,
+
+        CASE
+            WHEN eaa.preliminary_decision_outcome = 'APPROVE'
+                THEN eaa.requested_monthly_payment_proxy
+
+            WHEN eaa.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND eaa.counteroffer_feasibility_pass_flag IS TRUE
+                THEN eaa.counteroffer_test_monthly_payment_proxy
+
+            WHEN eaa.preliminary_decision_outcome = 'DECLINE'
+                THEN 0::NUMERIC
+
+            WHEN eaa.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN NULL::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_monthly_payment_proxy_preliminary,
+
+
+        CASE
+            WHEN eaa.preliminary_decision_outcome = 'APPROVE'
+                THEN eaa.requested_payment_to_income_ratio
+
+            WHEN eaa.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND eaa.counteroffer_feasibility_pass_flag IS TRUE
+                THEN eaa.counteroffer_test_payment_to_income_ratio
+
+            WHEN eaa.preliminary_decision_outcome = 'DECLINE'
+                THEN 0::NUMERIC
+
+            WHEN eaa.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN NULL::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_payment_to_income_ratio_preliminary
+
+    FROM exposure_amount_assignment eaa
+),
+
+approved_economics AS (
+    /***********************************************************************************************
+    CTE: approved_economics
+
+    Purpose:
+        Assign preliminary approved Expected Loss and approved Expected Loss reduction fields.
+
+    Boundary:
+        These are preliminary strategy-simulation economics.
+
+        Final approved Expected Loss is created in Section 9.
+    ***********************************************************************************************/
+    SELECT
+        aa.*,
+
+        CASE
+            WHEN aa.preliminary_decision_outcome = 'APPROVE'
+                THEN aa.requested_expected_loss_amount
+
+            WHEN aa.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND aa.counteroffer_feasibility_pass_flag IS TRUE
+                THEN aa.counteroffer_test_expected_loss_amount
+
+            WHEN aa.preliminary_decision_outcome = 'DECLINE'
+                THEN 0::NUMERIC
+
+            WHEN aa.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN NULL::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_expected_loss_amount_preliminary,
+
+
+        CASE
+            WHEN aa.preliminary_decision_outcome = 'APPROVE'
+                THEN 0::NUMERIC
+
+            WHEN aa.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND aa.counteroffer_feasibility_pass_flag IS TRUE
+                THEN aa.requested_expected_loss_amount - aa.counteroffer_test_expected_loss_amount
+
+            WHEN aa.preliminary_decision_outcome = 'DECLINE'
+                THEN aa.requested_expected_loss_amount
+
+            WHEN aa.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN NULL::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_el_reduction_amount_preliminary,
+
+
+        CASE
+            WHEN aa.preliminary_decision_outcome = 'APPROVE'
+                THEN 0::NUMERIC
+
+            WHEN aa.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND aa.counteroffer_feasibility_pass_flag IS TRUE
+                THEN (aa.requested_expected_loss_amount - aa.counteroffer_test_expected_loss_amount)
+                     / NULLIF(aa.requested_expected_loss_amount, 0)
+
+            WHEN aa.preliminary_decision_outcome = 'DECLINE'
+                THEN CASE
+                    WHEN aa.requested_expected_loss_amount > 0 THEN 1.0::NUMERIC
+                    ELSE 0::NUMERIC
+                END
+
+            WHEN aa.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN NULL::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_el_reduction_pct_preliminary
+
+    FROM approved_affordability aa
+),
+
+final_exposure_treatment AS (
+    /***********************************************************************************************
+    CTE: final_exposure_treatment
+
+    Purpose:
+        Assign compact preliminary exposure-treatment status and path labels.
+
+    Boundary:
+        These labels are not final decision_outcome and not final decision_path.
+    ***********************************************************************************************/
+    SELECT
+        ae.*,
+
+        /*******************************************************************************************
+        Only preliminary COUNTEROFFER rows receive feasibility evaluation.
+        *******************************************************************************************/
+        (ae.preliminary_decision_outcome = 'COUNTEROFFER')
+            AS counteroffer_feasibility_evaluated_flag,
+
+
+        CASE
+            WHEN ae.preliminary_decision_outcome = 'APPROVE'
+                THEN 'APPROVED_AS_REQUESTED_PRELIMINARY'
+
+            WHEN ae.preliminary_decision_outcome = 'DECLINE'
+                THEN 'NO_OFFER_PRELIMINARY_DECLINE'
+
+            WHEN ae.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN 'UNRESOLVED_MANUAL_REVIEW'
+
+            WHEN ae.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND ae.counteroffer_feasibility_pass_flag IS TRUE
+                THEN 'COUNTEROFFER_FEASIBLE_PRELIMINARY'
+
+            WHEN ae.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND ae.counteroffer_feasibility_pass_flag IS FALSE
+                THEN 'COUNTEROFFER_NOT_FEASIBLE_PRELIMINARY'
+
+            ELSE 'EXPOSURE_TREATMENT_UNKNOWN'
+        END AS exposure_treatment_status,
+
+
+        CASE
+            WHEN ae.preliminary_decision_outcome = 'APPROVE'
+                THEN 'APPROVE_AS_REQUESTED'
+
+            WHEN ae.preliminary_decision_outcome = 'DECLINE'
+                THEN 'NO_OFFER'
+
+            WHEN ae.preliminary_decision_outcome = 'MANUAL_REVIEW'
+                THEN 'MANUAL_REVIEW_UNRESOLVED'
+
+            WHEN ae.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND ae.counteroffer_feasibility_pass_flag IS TRUE
+                THEN 'COUNTEROFFER_FEASIBLE'
+
+            WHEN ae.preliminary_decision_outcome = 'COUNTEROFFER'
+             AND ae.counteroffer_feasibility_pass_flag IS FALSE
+                THEN 'COUNTEROFFER_NOT_FEASIBLE'
+
+            ELSE 'EXPOSURE_TREATMENT_UNKNOWN'
+        END AS exposure_treatment_path
+
+    FROM approved_economics ae
+)
+
+SELECT *
+FROM final_exposure_treatment;
+
+
+
+/***************************************************************************************************
+SECTION 8.3 — LOCAL FAIL-FAST CHECKS FOR EXPOSURE TREATMENT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that preliminary exposure treatment, approved affordability proxies, approved Expected
+    Loss proxies, and counteroffer feasibility diagnostics are internally consistent before Section 9
+    resolves final decision_outcome.
+
+    Section 8.3 answers:
+
+        "Did Section 8 preserve applicant grain, calculate preliminary exposure treatment correctly,
+         evaluate preliminary counteroffers, and avoid creating final decision / reason-code fields?"
+
+SQL PURPOSE:
+    1. Confirm row count is unchanged from tmp_m2_stage_4_preliminary_decision_routing.
+    2. Confirm application_id remains unique.
+    3. Confirm required Section 8 fields are complete.
+    4. Confirm APPROVE preliminary exposure convention.
+    5. Confirm DECLINE preliminary zero-exposure convention.
+    6. Confirm MANUAL_REVIEW unresolved convention.
+    7. Confirm preliminary COUNTEROFFER feasibility evaluation.
+    8. Confirm feasible preliminary COUNTEROFFER convention.
+    9. Confirm infeasible preliminary COUNTEROFFER convention.
+    10. Confirm final decision, final exposure, latest-run, archive, and reason-code fields were not
+        created.
+
+LOCAL GATEKEEPER BOUNDARY:
+    These are local Section 8 staging gatekeepers only.
+
+    They are not:
+        final decision validation,
+        reason-code validation,
+        archive validation,
+        matched strategy comparison,
+        full Module 2 QA,
+        strategy frontier review,
+        or Validation Summary evidence by themselves.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage4_count BIGINT;
+    v_stage5_count BIGINT;
+    v_stage5_distinct_app_count BIGINT;
+    v_duplicate_application_count BIGINT;
+
+    v_exposure_treatment_completeness_failure_count BIGINT;
+    v_approve_convention_failure_count BIGINT;
+    v_decline_convention_failure_count BIGINT;
+    v_manual_review_convention_failure_count BIGINT;
+    v_counteroffer_route_failure_count BIGINT;
+    v_counteroffer_pass_failure_count BIGINT;
+    v_counteroffer_fail_failure_count BIGINT;
+
+    v_forbidden_column_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: row count must be unchanged from Section 7 to Section 8.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage4_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing;
+
+    SELECT COUNT(*)
+    INTO v_stage5_count
+    FROM tmp_m2_stage_5_exposure_treatment;
+
+    IF v_stage5_count <> v_stage4_count THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: row count changed from Section 7 to Section 8. Stage 4 rows: %, Stage 5 rows: %.',
+            v_stage4_count,
+            v_stage5_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id remains unique.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage5_distinct_app_count
+    FROM tmp_m2_stage_5_exposure_treatment;
+
+    IF v_stage5_distinct_app_count <> v_stage5_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_count
+        FROM (
+            SELECT application_id
+            FROM tmp_m2_stage_5_exposure_treatment
+            GROUP BY application_id
+            HAVING COUNT(*) > 1
+        ) d;
+
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: application_id uniqueness was not preserved. Stage 5 rows: %, distinct application_id count: %, duplicate application_id group count: %.',
+            v_stage5_count,
+            v_stage5_distinct_app_count,
+            v_duplicate_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required Section 8 output fields must be complete.
+
+    Non-counteroffer rows are allowed to have NULL counteroffer-specific diagnostic fields.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_exposure_treatment_completeness_failure_count
+    FROM tmp_m2_stage_5_exposure_treatment
+    WHERE exposure_treatment_status IS NULL
+       OR exposure_treatment_path IS NULL
+       OR exposure_reduction_flag_preliminary IS NULL
+       OR counteroffer_feasibility_evaluated_flag IS NULL
+
+       OR (
+            preliminary_decision_outcome = 'COUNTEROFFER'
+            AND (
+                counteroffer_feasibility_pass_flag IS NULL
+             OR counteroffer_feasibility_constraint_count IS NULL
+             OR counteroffer_product_cap_amount IS NULL
+             OR counteroffer_pti_target_amount IS NULL
+             OR counteroffer_el_cap_amount IS NULL
+             OR counteroffer_min_viable_amount IS NULL
+            )
+       );
+
+    IF v_exposure_treatment_completeness_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: % row(s) have incomplete exposure-treatment fields.',
+            v_exposure_treatment_completeness_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: preliminary APPROVE convention.
+
+    APPROVE remains preliminary but should preserve requested exposure and requested economics.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_approve_convention_failure_count
+    FROM tmp_m2_stage_5_exposure_treatment
+    WHERE preliminary_decision_outcome = 'APPROVE'
+      AND (
+            approved_amount_preliminary IS DISTINCT FROM requested_amount
+         OR counteroffer_amount_preliminary IS NOT NULL
+         OR exposure_reduction_flag_preliminary IS DISTINCT FROM FALSE
+         OR exposure_reduction_amount_preliminary IS DISTINCT FROM 0::NUMERIC
+         OR exposure_reduction_pct_preliminary IS DISTINCT FROM 0::NUMERIC
+         OR approved_monthly_payment_proxy_preliminary IS DISTINCT FROM requested_monthly_payment_proxy
+         OR approved_payment_to_income_ratio_preliminary IS DISTINCT FROM requested_payment_to_income_ratio
+         OR approved_expected_loss_amount_preliminary IS DISTINCT FROM requested_expected_loss_amount
+         OR approved_el_reduction_amount_preliminary IS DISTINCT FROM 0::NUMERIC
+         OR approved_el_reduction_pct_preliminary IS DISTINCT FROM 0::NUMERIC
+         OR counteroffer_feasibility_evaluated_flag IS DISTINCT FROM FALSE
+         OR counteroffer_feasibility_pass_flag IS NOT NULL
+         OR counteroffer_feasibility_failure_reason IS NOT NULL
+         OR counteroffer_feasibility_constraint_count IS NOT NULL
+         OR exposure_treatment_status <> 'APPROVED_AS_REQUESTED_PRELIMINARY'
+         OR exposure_treatment_path <> 'APPROVE_AS_REQUESTED'
+      );
+
+    IF v_approve_convention_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: % preliminary APPROVE row(s) violate exposure-treatment convention.',
+            v_approve_convention_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: preliminary DECLINE convention.
+
+    DECLINE is still preliminary, but the exposure-treatment convention is zero exposure.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_decline_convention_failure_count
+    FROM tmp_m2_stage_5_exposure_treatment
+    WHERE preliminary_decision_outcome = 'DECLINE'
+      AND (
+            approved_amount_preliminary IS DISTINCT FROM 0::NUMERIC
+         OR counteroffer_amount_preliminary IS NOT NULL
+         OR exposure_reduction_flag_preliminary IS DISTINCT FROM FALSE
+         OR exposure_reduction_amount_preliminary IS DISTINCT FROM requested_amount
+         OR exposure_reduction_pct_preliminary IS DISTINCT FROM 1.0::NUMERIC
+         OR approved_monthly_payment_proxy_preliminary IS DISTINCT FROM 0::NUMERIC
+         OR approved_payment_to_income_ratio_preliminary IS DISTINCT FROM 0::NUMERIC
+         OR approved_expected_loss_amount_preliminary IS DISTINCT FROM 0::NUMERIC
+         OR approved_el_reduction_amount_preliminary IS DISTINCT FROM requested_expected_loss_amount
+         OR approved_el_reduction_pct_preliminary IS NULL
+         OR counteroffer_feasibility_evaluated_flag IS DISTINCT FROM FALSE
+         OR counteroffer_feasibility_pass_flag IS NOT NULL
+         OR counteroffer_feasibility_failure_reason IS NOT NULL
+         OR counteroffer_feasibility_constraint_count IS NOT NULL
+         OR exposure_treatment_status <> 'NO_OFFER_PRELIMINARY_DECLINE'
+         OR exposure_treatment_path <> 'NO_OFFER'
+      );
+
+    IF v_decline_convention_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: % preliminary DECLINE row(s) violate zero-exposure treatment convention.',
+            v_decline_convention_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: preliminary MANUAL_REVIEW convention.
+
+    Manual review remains unresolved by design.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_manual_review_convention_failure_count
+    FROM tmp_m2_stage_5_exposure_treatment
+    WHERE preliminary_decision_outcome = 'MANUAL_REVIEW'
+      AND (
+            approved_amount_preliminary IS NOT NULL
+         OR counteroffer_amount_preliminary IS NOT NULL
+         OR exposure_reduction_flag_preliminary IS DISTINCT FROM FALSE
+         OR exposure_reduction_amount_preliminary IS NOT NULL
+         OR exposure_reduction_pct_preliminary IS NOT NULL
+         OR approved_monthly_payment_proxy_preliminary IS NOT NULL
+         OR approved_payment_to_income_ratio_preliminary IS NOT NULL
+         OR approved_expected_loss_amount_preliminary IS NOT NULL
+         OR approved_el_reduction_amount_preliminary IS NOT NULL
+         OR approved_el_reduction_pct_preliminary IS NOT NULL
+         OR counteroffer_feasibility_evaluated_flag IS DISTINCT FROM FALSE
+         OR counteroffer_feasibility_pass_flag IS NOT NULL
+         OR counteroffer_feasibility_failure_reason IS NOT NULL
+         OR counteroffer_feasibility_constraint_count IS NOT NULL
+         OR exposure_treatment_status <> 'UNRESOLVED_MANUAL_REVIEW'
+         OR exposure_treatment_path <> 'MANUAL_REVIEW_UNRESOLVED'
+      );
+
+    IF v_manual_review_convention_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: % preliminary MANUAL_REVIEW row(s) violate unresolved convention.',
+            v_manual_review_convention_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: preliminary COUNTEROFFER rows must be explicitly evaluated for feasibility.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_counteroffer_route_failure_count
+    FROM tmp_m2_stage_5_exposure_treatment
+    WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+      AND (
+            counteroffer_feasibility_evaluated_flag IS DISTINCT FROM TRUE
+         OR counteroffer_feasibility_pass_flag IS NULL
+         OR counteroffer_feasibility_constraint_count IS NULL
+         OR exposure_treatment_status NOT IN (
+                'COUNTEROFFER_FEASIBLE_PRELIMINARY',
+                'COUNTEROFFER_NOT_FEASIBLE_PRELIMINARY'
+            )
+         OR exposure_treatment_path NOT IN (
+                'COUNTEROFFER_FEASIBLE',
+                'COUNTEROFFER_NOT_FEASIBLE'
+            )
+      );
+
+    IF v_counteroffer_route_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: % preliminary COUNTEROFFER row(s) were not explicitly evaluated for feasibility.',
+            v_counteroffer_route_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: feasible preliminary COUNTEROFFER convention.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_counteroffer_pass_failure_count
+    FROM tmp_m2_stage_5_exposure_treatment
+    WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+      AND counteroffer_feasibility_pass_flag IS TRUE
+      AND (
+            approved_amount_preliminary IS NULL
+         OR counteroffer_amount_preliminary IS DISTINCT FROM approved_amount_preliminary
+         OR approved_amount_preliminary <= 0
+         OR approved_amount_preliminary >= requested_amount
+         OR exposure_reduction_flag_preliminary IS DISTINCT FROM TRUE
+         OR exposure_reduction_amount_preliminary <= 0
+         OR exposure_reduction_pct_preliminary <= 0
+         OR approved_amount_preliminary < product_min_approved_amount
+         OR approved_amount_preliminary > product_max_approved_amount
+         OR approved_payment_to_income_ratio_preliminary > counteroffer_target_pti
+         OR approved_expected_loss_amount_preliminary > product_approved_el_cap
+         OR counteroffer_feasibility_failure_reason IS NOT NULL
+         OR exposure_treatment_status <> 'COUNTEROFFER_FEASIBLE_PRELIMINARY'
+         OR exposure_treatment_path <> 'COUNTEROFFER_FEASIBLE'
+      );
+
+    IF v_counteroffer_pass_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: % feasible preliminary COUNTEROFFER row(s) violate counteroffer feasibility convention.',
+            v_counteroffer_pass_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: infeasible preliminary COUNTEROFFER convention.
+
+    Infeasible preliminary counteroffers remain unresolved in Section 8.
+
+    Section 9 later resolves the final outcome using failed_counteroffer_resolution.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_counteroffer_fail_failure_count
+    FROM tmp_m2_stage_5_exposure_treatment
+    WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+      AND counteroffer_feasibility_pass_flag IS FALSE
+      AND (
+            approved_amount_preliminary IS NOT NULL
+         OR counteroffer_amount_preliminary IS NOT NULL
+         OR exposure_reduction_flag_preliminary IS DISTINCT FROM FALSE
+         OR exposure_reduction_amount_preliminary IS NOT NULL
+         OR exposure_reduction_pct_preliminary IS NOT NULL
+         OR approved_monthly_payment_proxy_preliminary IS NOT NULL
+         OR approved_payment_to_income_ratio_preliminary IS NOT NULL
+         OR approved_expected_loss_amount_preliminary IS NOT NULL
+         OR approved_el_reduction_amount_preliminary IS NOT NULL
+         OR approved_el_reduction_pct_preliminary IS NOT NULL
+         OR counteroffer_feasibility_failure_reason IS NULL
+         OR exposure_treatment_status <> 'COUNTEROFFER_NOT_FEASIBLE_PRELIMINARY'
+         OR exposure_treatment_path <> 'COUNTEROFFER_NOT_FEASIBLE'
+      );
+
+    IF v_counteroffer_fail_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: % infeasible preliminary COUNTEROFFER row(s) violate failed-counteroffer convention.',
+            v_counteroffer_fail_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 8 must not create final decision, final flags, final exposure fields,
+    simulated reason-code fields, latest-run output, or archive logic.
+
+    Exact final field names are checked. Preliminary exposure-treatment fields are allowed.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_forbidden_column_count
+    FROM pg_attribute
+    WHERE attrelid = 'tmp_m2_stage_5_exposure_treatment'::REGCLASS
+      AND attnum > 0
+      AND NOT attisdropped
+      AND attname IN (
+            'decision_outcome',
+            'decision_path',
+            'approval_flag',
+            'decline_flag',
+            'manual_review_flag',
+            'counteroffer_flag',
+            'simulated_offer_exposure_flag',
+
+            'primary_reason_code',
+            'secondary_reason_code',
+            'tertiary_reason_code',
+            'triggered_reason_code_list',
+            'reason_priority_rank',
+            'primary_reason_family',
+            'reason_code_count',
+
+            'approved_amount',
+            'counteroffer_amount',
+            'approved_monthly_payment_proxy',
+            'approved_payment_to_income_ratio',
+            'approved_expected_loss_amount'
+      );
+
+    IF v_forbidden_column_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 8 failure: forbidden final decision, final exposure, or reason-code field(s) were created in exposure-treatment stage.';
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 8.4 — LOCAL EXPOSURE-TREATMENT SANITY CHECKS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide lightweight diagnostics for Section 8 exposure treatment and counteroffer feasibility.
+
+    Section 8.4 answers:
+
+        "What exposure treatment did Section 8 calculate, how many preliminary counteroffers were
+         feasible, and which constraints explain failed counteroffers?"
+
+SQL PURPOSE:
+    Display review outputs for:
+        preliminary outcome × exposure-treatment status,
+        exposure-treatment path,
+        counteroffer feasibility evaluation,
+        counteroffer feasibility pass / fail,
+        counteroffer failure reason,
+        product × counteroffer feasibility,
+        score band × counteroffer feasibility,
+        requested PTI bucket × counteroffer feasibility,
+        strategy risk tier × counteroffer feasibility,
+        requested vs approved amount by exposure-treatment status,
+        requested vs approved PTI by exposure-treatment status,
+        requested vs approved Expected Loss by exposure-treatment status,
+        exposure reduction by product for feasible counteroffers,
+        counteroffer failures by product and failure reason,
+        counteroffer feasibility constraint counts,
+        and one compact Section 8 readiness summary.
+
+INTERPRETATION:
+    These are staging diagnostics only.
+
+    They should not be interpreted as:
+        final strategy validation,
+        final decision distribution,
+        simulated reason-code validation,
+        archive validation,
+        matched strategy comparison,
+        strategy frontier evidence,
+        or Validation Summary acceptance.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.1 Count by preliminary_decision_outcome × exposure_treatment_status.
+
+Purpose:
+    Show how each preliminary route was translated into exposure-treatment status.
+
+Boundary:
+    preliminary_decision_outcome is not final decision_outcome.
+    exposure_treatment_status is not final decision_path.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    preliminary_decision_outcome,
+    exposure_treatment_status,
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_stage
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+GROUP BY
+    preliminary_decision_outcome,
+    exposure_treatment_status
+
+ORDER BY
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END,
+    exposure_treatment_status;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.2 Count by exposure_treatment_path.
+
+Purpose:
+    Review compact exposure-treatment path labels.
+
+Interpretation:
+    This is useful for confirming how many rows were approved as requested, tested as counteroffer,
+    left unresolved, or given preliminary zero-exposure treatment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    exposure_treatment_path,
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_stage
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+GROUP BY exposure_treatment_path
+
+ORDER BY exposure_treatment_path;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.3 Count by counteroffer_feasibility_evaluated_flag.
+
+Purpose:
+    Confirm that feasibility was evaluated only for preliminary COUNTEROFFER rows.
+
+Expected:
+    TRUE only for preliminary_decision_outcome = COUNTEROFFER.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_feasibility_evaluated_flag,
+    preliminary_decision_outcome,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_5_exposure_treatment
+GROUP BY
+    counteroffer_feasibility_evaluated_flag,
+    preliminary_decision_outcome
+ORDER BY
+    counteroffer_feasibility_evaluated_flag,
+    preliminary_decision_outcome;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.4 Count by counteroffer_feasibility_pass_flag.
+
+Purpose:
+    Review preliminary COUNTEROFFER feasibility pass / fail results.
+
+Boundary:
+    Feasible preliminary counteroffer is not final COUNTEROFFER until Section 9.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_feasibility_pass_flag,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_5_exposure_treatment
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+GROUP BY counteroffer_feasibility_pass_flag
+ORDER BY counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.5 Count by counteroffer_feasibility_failure_reason.
+
+Purpose:
+    Show why preliminary COUNTEROFFER rows failed feasibility testing.
+
+Boundary:
+    counteroffer_feasibility_failure_reason is a diagnostic field, not a final simulated reason code.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_feasibility_failure_reason,
+    COUNT(*) AS row_count,
+
+    AVG(counteroffer_feasibility_constraint_count)
+        AS avg_counteroffer_feasibility_constraint_count
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+  AND counteroffer_feasibility_pass_flag IS FALSE
+
+GROUP BY counteroffer_feasibility_failure_reason
+
+ORDER BY
+    row_count DESC,
+    counteroffer_feasibility_failure_reason;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.6 Product × counteroffer_feasibility_pass_flag.
+
+Purpose:
+    Review whether counteroffer feasibility concentrates by product.
+
+Interpretation:
+    Product concentration may reflect product caps, minimums, PTI targets, approved Expected Loss caps,
+    rounding increments, or exposure-reduction limits.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag,
+
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount_preliminary) AS avg_approved_amount_preliminary,
+    AVG(exposure_reduction_pct_preliminary) AS avg_exposure_reduction_pct_preliminary,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio_preliminary) AS avg_approved_payment_to_income_ratio_preliminary,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount_preliminary) AS avg_approved_expected_loss_amount_preliminary
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag
+
+ORDER BY
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.7 Score band × counteroffer_feasibility_pass_flag.
+
+Purpose:
+    Review whether counteroffer feasibility differs by borrower-quality segment.
+
+Boundary:
+    Score band is diagnostic. Feasibility is still driven by exposure, PTI, Expected Loss, and product
+    constraints.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+    counteroffer_feasibility_pass_flag,
+
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount_preliminary) AS avg_approved_amount_preliminary
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    score_band_policy_key,
+    counteroffer_feasibility_pass_flag
+
+ORDER BY
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.8 Requested PTI bucket × counteroffer_feasibility_pass_flag.
+
+Purpose:
+    Review how requested affordability pressure affects counteroffer feasibility.
+
+Boundary:
+    Requested PTI is the requested structure.
+
+    Approved PTI is calculated only after exposure treatment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_pti_bucket,
+    counteroffer_feasibility_pass_flag,
+
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio_preliminary) AS avg_approved_payment_to_income_ratio_preliminary,
+    AVG(counteroffer_target_pti) AS avg_counteroffer_target_pti
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    requested_pti_bucket,
+    counteroffer_feasibility_pass_flag
+
+ORDER BY
+    CASE requested_pti_bucket
+        WHEN 'LOW_REQUESTED_PTI' THEN 1
+        WHEN 'MODERATE_REQUESTED_PTI' THEN 2
+        WHEN 'ELEVATED_REQUESTED_PTI' THEN 3
+        WHEN 'HIGH_REQUESTED_PTI' THEN 4
+        WHEN 'SEVERE_REQUESTED_PTI' THEN 5
+        ELSE 99
+    END,
+    counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.9 Strategy risk tier × counteroffer_feasibility_pass_flag.
+
+Purpose:
+    Review whether synthetic estimated-risk tiers affect counteroffer feasibility.
+
+Boundary:
+    estimated_pd remains the synthetic estimated-PD proxy and is not recalculated by exposure
+    treatment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_risk_tier,
+    counteroffer_feasibility_pass_flag,
+
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(estimated_lgd) AS avg_estimated_lgd,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount_preliminary) AS avg_approved_expected_loss_amount_preliminary
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    strategy_risk_tier,
+    counteroffer_feasibility_pass_flag
+
+ORDER BY
+    CASE strategy_risk_tier
+        WHEN 'LOW_SYNTHETIC_RISK' THEN 1
+        WHEN 'MODERATE_SYNTHETIC_RISK' THEN 2
+        WHEN 'ELEVATED_SYNTHETIC_RISK' THEN 3
+        WHEN 'HIGH_SYNTHETIC_RISK' THEN 4
+        WHEN 'SEVERE_SYNTHETIC_RISK' THEN 5
+        ELSE 99
+    END,
+    counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.10 Requested amount versus preliminary approved amount by exposure_treatment_status.
+
+Purpose:
+    Review exposure capture and reduction by treatment status.
+
+Interpretation:
+    APPROVE should preserve requested amount.
+    Feasible COUNTEROFFER should reduce amount.
+    Preliminary DECLINE should use zero approved exposure.
+    MANUAL_REVIEW and failed COUNTEROFFER should remain unresolved.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    exposure_treatment_status,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount_preliminary) AS avg_approved_amount_preliminary,
+
+    SUM(requested_amount) AS total_requested_amount,
+    SUM(COALESCE(approved_amount_preliminary, 0)) AS total_approved_amount_preliminary,
+
+    AVG(exposure_reduction_amount_preliminary) AS avg_exposure_reduction_amount_preliminary,
+    AVG(exposure_reduction_pct_preliminary) AS avg_exposure_reduction_pct_preliminary
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+GROUP BY exposure_treatment_status
+
+ORDER BY exposure_treatment_status;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.11 Requested PTI versus preliminary approved PTI by exposure_treatment_status.
+
+Purpose:
+    Review affordability impact of exposure treatment.
+
+Boundary:
+    approved_payment_to_income_ratio_preliminary is a strategy-simulation proxy.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    exposure_treatment_status,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio_preliminary) AS avg_approved_payment_to_income_ratio_preliminary,
+
+    AVG(
+        requested_payment_to_income_ratio - approved_payment_to_income_ratio_preliminary
+    ) AS avg_pti_reduction_preliminary
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+GROUP BY exposure_treatment_status
+
+ORDER BY exposure_treatment_status;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.12 Requested Expected Loss versus preliminary approved Expected Loss by exposure_treatment_status.
+
+Purpose:
+    Review Expected Loss impact of preliminary exposure treatment.
+
+Boundary:
+    requested_expected_loss_amount is requested-exposure Expected Loss.
+    approved_expected_loss_amount_preliminary is preliminary approved-exposure Expected Loss.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    exposure_treatment_status,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount_preliminary) AS avg_approved_expected_loss_amount_preliminary,
+
+    SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+    SUM(COALESCE(approved_expected_loss_amount_preliminary, 0)) AS total_approved_expected_loss_amount_preliminary,
+
+    AVG(approved_el_reduction_amount_preliminary) AS avg_approved_el_reduction_amount_preliminary,
+    AVG(approved_el_reduction_pct_preliminary) AS avg_approved_el_reduction_pct_preliminary
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+GROUP BY exposure_treatment_status
+
+ORDER BY exposure_treatment_status;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.13 Average exposure reduction percentage by product for feasible counteroffers.
+
+Purpose:
+    Show product-level counteroffer reduction behavior.
+
+Interpretation:
+    Higher reduction percentages may be expected where product caps, affordability targets, or
+    approved Expected Loss caps bind more tightly.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+
+    COUNT(*) AS feasible_counteroffer_rows,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount_preliminary) AS avg_counteroffer_amount_preliminary,
+    AVG(exposure_reduction_amount_preliminary) AS avg_exposure_reduction_amount_preliminary,
+    AVG(exposure_reduction_pct_preliminary) AS avg_exposure_reduction_pct_preliminary,
+
+    AVG(approved_payment_to_income_ratio_preliminary) AS avg_approved_payment_to_income_ratio_preliminary,
+    AVG(approved_expected_loss_amount_preliminary) AS avg_approved_expected_loss_amount_preliminary
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+  AND counteroffer_feasibility_pass_flag IS TRUE
+
+GROUP BY product_type_policy_key
+
+ORDER BY product_type_policy_key;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.14 Counteroffer failures by product and failure reason.
+
+Purpose:
+    Identify which products and constraints explain failed preliminary counteroffers.
+
+Boundary:
+    Failure reasons are feasibility diagnostics only.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    counteroffer_feasibility_failure_reason,
+
+    COUNT(*) AS failed_counteroffer_rows,
+
+    AVG(counteroffer_feasibility_constraint_count)
+        AS avg_counteroffer_feasibility_constraint_count,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(counteroffer_raw_max_feasible_amount) AS avg_counteroffer_raw_max_feasible_amount,
+    AVG(counteroffer_rounded_amount) AS avg_counteroffer_rounded_amount,
+    AVG(counteroffer_min_viable_amount) AS avg_counteroffer_min_viable_amount
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+  AND counteroffer_feasibility_pass_flag IS FALSE
+
+GROUP BY
+    product_type_policy_key,
+    counteroffer_feasibility_failure_reason
+
+ORDER BY
+    product_type_policy_key,
+    failed_counteroffer_rows DESC,
+    counteroffer_feasibility_failure_reason;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.15 Counteroffer feasibility constraint count distribution.
+
+Purpose:
+    Review whether failed counteroffers usually fail one constraint or multiple constraints.
+
+Interpretation:
+    Multiple failed constraints suggest the requested structure is far from feasible.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_constraint_count,
+
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_constraint_count
+
+ORDER BY
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_constraint_count;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+8.4.16 Section 8 readiness summary.
+
+Purpose:
+    Provide one compact readiness row for the exposure-treatment stage.
+
+Expected:
+    section_8_exposure_treatment_status =
+        SECTION_8_EXPOSURE_TREATMENT_READY_FOR_FINAL_DECISION_RESOLUTION
+
+Interpretation:
+    This confirms only that Section 8 is ready for Section 9.
+
+    It does not validate final strategy outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+WITH exposure_treatment_summary AS (
+    SELECT
+        COUNT(*) AS stage5_row_count,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+        COUNT(*) FILTER (
+            WHERE exposure_treatment_status IS NULL
+               OR exposure_treatment_path IS NULL
+               OR exposure_reduction_flag_preliminary IS NULL
+               OR counteroffer_feasibility_evaluated_flag IS NULL
+        ) AS exposure_treatment_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+              AND (
+                    counteroffer_feasibility_pass_flag IS NULL
+                 OR counteroffer_feasibility_constraint_count IS NULL
+              )
+        ) AS counteroffer_feasibility_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'APPROVE'
+              AND approved_amount_preliminary IS DISTINCT FROM requested_amount
+        ) AS approve_amount_convention_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'DECLINE'
+              AND (
+                    approved_amount_preliminary IS DISTINCT FROM 0::NUMERIC
+                 OR approved_expected_loss_amount_preliminary IS DISTINCT FROM 0::NUMERIC
+              )
+        ) AS decline_zero_exposure_convention_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'MANUAL_REVIEW'
+              AND (
+                    approved_amount_preliminary IS NOT NULL
+                 OR approved_expected_loss_amount_preliminary IS NOT NULL
+              )
+        ) AS manual_review_unresolved_convention_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+              AND counteroffer_feasibility_pass_flag IS TRUE
+        ) AS feasible_preliminary_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+              AND counteroffer_feasibility_pass_flag IS FALSE
+        ) AS infeasible_preliminary_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'APPROVE'
+        ) AS preliminary_approve_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+        ) AS preliminary_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'MANUAL_REVIEW'
+        ) AS preliminary_manual_review_rows,
+
+        COUNT(*) FILTER (
+            WHERE preliminary_decision_outcome = 'DECLINE'
+        ) AS preliminary_decline_rows
+
+    FROM tmp_m2_stage_5_exposure_treatment
+)
+
+SELECT
+    stage5_row_count,
+    distinct_application_id_count,
+
+    exposure_treatment_gap_rows,
+    counteroffer_feasibility_gap_rows,
+    approve_amount_convention_gap_rows,
+    decline_zero_exposure_convention_gap_rows,
+    manual_review_unresolved_convention_gap_rows,
+
+    preliminary_approve_rows,
+    preliminary_counteroffer_rows,
+    feasible_preliminary_counteroffer_rows,
+    infeasible_preliminary_counteroffer_rows,
+    preliminary_manual_review_rows,
+    preliminary_decline_rows,
+
+    CASE
+        WHEN stage5_row_count > 0
+         AND stage5_row_count = distinct_application_id_count
+         AND exposure_treatment_gap_rows = 0
+         AND counteroffer_feasibility_gap_rows = 0
+         AND approve_amount_convention_gap_rows = 0
+         AND decline_zero_exposure_convention_gap_rows = 0
+         AND manual_review_unresolved_convention_gap_rows = 0
+            THEN 'SECTION_8_EXPOSURE_TREATMENT_READY_FOR_FINAL_DECISION_RESOLUTION'
+        ELSE 'REVIEW_SECTION_8_EXPOSURE_TREATMENT_BEFORE_FINAL_DECISION_RESOLUTION'
+    END AS section_8_exposure_treatment_status
+
+FROM exposure_treatment_summary;
+
+
+
+/***************************************************************************************************
+END OF SECTION 8 — APPROVED EXPOSURE AND COUNTEROFFER FEASIBILITY LAYER
+
+If execution reaches this point:
+    1. Section 8 dependency preflight passed.
+    2. tmp_m2_stage_5_exposure_treatment exists.
+    3. Row count is unchanged from tmp_m2_stage_4_preliminary_decision_routing.
+    4. application_id remains unique.
+    5. All Section 7 preliminary routing fields remain preserved.
+    6. Counteroffer product cap amount was calculated for preliminary COUNTEROFFER rows.
+    7. Counteroffer PTI target amount was calculated for preliminary COUNTEROFFER rows.
+    8. Counteroffer approved Expected Loss cap amount was calculated for preliminary COUNTEROFFER rows.
+    9. Counteroffer minimum viable amount was calculated for preliminary COUNTEROFFER rows.
+    10. Counteroffer raw maximum feasible amount was calculated for preliminary COUNTEROFFER rows.
+    11. Counteroffer rounded amount was calculated for preliminary COUNTEROFFER rows.
+    12. Counteroffer test payment, test PTI, and test approved Expected Loss were calculated.
+    13. counteroffer_feasibility_evaluated_flag is populated.
+    14. counteroffer_feasibility_pass_flag is populated for preliminary COUNTEROFFER rows.
+    15. counteroffer_feasibility_failure_reason is populated for infeasible preliminary COUNTEROFFER rows.
+    16. counteroffer_feasibility_constraint_count is populated for preliminary COUNTEROFFER rows.
+    17. approved_amount_preliminary is populated according to preliminary route convention.
+    18. counteroffer_amount_preliminary is populated only for feasible preliminary COUNTEROFFER rows.
+    19. approved_monthly_payment_proxy_preliminary is populated according to preliminary route convention.
+    20. approved_payment_to_income_ratio_preliminary is populated according to preliminary route convention.
+    21. approved_expected_loss_amount_preliminary is populated according to preliminary route convention.
+    22. exposure_treatment_status and exposure_treatment_path are populated.
+    23. APPROVE preliminary convention was validated.
+    24. DECLINE preliminary zero-exposure convention was validated.
+    25. MANUAL_REVIEW unresolved convention was validated.
+    26. Feasible and infeasible preliminary COUNTEROFFER conventions were validated.
+    27. No final decision, final reason-code, final approved-exposure, latest-run, archive, or evidence
+        fields were created.
+    28. Section 8 local exposure-treatment diagnostics are available for review.
+
+Section 8 established:
+    1. The preliminary exposure-treatment layer.
+    2. Preliminary approved exposure for preliminary APPROVE rows.
+    3. Reduced-exposure feasibility testing for preliminary COUNTEROFFER rows.
+    4. Preliminary zero-exposure treatment for preliminary DECLINE rows.
+    5. Unresolved exposure treatment for preliminary MANUAL_REVIEW rows.
+    6. Approved payment proxy and approved PTI proxy calculations.
+    7. Approved Expected Loss proxy calculations.
+    8. Counteroffer feasibility failure diagnostics.
+    9. The exposure-treatment foundation Section 9 needs for final decision resolution.
+
+No final decision_outcome has been created.
+No final decision_path has been created.
+No final approval / decline / manual review / counteroffer flags have been created.
+No simulated_offer_exposure_flag has been created.
+No simulated reason codes have been assigned.
+No final approved_amount has been created.
+No final counteroffer_amount has been created.
+No final approved payment proxy has been created.
+No final approved payment-to-income ratio has been created.
+No final approved Expected Loss has been created.
+No latest-run strategy decision output has been created.
+No strategy archive rows have been inserted.
+No evidence rows have been inserted.
+No matched comparison has been performed.
+No strategy frontier has been calculated.
+No full QA framework has been built.
+
+Next section:
+    Section 9 should consume tmp_m2_stage_5_exposure_treatment and resolve final simulated decision
+    outcomes, final decision paths, final outcome flags, final approved exposure, final approved
+    affordability, and final approved Expected Loss fields.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M01554 -->
+
+
+---
+
+<a id="c038-m01556"></a>
+
+### C038-M01556
+
+**Andrew** · 2026-05-12T10:37:44.068000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01556 -->
+proceed with pass 4 - operational pipeline commentary and compatibility tightening (section 9 - module 1 source selection and lineage normalization)
+<!-- END_MESSAGE C038-M01556 -->
+
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_77.md) · [Next](Part_79.md)

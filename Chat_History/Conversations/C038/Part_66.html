@@ -1,0 +1,3340 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 66</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 66 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_65.html">Previous</a><a href="Part_67.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m01273" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01273 · 2026-05-11T12:37:43.950223-04:00 · active path</p><div class="body"><p>Great. Now that all Module 2 campaign runs are complete, I would test the campaign in this order:</p>
+<ol>
+<li><strong>Archive completeness and grain</strong></li>
+<li><strong>Registry-to-archive reconciliation</strong></li>
+<li><strong>Evidence-table completeness</strong></li>
+<li><strong>Validation and convention integrity</strong></li>
+<li><strong>Comparison readiness and matched-row consistency</strong></li>
+<li><strong>Strategy frontier / campaign result review</strong></li>
+<li><strong>Parameter snapshot audit</strong></li>
+</ol>
+<p>These queries use the persistent archive, campaign registry, comparison registry, and Section 16 evidence tables. That is the right level now because Section 12 is the governed archive persistence layer, Section 13 is the matched strategy comparison layer, Section 14 is the latest-run validation framework, Section 15 is the archive-backed frontier layer, and Section 16 is the persistent evidence capture layer. fileciteturn184file20 fileciteturn184file19 fileciteturn184file17 fileciteturn184file11 fileciteturn184file9</p>
+<p>Below is the exact test pack I would run.</p>
+<hr>
+<h2>Query 1 — Module 2 archive campaign inventory</h2>
+<p><strong>Purpose:</strong> Confirm that all 36 campaign runs archived exactly 50,000 rows each.</p>
+<p><strong>Expected:</strong></p>
+<pre><code class="language-text">archived_strategy_scenario_slices = 36
+total_archived_rows = 1,800,000
+slices_not_50000_rows = 0
+archive_campaign_inventory_status = MODULE_2_ARCHIVE_INVENTORY_READY
+</code></pre>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 1 — MODULE 2 ARCHIVE CAMPAIGN INVENTORY
+
+Purpose:
+    Confirm that the completed Module 2 campaign archive contains exactly the expected 36 archived
+    strategy × Module 1 scenario × population slices.
+
+Expected:
+    36 slices
+    1,800,000 total rows
+    50,000 rows per slice
+***************************************************************************************************/
+
+WITH archive_inventory AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count,
+        MIN(archive_inserted_ts) AS first_archive_inserted_ts,
+        MAX(archive_inserted_ts) AS last_archive_inserted_ts
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+)
+
+SELECT
+    COUNT(*) AS archived_strategy_scenario_slices,
+    SUM(archived_rows) AS total_archived_rows,
+    COUNT(*) FILTER (WHERE archived_rows &lt;&gt; 50000) AS slices_not_50000_rows,
+    COUNT(*) FILTER (WHERE archived_rows &lt;&gt; distinct_application_id_count) AS slices_with_duplicate_application_ids,
+
+    MIN(first_archive_inserted_ts) AS first_campaign_archive_inserted_ts,
+    MAX(last_archive_inserted_ts) AS last_campaign_archive_inserted_ts,
+
+    CASE
+        WHEN COUNT(*) = 36
+         AND SUM(archived_rows) = 1800000
+         AND COUNT(*) FILTER (WHERE archived_rows &lt;&gt; 50000) = 0
+         AND COUNT(*) FILTER (WHERE archived_rows &lt;&gt; distinct_application_id_count) = 0
+            THEN &#39;MODULE_2_ARCHIVE_INVENTORY_READY&#39;
+        ELSE &#39;REVIEW_MODULE_2_ARCHIVE_INVENTORY&#39;
+    END AS archive_campaign_inventory_status
+
+FROM archive_inventory;
+</code></pre>
+<hr>
+<h2>Query 2 — Archive slice detail</h2>
+<p><strong>Purpose:</strong> Show every archived run slice. This is the table I would visually inspect for missing or duplicated M2 runs.</p>
+<p><strong>Expected:</strong> 36 rows, each with 50,000 archived rows.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 2 — MODULE 2 ARCHIVE SLICE DETAIL
+
+Purpose:
+    Display every archived strategy / Module 1 scenario / population slice.
+
+Expected:
+    36 rows.
+    Each row should have archived_rows = 50,000 and distinct_application_id_count = 50,000.
+***************************************************************************************************/
+
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS archived_rows,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+    MIN(strategy_run_id) AS min_strategy_run_id,
+    MAX(strategy_run_id) AS max_strategy_run_id,
+
+    MIN(archive_inserted_ts) AS first_archive_inserted_ts,
+    MAX(archive_inserted_ts) AS last_archive_inserted_ts
+
+FROM credit_decisioning_sim.strategy_decisions_archive
+
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    strategy_name,
+    strategy_version;
+</code></pre>
+<hr>
+<h2>Query 3 — Archive grain duplicate check</h2>
+<p><strong>Purpose:</strong> Confirm there are no duplicate archive rows at the official archive grain.</p>
+<p><strong>Expected:</strong> <code>duplicate_archive_grain_count = 0</code></p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 3 — MODULE 2 ARCHIVE GRAIN DUPLICATE CHECK
+
+Purpose:
+    Confirm the archive is unique at:
+
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+        application_id
+
+Expected:
+    duplicate_archive_grain_count = 0
+***************************************************************************************************/
+
+SELECT
+    COUNT(*) AS duplicate_archive_grain_count
+FROM (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id,
+        COUNT(*) AS row_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+    HAVING COUNT(*) &gt; 1
+) d;
+</code></pre>
+<hr>
+<h2>Query 4 — Campaign registry to archive reconciliation</h2>
+<p><strong>Purpose:</strong> Confirm each active campaign registry row has a matching archive slice.</p>
+<p><strong>Expected:</strong></p>
+<pre><code class="language-text">registry_run_count = 36
+registry_runs_with_archive_rows = 36
+registry_runs_missing_archive_rows = 0
+registry_runs_not_50000_rows = 0
+campaign_registry_archive_status = CAMPAIGN_REGISTRY_RECONCILES_TO_ARCHIVE
+</code></pre>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 4 — CAMPAIGN REGISTRY TO ARCHIVE RECONCILIATION
+
+Purpose:
+    Confirm every active campaign registry run has exactly one matching archived strategy slice.
+
+Expected:
+    36 active registry runs.
+    Each active registry run should have 50,000 archived rows.
+***************************************************************************************************/
+
+WITH registry_runs AS (
+    SELECT
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        showcase_name,
+        comparison_group_id,
+        validation_evidence_group_id,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        registry_active_flag
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+archive_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+registry_archive_join AS (
+    SELECT
+        r.*,
+        COALESCE(a.archived_rows, 0) AS archived_rows,
+        COALESCE(a.distinct_application_id_count, 0) AS distinct_application_id_count
+    FROM registry_runs r
+    LEFT JOIN archive_counts a
+        ON a.strategy_set_name = r.strategy_set_name
+       AND a.strategy_name = r.strategy_name
+       AND a.strategy_version = r.strategy_version
+       AND a.module1_scenario_set_name = r.module1_scenario_set_name
+       AND a.module1_scenario_name = r.module1_scenario_name
+       AND a.population_id = r.population_id
+)
+
+SELECT
+    COUNT(*) AS registry_run_count,
+    COUNT(*) FILTER (WHERE archived_rows &gt; 0) AS registry_runs_with_archive_rows,
+    COUNT(*) FILTER (WHERE archived_rows = 0) AS registry_runs_missing_archive_rows,
+    COUNT(*) FILTER (WHERE archived_rows &lt;&gt; 50000) AS registry_runs_not_50000_rows,
+    COUNT(*) FILTER (WHERE archived_rows &lt;&gt; distinct_application_id_count) AS registry_runs_with_duplicate_application_ids,
+
+    CASE
+        WHEN COUNT(*) = 36
+         AND COUNT(*) FILTER (WHERE archived_rows &gt; 0) = 36
+         AND COUNT(*) FILTER (WHERE archived_rows = 0) = 0
+         AND COUNT(*) FILTER (WHERE archived_rows &lt;&gt; 50000) = 0
+         AND COUNT(*) FILTER (WHERE archived_rows &lt;&gt; distinct_application_id_count) = 0
+            THEN &#39;CAMPAIGN_REGISTRY_RECONCILES_TO_ARCHIVE&#39;
+        ELSE &#39;REVIEW_CAMPAIGN_REGISTRY_ARCHIVE_RECONCILIATION&#39;
+    END AS campaign_registry_archive_status
+
+FROM registry_archive_join;
+</code></pre>
+<hr>
+<h2>Query 5 — Registry rows missing archive detail</h2>
+<p><strong>Purpose:</strong> If Query 4 fails, this shows exactly which run IDs are missing or not at 50,000 rows.</p>
+<p><strong>Expected:</strong> zero rows.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 5 — REGISTRY RUNS MISSING OR MISMATCHED IN ARCHIVE
+
+Purpose:
+    Show any active campaign registry run where archive rows are missing or row count is not 50,000.
+
+Expected:
+    zero rows.
+***************************************************************************************************/
+
+WITH registry_runs AS (
+    SELECT *
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+archive_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+)
+
+SELECT
+    r.module1_run_id,
+    r.module2_run_id,
+    r.run_sequence_number,
+    r.showcase_id,
+    r.showcase_name,
+    r.comparison_group_id,
+    r.validation_evidence_group_id,
+
+    r.module1_scenario_set_name,
+    r.module1_scenario_name,
+    r.population_id,
+
+    r.strategy_set_name,
+    r.strategy_name,
+    r.strategy_version,
+
+    COALESCE(a.archived_rows, 0) AS archived_rows,
+    COALESCE(a.distinct_application_id_count, 0) AS distinct_application_id_count
+
+FROM registry_runs r
+
+LEFT JOIN archive_counts a
+    ON a.strategy_set_name = r.strategy_set_name
+   AND a.strategy_name = r.strategy_name
+   AND a.strategy_version = r.strategy_version
+   AND a.module1_scenario_set_name = r.module1_scenario_set_name
+   AND a.module1_scenario_name = r.module1_scenario_name
+   AND a.population_id = r.population_id
+
+WHERE COALESCE(a.archived_rows, 0) &lt;&gt; 50000
+   OR COALESCE(a.archived_rows, 0) &lt;&gt; COALESCE(a.distinct_application_id_count, 0)
+
+ORDER BY r.run_sequence_number;
+</code></pre>
+<hr>
+<h2>Query 6 — Archive rows with no campaign registry match</h2>
+<p><strong>Purpose:</strong> Confirm the archive does not contain orphan strategy slices outside the campaign registry.</p>
+<p><strong>Expected:</strong> zero rows.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 6 — ARCHIVE SLICES WITHOUT ACTIVE CAMPAIGN REGISTRY ROW
+
+Purpose:
+    Confirm every archived campaign slice maps back to an active strategy_run_campaign_registry row.
+
+Expected:
+    zero rows.
+***************************************************************************************************/
+
+WITH archive_slices AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS archived_rows
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+)
+
+SELECT
+    a.*
+FROM archive_slices a
+
+LEFT JOIN credit_decisioning_sim.strategy_run_campaign_registry r
+    ON r.strategy_set_name = a.strategy_set_name
+   AND r.strategy_name = a.strategy_name
+   AND r.strategy_version = a.strategy_version
+   AND r.module1_scenario_set_name = a.module1_scenario_set_name
+   AND r.module1_scenario_name = a.module1_scenario_name
+   AND r.population_id = a.population_id
+   AND r.registry_active_flag IS TRUE
+
+WHERE r.module2_run_id IS NULL
+
+ORDER BY
+    a.module1_scenario_set_name,
+    a.module1_scenario_name,
+    a.strategy_name;
+</code></pre>
+<hr>
+<h2>Query 7 — Section 16 evidence-table coverage</h2>
+<p><strong>Purpose:</strong> Confirm persistent evidence exists for every completed campaign run.</p>
+<p><strong>Expected:</strong></p>
+<pre><code class="language-text">executive_evidence_rows = 36
+parameter_snapshot_rows = 36
+segment_evidence_run_count = 36
+validation_evidence_run_count = 36
+evidence_campaign_status = SECTION_16_EVIDENCE_COVERAGE_READY
+</code></pre>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 7 — SECTION 16 EVIDENCE COVERAGE SUMMARY
+
+Purpose:
+    Confirm Section 16 evidence exists for all 36 campaign runs.
+
+Expected:
+    executive_evidence_rows = 36
+    parameter_snapshot_rows = 36
+    validation evidence represented for 36 runs
+    segment evidence represented for 36 runs
+***************************************************************************************************/
+
+WITH registry_runs AS (
+    SELECT
+        module2_run_id,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+executive_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS executive_rows
+    FROM credit_decisioning_sim.strategy_run_evidence_summary
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+parameter_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS parameter_rows
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+validation_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS validation_rows
+    FROM credit_decisioning_sim.strategy_run_validation_evidence
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+segment_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS segment_rows
+    FROM credit_decisioning_sim.strategy_run_segment_evidence_summary
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+joined AS (
+    SELECT
+        r.module2_run_id,
+
+        COALESCE(e.executive_rows, 0) AS executive_rows,
+        COALESCE(p.parameter_rows, 0) AS parameter_rows,
+        COALESCE(v.validation_rows, 0) AS validation_rows,
+        COALESCE(s.segment_rows, 0) AS segment_rows
+
+    FROM registry_runs r
+
+    LEFT JOIN executive_evidence e
+        ON e.strategy_set_name = r.strategy_set_name
+       AND e.strategy_name = r.strategy_name
+       AND e.strategy_version = r.strategy_version
+       AND e.module1_scenario_set_name = r.module1_scenario_set_name
+       AND e.module1_scenario_name = r.module1_scenario_name
+       AND e.population_id = r.population_id
+
+    LEFT JOIN parameter_evidence p
+        ON p.strategy_set_name = r.strategy_set_name
+       AND p.strategy_name = r.strategy_name
+       AND p.strategy_version = r.strategy_version
+       AND p.module1_scenario_set_name = r.module1_scenario_set_name
+       AND p.module1_scenario_name = r.module1_scenario_name
+       AND p.population_id = r.population_id
+
+    LEFT JOIN validation_evidence v
+        ON v.strategy_set_name = r.strategy_set_name
+       AND v.strategy_name = r.strategy_name
+       AND v.strategy_version = r.strategy_version
+       AND v.module1_scenario_set_name = r.module1_scenario_set_name
+       AND v.module1_scenario_name = r.module1_scenario_name
+       AND v.population_id = r.population_id
+
+    LEFT JOIN segment_evidence s
+        ON s.strategy_set_name = r.strategy_set_name
+       AND s.strategy_name = r.strategy_name
+       AND s.strategy_version = r.strategy_version
+       AND s.module1_scenario_set_name = r.module1_scenario_set_name
+       AND s.module1_scenario_name = r.module1_scenario_name
+       AND s.population_id = r.population_id
+)
+
+SELECT
+    COUNT(*) AS registry_run_count,
+
+    COUNT(*) FILTER (WHERE executive_rows = 1) AS runs_with_one_executive_evidence_row,
+    COUNT(*) FILTER (WHERE parameter_rows = 1) AS runs_with_one_parameter_snapshot_row,
+    COUNT(*) FILTER (WHERE validation_rows &gt; 0) AS runs_with_validation_evidence_rows,
+    COUNT(*) FILTER (WHERE segment_rows &gt; 0) AS runs_with_segment_evidence_rows,
+
+    COUNT(*) FILTER (
+        WHERE executive_rows &lt;&gt; 1
+           OR parameter_rows &lt;&gt; 1
+           OR validation_rows = 0
+           OR segment_rows = 0
+    ) AS evidence_coverage_issue_count,
+
+    CASE
+        WHEN COUNT(*) = 36
+         AND COUNT(*) FILTER (WHERE executive_rows = 1) = 36
+         AND COUNT(*) FILTER (WHERE parameter_rows = 1) = 36
+         AND COUNT(*) FILTER (WHERE validation_rows &gt; 0) = 36
+         AND COUNT(*) FILTER (WHERE segment_rows &gt; 0) = 36
+            THEN &#39;SECTION_16_EVIDENCE_COVERAGE_READY&#39;
+        ELSE &#39;REVIEW_SECTION_16_EVIDENCE_COVERAGE&#39;
+    END AS evidence_campaign_status
+
+FROM joined;
+</code></pre>
+<hr>
+<h2>Query 8 — Evidence coverage detail by run</h2>
+<p><strong>Purpose:</strong> Show which run has missing evidence if Query 7 fails.</p>
+<p><strong>Expected:</strong> 36 rows; each run should have <code>executive_rows = 1</code>, <code>parameter_rows = 1</code>, <code>validation_rows &gt; 0</code>, and <code>segment_rows = 25</code> if every product × score segment is present.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 8 — SECTION 16 EVIDENCE COVERAGE DETAIL BY RUN
+
+Purpose:
+    Display evidence counts for each campaign run.
+
+Expected:
+    executive_rows = 1
+    parameter_rows = 1
+    validation_rows &gt; 0
+    segment_rows = 25 for a full 5 product × 5 score-band matrix
+***************************************************************************************************/
+
+WITH registry_runs AS (
+    SELECT
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        showcase_name,
+        comparison_group_id,
+        validation_evidence_group_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+executive_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS executive_rows
+    FROM credit_decisioning_sim.strategy_run_evidence_summary
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+parameter_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS parameter_rows
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+validation_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS validation_rows
+    FROM credit_decisioning_sim.strategy_run_validation_evidence
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+segment_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS segment_rows
+    FROM credit_decisioning_sim.strategy_run_segment_evidence_summary
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+)
+
+SELECT
+    r.module2_run_id,
+    r.run_sequence_number,
+    r.showcase_id,
+    r.showcase_name,
+    r.comparison_group_id,
+    r.validation_evidence_group_id,
+
+    r.module1_scenario_set_name,
+    r.module1_scenario_name,
+    r.population_id,
+
+    r.strategy_name,
+    r.strategy_version,
+
+    COALESCE(e.executive_rows, 0) AS executive_rows,
+    COALESCE(p.parameter_rows, 0) AS parameter_rows,
+    COALESCE(v.validation_rows, 0) AS validation_rows,
+    COALESCE(s.segment_rows, 0) AS segment_rows,
+
+    CASE
+        WHEN COALESCE(e.executive_rows, 0) = 1
+         AND COALESCE(p.parameter_rows, 0) = 1
+         AND COALESCE(v.validation_rows, 0) &gt; 0
+         AND COALESCE(s.segment_rows, 0) &gt; 0
+            THEN &#39;EVIDENCE_CAPTURE_READY&#39;
+        ELSE &#39;EVIDENCE_CAPTURE_REVIEW_REQUIRED&#39;
+    END AS evidence_capture_status
+
+FROM registry_runs r
+
+LEFT JOIN executive_evidence e
+    ON e.strategy_set_name = r.strategy_set_name
+   AND e.strategy_name = r.strategy_name
+   AND e.strategy_version = r.strategy_version
+   AND e.module1_scenario_set_name = r.module1_scenario_set_name
+   AND e.module1_scenario_name = r.module1_scenario_name
+   AND e.population_id = r.population_id
+
+LEFT JOIN parameter_evidence p
+    ON p.strategy_set_name = r.strategy_set_name
+   AND p.strategy_name = r.strategy_name
+   AND p.strategy_version = r.strategy_version
+   AND p.module1_scenario_set_name = r.module1_scenario_set_name
+   AND p.module1_scenario_name = r.module1_scenario_name
+   AND p.population_id = r.population_id
+
+LEFT JOIN validation_evidence v
+    ON v.strategy_set_name = r.strategy_set_name
+   AND v.strategy_name = r.strategy_name
+   AND v.strategy_version = r.strategy_version
+   AND v.module1_scenario_set_name = r.module1_scenario_set_name
+   AND v.module1_scenario_name = r.module1_scenario_name
+   AND v.population_id = r.population_id
+
+LEFT JOIN segment_evidence s
+    ON s.strategy_set_name = r.strategy_set_name
+   AND s.strategy_name = r.strategy_name
+   AND s.strategy_version = r.strategy_version
+   AND s.module1_scenario_set_name = r.module1_scenario_set_name
+   AND s.module1_scenario_name = r.module1_scenario_name
+   AND s.population_id = r.population_id
+
+ORDER BY r.run_sequence_number;
+</code></pre>
+<hr>
+<h2>Query 9 — Final output convention checks across the full archive</h2>
+<p><strong>Purpose:</strong> Apply Section 14-style final output convention checks across all archived campaign rows, not just the latest run.</p>
+<p><strong>Expected:</strong> all violation counts = 0.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 9 — FULL ARCHIVE FINAL OUTPUT CONVENTION CHECKS
+
+Purpose:
+    Apply final-output convention checks across all archived Module 2 campaign rows.
+
+Expected:
+    All violation counts should be zero.
+***************************************************************************************************/
+
+SELECT
+    COUNT(*) AS archived_rows,
+
+    COUNT(*) FILTER (
+        WHERE (
+            COALESCE(approval_flag::INT, 0)
+            + COALESCE(counteroffer_flag::INT, 0)
+            + COALESCE(manual_review_flag::INT, 0)
+            + COALESCE(decline_flag::INT, 0)
+        ) &lt;&gt; 1
+    ) AS final_outcome_flag_count_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE simulated_offer_exposure_flag
+              IS DISTINCT FROM (decision_outcome IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;))
+    ) AS simulated_offer_exposure_flag_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;APPROVE&#39;
+          AND approved_amount IS DISTINCT FROM requested_amount
+    ) AS approve_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+          AND (
+                approved_amount IS NULL
+             OR approved_amount &lt;= 0
+             OR approved_amount &gt;= requested_amount
+             OR counteroffer_amount IS DISTINCT FROM approved_amount
+          )
+    ) AS counteroffer_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+          AND approved_amount IS NOT NULL
+    ) AS manual_review_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;DECLINE&#39;
+          AND approved_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+          AND (
+                approved_payment_to_income_ratio IS NULL
+             OR approved_payment_to_income_ratio &gt; counteroffer_target_pti
+          )
+    ) AS counteroffer_affordability_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+          AND (
+                approved_monthly_payment_proxy IS NOT NULL
+             OR approved_payment_to_income_ratio IS NOT NULL
+          )
+    ) AS manual_review_affordability_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;DECLINE&#39;
+          AND (
+                approved_monthly_payment_proxy IS DISTINCT FROM 0::NUMERIC
+             OR approved_payment_to_income_ratio IS DISTINCT FROM 0::NUMERIC
+          )
+    ) AS decline_affordability_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;APPROVE&#39;
+          AND approved_expected_loss_amount IS DISTINCT FROM requested_expected_loss_amount
+    ) AS approve_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+          AND (
+                approved_expected_loss_amount IS NULL
+             OR approved_expected_loss_amount &lt; 0
+             OR approved_expected_loss_amount &gt; requested_expected_loss_amount
+             OR approved_expected_loss_amount &gt; product_approved_el_cap
+          )
+    ) AS counteroffer_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+          AND approved_expected_loss_amount IS NOT NULL
+    ) AS manual_review_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;DECLINE&#39;
+          AND approved_expected_loss_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE primary_reason_code IS NULL
+           OR primary_reason_family IS NULL
+           OR triggered_reason_code_list IS NULL
+           OR reason_code_count IS NULL
+           OR reason_code_count &lt; 1
+    ) AS reason_code_completeness_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE (
+                decision_outcome = &#39;APPROVE&#39;
+            AND primary_reason_family IS DISTINCT FROM &#39;APPROVAL&#39;
+        )
+        OR (
+                decision_outcome = &#39;COUNTEROFFER&#39;
+            AND primary_reason_family IS DISTINCT FROM &#39;COUNTEROFFER&#39;
+        )
+        OR (
+                decision_outcome = &#39;MANUAL_REVIEW&#39;
+            AND primary_reason_family IS DISTINCT FROM &#39;MANUAL_REVIEW&#39;
+        )
+        OR (
+                decision_outcome = &#39;DECLINE&#39;
+            AND primary_reason_family IS DISTINCT FROM &#39;POLICY_STOP&#39;
+        )
+    ) AS reason_family_alignment_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions_archive;
+</code></pre>
+<hr>
+<h2>Query 10 — Validation status summary by run</h2>
+<p><strong>Purpose:</strong> Show PASS / REVIEW / NOT_APPLICABLE counts for every captured run.</p>
+<p><strong>Expected:</strong> No structural surprises. REVIEW rows are acceptable but should be interpreted.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 10 — VALIDATION STATUS SUMMARY BY CAMPAIGN RUN
+
+Purpose:
+    Summarize Section 16 validation evidence by run.
+
+Interpretation:
+    REVIEW does not automatically mean invalid.
+    REVIEW means the pattern should be interpreted before documentation.
+***************************************************************************************************/
+
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_name,
+    strategy_version,
+
+    COUNT(*) AS validation_evidence_rows,
+
+    COUNT(*) FILTER (WHERE validation_status = &#39;PASS&#39;) AS pass_count,
+    COUNT(*) FILTER (WHERE validation_status = &#39;REVIEW&#39;) AS review_count,
+    COUNT(*) FILTER (WHERE validation_status = &#39;NOT_APPLICABLE&#39;) AS not_applicable_count,
+
+    STRING_AGG(
+        validation_area || &#39;: &#39; || validation_test_name || &#39; [&#39; || validation_status || &#39;]&#39;,
+        &#39; | &#39;
+        ORDER BY validation_area, validation_test_name
+    ) FILTER (WHERE validation_status IN (&#39;REVIEW&#39;, &#39;NOT_APPLICABLE&#39;)) AS review_or_not_applicable_items
+
+FROM credit_decisioning_sim.strategy_run_validation_evidence
+
+GROUP BY
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_name,
+    strategy_version
+
+ORDER BY run_sequence_number;
+</code></pre>
+<hr>
+<h2>Query 11 — Validation REVIEW concentration</h2>
+<p><strong>Purpose:</strong> Identify which validation tests most commonly produced REVIEW across the campaign.</p>
+<p><strong>Expected:</strong> REVIEW items may exist. This tells us which topics need narrative explanation.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 11 — VALIDATION REVIEW CONCENTRATION
+
+Purpose:
+    Identify validation tests that most frequently produced REVIEW or NOT_APPLICABLE across the
+    completed campaign.
+***************************************************************************************************/
+
+SELECT
+    validation_area,
+    validation_test_name,
+    validation_category,
+    validation_status,
+
+    COUNT(*) AS run_count,
+
+    STRING_AGG(
+        module2_run_id,
+        &#39;, &#39;
+        ORDER BY run_sequence_number
+    ) AS affected_module2_run_ids
+
+FROM credit_decisioning_sim.strategy_run_validation_evidence
+
+WHERE validation_status IN (&#39;REVIEW&#39;, &#39;NOT_APPLICABLE&#39;)
+
+GROUP BY
+    validation_area,
+    validation_test_name,
+    validation_category,
+    validation_status
+
+ORDER BY
+    validation_status,
+    run_count DESC,
+    validation_area,
+    validation_test_name;
+</code></pre>
+<hr>
+<h2>Query 12 — Comparison registry readiness across all comparison groups</h2>
+<p><strong>Purpose:</strong> Confirm every planned comparison has both baseline and challenger archived at 50,000 rows.</p>
+<p><strong>Expected:</strong></p>
+<pre><code class="language-text">17 comparison rows
+baseline_archived_rows = 50000
+challenger_archived_rows = 50000
+comparison_readiness_status = COMPARISON_READY
+</code></pre>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 12 — COMPARISON REGISTRY READINESS ACROSS ALL COMPARISON GROUPS
+
+Purpose:
+    Confirm each planned baseline / challenger comparison has both strategy slices archived.
+
+Expected:
+    17 comparison groups.
+    Each baseline and challenger should have 50,000 rows.
+***************************************************************************************************/
+
+WITH comparisons AS (
+    SELECT *
+    FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+archive_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+)
+
+SELECT
+    c.comparison_group_id,
+    c.comparison_set_name,
+    c.baseline_module2_run_id,
+    c.challenger_module2_run_id,
+
+    c.module1_scenario_set_name,
+    c.module1_scenario_name,
+    c.population_id,
+
+    c.baseline_strategy_name,
+    COALESCE(b.archived_rows, 0) AS baseline_archived_rows,
+    COALESCE(b.distinct_application_id_count, 0) AS baseline_distinct_application_id_count,
+
+    c.challenger_strategy_name,
+    COALESCE(ch.archived_rows, 0) AS challenger_archived_rows,
+    COALESCE(ch.distinct_application_id_count, 0) AS challenger_distinct_application_id_count,
+
+    CASE
+        WHEN COALESCE(b.archived_rows, 0) = 50000
+         AND COALESCE(ch.archived_rows, 0) = 50000
+         AND COALESCE(b.archived_rows, 0) = COALESCE(b.distinct_application_id_count, 0)
+         AND COALESCE(ch.archived_rows, 0) = COALESCE(ch.distinct_application_id_count, 0)
+            THEN &#39;COMPARISON_READY&#39;
+        ELSE &#39;COMPARISON_REVIEW_REQUIRED&#39;
+    END AS comparison_readiness_status
+
+FROM comparisons c
+
+LEFT JOIN archive_counts b
+    ON b.strategy_set_name = c.baseline_strategy_set_name
+   AND b.strategy_name = c.baseline_strategy_name
+   AND b.strategy_version = c.baseline_strategy_version
+   AND b.module1_scenario_set_name = c.module1_scenario_set_name
+   AND b.module1_scenario_name = c.module1_scenario_name
+   AND b.population_id = c.population_id
+
+LEFT JOIN archive_counts ch
+    ON ch.strategy_set_name = c.challenger_strategy_set_name
+   AND ch.strategy_name = c.challenger_strategy_name
+   AND ch.strategy_version = c.challenger_strategy_version
+   AND ch.module1_scenario_set_name = c.module1_scenario_set_name
+   AND ch.module1_scenario_name = c.module1_scenario_name
+   AND ch.population_id = c.population_id
+
+ORDER BY c.comparison_group_id;
+</code></pre>
+<hr>
+<h2>Query 13 — Matched comparison source-field consistency across all comparison groups</h2>
+<p><strong>Purpose:</strong> Confirm baseline and challenger use the same immutable Module 1 source fields for every matched application. This is the most important pure strategy-comparison integrity check.</p>
+<p><strong>Expected:</strong></p>
+<pre><code class="language-text">matched_application_count = 50000 for every comparison group
+source_field_mismatch_count = 0
+source_consistency_status = SOURCE_FIELDS_MATCH
+</code></pre>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 13 — MATCHED COMPARISON SOURCE-FIELD CONSISTENCY ACROSS ALL COMPARISON GROUPS
+
+Purpose:
+    Confirm that each baseline / challenger comparison isolates Module 2 strategy effects by matching
+    the same Module 1 source applications and immutable source fields.
+
+Expected:
+    matched_application_count = 50,000 for each comparison group.
+    source_field_mismatch_count = 0 for each comparison group.
+***************************************************************************************************/
+
+WITH comparisons AS (
+    SELECT *
+    FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+matched_rows AS (
+    SELECT
+        c.comparison_group_id,
+        c.comparison_set_name,
+        c.baseline_module2_run_id,
+        c.challenger_module2_run_id,
+
+        b.application_id,
+
+        b.product_type_policy_key AS baseline_product_type_policy_key,
+        ch.product_type_policy_key AS challenger_product_type_policy_key,
+
+        b.score_band_policy_key AS baseline_score_band_policy_key,
+        ch.score_band_policy_key AS challenger_score_band_policy_key,
+
+        b.credit_score AS baseline_credit_score,
+        ch.credit_score AS challenger_credit_score,
+
+        b.annual_income AS baseline_annual_income,
+        ch.annual_income AS challenger_annual_income,
+
+        b.requested_amount AS baseline_requested_amount,
+        ch.requested_amount AS challenger_requested_amount,
+
+        b.requested_monthly_payment_proxy AS baseline_requested_monthly_payment_proxy,
+        ch.requested_monthly_payment_proxy AS challenger_requested_monthly_payment_proxy,
+
+        b.requested_payment_to_income_ratio AS baseline_requested_payment_to_income_ratio,
+        ch.requested_payment_to_income_ratio AS challenger_requested_payment_to_income_ratio,
+
+        b.amount_to_income_ratio AS baseline_amount_to_income_ratio,
+        ch.amount_to_income_ratio AS challenger_amount_to_income_ratio,
+
+        b.estimated_pd AS baseline_estimated_pd,
+        ch.estimated_pd AS challenger_estimated_pd,
+
+        b.estimated_lgd AS baseline_estimated_lgd,
+        ch.estimated_lgd AS challenger_estimated_lgd,
+
+        b.requested_expected_loss_amount AS baseline_requested_expected_loss_amount,
+        ch.requested_expected_loss_amount AS challenger_requested_expected_loss_amount
+
+    FROM comparisons c
+
+    JOIN credit_decisioning_sim.strategy_decisions_archive b
+        ON b.strategy_set_name = c.baseline_strategy_set_name
+       AND b.strategy_name = c.baseline_strategy_name
+       AND b.strategy_version = c.baseline_strategy_version
+       AND b.module1_scenario_set_name = c.module1_scenario_set_name
+       AND b.module1_scenario_name = c.module1_scenario_name
+       AND b.population_id = c.population_id
+
+    JOIN credit_decisioning_sim.strategy_decisions_archive ch
+        ON ch.strategy_set_name = c.challenger_strategy_set_name
+       AND ch.strategy_name = c.challenger_strategy_name
+       AND ch.strategy_version = c.challenger_strategy_version
+       AND ch.module1_scenario_set_name = c.module1_scenario_set_name
+       AND ch.module1_scenario_name = c.module1_scenario_name
+       AND ch.population_id = c.population_id
+       AND ch.application_id = b.application_id
+)
+
+SELECT
+    comparison_group_id,
+    comparison_set_name,
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+
+    COUNT(*) AS matched_application_count,
+
+    COUNT(*) FILTER (
+        WHERE baseline_product_type_policy_key IS DISTINCT FROM challenger_product_type_policy_key
+           OR baseline_score_band_policy_key IS DISTINCT FROM challenger_score_band_policy_key
+           OR baseline_credit_score IS DISTINCT FROM challenger_credit_score
+           OR baseline_annual_income IS DISTINCT FROM challenger_annual_income
+           OR baseline_requested_amount IS DISTINCT FROM challenger_requested_amount
+           OR baseline_requested_monthly_payment_proxy IS DISTINCT FROM challenger_requested_monthly_payment_proxy
+           OR baseline_requested_payment_to_income_ratio IS DISTINCT FROM challenger_requested_payment_to_income_ratio
+           OR baseline_amount_to_income_ratio IS DISTINCT FROM challenger_amount_to_income_ratio
+           OR baseline_estimated_pd IS DISTINCT FROM challenger_estimated_pd
+           OR baseline_estimated_lgd IS DISTINCT FROM challenger_estimated_lgd
+           OR baseline_requested_expected_loss_amount IS DISTINCT FROM challenger_requested_expected_loss_amount
+    ) AS source_field_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_product_type_policy_key IS DISTINCT FROM challenger_product_type_policy_key)
+        AS product_type_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_score_band_policy_key IS DISTINCT FROM challenger_score_band_policy_key)
+        AS score_band_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_credit_score IS DISTINCT FROM challenger_credit_score)
+        AS credit_score_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_annual_income IS DISTINCT FROM challenger_annual_income)
+        AS annual_income_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_requested_amount IS DISTINCT FROM challenger_requested_amount)
+        AS requested_amount_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_requested_monthly_payment_proxy IS DISTINCT FROM challenger_requested_monthly_payment_proxy)
+        AS requested_payment_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_requested_payment_to_income_ratio IS DISTINCT FROM challenger_requested_payment_to_income_ratio)
+        AS requested_pti_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_amount_to_income_ratio IS DISTINCT FROM challenger_amount_to_income_ratio)
+        AS amount_to_income_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_estimated_pd IS DISTINCT FROM challenger_estimated_pd)
+        AS estimated_pd_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_estimated_lgd IS DISTINCT FROM challenger_estimated_lgd)
+        AS estimated_lgd_mismatch_count,
+
+    COUNT(*) FILTER (WHERE baseline_requested_expected_loss_amount IS DISTINCT FROM challenger_requested_expected_loss_amount)
+        AS requested_expected_loss_mismatch_count,
+
+    CASE
+        WHEN COUNT(*) = 50000
+         AND COUNT(*) FILTER (
+                WHERE baseline_product_type_policy_key IS DISTINCT FROM challenger_product_type_policy_key
+                   OR baseline_score_band_policy_key IS DISTINCT FROM challenger_score_band_policy_key
+                   OR baseline_credit_score IS DISTINCT FROM challenger_credit_score
+                   OR baseline_annual_income IS DISTINCT FROM challenger_annual_income
+                   OR baseline_requested_amount IS DISTINCT FROM challenger_requested_amount
+                   OR baseline_requested_monthly_payment_proxy IS DISTINCT FROM challenger_requested_monthly_payment_proxy
+                   OR baseline_requested_payment_to_income_ratio IS DISTINCT FROM challenger_requested_payment_to_income_ratio
+                   OR baseline_amount_to_income_ratio IS DISTINCT FROM challenger_amount_to_income_ratio
+                   OR baseline_estimated_pd IS DISTINCT FROM challenger_estimated_pd
+                   OR baseline_estimated_lgd IS DISTINCT FROM challenger_estimated_lgd
+                   OR baseline_requested_expected_loss_amount IS DISTINCT FROM challenger_requested_expected_loss_amount
+            ) = 0
+            THEN &#39;SOURCE_FIELDS_MATCH&#39;
+        ELSE &#39;SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED&#39;
+    END AS source_consistency_status
+
+FROM matched_rows
+
+GROUP BY
+    comparison_group_id,
+    comparison_set_name,
+    baseline_module2_run_id,
+    challenger_module2_run_id
+
+ORDER BY comparison_group_id;
+</code></pre>
+<hr>
+<h2>Query 14 — Executive evidence campaign summary</h2>
+<p><strong>Purpose:</strong> Show the high-level result table for all 36 runs from the persistent evidence layer.</p>
+<p><strong>Expected:</strong> This is not pass/fail; it is the main result table to inspect.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 14 — EXECUTIVE EVIDENCE CAMPAIGN SUMMARY
+
+Purpose:
+    Display the one-row executive evidence summary for all completed Module 2 campaign runs.
+
+Use:
+    This is the core result table for executive review and later documentation.
+***************************************************************************************************/
+
+SELECT
+    run_sequence_number,
+    module1_run_id,
+    module2_run_id,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_name,
+    strategy_version,
+
+    applications,
+
+    approval_rate,
+    counteroffer_rate,
+    manual_review_rate,
+    decline_rate,
+    simulated_offer_exposure_rate,
+
+    total_requested_amount,
+    total_approved_amount,
+    approved_amount_capture_rate,
+
+    total_requested_expected_loss_amount,
+    total_approved_expected_loss_amount,
+    approved_expected_loss_rate,
+    approved_amount_per_approved_expected_loss_dollar,
+
+    avg_synthetic_estimated_pd_proxy_offer_rows,
+    avg_approved_payment_to_income_ratio_offer_rows,
+
+    frontier_position_type,
+    executive_frontier_quadrant,
+    frontier_interpretation_note,
+
+    top_primary_reason_code,
+    top_non_approval_primary_reason_code,
+    top_policy_stop_primary_reason_code,
+    top_reason_code_delta_driver_code,
+
+    top_approved_amount_product,
+    top_approved_expected_loss_product,
+    top_approved_amount_score_band,
+    top_approved_expected_loss_score_band,
+    top_approved_el_product_score_segment,
+
+    validation_pass_count,
+    validation_review_count,
+    validation_not_applicable_count,
+
+    module3_growth_inputs_available_flag,
+    module3_growth_input_gap_note
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary
+
+ORDER BY run_sequence_number;
+</code></pre>
+<hr>
+<h2>Query 15 — Baseline vs challenger delta summary for all comparison groups</h2>
+<p><strong>Purpose:</strong> Produce the first high-level comparison result table across all 17 comparison pairs.</p>
+<p><strong>Expected:</strong> Not pass/fail. This should show whether each challenger moved the intended levers.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 15 — BASELINE VS CHALLENGER DELTA SUMMARY FOR ALL COMPARISON GROUPS
+
+Purpose:
+    Summarize comparison deltas across all governed baseline / challenger pairs.
+
+Interpretation:
+    Use this as the first campaign strategy-effect table.
+***************************************************************************************************/
+
+WITH comparisons AS (
+    SELECT *
+    FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+run_summary AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        SUM(requested_amount) AS total_requested_amount,
+        SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            AS total_approved_expected_loss_amount,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+        AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_pti_offer_rows
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+)
+
+SELECT
+    c.comparison_group_id,
+    c.comparison_set_name,
+
+    c.baseline_module2_run_id,
+    c.challenger_module2_run_id,
+
+    c.module1_scenario_set_name,
+    c.module1_scenario_name,
+    c.population_id,
+
+    c.baseline_strategy_name,
+    c.challenger_strategy_name,
+
+    b.applications AS baseline_applications,
+    ch.applications AS challenger_applications,
+
+    b.simulated_offer_exposure_rate AS baseline_offer_exposure_rate,
+    ch.simulated_offer_exposure_rate AS challenger_offer_exposure_rate,
+    ch.simulated_offer_exposure_rate - b.simulated_offer_exposure_rate
+        AS delta_offer_exposure_rate,
+
+    b.approval_rate AS baseline_approval_rate,
+    ch.approval_rate AS challenger_approval_rate,
+    ch.approval_rate - b.approval_rate
+        AS delta_approval_rate,
+
+    b.counteroffer_rate AS baseline_counteroffer_rate,
+    ch.counteroffer_rate AS challenger_counteroffer_rate,
+    ch.counteroffer_rate - b.counteroffer_rate
+        AS delta_counteroffer_rate,
+
+    b.manual_review_rate AS baseline_manual_review_rate,
+    ch.manual_review_rate AS challenger_manual_review_rate,
+    ch.manual_review_rate - b.manual_review_rate
+        AS delta_manual_review_rate,
+
+    b.decline_rate AS baseline_decline_rate,
+    ch.decline_rate AS challenger_decline_rate,
+    ch.decline_rate - b.decline_rate
+        AS delta_decline_rate,
+
+    b.total_approved_amount AS baseline_total_approved_amount,
+    ch.total_approved_amount AS challenger_total_approved_amount,
+    ch.total_approved_amount - b.total_approved_amount
+        AS delta_total_approved_amount,
+
+    b.total_approved_expected_loss_amount AS baseline_total_approved_expected_loss_amount,
+    ch.total_approved_expected_loss_amount AS challenger_total_approved_expected_loss_amount,
+    ch.total_approved_expected_loss_amount - b.total_approved_expected_loss_amount
+        AS delta_total_approved_expected_loss_amount,
+
+    b.approved_expected_loss_rate AS baseline_approved_expected_loss_rate,
+    ch.approved_expected_loss_rate AS challenger_approved_expected_loss_rate,
+    ch.approved_expected_loss_rate - b.approved_expected_loss_rate
+        AS delta_approved_expected_loss_rate,
+
+    b.avg_synthetic_estimated_pd_proxy_offer_rows AS baseline_offer_row_avg_pd_proxy,
+    ch.avg_synthetic_estimated_pd_proxy_offer_rows AS challenger_offer_row_avg_pd_proxy,
+    ch.avg_synthetic_estimated_pd_proxy_offer_rows - b.avg_synthetic_estimated_pd_proxy_offer_rows
+        AS delta_offer_row_avg_pd_proxy,
+
+    b.avg_approved_pti_offer_rows AS baseline_offer_row_avg_approved_pti,
+    ch.avg_approved_pti_offer_rows AS challenger_offer_row_avg_approved_pti,
+    ch.avg_approved_pti_offer_rows - b.avg_approved_pti_offer_rows
+        AS delta_offer_row_avg_approved_pti
+
+FROM comparisons c
+
+JOIN run_summary b
+    ON b.strategy_set_name = c.baseline_strategy_set_name
+   AND b.strategy_name = c.baseline_strategy_name
+   AND b.strategy_version = c.baseline_strategy_version
+   AND b.module1_scenario_set_name = c.module1_scenario_set_name
+   AND b.module1_scenario_name = c.module1_scenario_name
+   AND b.population_id = c.population_id
+
+JOIN run_summary ch
+    ON ch.strategy_set_name = c.challenger_strategy_set_name
+   AND ch.strategy_name = c.challenger_strategy_name
+   AND ch.strategy_version = c.challenger_strategy_version
+   AND ch.module1_scenario_set_name = c.module1_scenario_set_name
+   AND ch.module1_scenario_name = c.module1_scenario_name
+   AND ch.population_id = c.population_id
+
+ORDER BY c.comparison_group_id;
+</code></pre>
+<hr>
+<h2>Query 16 — Product guardrail strategy effect check</h2>
+<p><strong>Purpose:</strong> Confirm product guardrail runs moved unsecured / revolving behavior.</p>
+<p><strong>Expected:</strong> Not a pass/fail. I want to see whether UPL and Revolving have lower approved amount / approved EL / offer exposure under guardrails.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 16 — PRODUCT GUARDRAIL STRATEGY PRODUCT-LEVEL EFFECT CHECK
+
+Purpose:
+    Review product-level outcomes for PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY versus BASELINE_STRATEGY.
+
+Use:
+    Confirm that guardrail movement concentrates in:
+        UNSECURED_PERSONAL_LOAN
+        REVOLVING_LINE
+***************************************************************************************************/
+
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_name,
+    product_type_policy_key,
+
+    COUNT(*) AS applications,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS approval_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+    SUM(COALESCE(approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+        AS approved_expected_loss_rate,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_pti_offer_rows,
+
+    AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_synthetic_estimated_pd_proxy_offer_rows
+
+FROM credit_decisioning_sim.strategy_decisions_archive
+
+WHERE strategy_name IN (&#39;BASELINE_STRATEGY&#39;, &#39;PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY&#39;)
+
+GROUP BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_name,
+    product_type_policy_key
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    product_type_policy_key,
+    strategy_name;
+</code></pre>
+<hr>
+<h2>Query 17 — Counteroffer strategy effect check</h2>
+<p><strong>Purpose:</strong> Confirm counteroffer-first strategy increased counteroffer behavior and exposure reduction.</p>
+<p><strong>Expected:</strong> Counteroffer-first should show higher counteroffer rate / exposure reduction in its comparison contexts.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 17 — COUNTEROFFER-FIRST STRATEGY EFFECT CHECK
+
+Purpose:
+    Review counteroffer behavior for COUNTEROFFER_FIRST_EXPOSURE_STRATEGY versus baseline contexts.
+
+Use:
+    Confirm that counteroffer-first strategy increases reduced-exposure treatment without causing
+    unexpected convention failures.
+***************************************************************************************************/
+
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_name,
+
+    COUNT(*) AS applications,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE preliminary_decision_outcome = &#39;COUNTEROFFER&#39;) AS preliminary_counteroffer_count,
+
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    ) AS feasible_counteroffer_count,
+
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+          AND counteroffer_feasibility_pass_flag IS FALSE
+    ) AS failed_counteroffer_count,
+
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    )::NUMERIC
+    / NULLIF(COUNT(*) FILTER (WHERE preliminary_decision_outcome = &#39;COUNTEROFFER&#39;), 0)
+        AS counteroffer_feasibility_pass_rate,
+
+    AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)
+        AS avg_exposure_reduction_pct_for_final_counteroffers,
+
+    SUM(exposure_reduction_amount) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)
+        AS total_counteroffer_exposure_reduction_amount,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)
+        AS avg_approved_pti_for_final_counteroffers,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)
+        AS avg_approved_el_for_final_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions_archive
+
+WHERE strategy_name IN (&#39;BASELINE_STRATEGY&#39;, &#39;COUNTEROFFER_FIRST_EXPOSURE_STRATEGY&#39;)
+
+GROUP BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_name
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    strategy_name;
+</code></pre>
+<hr>
+<h2>Query 18 — Parameter snapshot profile audit</h2>
+<p><strong>Purpose:</strong> Confirm each run captured strategy and product-policy JSON payloads.</p>
+<p><strong>Expected:</strong> 36 rows; all capture flags TRUE.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 18 — PARAMETER SNAPSHOT PROFILE AUDIT
+
+Purpose:
+    Confirm every campaign run has captured strategy, product-policy, and run-story JSONB payloads.
+
+Expected:
+    36 rows.
+    All capture flags should be TRUE.
+***************************************************************************************************/
+
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_name,
+    strategy_version,
+
+    parameter_snapshot_hash,
+
+    strategy_params_jsonb IS NOT NULL AS strategy_params_captured_flag,
+    product_policy_params_jsonb IS NOT NULL AS product_policy_params_captured_flag,
+    run_story_params_jsonb IS NOT NULL AS run_story_params_captured_flag,
+
+    strategy_params_jsonb -&gt;&gt; &#39;strategy_run_id&#39; AS captured_strategy_run_id,
+    strategy_params_jsonb -&gt;&gt; &#39;module1_input_source&#39; AS captured_module1_input_source,
+    strategy_params_jsonb -&gt;&gt; &#39;source_module1_scenario_set_name&#39; AS captured_source_module1_scenario_set_name,
+    strategy_params_jsonb -&gt;&gt; &#39;source_module1_scenario_name&#39; AS captured_source_module1_scenario_name,
+    strategy_params_jsonb -&gt;&gt; &#39;source_population_id&#39; AS captured_source_population_id,
+    strategy_params_jsonb -&gt;&gt; &#39;failed_counteroffer_resolution&#39; AS captured_failed_counteroffer_resolution
+
+FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+
+ORDER BY run_sequence_number;
+</code></pre>
+<hr>
+<h2>Query 19 — Product-policy snapshot extraction for guardrail runs</h2>
+<p><strong>Purpose:</strong> Confirm the actual captured product-policy values for <code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code>.</p>
+<p><strong>Expected:</strong> UPL and Revolving should show the guardrail values you intended.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 19 — PRODUCT POLICY SNAPSHOT EXTRACTION FOR PRODUCT GUARDRAIL RUNS
+
+Purpose:
+    Extract product-policy JSONB payload for PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY runs.
+
+Use:
+    Confirm UPL and REVOLVING_LINE captured the exact guardrail policy values.
+***************************************************************************************************/
+
+SELECT
+    ps.module2_run_id,
+    ps.run_sequence_number,
+    ps.module1_scenario_set_name,
+    ps.module1_scenario_name,
+    ps.strategy_name,
+
+    product_policy_row -&gt;&gt; &#39;product_type&#39; AS product_type,
+
+    (product_policy_row -&gt;&gt; &#39;product_approve_max_pti&#39;)::NUMERIC AS product_approve_max_pti,
+    (product_policy_row -&gt;&gt; &#39;product_review_max_pti&#39;)::NUMERIC AS product_review_max_pti,
+    (product_policy_row -&gt;&gt; &#39;product_decline_min_pti&#39;)::NUMERIC AS product_decline_min_pti,
+    (product_policy_row -&gt;&gt; &#39;counteroffer_target_pti&#39;)::NUMERIC AS counteroffer_target_pti,
+
+    (product_policy_row -&gt;&gt; &#39;product_approve_max_requested_el&#39;)::NUMERIC AS product_approve_max_requested_el,
+    (product_policy_row -&gt;&gt; &#39;product_review_max_requested_el&#39;)::NUMERIC AS product_review_max_requested_el,
+    (product_policy_row -&gt;&gt; &#39;product_decline_min_requested_el&#39;)::NUMERIC AS product_decline_min_requested_el,
+    (product_policy_row -&gt;&gt; &#39;product_approved_el_cap&#39;)::NUMERIC AS product_approved_el_cap,
+
+    (product_policy_row -&gt;&gt; &#39;product_min_approved_amount&#39;)::NUMERIC AS product_min_approved_amount,
+    (product_policy_row -&gt;&gt; &#39;product_max_approved_amount&#39;)::NUMERIC AS product_max_approved_amount,
+
+    (product_policy_row -&gt;&gt; &#39;product_min_counteroffer_pct&#39;)::NUMERIC AS product_min_counteroffer_pct,
+    (product_policy_row -&gt;&gt; &#39;product_max_exposure_reduction_pct&#39;)::NUMERIC AS product_max_exposure_reduction_pct
+
+FROM credit_decisioning_sim.strategy_run_parameter_snapshot ps
+
+CROSS JOIN LATERAL jsonb_array_elements(ps.product_policy_params_jsonb) AS product_policy_row
+
+WHERE ps.strategy_name = &#39;PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY&#39;
+  AND product_policy_row -&gt;&gt; &#39;product_type&#39; IN (&#39;UNSECURED_PERSONAL_LOAN&#39;, &#39;REVOLVING_LINE&#39;)
+
+ORDER BY
+    ps.run_sequence_number,
+    product_policy_row -&gt;&gt; &#39;product_type&#39;;
+</code></pre>
+<hr>
+<h2>Query 20 — Final “go / review” acceptance rollup</h2>
+<p><strong>Purpose:</strong> One compact status line for campaign readiness.</p>
+<p><strong>Expected:</strong></p>
+<pre><code class="language-text">MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+</code></pre>
+<pre><code class="language-sql">/***************************************************************************************************
+QUERY 20 — MODULE 2 CAMPAIGN ACCEPTANCE ROLLUP
+
+Purpose:
+    Produce one compact campaign-level readiness status.
+
+Expected:
+    MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+***************************************************************************************************/
+
+WITH archive_inventory AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+archive_grain_duplicates AS (
+    SELECT COUNT(*) AS duplicate_archive_grain_count
+    FROM (
+        SELECT
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+            application_id,
+            COUNT(*) AS row_count
+        FROM credit_decisioning_sim.strategy_decisions_archive
+        GROUP BY
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+            application_id
+        HAVING COUNT(*) &gt; 1
+    ) d
+),
+
+executive_evidence AS (
+    SELECT COUNT(*) AS executive_evidence_rows
+    FROM credit_decisioning_sim.strategy_run_evidence_summary
+),
+
+parameter_evidence AS (
+    SELECT COUNT(*) AS parameter_snapshot_rows
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+),
+
+registry_runs AS (
+    SELECT COUNT(*) AS active_campaign_registry_rows
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+comparison_registry AS (
+    SELECT COUNT(*) AS active_comparison_registry_rows
+    FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+convention_violations AS (
+    SELECT
+        COUNT(*) FILTER (
+            WHERE (
+                COALESCE(approval_flag::INT, 0)
+                + COALESCE(counteroffer_flag::INT, 0)
+                + COALESCE(manual_review_flag::INT, 0)
+                + COALESCE(decline_flag::INT, 0)
+            ) &lt;&gt; 1
+        )
+        +
+        COUNT(*) FILTER (
+            WHERE simulated_offer_exposure_flag
+                  IS DISTINCT FROM (decision_outcome IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;))
+        )
+        +
+        COUNT(*) FILTER (
+            WHERE primary_reason_code IS NULL
+               OR primary_reason_family IS NULL
+               OR triggered_reason_code_list IS NULL
+               OR reason_code_count IS NULL
+               OR reason_code_count &lt; 1
+        )
+        AS critical_convention_violation_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+)
+
+SELECT
+    rr.active_campaign_registry_rows,
+    cr.active_comparison_registry_rows,
+
+    (SELECT COUNT(*) FROM archive_inventory) AS archived_strategy_scenario_slices,
+    (SELECT SUM(archived_rows) FROM archive_inventory) AS total_archived_rows,
+    (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows &lt;&gt; 50000) AS archive_slices_not_50000_rows,
+    (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows &lt;&gt; distinct_application_id_count) AS archive_slices_with_duplicate_application_ids,
+
+    agd.duplicate_archive_grain_count,
+
+    ee.executive_evidence_rows,
+    pe.parameter_snapshot_rows,
+
+    cv.critical_convention_violation_count,
+
+    CASE
+        WHEN rr.active_campaign_registry_rows = 36
+         AND cr.active_comparison_registry_rows = 17
+         AND (SELECT COUNT(*) FROM archive_inventory) = 36
+         AND (SELECT SUM(archived_rows) FROM archive_inventory) = 1800000
+         AND (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows &lt;&gt; 50000) = 0
+         AND (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows &lt;&gt; distinct_application_id_count) = 0
+         AND agd.duplicate_archive_grain_count = 0
+         AND ee.executive_evidence_rows = 36
+         AND pe.parameter_snapshot_rows = 36
+         AND cv.critical_convention_violation_count = 0
+            THEN &#39;MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS&#39;
+        ELSE &#39;REVIEW_MODULE_2_CAMPAIGN_RESULTS_BEFORE_ANALYSIS&#39;
+    END AS module2_campaign_acceptance_status
+
+FROM registry_runs rr
+CROSS JOIN comparison_registry cr
+CROSS JOIN archive_grain_duplicates agd
+CROSS JOIN executive_evidence ee
+CROSS JOIN parameter_evidence pe
+CROSS JOIN convention_violations cv;
+</code></pre>
+<hr>
+<p>The highest-value outputs to send back are <strong>Query 1</strong>, <strong>Query 4</strong>, <strong>Query 7</strong>, <strong>Query 9</strong>, <strong>Query 12</strong>, <strong>Query 13</strong>, <strong>Query 14</strong>, <strong>Query 15</strong>, and <strong>Query 20</strong>. Those will tell us whether the campaign is structurally ready, evidence-complete, comparison-ready, and analytically interpretable.</p>
+</div></article><article id="c038-m01274" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01274 · 2026-05-11T13:31:42.766000-04:00 · active path</p><div class="body"><p>review the first 10 queries from our campaign:</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_5_registry_runs_missing_or_mismatched_expected_result_zero_rows.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_4_campaign_registry_to_archive_reconciliation.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_3_archive_grain_duplicate_check.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_2_archive_slice_detail.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_1_expected_strategy_x_module1_scenario_x_population_slice_counts.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_10_validation_status_summary_by_campaign_run.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_9_full_archive_final_output_convention_checks.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_8_evidence_coverage_detail_by_run.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_7_confirm_evidence_exists_for_all_campaign_runs.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_6_archive_slices_without_active_campaign_registry_row_expected_result_zero_rows.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01282" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01282 · 2026-05-11T13:36:41.793968-04:00 · active path</p><div class="body"><h2>Overall verdict for Queries 1–10</h2>
+<p>The first 10 campaign QA outputs are <strong>strong</strong>. I would mark this batch as:</p>
+<pre><code class="language-text">STATUS: PASS — MODULE 2 CAMPAIGN STRUCTURE, ARCHIVE, REGISTRY, EVIDENCE, AND OUTPUT CONVENTIONS ARE CLEAN
+</code></pre>
+<p>The only items requiring interpretation are the expected <strong>REVIEW / NOT_APPLICABLE validation-status rows</strong> in Query 10. They are not structural failures. Section 14’s validation framework explicitly uses <code>PASS</code>, <code>REVIEW</code>, and <code>NOT_APPLICABLE</code>, where <code>REVIEW</code> means the pattern should be interpreted before documentation rather than treated as automatic invalidation. fileciteturn184file17</p>
+<hr>
+<h2>Query-by-query review</h2>
+<table>
+<thead>
+<tr>
+<th align="right">Query</th>
+<th>Result</th>
+<th>Review</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">1</td>
+<td><strong>PASS</strong></td>
+<td>36 archived strategy/scenario slices, 1,800,000 archived rows, zero non-50k slices, zero duplicate-application slices.</td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td><strong>PASS</strong></td>
+<td>All 36 archive slices are present at 50,000 rows each. SC05 now correctly uses <code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code>; no old exposure-intensity set name appears.</td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td><strong>PASS</strong></td>
+<td><code>duplicate_archive_grain_count = 0</code>. Archive grain is clean.</td>
+</tr>
+<tr>
+<td align="right">4</td>
+<td><strong>PASS</strong></td>
+<td>All 36 active campaign registry runs reconcile to archive rows. No missing archive rows, no non-50k rows, no duplicate application rows.</td>
+</tr>
+<tr>
+<td align="right">5</td>
+<td><strong>PASS</strong></td>
+<td>Zero registry runs are missing or mismatched in archive. Ideal result.</td>
+</tr>
+<tr>
+<td align="right">6</td>
+<td><strong>PASS</strong></td>
+<td>Zero archive slices exist without active campaign registry rows. Ideal result.</td>
+</tr>
+<tr>
+<td align="right">7</td>
+<td><strong>PASS</strong></td>
+<td>Section 16 evidence coverage is complete: 36 executive evidence rows, 36 parameter snapshots, validation evidence for 36 runs, segment evidence for 36 runs.</td>
+</tr>
+<tr>
+<td align="right">8</td>
+<td><strong>PASS</strong></td>
+<td>Every run has <code>executive_rows = 1</code>, <code>parameter_rows = 1</code>, <code>validation_rows = 22</code>, <code>segment_rows = 25</code>, and <code>EVIDENCE_CAPTURE_READY</code>.</td>
+</tr>
+<tr>
+<td align="right">9</td>
+<td><strong>PASS</strong></td>
+<td>Full 1.8M-row archive has zero final-output convention violations. This is a very strong result.</td>
+</tr>
+<tr>
+<td align="right">10</td>
+<td><strong>PASS with interpretation items</strong></td>
+<td>All 36 runs have 22 validation evidence rows. Total validation: 719 PASS, 72 REVIEW, 1 NOT_APPLICABLE. No evidence of structural failure.</td>
+</tr>
+</tbody></table>
+<p>Section 12 is the governed archive persistence layer and preserves completed strategy outputs for comparison and validation, so Queries 1–6 are the core archive/registry acceptance checks. fileciteturn184file20 Section 16 is the persistent evidence layer, so Queries 7–8 are the evidence-capture acceptance checks. fileciteturn184file9</p>
+<hr>
+<h2>Key acceptance signals</h2>
+<h3>Archive and campaign inventory are clean</h3>
+<p>Query 1 shows:</p>
+<pre><code class="language-text">archived_strategy_scenario_slices      = 36
+total_archived_rows                    = 1,800,000
+slices_not_50000_rows                  = 0
+slices_with_duplicate_application_ids  = 0
+archive_campaign_inventory_status      = MODULE_2_ARCHIVE_INVENTORY_READY
+</code></pre>
+<p>That means the full planned Module 2 campaign landed at the expected grain:</p>
+<pre><code class="language-text">36 runs × 50,000 applications = 1,800,000 archived rows
+</code></pre>
+<p>This is exactly what we wanted.</p>
+<h3>Archive grain is clean</h3>
+<p>Query 3 shows:</p>
+<pre><code class="language-text">duplicate_archive_grain_count = 0
+</code></pre>
+<p>That confirms there are no duplicate rows at:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+application_id
+</code></pre>
+<p>This is a hard acceptance point.</p>
+<h3>Registry reconciles to archive</h3>
+<p>Query 4 shows:</p>
+<pre><code class="language-text">registry_run_count                         = 36
+registry_runs_with_archive_rows            = 36
+registry_runs_missing_archive_rows         = 0
+registry_runs_not_50000_rows               = 0
+registry_runs_with_duplicate_application_ids = 0
+campaign_registry_archive_status           = CAMPAIGN_REGISTRY_RECONCILES_TO_ARCHIVE
+</code></pre>
+<p>Query 5 then returns zero rows, which confirms there are no specific registry rows requiring cleanup.</p>
+<p>Query 6 also returns zero rows, meaning there are no orphan archive slices outside the active campaign registry.</p>
+<p>This is a strong governance result.</p>
+<hr>
+<h2>Evidence capture review</h2>
+<p>Query 7 shows:</p>
+<pre><code class="language-text">registry_run_count                       = 36
+runs_with_one_executive_evidence_row     = 36
+runs_with_one_parameter_snapshot_row     = 36
+runs_with_validation_evidence_rows       = 36
+runs_with_segment_evidence_rows          = 36
+evidence_coverage_issue_count            = 0
+evidence_campaign_status                 = SECTION_16_EVIDENCE_COVERAGE_READY
+</code></pre>
+<p>Query 8 confirms each run has:</p>
+<pre><code class="language-text">executive_rows   = 1
+parameter_rows   = 1
+validation_rows  = 22
+segment_rows     = 25
+status           = EVIDENCE_CAPTURE_READY
+</code></pre>
+<p>The <code>segment_rows = 25</code> is exactly right for:</p>
+<pre><code class="language-text">5 products × 5 score bands = 25 product × score segments
+</code></pre>
+<p>This means Section 16 persisted the executive story, validation detail, parameter snapshot, and product × score segment evidence for every completed campaign run. Section 16.7 was designed to gate exactly these evidence-capture expectations. fileciteturn184file3</p>
+<p>One small documentation nuance: several baseline/reference runs have blank <code>comparison_group_id</code> in Query 8. I would not treat that as a failure because the comparison registry, not the run registry alone, is the authoritative object for baseline/challenger pairing. Query 12 and Query 13 will be the important follow-up checks for comparison readiness and matched source-field consistency.</p>
+<hr>
+<h2>Full-archive output convention review</h2>
+<p>Query 9 is one of the strongest outputs in the set. Across all:</p>
+<pre><code class="language-text">1,800,000 archived rows
+</code></pre>
+<p>every convention check is zero:</p>
+<pre><code class="language-text">final_outcome_flag_count_violation_rows         = 0
+simulated_offer_exposure_flag_violation_rows    = 0
+approve_amount_violation_rows                   = 0
+counteroffer_amount_violation_rows              = 0
+manual_review_amount_violation_rows             = 0
+decline_amount_violation_rows                   = 0
+counteroffer_affordability_violation_rows       = 0
+manual_review_affordability_violation_rows      = 0
+decline_affordability_violation_rows            = 0
+approve_expected_loss_violation_rows            = 0
+counteroffer_expected_loss_violation_rows       = 0
+manual_review_expected_loss_violation_rows      = 0
+decline_expected_loss_violation_rows            = 0
+reason_code_completeness_violation_rows         = 0
+reason_family_alignment_violation_rows          = 0
+</code></pre>
+<p>This confirms the locked final-output conventions held across the entire archived campaign. That is a major acceptance result because Section 14.17 treats these convention violations as stronger evidence than ordinary diagnostic REVIEW patterns. fileciteturn184file13</p>
+<hr>
+<h2>Validation-status review from Query 10</h2>
+<p>Query 10 shows every run captured:</p>
+<pre><code class="language-text">validation_evidence_rows = 22
+</code></pre>
+<p>Across the full campaign:</p>
+<pre><code class="language-text">Total validation evidence rows = 792
+PASS                          = 719
+REVIEW                        = 72
+NOT_APPLICABLE                = 1
+</code></pre>
+<p>That is a clean validation-evidence footprint. The recurring REVIEW items are interpretive, not structural.</p>
+<h3>Recurring REVIEW patterns</h3>
+<p>The recurring review items are:</p>
+<pre><code class="language-text">Mixed-signal and borderline concentration review:
+    36 of 36 runs
+
+Counteroffer concentration review:
+    31 of 36 runs
+
+Final counteroffer feasibility and affordability conventions:
+    3 runs
+
+Decline zero-exposure and policy-stop reason convention:
+    1 run
+
+Matched comparison readiness:
+    1 run
+
+Matched source-field consistency:
+    1 NOT_APPLICABLE
+</code></pre>
+<p>The important point is that Query 9 shows <strong>zero hard convention violations</strong> across the full archive. So the Query 10 review items should be treated as narrative / diagnostic prompts, not implementation defects.</p>
+<h3>Runs worth targeted interpretation</h3>
+<p>These are the specific runs I would flag for focused narrative review:</p>
+<table>
+<thead>
+<tr>
+<th>Run</th>
+<th>Scenario</th>
+<th>Strategy</th>
+<th>Review item</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M2-09</td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Final counteroffer feasibility / affordability review</td>
+</tr>
+<tr>
+<td>M2-13</td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>Final counteroffer feasibility / affordability review</td>
+</tr>
+<tr>
+<td>M2-30</td>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Final counteroffer feasibility / affordability review</td>
+</tr>
+<tr>
+<td>M2-20</td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>Decline / policy-stop convention review</td>
+</tr>
+<tr>
+<td>M2-01</td>
+<td><code>BASELINE_V2</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Comparison readiness REVIEW and source-field NOT_APPLICABLE</td>
+</tr>
+</tbody></table>
+<p>For M2-09, M2-13, and M2-30, I would look at counteroffer feasibility distribution and approved PTI / approved Expected Loss edge cases. For M2-20, I would look at decline reason-code distribution and policy-stop concentration. For M2-01, I would not worry yet; it likely reflects evidence captured when the baseline run did not yet have a completed comparison context. Query 12 and Query 13 should supersede that with campaign-wide comparison readiness.</p>
+<hr>
+<h2>Final assessment for Queries 1–10</h2>
+<p>I would mark the first 10 campaign QA queries as:</p>
+<pre><code class="language-text">MODULE 2 CAMPAIGN STRUCTURAL QA: PASS
+ARCHIVE COMPLETENESS: PASS
+ARCHIVE GRAIN: PASS
+REGISTRY-TO-ARCHIVE RECONCILIATION: PASS
+ORPHAN ARCHIVE CHECK: PASS
+EVIDENCE CAPTURE COVERAGE: PASS
+FULL-ARCHIVE OUTPUT CONVENTIONS: PASS
+VALIDATION STATUS SUMMARY: PASS WITH INTERPRETIVE REVIEW ITEMS
+</code></pre>
+<p>The campaign is now ready for the next layer: <strong>Queries 11–20</strong>, especially Query 12, Query 13, Query 14, Query 15, and Query 20. Those will confirm comparison readiness, source-field consistency, executive results, baseline/challenger deltas, and final campaign acceptance.</p>
+</div></article><article id="c038-m01283" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01283 · 2026-05-11T14:37:53.431000-04:00 · active path</p><div class="body"><p>please review queries 11-15 from our campaign</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_13_matched_comparison_source_field_consistency.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_12_comparison_registry_readiness.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_11_validation_review_concentration.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_15_baseline_x_challenger_delta_summary_for_all_comparison_groups.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_14_executive_evidence_campaign_summary.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01294" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01294 · 2026-05-11T14:48:29.351665-04:00 · active path</p><div class="body"><h2>Overall verdict for Queries 11–15</h2>
+<p>The campaign results from <strong>Queries 11–15 are strong and analytically usable</strong>. I would mark them:</p>
+<pre><code class="language-text">STATUS: PASS — COMPARISON READINESS, MATCHED SOURCE CONSISTENCY, EXECUTIVE RESULTS, AND BASELINE/CHALLENGER DELTAS ARE CLEAN
+
+FOLLOW-UP: Refresh or override stale run-time frontier labels in Query 14 before final documentation.
+</code></pre>
+<p>The important distinction: <strong>Queries 12, 13, and 15 prove the post-campaign comparison layer is ready and valid.</strong> Query 14 is also structurally complete, but 9 saved executive-evidence rows still show <code>NO_BASELINE_REFERENCE_AVAILABLE</code> even though their comparison groups are now ready. That looks like a <strong>run-time evidence-capture freshness issue</strong>, not a data or comparison failure.</p>
+<p>Section 13 is designed to isolate downstream Module 2 strategy effects by comparing baseline and challenger slices on the same Module 1 scenario, population, and <code>application_id</code>; Query 13 confirms that design held across the campaign. fileciteturn184file19</p>
+<hr>
+<h2>Query 11 — Validation review concentration</h2>
+<p><strong>Verdict: PASS with expected interpretive review items.</strong></p>
+<p>Query 11 shows 6 validation-review concentration rows:</p>
+<table>
+<thead>
+<tr>
+<th>Validation item</th>
+<th align="right">Status</th>
+<th align="right">Run count</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mixed-signal and borderline concentration review</td>
+<td align="right">REVIEW</td>
+<td align="right">36</td>
+<td>Expected. Mixed-signal / borderline visibility is part of realistic synthetic portfolio behavior.</td>
+</tr>
+<tr>
+<td>Counteroffer concentration review</td>
+<td align="right">REVIEW</td>
+<td align="right">31</td>
+<td>Expected. Counteroffer is a major Module 2 treatment path, especially under exposure and affordability constraints.</td>
+</tr>
+<tr>
+<td>Final counteroffer feasibility and affordability conventions</td>
+<td align="right">REVIEW</td>
+<td align="right">3</td>
+<td>Needs targeted narrative review for M2-09, M2-13, M2-30.</td>
+</tr>
+<tr>
+<td>Decline zero-exposure and policy-stop reason convention</td>
+<td align="right">REVIEW</td>
+<td align="right">1</td>
+<td>Needs targeted narrative review for M2-20.</td>
+</tr>
+<tr>
+<td>Selected baseline / challenger comparison readiness</td>
+<td align="right">REVIEW</td>
+<td align="right">1</td>
+<td>M2-01 run-time artifact; now superseded by Query 12.</td>
+</tr>
+<tr>
+<td>Immutable Module 1 source fields match across matched comparison rows</td>
+<td align="right">NOT_APPLICABLE</td>
+<td align="right">1</td>
+<td>M2-01 run-time artifact; now superseded by Query 13.</td>
+</tr>
+</tbody></table>
+<p>This is not a structural failure. Section 14 explicitly treats <code>REVIEW</code> as a prompt for interpretation before documentation, not automatic invalidation. fileciteturn184file17</p>
+<p>The key supporting point is that your earlier Query 9 showed <strong>zero hard convention violations</strong> across all 1.8M archived rows. So the Query 11 REVIEW rows should be handled as validation-narrative items, not implementation defects.</p>
+<hr>
+<h2>Query 12 — Comparison registry readiness</h2>
+<p><strong>Verdict: PASS.</strong></p>
+<p>All <strong>17 comparison groups</strong> are ready:</p>
+<pre><code class="language-text">baseline_archived_rows = 50,000
+challenger_archived_rows = 50,000
+comparison_readiness_status = COMPARISON_READY
+</code></pre>
+<p>This is a major acceptance point. It confirms that every planned baseline/challenger comparison pair exists in the archive with full row counts:</p>
+<pre><code class="language-text">CG01–CG06: baseline strategy frontier on BASELINE_V2
+CG07–CG09: rate sensitivity comparisons
+CG10–CG12: credit-box sensitivity comparisons
+CG13–CG14: portfolio-mix sensitivity comparisons
+CG15: exposure-intensity sensitivity comparison
+CG16–CG17: LGD severity sensitivity comparisons
+</code></pre>
+<p>The corrected SC05 name also appears properly:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+HIGH_BALANCE_APPETITE
+</code></pre>
+<p>So the prior registry naming issue is resolved in the comparison layer.</p>
+<hr>
+<h2>Query 13 — Matched comparison source-field consistency</h2>
+<p><strong>Verdict: PASS — very strong result.</strong></p>
+<p>All <strong>17 comparison groups</strong> show:</p>
+<pre><code class="language-text">matched_application_count = 50,000
+source_field_mismatch_count = 0
+source_consistency_status = SOURCE_FIELDS_MATCH
+</code></pre>
+<p>Every individual source-field mismatch count is also zero:</p>
+<pre><code class="language-text">product_type_mismatch_count = 0
+score_band_mismatch_count = 0
+credit_score_mismatch_count = 0
+annual_income_mismatch_count = 0
+requested_amount_mismatch_count = 0
+requested_payment_mismatch_count = 0
+requested_pti_mismatch_count = 0
+amount_to_income_mismatch_count = 0
+estimated_pd_mismatch_count = 0
+estimated_lgd_mismatch_count = 0
+requested_expected_loss_mismatch_count = 0
+</code></pre>
+<p>This is one of the most important results in the whole campaign. It proves the comparisons are not contaminated by Module 1 source drift. The observed deltas in Query 15 can be interpreted as <strong>Module 2 strategy effects</strong>, not population mismatch or source-selection error.</p>
+<hr>
+<h2>Query 14 — Executive evidence campaign summary</h2>
+<p><strong>Verdict: PASS structurally, with one evidence-freshness follow-up.</strong></p>
+<p>The executive evidence table has all <strong>36 campaign runs</strong>, each with:</p>
+<pre><code class="language-text">applications = 50,000
+module3_growth_inputs_available_flag = TRUE
+</code></pre>
+<p>Validation summary in Query 14 reconciles to the earlier validation totals:</p>
+<pre><code class="language-text">validation_pass_count total             = 719
+validation_review_count total           = 72
+validation_not_applicable_count total   = 1
+</code></pre>
+<p>Run-level ranges look coherent:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Min</th>
+<th align="right">Max</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approval rate</td>
+<td align="right">10.854%</td>
+<td align="right">31.228%</td>
+<td>Lowest under credit stress + tighter risk; highest under rate-down + growth.</td>
+</tr>
+<tr>
+<td>Counteroffer rate</td>
+<td align="right">27.140%</td>
+<td align="right">45.406%</td>
+<td>Highest under near-prime expansion + counteroffer-first.</td>
+</tr>
+<tr>
+<td>Manual-review rate</td>
+<td align="right">9.440%</td>
+<td align="right">16.410%</td>
+<td>Lowest under manual-review reduction; highest under broad LGD stress + guardrails.</td>
+</tr>
+<tr>
+<td>Decline rate</td>
+<td align="right">15.082%</td>
+<td align="right">50.748%</td>
+<td>Lowest under prime-growth score mix; highest under credit stress + tighter risk.</td>
+</tr>
+<tr>
+<td>Simulated offer exposure rate</td>
+<td align="right">37.994%</td>
+<td align="right">72.420%</td>
+<td>Lowest under credit stress + tighter risk; highest under prime-growth baseline.</td>
+</tr>
+<tr>
+<td>Approved amount capture rate</td>
+<td align="right">39.792%</td>
+<td align="right">66.107%</td>
+<td>Lowest under credit stress + tighter risk; highest under prime-growth baseline.</td>
+</tr>
+<tr>
+<td>Approved EL rate</td>
+<td align="right">1.275%</td>
+<td align="right">2.007%</td>
+<td>Lowest under prime-growth baseline; highest under credit-stress baseline.</td>
+</tr>
+</tbody></table>
+<p>Those extremes make sense.</p>
+<h3>Frontier classification distribution</h3>
+<p>Query 14 shows:</p>
+<pre><code class="language-text">BASELINE_REFERENCE_POINT                  19
+RISK_DISCIPLINE_FRONTIER_POINT             3
+COUNTEROFFER_MANAGEMENT_FRONTIER_POINT     2
+GROWTH_ORIENTED_FRONTIER_POINT             1
+REVIEW_BURDEN_REDUCTION_FRONTIER_POINT     1
+BALANCED_OR_MIXED_FRONTIER_POINT           1
+NO_BASELINE_REFERENCE_AVAILABLE            9
+</code></pre>
+<p>The first six categories are interpretable and useful. Section 15 classifies archived frontier points using diagnostic strategy posture labels; those labels are designed for executive interpretation, not production recommendations. fileciteturn184file11</p>
+<h3>Follow-up: 9 stale or run-time frontier labels</h3>
+<p>The 9 <code>NO_BASELINE_REFERENCE_AVAILABLE</code> rows are the only item I would flag:</p>
+<pre><code class="language-text">M2-11  RATE_UP_200BP / TIGHTER_AFFORDABILITY_STRATEGY
+M2-12  RATE_UP_300BP / TIGHTER_AFFORDABILITY_STRATEGY
+M2-13  RATE_DOWN_200BP / GROWTH_ORIENTED_STRATEGY
+M2-18  NEAR_PRIME_EXPANSION_MIX / COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+M2-23  UNSECURED_GROWTH_MIX / PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+M2-26  REVOLVING_LINE_EXPANSION_MIX / PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+M2-29  HIGH_BALANCE_APPETITE / COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+M2-34  UNSECURED_SEVERITY_STRESS / PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+M2-36  BROAD_LGD_STRESS / PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+</code></pre>
+<p>But Query 12 and Query 15 prove those baseline/challenger pairs now exist and compare correctly. So this is not a data defect. It means the saved Section 16 executive evidence for those rows likely captured Section 15 frontier state before the full campaign comparison landscape was complete, or before the final post-campaign comparison context was available.</p>
+<p>Recommendation: before final README / Validation Summary drafting, either:</p>
+<pre><code class="language-text">1. Treat Query 15 as the authoritative post-campaign comparison-delta table; or
+2. Refresh the frontier fields in strategy_run_evidence_summary from a fresh post-campaign Section 15 run.
+</code></pre>
+<p>I would do option 2 if you want Query 14 to be the final single executive evidence table.</p>
+<hr>
+<h2>Query 15 — Baseline vs challenger delta summary</h2>
+<p><strong>Verdict: PASS — strategy behavior is directionally coherent and strongly interpretable.</strong></p>
+<p>Query 15 is the most important analytical result so far. It shows the strategy families doing what they were designed to do.</p>
+<h3>Tighter synthetic risk</h3>
+<p>Comparison groups:</p>
+<pre><code class="language-text">CG01, CG10, CG12
+</code></pre>
+<p>Observed pattern:</p>
+<pre><code class="language-text">Offer exposure down:      -2.514 to -3.306 percentage points
+Approved amount down:     -$151.3M to -$220.9M
+Approved EL down:         -$7.3M to -$9.6M
+Approved EL rate down:    -0.133 to -0.252 percentage points
+Offer-row PD proxy down:  -0.785 to -1.496 percentage points
+Decline rate up:          +4.358 to +7.258 percentage points
+</code></pre>
+<p>Interpretation:</p>
+<pre><code class="language-text">Strong risk-discipline behavior.
+The strategy gives up access and approved exposure to reduce approved Expected Loss and improve the offered-population synthetic-risk profile.
+</code></pre>
+<p>CG12 under <code>CREDIT_STRESS_SCORE_MIX</code> is especially strong: tighter risk reduces approved EL by about <strong>$9.41M</strong> and lowers offered-row synthetic PD proxy by about <strong>1.50 percentage points</strong>, while increasing decline rate by about <strong>7.26 percentage points</strong>.</p>
+<h3>Growth oriented</h3>
+<p>Comparison groups:</p>
+<pre><code class="language-text">CG02, CG09
+</code></pre>
+<p>Observed pattern:</p>
+<pre><code class="language-text">Offer exposure up:        +2.986 to +3.166 percentage points
+Approval rate up:         +6.254 to +6.720 percentage points
+Approved amount up:       +$238.0M to +$280.4M
+Approved EL up:           +$8.8M to +$9.4M
+Approved EL rate up:      about +0.123 to +0.127 percentage points
+Decline rate down:        about -3.45 percentage points
+</code></pre>
+<p>Interpretation:</p>
+<pre><code class="language-text">Clean growth tradeoff.
+The strategy expands approvals, offer exposure, and approved amount, with a measurable approved Expected Loss increase.
+</code></pre>
+<p>This is exactly what a growth-oriented challenger should do.</p>
+<h3>Tighter affordability</h3>
+<p>Comparison groups:</p>
+<pre><code class="language-text">CG03, CG07, CG08
+</code></pre>
+<p>Observed pattern:</p>
+<pre><code class="language-text">Offer exposure down:      -3.186 to -3.320 percentage points
+Approval rate down:       -3.224 to -3.684 percentage points
+Approved amount down:     -$274.8M to -$290.0M
+Approved EL down:         -$3.6M to -$3.9M
+Offer-row approved PTI down: -0.267 to -0.400 percentage points
+Manual review up:         +1.774 to +1.918 percentage points
+Decline up:               about +1.40 percentage points
+</code></pre>
+<p>Interpretation:</p>
+<pre><code class="language-text">Affordability discipline is working.
+The strategy reduces approved exposure and offer-row PTI, but it is not a pure risk-rate reducer; approved EL rate moves only slightly upward in some cases due to mix effects.
+</code></pre>
+<p>This is fine and should be narrated correctly: the strategy is about <strong>payment-burden discipline</strong>, not simply minimizing approved EL rate.</p>
+<h3>Counteroffer-first exposure strategy</h3>
+<p>Comparison groups:</p>
+<pre><code class="language-text">CG04, CG11, CG15
+</code></pre>
+<p>Observed pattern:</p>
+<pre><code class="language-text">Offer exposure up:        +0.986 to +1.148 percentage points
+Approval rate down:       -2.000 to -2.672 percentage points
+Counteroffer rate up:     +3.102 to +3.820 percentage points
+Manual review down:       -0.986 to -1.148 percentage points
+Decline rate unchanged:    0.000 percentage points
+Approved amount down:     -$189.2M to -$222.8M
+Approved EL down:         -$4.2M to -$5.9M
+Offer-row approved PTI down: -0.853 to -0.986 percentage points
+</code></pre>
+<p>Interpretation:</p>
+<pre><code class="language-text">Very clean counteroffer-management behavior.
+The strategy shifts outcomes from approval/manual review into reduced-exposure counteroffers, preserves or slightly expands simulated positive offer exposure, and lowers approved exposure and approved Expected Loss.
+</code></pre>
+<p>CG15 under <code>HIGH_BALANCE_APPETITE</code> is especially useful for the final narrative: high-balance demand plus counteroffer-first treatment reduces approved exposure by about <strong>$215.5M</strong> and approved EL by about <strong>$4.88M</strong>, while increasing counteroffer rate by about <strong>3.15 percentage points</strong>.</p>
+<h3>Product-specific guardrails</h3>
+<p>Comparison groups:</p>
+<pre><code class="language-text">CG05, CG13, CG14, CG16, CG17
+</code></pre>
+<p>Observed pattern:</p>
+<pre><code class="language-text">Offer exposure down:      -0.680 to -0.992 percentage points
+Approval rate down:       -1.712 to -2.420 percentage points
+Counteroffer rate up:     +0.720 to +1.532 percentage points
+Manual review up:         +0.680 to +0.992 percentage points
+Decline rate unchanged:    0.000 percentage points
+Approved amount down:     -$37.0M to -$56.3M
+Approved EL down:         -$2.0M to -$3.0M
+Approved EL rate down:    -0.039 to -0.072 percentage points
+Offer-row PD proxy down:  modestly negative
+Offer-row approved PTI down: modestly negative
+</code></pre>
+<p>Interpretation:</p>
+<pre><code class="language-text">Product guardrails are behaving as targeted guardrails rather than blunt declines.
+They reduce approved exposure and approved EL, especially in product-mix / severity contexts, without increasing decline rate.
+</code></pre>
+<p>That is a good result. It means the guardrails are shifting approval behavior into counteroffer/manual review and lowering approved exposure risk without functioning as broad no-offer policy stops.</p>
+<h3>Manual-review reduction</h3>
+<p>Comparison group:</p>
+<pre><code class="language-text">CG06
+</code></pre>
+<p>Observed pattern:</p>
+<pre><code class="language-text">Manual review rate down:  -4.438 percentage points
+Decline rate up:          +4.438 percentage points
+Offer exposure unchanged:  0.000
+Approved amount unchanged: 0.000
+Approved EL unchanged:     0.000
+</code></pre>
+<p>Interpretation:</p>
+<pre><code class="language-text">Extremely clean parameter behavior.
+The strategy changes unresolved manual-review disposition into final no-offer disposition without changing positive-offer exposure economics.
+</code></pre>
+<p>This is exactly what <code>failed_counteroffer_resolution = &#39;DECLINE&#39;</code> should demonstrate.</p>
+<hr>
+<h2>Main conclusion from Queries 11–15</h2>
+<p>I would summarize this batch as:</p>
+<pre><code class="language-text">1. Validation REVIEW items are expected interpretive prompts, not structural defects.
+2. All 17 baseline/challenger comparison groups are comparison-ready.
+3. All 17 matched comparisons have perfect Module 1 source-field consistency.
+4. Executive evidence is complete for all 36 runs.
+5. Strategy deltas are directionally coherent and explainable.
+6. The only cleanup recommendation is to refresh stale frontier labels in the executive evidence rows where Query 14 still says NO_BASELINE_REFERENCE_AVAILABLE despite post-campaign comparisons now being ready.
+</code></pre>
+<p>The campaign is analytically ready. Before writing the final validation summary, I would refresh the affected frontier/evidence labels or clearly treat Query 15 as the authoritative post-campaign comparison table.</p>
+</div></article><article id="c038-m01295" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01295 · 2026-05-11T14:57:11.230000-04:00 · active path</p><div class="body"><p>how do I: 2. Refresh the frontier fields in strategy_run_evidence_summary from a fresh post-campaign Section 15 run. and 6. The only cleanup recommendation is to refresh stale frontier labels in the executive evidence rows where Query 14 still says NO_BASELINE_REFERENCE_AVAILABLE despite post-campaign comparisons now being ready. give me step by step.</p>
+</div></article><article id="c038-m01301" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01301 · 2026-05-11T15:01:42.986704-04:00 · active path</p><div class="body"><p>Yes. The clean way is to <strong>rerun Section 15 after the full campaign archive is complete</strong>, then use the fresh Section 15 temporary frontier output to update the stale Section 15-derived fields in the persistent executive evidence table.</p>
+<p>Do <strong>not</strong> rerun full Section 16 expecting it to refresh all 36 runs. Section 16.6 captures the <strong>current latest-run table</strong>, not every archived run, so one Section 16 rerun only refreshes the current latest-run slice. Section 15 is the correct source for this cleanup because it reads the full archive and creates <code>tmp_m2_strategy_frontier_executive_summary</code> across archived strategy/scenario slices. fileciteturn184file11 Section 16.6 then stores Section 15 frontier fields into <code>strategy_run_evidence_summary</code>, but it does that at the current-run grain during each run. fileciteturn184file4</p>
+<p>Below is the exact step-by-step.</p>
+<hr>
+<h2>Step 1 — Do not run Section 1</h2>
+<p>Do <strong>not</strong> start from Section 1 for this refresh. Section 1 drops the replaceable latest-run table, and the operating guidance explicitly says not to run Section 1 by itself when the goal is only to refresh Section 15 frontier outputs or Section 16 evidence capture. fileciteturn184file50</p>
+<p>For this cleanup, start at:</p>
+<pre><code class="language-text">SECTION 15 — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW
+</code></pre>
+<p>Run <strong>all of Section 15</strong> through the creation of:</p>
+<pre><code class="language-sql">tmp_m2_strategy_frontier_executive_summary
+</code></pre>
+<p>Section 15 is read-only against the archive. It does not change latest-run output or archive rows. fileciteturn184file11</p>
+<hr>
+<h2>Step 2 — Confirm fresh Section 15 output is post-campaign complete</h2>
+<p>Run this immediately after rerunning Section 15.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 2 — CONFIRM FRESH SECTION 15 FRONTIER OUTPUT IS COMPLETE
+
+Expected:
+    frontier_rows = 36
+    distinct_frontier_keys = 36
+    no_baseline_reference_rows = 0
+***************************************************************************************************/
+
+SELECT
+    COUNT(*) AS frontier_rows,
+
+    COUNT(DISTINCT (
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    )) AS distinct_frontier_keys,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+    ) AS no_baseline_reference_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type IS NULL
+           OR executive_frontier_quadrant IS NULL
+           OR frontier_interpretation_note IS NULL
+    ) AS frontier_required_field_gap_rows
+
+FROM tmp_m2_strategy_frontier_executive_summary;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">frontier_rows                    = 36
+distinct_frontier_keys           = 36
+no_baseline_reference_rows       = 0
+frontier_required_field_gap_rows = 0
+</code></pre>
+<p>If <code>no_baseline_reference_rows</code> is still greater than zero here, stop. That means Section 15 itself is still not seeing the completed baseline references, and we should diagnose Section 15 before updating persistent evidence.</p>
+<hr>
+<h2>Step 3 — Preview stale executive evidence rows before update</h2>
+<p>This shows the stale rows currently stored in <code>strategy_run_evidence_summary</code>.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 3 — PREVIEW STALE FRONTIER LABELS IN PERSISTENT EXECUTIVE EVIDENCE
+
+Expected based on Query 14:
+    9 rows with NO_BASELINE_REFERENCE_AVAILABLE.
+***************************************************************************************************/
+
+SELECT
+    run_sequence_number,
+    module1_run_id,
+    module2_run_id,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_name,
+    strategy_version,
+
+    frontier_position_type,
+    executive_frontier_quadrant,
+    frontier_interpretation_note,
+    observed_storyline
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary
+
+WHERE frontier_position_type = &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+
+ORDER BY run_sequence_number;
+</code></pre>
+<p>Expected stale run IDs should be the 9 we identified:</p>
+<pre><code class="language-text">M2-11
+M2-12
+M2-13
+M2-18
+M2-23
+M2-26
+M2-29
+M2-34
+M2-36
+</code></pre>
+<hr>
+<h2>Step 4 — Preview the before/after mapping</h2>
+<p>This shows exactly what each stale evidence row will become after joining to fresh Section 15 output.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 4 — PREVIEW FRONTIER REFRESH MAPPING
+
+Purpose:
+    Confirm stale persistent executive evidence rows can be matched to fresh Section 15 frontier rows.
+
+Expected:
+    9 matched rows.
+    old_frontier_position_type = NO_BASELINE_REFERENCE_AVAILABLE
+    new_frontier_position_type should be a real strategy posture label.
+***************************************************************************************************/
+
+SELECT
+    e.run_sequence_number,
+    e.module2_run_id,
+
+    e.module1_scenario_set_name,
+    e.module1_scenario_name,
+    e.population_id,
+    e.strategy_name,
+    e.strategy_version,
+
+    e.frontier_position_type AS old_frontier_position_type,
+    f.frontier_position_type AS new_frontier_position_type,
+
+    e.executive_frontier_quadrant AS old_executive_frontier_quadrant,
+    f.executive_frontier_quadrant AS new_executive_frontier_quadrant,
+
+    e.frontier_interpretation_note AS old_frontier_interpretation_note,
+    f.frontier_interpretation_note AS new_frontier_interpretation_note,
+
+    e.top_reason_code_delta_driver_code AS old_top_reason_code_delta_driver_code,
+    f.top_reason_code_delta_driver_code AS new_top_reason_code_delta_driver_code,
+
+    e.top_reason_code_delta_population_share AS old_top_reason_code_delta_population_share,
+    f.top_reason_code_delta_population_share AS new_top_reason_code_delta_population_share
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary e
+
+JOIN tmp_m2_strategy_frontier_executive_summary f
+    ON f.strategy_set_name = e.strategy_set_name
+   AND f.strategy_name = e.strategy_name
+   AND f.strategy_version = e.strategy_version
+   AND f.module1_scenario_set_name = e.module1_scenario_set_name
+   AND f.module1_scenario_name = e.module1_scenario_name
+   AND f.population_id = e.population_id
+
+WHERE e.frontier_position_type = &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+
+ORDER BY e.run_sequence_number;
+</code></pre>
+<p>If this returns fewer than 9 rows, stop and inspect the technical keys. The update should only be run when every stale row maps to one fresh frontier row.</p>
+<hr>
+<h2>Step 5 — Optional but recommended: create a permanent backup</h2>
+<p>This gives you a rollback reference even after commit.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 5 — OPTIONAL BACKUP BEFORE FRONTIER REFRESH
+
+Purpose:
+    Preserve the current executive evidence table before updating frontier fields.
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_evidence_summary_backup_pre_frontier_refresh;
+
+CREATE TABLE credit_decisioning_sim.strategy_run_evidence_summary_backup_pre_frontier_refresh AS
+SELECT *
+FROM credit_decisioning_sim.strategy_run_evidence_summary;
+</code></pre>
+<hr>
+<h2>Step 6 — Update the stale frontier fields from fresh Section 15</h2>
+<p>This updates the Section 15-derived frontier fields in <code>strategy_run_evidence_summary</code>.</p>
+<p>It updates:</p>
+<pre><code class="language-text">frontier_position_type
+executive_frontier_quadrant
+frontier_interpretation_note
+top_reason_code_delta_driver_family
+top_reason_code_delta_driver_code
+top_reason_code_delta_driver_baseline_share
+top_reason_code_delta_driver_strategy_share
+top_reason_code_delta_population_share
+observed_storyline, only when it appears blank or stale/auto-derived
+</code></pre>
+<p>Run this inside a transaction.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 6 — REFRESH STALE FRONTIER FIELDS IN EXECUTIVE EVIDENCE SUMMARY
+
+Purpose:
+    Replace stale NO_BASELINE_REFERENCE_AVAILABLE frontier labels using the fresh post-campaign
+    Section 15 archive-backed frontier output.
+
+Important:
+    This updates persistent evidence fields only.
+
+    It does not modify:
+        credit_decisioning_sim.strategy_decisions
+        credit_decisioning_sim.strategy_decisions_archive
+        strategy parameters
+        product policy parameters
+        decision outcomes
+        approved exposure
+        approved Expected Loss
+        reason codes
+***************************************************************************************************/
+
+BEGIN;
+
+WITH refreshed_frontier AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        frontier_position_type,
+        executive_frontier_quadrant,
+        frontier_interpretation_note,
+
+        top_reason_code_delta_driver_family,
+        top_reason_code_delta_driver_code,
+        top_reason_code_delta_driver_baseline_share,
+        top_reason_code_delta_driver_strategy_share,
+        top_reason_code_delta_population_share
+
+    FROM tmp_m2_strategy_frontier_executive_summary
+),
+
+updated_rows AS (
+    UPDATE credit_decisioning_sim.strategy_run_evidence_summary e
+    SET
+        /*******************************************************************************************
+        Section 15 frontier posture fields.
+        *******************************************************************************************/
+        frontier_position_type = f.frontier_position_type,
+        executive_frontier_quadrant = f.executive_frontier_quadrant,
+        frontier_interpretation_note = f.frontier_interpretation_note,
+
+        /*******************************************************************************************
+        Section 15 baseline-relative reason-code movement fields.
+        *******************************************************************************************/
+        top_reason_code_delta_driver_family = f.top_reason_code_delta_driver_family,
+        top_reason_code_delta_driver_code = f.top_reason_code_delta_driver_code,
+        top_reason_code_delta_driver_baseline_share = f.top_reason_code_delta_driver_baseline_share,
+        top_reason_code_delta_driver_strategy_share = f.top_reason_code_delta_driver_strategy_share,
+        top_reason_code_delta_population_share = f.top_reason_code_delta_population_share,
+
+        /*******************************************************************************************
+        Observed storyline refresh.
+
+        Preserve manually populated observed_storyline values.
+
+        Refresh observed_storyline only when it is blank, exactly equal to the old frontier note, or
+        appears to be the stale auto-derived &quot;no baseline&quot; note.
+        *******************************************************************************************/
+        observed_storyline =
+            CASE
+                WHEN e.observed_storyline IS NULL
+                  OR e.observed_storyline = e.frontier_interpretation_note
+                  OR e.observed_storyline ILIKE &#39;%No baseline strategy slice exists%&#39;
+                  OR e.observed_storyline ILIKE &#39;%No baseline reference%&#39;
+                    THEN f.frontier_interpretation_note
+                ELSE e.observed_storyline
+            END
+
+    FROM refreshed_frontier f
+
+    WHERE e.strategy_set_name = f.strategy_set_name
+      AND e.strategy_name = f.strategy_name
+      AND e.strategy_version = f.strategy_version
+      AND e.module1_scenario_set_name = f.module1_scenario_set_name
+      AND e.module1_scenario_name = f.module1_scenario_name
+      AND e.population_id = f.population_id
+
+      /*******************************************************************************************
+      Limit the update to stale rows.
+
+      This avoids rewriting all 36 evidence rows unnecessarily.
+      *******************************************************************************************/
+      AND e.frontier_position_type = &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+
+    RETURNING
+        e.run_sequence_number,
+        e.module1_run_id,
+        e.module2_run_id,
+        e.module1_scenario_set_name,
+        e.module1_scenario_name,
+        e.population_id,
+        e.strategy_name,
+        e.strategy_version,
+        e.frontier_position_type,
+        e.executive_frontier_quadrant,
+        e.frontier_interpretation_note,
+        e.top_reason_code_delta_driver_code,
+        e.top_reason_code_delta_population_share
+)
+
+SELECT *
+FROM updated_rows
+ORDER BY run_sequence_number;
+</code></pre>
+<p>Review the returned rows. You should see the 9 stale runs updated to meaningful frontier classifications such as:</p>
+<pre><code class="language-text">TIGHTER_AFFORDABILITY_STRATEGY      → likely BALANCED_OR_MIXED_FRONTIER_POINT or related affordability posture
+GROWTH_ORIENTED_STRATEGY            → GROWTH_ORIENTED_FRONTIER_POINT
+COUNTEROFFER_FIRST_EXPOSURE_STRATEGY → COUNTEROFFER_MANAGEMENT_FRONTIER_POINT
+PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY → often BALANCED_OR_MIXED_FRONTIER_POINT or risk/guardrail posture depending on deltas
+</code></pre>
+<p>Then verify before committing:</p>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 6B — VERIFY REFRESH BEFORE COMMIT
+
+Expected:
+    stale_no_baseline_reference_rows = 0
+***************************************************************************************************/
+
+SELECT
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+    ) AS stale_no_baseline_reference_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type IS NULL
+           OR executive_frontier_quadrant IS NULL
+           OR frontier_interpretation_note IS NULL
+    ) AS missing_frontier_field_rows
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">stale_no_baseline_reference_rows = 0
+missing_frontier_field_rows      = 0
+</code></pre>
+<p>Now commit:</p>
+<pre><code class="language-sql">COMMIT;
+</code></pre>
+<p>If the verification does <strong>not</strong> look right, use:</p>
+<pre><code class="language-sql">ROLLBACK;
+</code></pre>
+<p>Do not leave the transaction open.</p>
+<hr>
+<h2>Step 7 — Post-commit verification</h2>
+<p>After <code>COMMIT</code>, rerun this.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 7 — POST-COMMIT FRONTIER REFRESH VERIFICATION
+
+Expected:
+    no_baseline_reference_rows = 0
+    executive_evidence_rows = 36
+***************************************************************************************************/
+
+SELECT
+    COUNT(*) AS executive_evidence_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+    ) AS no_baseline_reference_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;BASELINE_REFERENCE_POINT&#39;
+    ) AS baseline_reference_point_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;RISK_DISCIPLINE_FRONTIER_POINT&#39;
+    ) AS risk_discipline_frontier_point_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;GROWTH_ORIENTED_FRONTIER_POINT&#39;
+    ) AS growth_oriented_frontier_point_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;COUNTEROFFER_MANAGEMENT_FRONTIER_POINT&#39;
+    ) AS counteroffer_management_frontier_point_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;REVIEW_BURDEN_REDUCTION_FRONTIER_POINT&#39;
+    ) AS review_burden_reduction_frontier_point_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;EXPOSURE_EFFICIENT_FRONTIER_POINT&#39;
+    ) AS exposure_efficient_frontier_point_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;BALANCED_OR_MIXED_FRONTIER_POINT&#39;
+    ) AS balanced_or_mixed_frontier_point_rows
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary;
+</code></pre>
+<p>Then rerun Query 14. The stale <code>NO_BASELINE_REFERENCE_AVAILABLE</code> rows should be gone.</p>
+<hr>
+<h2>Step 8 — Confirm the specific formerly stale runs</h2>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 8 — CONFIRM FORMERLY STALE RUNS NOW HAVE REFRESHED FRONTIER LABELS
+
+Expected:
+    None of these rows should have NO_BASELINE_REFERENCE_AVAILABLE.
+***************************************************************************************************/
+
+SELECT
+    run_sequence_number,
+    module1_run_id,
+    module2_run_id,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_name,
+    strategy_version,
+
+    frontier_position_type,
+    executive_frontier_quadrant,
+    frontier_interpretation_note,
+
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_population_share,
+    observed_storyline
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary
+
+WHERE module2_run_id IN (
+    &#39;M2-11&#39;,
+    &#39;M2-12&#39;,
+    &#39;M2-13&#39;,
+    &#39;M2-18&#39;,
+    &#39;M2-23&#39;,
+    &#39;M2-26&#39;,
+    &#39;M2-29&#39;,
+    &#39;M2-34&#39;,
+    &#39;M2-36&#39;
+)
+
+ORDER BY run_sequence_number;
+</code></pre>
+<hr>
+<h2>Step 9 — Final acceptance check</h2>
+<pre><code class="language-sql">/***************************************************************************************************
+STEP 9 — FINAL FRONTIER EVIDENCE REFRESH ACCEPTANCE CHECK
+
+Expected:
+    FRONTIER_EVIDENCE_REFRESH_READY
+***************************************************************************************************/
+
+WITH evidence_summary AS (
+    SELECT
+        COUNT(*) AS executive_evidence_rows,
+
+        COUNT(*) FILTER (
+            WHERE frontier_position_type = &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+        ) AS no_baseline_reference_rows,
+
+        COUNT(*) FILTER (
+            WHERE frontier_position_type IS NULL
+               OR executive_frontier_quadrant IS NULL
+               OR frontier_interpretation_note IS NULL
+        ) AS frontier_required_field_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE strategy_name &lt;&gt; &#39;BASELINE_STRATEGY&#39;
+              AND top_reason_code_delta_driver_code IS NULL
+        ) AS challenger_rows_missing_reason_code_delta_driver
+    FROM credit_decisioning_sim.strategy_run_evidence_summary
+)
+
+SELECT
+    executive_evidence_rows,
+    no_baseline_reference_rows,
+    frontier_required_field_gap_rows,
+    challenger_rows_missing_reason_code_delta_driver,
+
+    CASE
+        WHEN executive_evidence_rows = 36
+         AND no_baseline_reference_rows = 0
+         AND frontier_required_field_gap_rows = 0
+            THEN &#39;FRONTIER_EVIDENCE_REFRESH_READY&#39;
+        ELSE &#39;REVIEW_FRONTIER_EVIDENCE_REFRESH&#39;
+    END AS frontier_evidence_refresh_status
+
+FROM evidence_summary;
+</code></pre>
+<p>The <code>challenger_rows_missing_reason_code_delta_driver</code> field is diagnostic. I would not automatically fail the refresh solely on that count unless you expected every challenger to have a non-null top reason-code delta. The key acceptance point for your stated cleanup is:</p>
+<pre><code class="language-text">no_baseline_reference_rows = 0
+frontier_evidence_refresh_status = FRONTIER_EVIDENCE_REFRESH_READY
+</code></pre>
+<hr>
+<h2>Important boundary</h2>
+<p>This refresh updates only the <strong>persistent executive evidence fields derived from Section 15</strong>. It does not rewrite row-level decisions, archive rows, validation rows, parameter snapshots, or product × score segment evidence. That is appropriate because the issue was stale executive frontier labeling, not a decision-output or archive-integrity issue. Section 16’s evidence layer exists to persist executive story, validation evidence, parameter snapshots, and segment evidence separately from the archive itself. fileciteturn184file9</p>
+</div></article><article id="c038-m01303" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01303 · 2026-05-11T15:20:28.920000-04:00 · active path</p><div class="body"><p>thanks.  it corrected.  here is updated query 14.  do I need to re-provide anything from query 1-13 or 15?  would anything in those have changed?</p>
+</div></article><article id="c038-m01306" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01306 · 2026-05-11T15:21:55.507052-04:00 · active path</p><div class="body"><p>No — you do <strong>not</strong> need to re-provide Queries <strong>1–13</strong> or <strong>15</strong>.</p>
+<p>The refresh you performed changed only the <strong>persistent executive evidence table’s Section 15-derived frontier fields</strong>, specifically in:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_run_evidence_summary
+</code></pre>
+<p>That means <strong>Query 14 changed</strong>, because Query 14 reads from that executive evidence summary table. The other results should be unchanged unless your refresh script accidentally updated something beyond <code>strategy_run_evidence_summary</code>.</p>
+<h2>What changed</h2>
+<p>The refresh should have updated fields like:</p>
+<pre><code class="language-text">frontier_position_type
+executive_frontier_quadrant
+frontier_interpretation_note
+top_reason_code_delta_driver_family
+top_reason_code_delta_driver_code
+top_reason_code_delta_driver_baseline_share
+top_reason_code_delta_driver_strategy_share
+top_reason_code_delta_population_share
+observed_storyline, if your update included the conditional refresh
+</code></pre>
+<p>That is consistent with the design: Section 15 creates archive-backed frontier classifications, while Section 16.6 persists those frontier fields into the executive evidence summary for each run. fileciteturn184file11 fileciteturn184file4</p>
+<h2>What should not have changed</h2>
+<table>
+<thead>
+<tr>
+<th align="right">Query</th>
+<th>Should it change?</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">1</td>
+<td>No</td>
+<td>Reads Module 2 archive inventory. You did not change archive rows.</td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td>No</td>
+<td>Reads archive slice detail. Archive unchanged.</td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td>No</td>
+<td>Checks archive grain duplicates. Archive unchanged.</td>
+</tr>
+<tr>
+<td align="right">4</td>
+<td>No</td>
+<td>Reconciles campaign registry to archive. Registry and archive unchanged.</td>
+</tr>
+<tr>
+<td align="right">5</td>
+<td>No</td>
+<td>Shows missing / mismatched registry-to-archive rows. Registry and archive unchanged.</td>
+</tr>
+<tr>
+<td align="right">6</td>
+<td>No</td>
+<td>Checks orphan archive slices. Archive and registry unchanged.</td>
+</tr>
+<tr>
+<td align="right">7</td>
+<td>No, except same counts</td>
+<td>Evidence coverage counts should remain identical: still 36 executive rows, 36 parameter snapshots, etc.</td>
+</tr>
+<tr>
+<td align="right">8</td>
+<td>No, except same counts</td>
+<td>Evidence detail counts should remain identical. Field contents changed, not row counts.</td>
+</tr>
+<tr>
+<td align="right">9</td>
+<td>No</td>
+<td>Reads full archive final-output conventions. Archive unchanged.</td>
+</tr>
+<tr>
+<td align="right">10</td>
+<td>No</td>
+<td>Reads validation evidence. You did not update validation evidence.</td>
+</tr>
+<tr>
+<td align="right">11</td>
+<td>No</td>
+<td>Reads validation-review concentration. Validation evidence unchanged.</td>
+</tr>
+<tr>
+<td align="right">12</td>
+<td>No</td>
+<td>Reads comparison registry and archive readiness. Registry and archive unchanged.</td>
+</tr>
+<tr>
+<td align="right">13</td>
+<td>No</td>
+<td>Reads matched comparison source-field consistency from archive. Archive unchanged.</td>
+</tr>
+<tr>
+<td align="right">15</td>
+<td>No</td>
+<td>Calculates baseline/challenger deltas from archive and comparison registry. Archive and registry unchanged.</td>
+</tr>
+</tbody></table>
+<p>The critical point is that Sections 12 and 13 operate on the archive / comparison layer, and your refresh did not alter those objects. Section 12 is the archive persistence layer, and Section 13 performs matched comparison from archived slices without mutating archive rows. fileciteturn184file20 fileciteturn184file19</p>
+<h2>What I would ask you to re-provide</h2>
+<p>Only the updated:</p>
+<pre><code class="language-text">Query 14 — Executive Evidence Campaign Summary
+</code></pre>
+<p>And optionally the post-refresh verification query showing:</p>
+<pre><code class="language-text">no_baseline_reference_rows = 0
+executive_evidence_rows = 36
+</code></pre>
+<p>That is enough to confirm the stale frontier labels were corrected.</p>
+<h2>One optional sanity check</h2>
+<p>You can run this compact check to confirm the refresh did not change evidence table row counts:</p>
+<pre><code class="language-sql">SELECT
+    COUNT(*) AS executive_evidence_rows,
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+    ) AS no_baseline_reference_rows,
+    COUNT(*) FILTER (
+        WHERE frontier_position_type IS NULL
+           OR executive_frontier_quadrant IS NULL
+           OR frontier_interpretation_note IS NULL
+    ) AS frontier_field_gap_rows
+FROM credit_decisioning_sim.strategy_run_evidence_summary;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">executive_evidence_rows        = 36
+no_baseline_reference_rows     = 0
+frontier_field_gap_rows        = 0
+</code></pre>
+<p>So: <strong>re-send updated Query 14 only. Query 15 and Queries 1–13 should remain valid as already reviewed.</strong></p>
+</div></article><article id="c038-m01307" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01307 · 2026-05-11T15:25:53.540000-04:00 · active path</p><div class="body"><p>forgot to attach and i confirm no_baseline_reference_rows = 0 and executive_evidence_rows = 36.</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_14_executive_evidence_campaign_summary(1).csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01315" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01315 · 2026-05-11T15:29:59.808296-04:00 · active path</p><div class="body"><p>I reviewed the updated Query 14 file. The frontier refresh worked and Query 14 is now <strong>clean enough for final campaign analysis</strong>.</p>
+<pre><code class="language-text">STATUS: PASS — UPDATED QUERY 14 IS READY
+</code></pre>
+<p>The important correction is confirmed:</p>
+<pre><code class="language-text">executive_evidence_rows        = 36
+no_baseline_reference_rows     = 0
+frontier_required_field_gaps   = 0
+</code></pre>
+<p>That is exactly what we wanted after refreshing the Section 15-derived frontier fields in <code>strategy_run_evidence_summary</code>. Section 15 is the archive-backed strategy frontier layer, and Section 16 persists those frontier outputs into the executive evidence table. fileciteturn184file11 fileciteturn184file9</p>
+<h2>What changed in Query 14</h2>
+<p>These 9 rows were corrected from stale:</p>
+<pre><code class="language-text">NO_BASELINE_REFERENCE_AVAILABLE
+</code></pre>
+<p>into real frontier classifications:</p>
+<table>
+<thead>
+<tr>
+<th>Run</th>
+<th>Scenario</th>
+<th>Strategy</th>
+<th>Updated frontier position</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M2-11</td>
+<td><code>RATE_UP_200BP</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td><code>BALANCED_OR_MIXED_FRONTIER_POINT</code></td>
+</tr>
+<tr>
+<td>M2-12</td>
+<td><code>RATE_UP_300BP</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td><code>BALANCED_OR_MIXED_FRONTIER_POINT</code></td>
+</tr>
+<tr>
+<td>M2-13</td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td><code>GROWTH_ORIENTED_FRONTIER_POINT</code></td>
+</tr>
+<tr>
+<td>M2-18</td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td><code>COUNTEROFFER_MANAGEMENT_FRONTIER_POINT</code></td>
+</tr>
+<tr>
+<td>M2-23</td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td><code>COUNTEROFFER_MANAGEMENT_FRONTIER_POINT</code></td>
+</tr>
+<tr>
+<td>M2-26</td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td><code>COUNTEROFFER_MANAGEMENT_FRONTIER_POINT</code></td>
+</tr>
+<tr>
+<td>M2-29</td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td><code>COUNTEROFFER_MANAGEMENT_FRONTIER_POINT</code></td>
+</tr>
+<tr>
+<td>M2-34</td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td><code>BALANCED_OR_MIXED_FRONTIER_POINT</code></td>
+</tr>
+<tr>
+<td>M2-36</td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td><code>BALANCED_OR_MIXED_FRONTIER_POINT</code></td>
+</tr>
+</tbody></table>
+<p>That correction is coherent with the campaign design.</p>
+<h2>Updated frontier distribution</h2>
+<p>The refreshed Query 14 now shows:</p>
+<table>
+<thead>
+<tr>
+<th>Frontier position</th>
+<th align="right">Count</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_REFERENCE_POINT</code></td>
+<td align="right">19</td>
+<td>Baseline strategy rows across the Module 1 scenario campaign</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_MANAGEMENT_FRONTIER_POINT</code></td>
+<td align="right">6</td>
+<td>Counteroffer-first and several guardrail strategies shifting outcomes toward reduced-exposure treatment</td>
+</tr>
+<tr>
+<td><code>BALANCED_OR_MIXED_FRONTIER_POINT</code></td>
+<td align="right">5</td>
+<td>Affordability-tight and severity/guardrail rows with mixed tradeoffs</td>
+</tr>
+<tr>
+<td><code>RISK_DISCIPLINE_FRONTIER_POINT</code></td>
+<td align="right">3</td>
+<td>Tighter synthetic-risk rows</td>
+</tr>
+<tr>
+<td><code>GROWTH_ORIENTED_FRONTIER_POINT</code></td>
+<td align="right">2</td>
+<td>Growth-oriented rows</td>
+</tr>
+<tr>
+<td><code>REVIEW_BURDEN_REDUCTION_FRONTIER_POINT</code></td>
+<td align="right">1</td>
+<td>Manual-review reduction strategy</td>
+</tr>
+</tbody></table>
+<p>This is analytically sensible. Each strategy family is now classified in the expected direction.</p>
+<h2>Strategy-family classification check</h2>
+<p>The strategy classifications now line up well:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Frontier result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>19 baseline reference points</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>3 risk-discipline points</td>
+</tr>
+<tr>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>2 growth-oriented points</td>
+</tr>
+<tr>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>3 balanced/mixed points</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>3 counteroffer-management points</td>
+</tr>
+<tr>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>3 counteroffer-management points and 2 balanced/mixed points</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td>1 review-burden-reduction point</td>
+</tr>
+</tbody></table>
+<p>That is the right story. The product guardrail strategy showing both counteroffer-management and balanced/mixed classifications is reasonable because its effect depends on the scenario context: it behaves more like counteroffer/exposure management in baseline, unsecured-growth, and revolving-expansion contexts, and more like mixed risk/exposure discipline under LGD severity stress.</p>
+<h2>Executive metric ranges remain coherent</h2>
+<p>The refreshed Query 14 still has the expected metric profile:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Range</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approval rate</td>
+<td align="right">10.854% to 31.228%</td>
+</tr>
+<tr>
+<td>Counteroffer rate</td>
+<td align="right">27.140% to 45.406%</td>
+</tr>
+<tr>
+<td>Manual-review rate</td>
+<td align="right">9.440% to 16.410%</td>
+</tr>
+<tr>
+<td>Decline rate</td>
+<td align="right">15.082% to 50.748%</td>
+</tr>
+<tr>
+<td>Simulated offer-exposure rate</td>
+<td align="right">37.994% to 72.420%</td>
+</tr>
+<tr>
+<td>Approved amount capture rate</td>
+<td align="right">39.792% to 66.107%</td>
+</tr>
+<tr>
+<td>Approved Expected Loss rate</td>
+<td align="right">1.275% to 2.007%</td>
+</tr>
+</tbody></table>
+<p>The extremes make sense:</p>
+<pre><code class="language-text">Lowest access / highest decline:
+    M2-20 — CREDIT_STRESS_SCORE_MIX + TIGHTER_SYNTHETIC_RISK_STRATEGY
+
+Highest access:
+    M2-15 — PRIME_GROWTH_SCORE_MIX + BASELINE_STRATEGY
+
+Highest approved amount:
+    M2-24 — SECURED_BALANCE_GROWTH_MIX + BASELINE_STRATEGY
+
+Lowest approved Expected Loss rate:
+    M2-15 — PRIME_GROWTH_SCORE_MIX + BASELINE_STRATEGY
+
+Highest approved Expected Loss rate:
+    M2-19 — CREDIT_STRESS_SCORE_MIX + BASELINE_STRATEGY
+</code></pre>
+<p>That is directionally coherent with the Module 1 scenarios and Module 2 strategy design.</p>
+<h2>Evidence integrity check</h2>
+<p>Updated Query 14 now shows:</p>
+<pre><code class="language-text">applications total across evidence rows = 1,800,000
+all rows have 50,000 applications
+module3_growth_inputs_available_flag = TRUE for all 36 rows
+frontier_position_type populated for all 36 rows
+executive_frontier_quadrant populated for all 36 rows
+frontier_interpretation_note populated for all 36 rows
+top reason-code fields populated where expected
+top reason-code delta driver populated for all 17 challenger rows
+top reason-code delta driver null for all 19 baseline rows
+</code></pre>
+<p>That last point is exactly right: baseline rows do not need baseline-relative reason-code delta drivers.</p>
+<h2>Validation counts remain unchanged</h2>
+<p>The validation evidence rollup remains:</p>
+<pre><code class="language-text">Total PASS             = 719
+Total REVIEW           = 72
+Total NOT_APPLICABLE   = 1
+</code></pre>
+<p>That matches the earlier Query 10 / Query 11 interpretation. <code>REVIEW</code> remains an interpretive status, not automatic invalidation; Section 14 explicitly treats review items as documentation prompts rather than failures. fileciteturn184file17</p>
+<p>The one remaining <code>NOT_APPLICABLE</code> is still on M2-01, tied to run-time comparison readiness / source-field availability when that evidence row was originally captured. That is not a campaign failure because the post-campaign Query 12 and Query 13 comparison checks already confirmed all comparison pairs are ready and source fields match.</p>
+<h2>Minor documentation note: comparison group IDs</h2>
+<p>Query 14 still has blank <code>comparison_group_id</code> for several baseline/reference rows. I would <strong>not</strong> treat that as a defect.</p>
+<p>The executive evidence table is one row per run. Some baseline runs serve as reference points for one or more comparison groups, and one scalar <code>comparison_group_id</code> field cannot fully represent all comparison relationships. Query 12 and Query 15 remain the authoritative comparison registry / baseline-challenger mapping.</p>
+<p>For final documentation, use:</p>
+<pre><code class="language-text">Query 14:
+    run-level executive evidence
+
+Query 15:
+    comparison-level baseline/challenger deltas
+
+Query 12:
+    comparison registry readiness and pairing
+</code></pre>
+<h2>Final assessment</h2>
+<pre><code class="language-text">UPDATED QUERY 14: PASS
+FRONTIER REFRESH: COMPLETE
+NO_BASELINE_REFERENCE_AVAILABLE: CLEARED
+EXECUTIVE EVIDENCE ROWS: COMPLETE
+MODULE 3 READINESS: COMPLETE
+READY FOR FINAL CAMPAIGN ANALYSIS: YES
+</code></pre>
+<p>You do <strong>not</strong> need to resend Queries 1–13 or Query 15. They should remain valid. The only table materially changed by the refresh was the executive evidence summary table used by Query 14.</p>
+</div></article><article id="c038-m01317" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01317 · 2026-05-11T15:47:24.777000-04:00 · active path</p><div class="body"><p>review queries 16-20:  also, turn this into a section 17 of the code (give it our elite header/comment/inline comment teaching level):</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_17_counteroffer_first_strategy_effect_check.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_16_product_guardrail_strategy_product_level_effect_check.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_20_campaign_acceptance_rollup.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_19_product_policy_snapshot_extraction_for_product_guardrail_runs.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_campaign_inventory_query_18_parameter_snapshot_profile_audit.csv</code>, <code>Pasted text(171).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

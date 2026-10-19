@@ -1,0 +1,4410 @@
+# Module 2 Decision Simulator Build
+
+## Part 85
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_84.md) · [Next](Part_86.md)
+
+<a id="c038-m01612"></a>
+
+### C038-M01612
+
+**ChatGPT** · 2026-05-12T14:17:51.900664-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01612 -->
+Yes. Section 14 is too dense to safely patch in one response. I recommend splitting it by **dependency boundary and validation theme**, not by arbitrary size. The key is to preserve Section 14’s contract: it is a read-only latest-run validation layer, its primary target is `credit_decisioning_sim.strategy_decisions`, and it materializes `tmp_m2_validation_status_summary` for Section 16 evidence capture. fileciteturn253file21 Section 16 explicitly depends on `tmp_m2_validation_status_summary`, so that object must be created reliably and with the expected evidence fields. fileciteturn253file11
+
+I would use this split:
+
+| Patch | Section range | Purpose | Why this split works |
+|---:|---|---|---|
+| 14-A | **Section 14 header + 14.0** | Global Section 14 header, read-only boundary, dependency preflight, optional archive/comparison/source-consistency helper setup | This isolates the object-creation portion. If anything fails here, it is likely a helper-table or compatibility issue, not a QA query issue. |
+| 14-B | **14.1–14.3** | Validation scope, structural integrity, final decision distribution, flag reconciliation | These are the “core surface integrity” checks. They establish that the latest-run table is interpretable before segment/risk diagnostics. |
+| 14-C | **14.4–14.6** | Product QA, score-band QA, product × score matrix | These are the main segment-behavior diagnostics. They belong together because Section 16 segment evidence and executive narrative heavily rely on product × score interpretation. |
+| 14-D | **14.7–14.10** | Synthetic-risk ordering, requested PTI, DTI, requested vs approved exposure / Expected Loss | These are the “credit-risk mechanics” diagnostics: risk, affordability, capacity, exposure, and EL behavior. |
+| 14-E | **14.11–14.13** | Counteroffer, manual review, decline / policy-stop diagnostics | These are outcome-specific convention checks. This is especially important because 14.11–14.13 were previously missed and are high-value validation blocks. |
+| 14-F | **14.14–14.16** | Reason-code coverage, simulated offer-exposure profile, mixed-signal / edge-case review | These are explainability and realism checks. They are read-heavy but not structurally complex. |
+| 14-G | **14.17–14.18** | Final output convention validation, archive readiness, comparison readiness, source-field consistency context | This is the final “bridge” before validation status materialization. It ties Section 14 back to Section 13 readiness outputs. Section 13’s matched comparison helpers are `tmp_m2_strategy_comparison_readiness` and `tmp_m2_strategy_comparison_source_consistency`, so this patch should consume them only when available. fileciteturn253file22 |
+| 14-H | **14.19 only** | Materialize `tmp_m2_validation_status_summary` | This is the most important downstream compatibility object. It should be patched alone so we can ensure the field names and status logic are exactly right. The target fields should include `validation_area`, `validation_test_name`, `validation_category`, `validation_status`, `observed_value`, `expected_behavior`, and `interpretation`. fileciteturn253file70 |
+| 14-I | **14.20 + Section 14 ending** | Review outputs, status rollup, REVIEW / NOT_APPLICABLE listing, Section 14 completion status, end banner | This closes the section cleanly without mixing the giant status-summary CTE with the review/output layer. |
+
+The most important control point is **14-A → 14-H → 14-I**. Patch 14-A creates the optional context helpers, patch 14-H consumes those helpers to create `tmp_m2_validation_status_summary`, and patch 14-I displays the evidence spine that Section 16 later persists. Section 14 should not fail solely because Section 13 was not run; comparison readiness and source consistency should become `NOT_APPLICABLE` context when the Section 13 helpers are absent. That matches the accepted Section 14 design principle that Section 14 validates latest-run output while using archive/comparison context only as supporting evidence. fileciteturn253file20
+
+To make sure nothing is missed, I would use a manifest-style delivery rule: every patch starts with the exact subsection range it replaces, and every patch ends with the next subsection number. For example, Patch 14-E would explicitly say it replaces **Section 14.11 through the end of Section 14.13 only** and stops before **Section 14.14**. That prevents accidental overlap, duplicate blocks, or skipped subsections.
+
+I would not combine 14.19 with anything else. It is the highest-risk block because it creates the evidence object Section 16 requires. Section 16’s evidence-capture gatekeeper expects the validation summary to exist before evidence capture proceeds, so the validation summary should be given its own full response and reviewed carefully. fileciteturn253file11
+
+I would also avoid changing the logic intent while doing this pass. The pass should tighten commentary, compatibility, and workflow alignment, not redesign the QA framework. Section 14’s accepted role is already clear: read-only validation, no recalculation, no latest-run/archive mutation, and no documentation drafting. fileciteturn253file21
+
+My recommended execution sequence is:
+
+First deliver **14-A**, then proceed one patch at a time in the exact order above. After **14-I**, do one final reconciliation response that lists all Section 14 subsections and confirms every range from 14.0 through 14.20 is represented exactly once.
+<!-- END_MESSAGE C038-M01612 -->
+
+
+---
+
+<a id="c038-m01613"></a>
+
+### C038-M01613
+
+**Andrew** · 2026-05-12T14:32:10.568000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01613 -->
+Please do pass 4 - 14-A, 14-B, and 14-C to start.  deliver those 3 patches as one single full copy paste.
+<!-- END_MESSAGE C038-M01613 -->
+
+
+---
+
+<a id="c038-m01615"></a>
+
+### C038-M01615
+
+**ChatGPT** · 2026-05-12T14:43:55.189874-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01615 -->
+This patch covers **14-A, 14-B, and 14-C only**: Section 14 header through the end of **Section 14.6**. It stops before **Section 14.7**. The design keeps Section 14 read-only, validates `credit_decisioning_sim.strategy_decisions` as the latest-run target, and uses Section 13 comparison helpers only as optional validation context when available. fileciteturn253file20 fileciteturn253file22
+
+```sql
+/***************************************************************************************************
+SECTION 14 — MODULE 2 VALIDATION, QA, AND STRATEGY OUTCOME DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide the full read-only QA and validation evidence framework for the completed latest-run
+    Module 2 strategy output.
+
+    Section 14 answers:
+
+        "Does this completed Module 2 strategy run behave coherently, consistently, explainably,
+         and within the documented simulation boundaries?"
+
+    Section 14 also creates the validation evidence foundation for later:
+        validation-summary drafting,
+        executive evidence capture,
+        README interpretation,
+        LinkedIn result storytelling,
+        controlled campaign-run documentation,
+        and future Module 3 economics planning.
+
+SQL PURPOSE:
+    1. Validate credit_decisioning_sim.strategy_decisions as the primary latest-run output.
+    2. Preserve a read-only boundary over latest-run and archive data.
+    3. Validate latest-run structural integrity, row grain, strategy scope, and Module 1 lineage.
+    4. Validate final outcome completeness, final flag reconciliation, simulated offer-exposure
+       convention, exposure convention, affordability convention, Expected Loss convention, and
+       simulated reason-code convention.
+    5. Review strategy behavior across:
+            product,
+            score band,
+            product × score,
+            synthetic estimated-risk tier,
+            requested PTI,
+            DTI,
+            requested exposure,
+            approved exposure,
+            requested Expected Loss,
+            approved Expected Loss,
+            counteroffer treatment,
+            manual-review treatment,
+            decline / policy-stop behavior,
+            simulated offer exposure,
+            reason-code coverage,
+            mixed-signal cases,
+            borderline cases,
+            archive readiness,
+            matched strategy comparison readiness,
+            and matched source-field consistency.
+    6. Materialize tmp_m2_validation_status_summary near the end of Section 14 as the compact
+       validation-evidence spine consumed by Section 16.
+    7. Keep full documentation drafting outside SQL execution.
+
+PRIMARY VALIDATION TARGET:
+    credit_decisioning_sim.strategy_decisions
+
+SUPPORTING CONTEXT OBJECTS:
+    credit_decisioning_sim.strategy_decisions_archive
+        Used only for archive-readiness context.
+
+    tmp_m2_strategy_comparison_readiness
+        Optional Section 13 comparison-readiness helper.
+
+    tmp_m2_strategy_comparison_source_consistency
+        Optional Section 13 matched source-field consistency helper.
+
+TEMPORARY OUTPUT CREATED LATER IN SECTION 14:
+    tmp_m2_validation_status_summary
+
+TEMPORARY CONTEXT HELPERS CREATED IN SECTION 14.0:
+    tmp_m2_validation_archive_readiness_context
+    tmp_m2_validation_comparison_readiness_context
+    tmp_m2_validation_source_consistency_context
+
+GRAIN OF PRIMARY VALIDATION TARGET:
+    One row per application_id
+    for one selected Module 1 scenario / population
+    and one active Module 2 strategy version.
+
+WHY QA IS SEPARATED FROM OUTPUT CREATION AND ARCHIVE PERSISTENCE:
+    Section 11 materializes the latest-run output.
+
+    Section 12 persists archive rows.
+
+    Section 13 compares archived strategy slices.
+
+    Section 14 validates the completed latest-run output and produces evidence that the strategy
+    result is coherent, explainable, internally consistent, and bounded by the intended simulation
+    design.
+
+WHY DECISION DISTRIBUTION IS NOT SUFFICIENT BY ITSELF:
+    A strategy output can have plausible high-level approval, counteroffer, manual-review, and
+    decline rates while still failing product behavior, score-band behavior, affordability ordering,
+    exposure conventions, counteroffer feasibility, reason-code coverage, or edge-case explainability.
+
+    Therefore Section 14 reviews:
+        structural integrity,
+        final decision distribution,
+        final flag reconciliation,
+        product behavior,
+        score-band behavior,
+        product × score behavior,
+        synthetic estimated-risk ordering,
+        requested PTI sensitivity,
+        DTI capacity behavior,
+        requested versus approved exposure,
+        requested versus approved Expected Loss,
+        counteroffer feasibility,
+        manual-review unresolved behavior,
+        simulated policy-stop behavior,
+        simulated reason-code coverage,
+        simulated offer-exposure profile,
+        mixed-signal cases,
+        borderline cases,
+        archive readiness,
+        matched comparison readiness,
+        and matched source-field consistency.
+
+RELATIONSHIP TO SECTION 13:
+    Section 13 provides archive-backed matched strategy comparison readiness and source-field
+    consistency diagnostics.
+
+    Section 14 consumes those diagnostics when they exist.
+
+    If Section 13 has not been run, Section 14 does not fail solely for that reason. Instead, it
+    records matched comparison readiness and source-field consistency as NOT_APPLICABLE context.
+
+RELATIONSHIP TO SECTION 16:
+    Section 16 persists validation evidence by reading tmp_m2_validation_status_summary.
+
+    Section 14 therefore materializes a compact validation status table near the end of the section.
+
+VALIDATION STATUS SUMMARY PRINCIPLE:
+    tmp_m2_validation_status_summary uses:
+
+        PASS
+        REVIEW
+        NOT_APPLICABLE
+
+    PASS:
+        The validation expectation was satisfied.
+
+    REVIEW:
+        The pattern may be acceptable, but should be interpreted before documentation.
+
+        REVIEW does not automatically mean the strategy output is invalid.
+
+    NOT_APPLICABLE:
+        The test depends on unavailable archive slices, unavailable comparison helpers, or a non-ready
+        matched comparison setup.
+
+    Section 14 intentionally avoids FAIL for ordinary diagnostic patterns because critical structural
+    failures should be handled earlier through fail-fast gatekeepers and Section 11 output conventions.
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the finalized Module 1 SQL field name.
+
+    In Section 14, estimated_pd is interpreted as the synthetic estimated-PD proxy.
+
+    Section 14 does not recalculate estimated_pd.
+    Section 14 does not calibrate estimated_pd.
+    Section 14 does not validate production default forecasting.
+    Section 14 does not treat estimated_pd as an empirically calibrated probability of default.
+
+REQUESTED VS APPROVED EXPECTED LOSS:
+    requested_expected_loss_amount:
+        Requested-exposure Expected Loss carried from Module 1.
+
+    approved_expected_loss_amount:
+        Module 2 approved-exposure Expected Loss after simulated final exposure treatment.
+
+    Section 14 validates the distinction and reviews whether the values behave coherently.
+
+    Section 14 does not recalculate either value.
+
+APPROVED EXPOSURE BOUNDARY:
+    approved_amount is final simulated approved exposure after Module 2 final decision resolution.
+
+    APPROVE:
+        approved_amount should equal requested_amount.
+
+    COUNTEROFFER:
+        approved_amount should be positive and below requested_amount.
+
+    MANUAL_REVIEW:
+        approved_amount should remain NULL because the simulated outcome is unresolved.
+
+    DECLINE:
+        approved_amount should equal zero by the locked no-offer convention.
+
+MANUAL REVIEW BOUNDARY:
+    MANUAL_REVIEW remains unresolved by design.
+
+    Manual-review rows should not have:
+        approved_amount,
+        approved_payment_to_income_ratio,
+        approved_expected_loss_amount,
+        or simulated positive offer exposure.
+
+SIMULATED OFFER EXPOSURE BOUNDARY:
+    simulated_offer_exposure_flag identifies final simulated positive offer-exposure outcomes.
+
+    It should be TRUE for:
+        APPROVE
+        COUNTEROFFER
+
+    It should be FALSE for:
+        MANUAL_REVIEW
+        DECLINE
+
+    It does not imply:
+        operational account creation,
+        booked exposure,
+        funded exposure,
+        production approval,
+        real applicant treatment,
+        or servicing activity.
+
+SIMULATED REASON-CODE BOUNDARY:
+    primary_reason_code, secondary_reason_code, tertiary_reason_code, and triggered_reason_code_list
+    are simulated strategy explanation codes.
+
+    They support:
+        transparency,
+        QA review,
+        strategy interpretation,
+        portfolio diagnostics,
+        decision-path traceability,
+        matched comparison,
+        executive evidence capture,
+        validation documentation,
+        README interpretation,
+        and LinkedIn storyline development.
+
+    They are not:
+        customer communications,
+        regulatory notices,
+        production compliance determinations,
+        adverse-action reasons,
+        or fair-lending conclusions.
+
+EDGE-CASE REVIEW:
+    Edge cases should remain visible and explainable.
+
+    Realistic overlap is not automatically a defect.
+
+    It becomes a concern only if it:
+        dominates the output,
+        violates locked conventions,
+        cannot be explained through staged diagnostics,
+        or creates unstable strategy behavior.
+
+READ-ONLY BOUNDARY:
+    Section 14 does not insert, delete, update, or modify latest-run output rows.
+    Section 14 does not insert, delete, update, or modify archive rows.
+    Section 14 does not recalculate decision_outcome.
+    Section 14 does not reassign simulated reason codes.
+    Section 14 does not recalculate approved exposure.
+    Section 14 does not recalculate approved Expected Loss.
+    Section 14 does not modify strategy parameters.
+    Section 14 does not modify product policy parameters.
+    Section 14 does not create archive rows.
+    Section 14 does not run new modeling workstreams.
+    Section 14 does not draft the BRD or written Validation Summary.
+
+OPERATING GUIDANCE:
+    Run Section 14 after Section 11 has materialized:
+
+        credit_decisioning_sim.strategy_decisions
+
+    Run Section 12 before Section 14 when archive-readiness diagnostics should confirm that the
+    current latest-run slice has been archived.
+
+    Run Section 13 before Section 14 when matched strategy comparison readiness and matched
+    source-field consistency evidence should be available for the validation status summary.
+
+GOVERNANCE ROLE:
+    Section 14 is the primary SQL validation evidence layer for the completed latest-run Module 2
+    output.
+
+    It supports later:
+        executive evidence capture,
+        Validation Summary drafting,
+        README result interpretation,
+        LinkedIn storyline development,
+        and controlled campaign-run documentation.
+
+COMMON MISUSE TO AVOID:
+    Do not interpret Section 14 as recalculating strategy output.
+    Do not interpret high-level approval rate alone as validation acceptance.
+    Do not interpret REVIEW as automatic invalidation.
+    Do not interpret simulated offer exposure as operational exposure.
+    Do not interpret simulated reason codes as external communication text.
+    Do not draft final validation narrative before reviewing the SQL evidence outputs.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 14.0 — VALIDATION DEPENDENCY PREFLIGHT AND OPTIONAL CONTEXT HELPERS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that the latest-run table exists and prepare optional archive / comparison context for
+    validation evidence.
+
+    Section 14.0 answers:
+
+        "Can Section 14 safely validate the completed latest-run output, and what optional archive or
+         matched-comparison context is available?"
+
+SQL PURPOSE:
+    1. Confirm credit_decisioning_sim.strategy_decisions exists.
+    2. Confirm the latest-run table contains rows.
+    3. Reset Section 14 temporary helper objects.
+    4. Materialize archive-readiness context safely.
+    5. Materialize matched-comparison readiness context safely.
+    6. Materialize matched source-field consistency context safely.
+
+COMPATIBILITY DESIGN:
+    Section 14 can be run whether or not Section 13 was executed.
+
+    If Section 13 helper tables do not exist, Section 14 records comparison and source-consistency
+    evidence as NOT_APPLICABLE rather than failing.
+
+BOUNDARY:
+    This section creates temporary helper objects only.
+
+    It does not modify latest-run rows.
+    It does not modify archive rows.
+    It does not recalculate strategy outputs.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_latest_run_exists BOOLEAN;
+    v_latest_run_row_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Dependency gatekeeper: latest-run output table must exist.
+
+    SQL logic:
+        TO_REGCLASS returns NULL when the object does not exist.
+
+    Business interpretation:
+        Section 14 validates the completed latest-run output created in Section 11. Without that
+        table, there is no current Module 2 output surface to validate.
+    -------------------------------------------------------------------------------------------*/
+    SELECT TO_REGCLASS('credit_decisioning_sim.strategy_decisions') IS NOT NULL
+    INTO v_latest_run_exists;
+
+    IF v_latest_run_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 14 failure: credit_decisioning_sim.strategy_decisions does not exist. Run Section 11 before Section 14.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Dependency gatekeeper: latest-run output table must contain rows.
+
+    Business interpretation:
+        An empty latest-run output cannot support validation evidence, segment diagnostics, or
+        Section 16 evidence capture.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_latest_run_row_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+    IF v_latest_run_row_count <= 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 14 failure: credit_decisioning_sim.strategy_decisions contains zero rows.';
+    END IF;
+END $$;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.0A Reset Section 14 temporary helper outputs.
+
+Purpose:
+    Remove prior validation helper objects so current validation evidence reflects the current
+    latest-run output and current optional Section 13 context.
+
+Boundary:
+    These are temporary objects only.
+    Persistent latest-run, archive, registry, and evidence tables are not modified.
+-----------------------------------------------------------------------------------------------*/
+
+DROP TABLE IF EXISTS tmp_m2_validation_archive_readiness_context;
+DROP TABLE IF EXISTS tmp_m2_validation_comparison_readiness_context;
+DROP TABLE IF EXISTS tmp_m2_validation_source_consistency_context;
+DROP TABLE IF EXISTS tmp_m2_validation_status_summary;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.0B Archive-readiness context helper.
+
+Purpose:
+    Determine whether the current latest-run slice is present in the archive.
+
+Interpretation:
+    If the archive table exists and the current latest-run slice is archived at matching row count,
+    archive readiness can be treated as PASS later in the validation status summary.
+
+    If the archive table does not exist, Section 14 remains runnable. Archive readiness becomes
+    NOT_APPLICABLE context.
+
+    If the archive exists but is missing archive_inserted_ts, Section 14 records a REVIEW-style
+    archive readiness status without referencing a missing column.
+
+SQL logic:
+    The helper is created as an empty typed table first.
+    A PL/pgSQL block then inserts one context row based on archive availability.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TEMP TABLE tmp_m2_validation_archive_readiness_context (
+    archive_table_exists                                    BOOLEAN,
+    archive_inserted_ts_column_exists                       BOOLEAN,
+    strategy_set_name                                       TEXT,
+    strategy_name                                           TEXT,
+    strategy_version                                        TEXT,
+    module1_scenario_set_name                               TEXT,
+    module1_scenario_name                                   TEXT,
+    population_id                                           TEXT,
+    latest_run_rows                                         BIGINT,
+    latest_run_distinct_application_id_count                BIGINT,
+    current_archived_slice_rows                             BIGINT,
+    current_archived_slice_distinct_application_id_count    BIGINT,
+    current_archived_slice_null_archive_ts_rows             BIGINT,
+    archive_readiness_status                                TEXT
+) ON COMMIT PRESERVE ROWS;
+
+DO $$
+DECLARE
+    v_archive_exists BOOLEAN;
+    v_archive_inserted_ts_exists BOOLEAN;
+BEGIN
+    /* Determine whether the archive table exists. */
+    SELECT TO_REGCLASS('credit_decisioning_sim.strategy_decisions_archive') IS NOT NULL
+    INTO v_archive_exists;
+
+    /* Determine whether archive_inserted_ts exists without assuming the archive table exists. */
+    IF v_archive_exists IS TRUE THEN
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'credit_decisioning_sim'
+              AND table_name = 'strategy_decisions_archive'
+              AND column_name = 'archive_inserted_ts'
+        )
+        INTO v_archive_inserted_ts_exists;
+    ELSE
+        v_archive_inserted_ts_exists := FALSE;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Archive not available:
+        create one NOT_APPLICABLE context row.
+    -------------------------------------------------------------------------------------------*/
+    IF v_archive_exists IS DISTINCT FROM TRUE THEN
+        INSERT INTO tmp_m2_validation_archive_readiness_context (
+            archive_table_exists,
+            archive_inserted_ts_column_exists,
+            latest_run_rows,
+            latest_run_distinct_application_id_count,
+            current_archived_slice_rows,
+            current_archived_slice_distinct_application_id_count,
+            current_archived_slice_null_archive_ts_rows,
+            archive_readiness_status
+        )
+        SELECT
+            FALSE AS archive_table_exists,
+            FALSE AS archive_inserted_ts_column_exists,
+            COUNT(*) AS latest_run_rows,
+            COUNT(DISTINCT application_id) AS latest_run_distinct_application_id_count,
+            0::BIGINT AS current_archived_slice_rows,
+            0::BIGINT AS current_archived_slice_distinct_application_id_count,
+            0::BIGINT AS current_archived_slice_null_archive_ts_rows,
+            'NOT_APPLICABLE_ARCHIVE_TABLE_NOT_AVAILABLE' AS archive_readiness_status
+        FROM credit_decisioning_sim.strategy_decisions;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Archive exists but archive_inserted_ts is unavailable:
+        create one REVIEW context row without referencing the missing column.
+    -------------------------------------------------------------------------------------------*/
+    ELSIF v_archive_inserted_ts_exists IS DISTINCT FROM TRUE THEN
+        INSERT INTO tmp_m2_validation_archive_readiness_context (
+            archive_table_exists,
+            archive_inserted_ts_column_exists,
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+            latest_run_rows,
+            latest_run_distinct_application_id_count,
+            current_archived_slice_rows,
+            current_archived_slice_distinct_application_id_count,
+            current_archived_slice_null_archive_ts_rows,
+            archive_readiness_status
+        )
+        WITH latest_key AS (
+            SELECT
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id,
+                COUNT(*) AS latest_run_rows,
+                COUNT(DISTINCT application_id) AS latest_run_distinct_application_id_count
+            FROM credit_decisioning_sim.strategy_decisions
+            GROUP BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+        )
+        SELECT
+            TRUE AS archive_table_exists,
+            FALSE AS archive_inserted_ts_column_exists,
+
+            k.strategy_set_name,
+            k.strategy_name,
+            k.strategy_version,
+            k.module1_scenario_set_name,
+            k.module1_scenario_name,
+            k.population_id,
+
+            k.latest_run_rows,
+            k.latest_run_distinct_application_id_count,
+
+            COUNT(ar.application_id) AS current_archived_slice_rows,
+            COUNT(DISTINCT ar.application_id) AS current_archived_slice_distinct_application_id_count,
+            NULL::BIGINT AS current_archived_slice_null_archive_ts_rows,
+
+            'REVIEW_ARCHIVE_TABLE_MISSING_ARCHIVE_INSERTED_TS_COLUMN'
+                AS archive_readiness_status
+
+        FROM latest_key k
+
+        LEFT JOIN credit_decisioning_sim.strategy_decisions_archive ar
+            ON ar.strategy_set_name = k.strategy_set_name
+           AND ar.strategy_name = k.strategy_name
+           AND ar.strategy_version = k.strategy_version
+           AND ar.module1_scenario_set_name = k.module1_scenario_set_name
+           AND ar.module1_scenario_name = k.module1_scenario_name
+           AND ar.population_id = k.population_id
+
+        GROUP BY
+            k.strategy_set_name,
+            k.strategy_name,
+            k.strategy_version,
+            k.module1_scenario_set_name,
+            k.module1_scenario_name,
+            k.population_id,
+            k.latest_run_rows,
+            k.latest_run_distinct_application_id_count;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Archive exists and archive_inserted_ts exists:
+        create one archive-readiness context row for the current latest-run slice.
+    -------------------------------------------------------------------------------------------*/
+    ELSE
+        INSERT INTO tmp_m2_validation_archive_readiness_context (
+            archive_table_exists,
+            archive_inserted_ts_column_exists,
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+            latest_run_rows,
+            latest_run_distinct_application_id_count,
+            current_archived_slice_rows,
+            current_archived_slice_distinct_application_id_count,
+            current_archived_slice_null_archive_ts_rows,
+            archive_readiness_status
+        )
+        WITH latest_key AS (
+            SELECT
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id,
+                COUNT(*) AS latest_run_rows,
+                COUNT(DISTINCT application_id) AS latest_run_distinct_application_id_count
+            FROM credit_decisioning_sim.strategy_decisions
+            GROUP BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+        )
+        SELECT
+            TRUE AS archive_table_exists,
+            TRUE AS archive_inserted_ts_column_exists,
+
+            k.strategy_set_name,
+            k.strategy_name,
+            k.strategy_version,
+            k.module1_scenario_set_name,
+            k.module1_scenario_name,
+            k.population_id,
+
+            k.latest_run_rows,
+            k.latest_run_distinct_application_id_count,
+
+            COUNT(ar.application_id) AS current_archived_slice_rows,
+            COUNT(DISTINCT ar.application_id) AS current_archived_slice_distinct_application_id_count,
+
+            COUNT(ar.application_id) FILTER (WHERE ar.archive_inserted_ts IS NULL)
+                AS current_archived_slice_null_archive_ts_rows,
+
+            CASE
+                WHEN COUNT(ar.application_id) = 0
+                    THEN 'REVIEW_CURRENT_LATEST_RUN_SLICE_NOT_ARCHIVED'
+
+                WHEN COUNT(ar.application_id) <> k.latest_run_rows
+                    THEN 'REVIEW_ARCHIVED_CURRENT_SLICE_ROW_COUNT_MISMATCH'
+
+                WHEN COUNT(DISTINCT ar.application_id) <> COUNT(ar.application_id)
+                    THEN 'REVIEW_ARCHIVED_CURRENT_SLICE_DUPLICATE_APPLICATION_ID'
+
+                WHEN COUNT(ar.application_id) FILTER (WHERE ar.archive_inserted_ts IS NULL) > 0
+                    THEN 'REVIEW_ARCHIVED_CURRENT_SLICE_NULL_ARCHIVE_TS'
+
+                ELSE 'CURRENT_LATEST_RUN_SLICE_ARCHIVED'
+            END AS archive_readiness_status
+
+        FROM latest_key k
+
+        LEFT JOIN credit_decisioning_sim.strategy_decisions_archive ar
+            ON ar.strategy_set_name = k.strategy_set_name
+           AND ar.strategy_name = k.strategy_name
+           AND ar.strategy_version = k.strategy_version
+           AND ar.module1_scenario_set_name = k.module1_scenario_set_name
+           AND ar.module1_scenario_name = k.module1_scenario_name
+           AND ar.population_id = k.population_id
+
+        GROUP BY
+            k.strategy_set_name,
+            k.strategy_name,
+            k.strategy_version,
+            k.module1_scenario_set_name,
+            k.module1_scenario_name,
+            k.population_id,
+            k.latest_run_rows,
+            k.latest_run_distinct_application_id_count;
+    END IF;
+END $$;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.0C Matched-comparison readiness context helper.
+
+Purpose:
+    Copy Section 13 comparison-readiness output when available, or create a NOT_APPLICABLE
+    placeholder when Section 13 has not been run.
+
+Compatibility:
+    This block checks whether the Section 13 helper exists and whether expected columns exist before
+    reading from it.
+
+Boundary:
+    This object is temporary validation context only.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TEMP TABLE tmp_m2_validation_comparison_readiness_context (
+    comparison_group_id                              TEXT,
+    comparison_set_name                              TEXT,
+    showcase_id                                      TEXT,
+    showcase_name                                    TEXT,
+    baseline_module2_run_id                          TEXT,
+    challenger_module2_run_id                        TEXT,
+    module1_scenario_set_name                        TEXT,
+    module1_scenario_name                            TEXT,
+    population_id                                    TEXT,
+    baseline_strategy_set_name                       TEXT,
+    baseline_strategy_name                           TEXT,
+    baseline_strategy_version                        TEXT,
+    challenger_strategy_set_name                     TEXT,
+    challenger_strategy_name                         TEXT,
+    challenger_strategy_version                      TEXT,
+    same_strategy_selected_flag                      BOOLEAN,
+    baseline_archived_row_count                      BIGINT,
+    challenger_archived_row_count                    BIGINT,
+    baseline_distinct_application_id_count           BIGINT,
+    challenger_distinct_application_id_count         BIGINT,
+    baseline_duplicate_application_row_count         BIGINT,
+    challenger_duplicate_application_row_count       BIGINT,
+    matched_application_id_count                     BIGINT,
+    baseline_only_application_id_count               BIGINT,
+    challenger_only_application_id_count             BIGINT,
+    readiness_status                                 TEXT,
+    expected_comparison_storyline                    TEXT,
+    primary_metric_focus                             TEXT
+) ON COMMIT PRESERVE ROWS;
+
+DO $$
+DECLARE
+    v_comparison_readiness_regclass REGCLASS;
+    v_missing_required_column_count BIGINT;
+BEGIN
+    /* Locate the optional Section 13 readiness helper. */
+    SELECT COALESCE(
+        TO_REGCLASS('pg_temp.tmp_m2_strategy_comparison_readiness'),
+        TO_REGCLASS('tmp_m2_strategy_comparison_readiness')
+    )
+    INTO v_comparison_readiness_regclass;
+
+
+    /* If Section 13 was not run, insert NOT_APPLICABLE context. */
+    IF v_comparison_readiness_regclass IS NULL THEN
+        INSERT INTO tmp_m2_validation_comparison_readiness_context (
+            readiness_status,
+            expected_comparison_storyline,
+            primary_metric_focus
+        )
+        VALUES (
+            'NOT_APPLICABLE_SECTION_13_COMPARISON_READINESS_NOT_AVAILABLE',
+            'Section 13 comparison readiness helper was not available during Section 14.',
+            'NOT_APPLICABLE'
+        );
+
+        RETURN;
+    END IF;
+
+
+    /* Validate that the helper has the expected Section 13 pass-4 schema before reading it. */
+    SELECT COUNT(*)
+    INTO v_missing_required_column_count
+    FROM (
+        VALUES
+            ('comparison_group_id'),
+            ('comparison_set_name'),
+            ('showcase_id'),
+            ('showcase_name'),
+            ('baseline_module2_run_id'),
+            ('challenger_module2_run_id'),
+            ('module1_scenario_set_name'),
+            ('module1_scenario_name'),
+            ('population_id'),
+            ('baseline_strategy_set_name'),
+            ('baseline_strategy_name'),
+            ('baseline_strategy_version'),
+            ('challenger_strategy_set_name'),
+            ('challenger_strategy_name'),
+            ('challenger_strategy_version'),
+            ('same_strategy_selected_flag'),
+            ('baseline_archived_row_count'),
+            ('challenger_archived_row_count'),
+            ('baseline_distinct_application_id_count'),
+            ('challenger_distinct_application_id_count'),
+            ('baseline_duplicate_application_row_count'),
+            ('challenger_duplicate_application_row_count'),
+            ('matched_application_id_count'),
+            ('baseline_only_application_id_count'),
+            ('challenger_only_application_id_count'),
+            ('readiness_status'),
+            ('expected_comparison_storyline'),
+            ('primary_metric_focus')
+    ) AS required_columns(column_name)
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        WHERE a.attrelid = v_comparison_readiness_regclass
+          AND a.attname = required_columns.column_name
+          AND a.attnum > 0
+          AND a.attisdropped IS FALSE
+    );
+
+    IF v_missing_required_column_count > 0 THEN
+        INSERT INTO tmp_m2_validation_comparison_readiness_context (
+            readiness_status,
+            expected_comparison_storyline,
+            primary_metric_focus
+        )
+        VALUES (
+            'NOT_APPLICABLE_SECTION_13_COMPARISON_READINESS_SCHEMA_NOT_AVAILABLE',
+            'Section 13 comparison readiness helper exists but does not expose the expected pass-4 readiness columns.',
+            'NOT_APPLICABLE'
+        );
+
+        RETURN;
+    END IF;
+
+
+    /* Copy the one-row Section 13 comparison readiness helper into Section 14 context. */
+    INSERT INTO tmp_m2_validation_comparison_readiness_context (
+        comparison_group_id,
+        comparison_set_name,
+        showcase_id,
+        showcase_name,
+        baseline_module2_run_id,
+        challenger_module2_run_id,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        baseline_strategy_set_name,
+        baseline_strategy_name,
+        baseline_strategy_version,
+        challenger_strategy_set_name,
+        challenger_strategy_name,
+        challenger_strategy_version,
+        same_strategy_selected_flag,
+        baseline_archived_row_count,
+        challenger_archived_row_count,
+        baseline_distinct_application_id_count,
+        challenger_distinct_application_id_count,
+        baseline_duplicate_application_row_count,
+        challenger_duplicate_application_row_count,
+        matched_application_id_count,
+        baseline_only_application_id_count,
+        challenger_only_application_id_count,
+        readiness_status,
+        expected_comparison_storyline,
+        primary_metric_focus
+    )
+    SELECT
+        comparison_group_id,
+        comparison_set_name,
+        showcase_id,
+        showcase_name,
+        baseline_module2_run_id,
+        challenger_module2_run_id,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        baseline_strategy_set_name,
+        baseline_strategy_name,
+        baseline_strategy_version,
+        challenger_strategy_set_name,
+        challenger_strategy_name,
+        challenger_strategy_version,
+        same_strategy_selected_flag,
+        baseline_archived_row_count,
+        challenger_archived_row_count,
+        baseline_distinct_application_id_count,
+        challenger_distinct_application_id_count,
+        baseline_duplicate_application_row_count,
+        challenger_duplicate_application_row_count,
+        matched_application_id_count,
+        baseline_only_application_id_count,
+        challenger_only_application_id_count,
+        readiness_status,
+        expected_comparison_storyline,
+        primary_metric_focus
+    FROM tmp_m2_strategy_comparison_readiness
+    LIMIT 1;
+END $$;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.0D Matched source-field consistency context helper.
+
+Purpose:
+    Copy Section 13 source-consistency output when available, or create a NOT_APPLICABLE placeholder
+    when Section 13 has not been run.
+
+Compatibility:
+    This block checks whether the Section 13 helper exists and whether expected columns exist before
+    reading from it.
+
+Boundary:
+    This object is temporary validation context only.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TEMP TABLE tmp_m2_validation_source_consistency_context (
+    comparison_group_id                          TEXT,
+    comparison_set_name                          TEXT,
+    baseline_module2_run_id                      TEXT,
+    challenger_module2_run_id                    TEXT,
+    module1_scenario_set_name                    TEXT,
+    module1_scenario_name                        TEXT,
+    population_id                                TEXT,
+    readiness_status                             TEXT,
+    matched_application_count                    BIGINT,
+    source_field_mismatch_count                  BIGINT,
+    product_type_mismatch_count                  BIGINT,
+    score_band_mismatch_count                    BIGINT,
+    credit_score_mismatch_count                  BIGINT,
+    annual_income_mismatch_count                 BIGINT,
+    requested_amount_mismatch_count              BIGINT,
+    requested_payment_mismatch_count             BIGINT,
+    requested_pti_mismatch_count                 BIGINT,
+    amount_to_income_mismatch_count              BIGINT,
+    estimated_pd_mismatch_count                  BIGINT,
+    estimated_lgd_mismatch_count                 BIGINT,
+    requested_expected_loss_mismatch_count       BIGINT,
+    module1_lineage_mismatch_count               BIGINT,
+    source_consistency_status                    TEXT
+) ON COMMIT PRESERVE ROWS;
+
+DO $$
+DECLARE
+    v_source_consistency_regclass REGCLASS;
+    v_missing_required_column_count BIGINT;
+BEGIN
+    /* Locate the optional Section 13 source-consistency helper. */
+    SELECT COALESCE(
+        TO_REGCLASS('pg_temp.tmp_m2_strategy_comparison_source_consistency'),
+        TO_REGCLASS('tmp_m2_strategy_comparison_source_consistency')
+    )
+    INTO v_source_consistency_regclass;
+
+
+    /* If Section 13 was not run, insert NOT_APPLICABLE context. */
+    IF v_source_consistency_regclass IS NULL THEN
+        INSERT INTO tmp_m2_validation_source_consistency_context (
+            readiness_status,
+            matched_application_count,
+            source_field_mismatch_count,
+            source_consistency_status
+        )
+        VALUES (
+            'NOT_APPLICABLE_SECTION_13_SOURCE_CONSISTENCY_NOT_AVAILABLE',
+            0,
+            0,
+            'NOT_APPLICABLE_SECTION_13_SOURCE_CONSISTENCY_NOT_AVAILABLE'
+        );
+
+        RETURN;
+    END IF;
+
+
+    /* Validate that the helper has the expected Section 13 pass-4 schema before reading it. */
+    SELECT COUNT(*)
+    INTO v_missing_required_column_count
+    FROM (
+        VALUES
+            ('comparison_group_id'),
+            ('comparison_set_name'),
+            ('baseline_module2_run_id'),
+            ('challenger_module2_run_id'),
+            ('module1_scenario_set_name'),
+            ('module1_scenario_name'),
+            ('population_id'),
+            ('readiness_status'),
+            ('matched_application_count'),
+            ('source_field_mismatch_count'),
+            ('product_type_mismatch_count'),
+            ('score_band_mismatch_count'),
+            ('credit_score_mismatch_count'),
+            ('annual_income_mismatch_count'),
+            ('requested_amount_mismatch_count'),
+            ('requested_payment_mismatch_count'),
+            ('requested_pti_mismatch_count'),
+            ('amount_to_income_mismatch_count'),
+            ('estimated_pd_mismatch_count'),
+            ('estimated_lgd_mismatch_count'),
+            ('requested_expected_loss_mismatch_count'),
+            ('module1_lineage_mismatch_count'),
+            ('source_consistency_status')
+    ) AS required_columns(column_name)
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        WHERE a.attrelid = v_source_consistency_regclass
+          AND a.attname = required_columns.column_name
+          AND a.attnum > 0
+          AND a.attisdropped IS FALSE
+    );
+
+    IF v_missing_required_column_count > 0 THEN
+        INSERT INTO tmp_m2_validation_source_consistency_context (
+            readiness_status,
+            matched_application_count,
+            source_field_mismatch_count,
+            source_consistency_status
+        )
+        VALUES (
+            'NOT_APPLICABLE_SECTION_13_SOURCE_CONSISTENCY_SCHEMA_NOT_AVAILABLE',
+            0,
+            0,
+            'NOT_APPLICABLE_SECTION_13_SOURCE_CONSISTENCY_SCHEMA_NOT_AVAILABLE'
+        );
+
+        RETURN;
+    END IF;
+
+
+    /* Copy the one-row Section 13 source-consistency helper into Section 14 context. */
+    INSERT INTO tmp_m2_validation_source_consistency_context (
+        comparison_group_id,
+        comparison_set_name,
+        baseline_module2_run_id,
+        challenger_module2_run_id,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        readiness_status,
+        matched_application_count,
+        source_field_mismatch_count,
+        product_type_mismatch_count,
+        score_band_mismatch_count,
+        credit_score_mismatch_count,
+        annual_income_mismatch_count,
+        requested_amount_mismatch_count,
+        requested_payment_mismatch_count,
+        requested_pti_mismatch_count,
+        amount_to_income_mismatch_count,
+        estimated_pd_mismatch_count,
+        estimated_lgd_mismatch_count,
+        requested_expected_loss_mismatch_count,
+        module1_lineage_mismatch_count,
+        source_consistency_status
+    )
+    SELECT
+        comparison_group_id,
+        comparison_set_name,
+        baseline_module2_run_id,
+        challenger_module2_run_id,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        readiness_status,
+        matched_application_count,
+        source_field_mismatch_count,
+        product_type_mismatch_count,
+        score_band_mismatch_count,
+        credit_score_mismatch_count,
+        annual_income_mismatch_count,
+        requested_amount_mismatch_count,
+        requested_payment_mismatch_count,
+        requested_pti_mismatch_count,
+        amount_to_income_mismatch_count,
+        estimated_pd_mismatch_count,
+        estimated_lgd_mismatch_count,
+        requested_expected_loss_mismatch_count,
+        module1_lineage_mismatch_count,
+        source_consistency_status
+    FROM tmp_m2_strategy_comparison_source_consistency
+    LIMIT 1;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 14.1 — VALIDATION SCOPE AND BOUNDARY
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Establish the latest-run validation scope before interpreting detailed QA diagnostics.
+
+    Section 14.1 answers:
+
+        "Exactly what strategy / Module 1 scenario / population slice is being validated?"
+
+SQL PURPOSE:
+    1. Count latest-run rows.
+    2. Confirm application_id row grain.
+    3. Confirm single-strategy latest-run scope.
+    4. Confirm single Module 1 scenario / population latest-run scope.
+    5. Show latest-run timestamp metadata.
+    6. Produce compact validation_scope_status.
+
+EXPECTED RESULT:
+    validation_scope_status should ordinarily equal:
+
+        LATEST_RUN_SCOPE_READY_FOR_QA_REVIEW
+
+BOUNDARY:
+    This is validation scope evidence.
+
+    It does not modify data.
+
+****************************************************************************************************/
+
+SELECT
+    'MODULE_2_LATEST_RUN_VALIDATION_SCOPE' AS validation_scope_name,
+
+    /***********************************************************************************************
+    Row-grain check.
+
+    latest_run_rows should equal latest_run_distinct_application_id_count because the latest-run
+    output is applicant-grain.
+    ***********************************************************************************************/
+    COUNT(*) AS latest_run_rows,
+    COUNT(DISTINCT application_id) AS latest_run_distinct_application_id_count,
+
+    /***********************************************************************************************
+    Scope checks.
+
+    The latest-run table should contain exactly one Module 2 strategy identity and one Module 1
+    scenario / population slice.
+    ***********************************************************************************************/
+    COUNT(DISTINCT (
+        strategy_set_name,
+        strategy_name,
+        strategy_version
+    )) AS latest_run_distinct_strategy_count,
+
+    COUNT(DISTINCT (
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    )) AS latest_run_distinct_module1_scenario_population_count,
+
+    /***********************************************************************************************
+    Timestamp metadata.
+
+    These are audit fields only. They are not comparison grain.
+    ***********************************************************************************************/
+    MIN(strategy_run_ts) AS min_strategy_run_ts,
+    MAX(strategy_run_ts) AS max_strategy_run_ts,
+
+    MIN(latest_output_created_ts) AS min_latest_output_created_ts,
+    MAX(latest_output_created_ts) AS max_latest_output_created_ts,
+
+    /***********************************************************************************************
+    Compact scope status.
+
+    This is the first Section 14 status indicator reviewers should inspect.
+    ***********************************************************************************************/
+    CASE
+        WHEN COUNT(*) = 0
+            THEN 'REVIEW_EMPTY_LATEST_RUN_OUTPUT'
+
+        WHEN COUNT(*) <> COUNT(DISTINCT application_id)
+            THEN 'REVIEW_DUPLICATE_APPLICATION_ID_IN_LATEST_RUN'
+
+        WHEN COUNT(DISTINCT (strategy_set_name, strategy_name, strategy_version)) <> 1
+            THEN 'REVIEW_MULTIPLE_STRATEGIES_IN_LATEST_RUN'
+
+        WHEN COUNT(DISTINCT (module1_scenario_set_name, module1_scenario_name, population_id)) <> 1
+            THEN 'REVIEW_MULTIPLE_MODULE1_SCENARIO_POPULATION_SLICES_IN_LATEST_RUN'
+
+        ELSE 'LATEST_RUN_SCOPE_READY_FOR_QA_REVIEW'
+    END AS validation_scope_status
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.1A Latest-run strategy and Module 1 lineage scope.
+
+Purpose:
+    Display the technical identity of the latest-run strategy slice.
+
+Interpretation:
+    Module 2 strategy identifiers describe the downstream strategy.
+
+    Module 1 scenario identifiers describe the upstream synthetic population and risk environment.
+
+    These concepts must remain separate for clean validation, archive persistence, and matched
+    strategy comparison.
+
+Expected:
+    One row for the completed latest-run strategy / Module 1 scenario / population slice.
+
+Timestamp note:
+    strategy_run_ts and latest_output_created_ts are audit metadata.
+
+    They support traceability, but they do not define comparison grain.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    Module 2 strategy identity.
+    ***********************************************************************************************/
+    module2_model_version,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    /***********************************************************************************************
+    Archive / final-resolution controls carried by the latest-run output.
+    ***********************************************************************************************/
+    archive_run_flag,
+    strategy_archive_reset_mode,
+
+    /***********************************************************************************************
+    Module 1 source mode and source table.
+    ***********************************************************************************************/
+    module1_input_source,
+    module1_source_table_name,
+
+    /***********************************************************************************************
+    Module 1 lineage.
+    ***********************************************************************************************/
+    module1_model_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    anchor_date,
+
+    /***********************************************************************************************
+    Grain check within the displayed identity row.
+    ***********************************************************************************************/
+    COUNT(*) AS row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    module2_model_version,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    archive_run_flag,
+    strategy_archive_reset_mode,
+
+    module1_input_source,
+    module1_source_table_name,
+
+    module1_model_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    anchor_date
+
+ORDER BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+
+/***************************************************************************************************
+SECTION 14.2 — LATEST-RUN STRUCTURAL INTEGRITY SUMMARY
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that the latest-run strategy_decisions table is populated, unique at application_id, and
+    complete across required strategy, lineage, decision, reason-code, and risk-economics fields.
+
+    Section 14.2 answers:
+
+        "Is the latest-run output structurally sound enough to interpret?"
+
+SQL PURPOSE:
+    1. Confirm total row count.
+    2. Confirm application_id uniqueness.
+    3. Confirm single strategy version.
+    4. Confirm single Module 1 scenario / population slice.
+    5. Identify missing required lineage fields.
+    6. Identify missing required final outcome fields.
+    7. Identify missing required simulated reason-code fields.
+    8. Identify missing requested and approved Expected Loss fields.
+
+EXPECTED INTERPRETATION:
+    total_rows should equal distinct_application_id_count.
+
+    duplicate_application_row_count should equal zero.
+
+    distinct_strategy_version_count should equal one.
+
+    distinct_module1_scenario_population_count should equal one.
+
+    Missing core field counts should equal zero.
+
+***************************************************************************************************/
+
+SELECT
+    /***********************************************************************************************
+    Row grain.
+    ***********************************************************************************************/
+    COUNT(*) AS total_rows,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+    COUNT(*) - COUNT(DISTINCT application_id)
+        AS duplicate_application_row_count,
+
+    /***********************************************************************************************
+    Execution scope.
+    ***********************************************************************************************/
+    COUNT(DISTINCT (
+        strategy_set_name,
+        strategy_name,
+        strategy_version
+    )) AS distinct_strategy_version_count,
+
+    COUNT(DISTINCT (
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    )) AS distinct_module1_scenario_population_count,
+
+    /***********************************************************************************************
+    Applicant identity completeness.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE application_id IS NULL)
+        AS null_application_id_rows,
+
+    COUNT(*) FILTER (WHERE applicant_id IS NULL)
+        AS null_applicant_id_rows,
+
+    /***********************************************************************************************
+    Module 2 strategy identity completeness.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE strategy_set_name IS NULL
+           OR BTRIM(strategy_set_name) = ''
+    ) AS null_or_blank_strategy_set_name_rows,
+
+    COUNT(*) FILTER (
+        WHERE strategy_name IS NULL
+           OR BTRIM(strategy_name) = ''
+    ) AS null_or_blank_strategy_name_rows,
+
+    COUNT(*) FILTER (
+        WHERE strategy_version IS NULL
+           OR BTRIM(strategy_version) = ''
+    ) AS null_or_blank_strategy_version_rows,
+
+    /***********************************************************************************************
+    Module 1 lineage completeness.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE module1_scenario_set_name IS NULL
+           OR BTRIM(module1_scenario_set_name) = ''
+    ) AS null_or_blank_module1_scenario_set_name_rows,
+
+    COUNT(*) FILTER (
+        WHERE module1_scenario_name IS NULL
+           OR BTRIM(module1_scenario_name) = ''
+    ) AS null_or_blank_module1_scenario_name_rows,
+
+    COUNT(*) FILTER (
+        WHERE population_id IS NULL
+           OR BTRIM(population_id) = ''
+    ) AS null_or_blank_population_id_rows,
+
+    /***********************************************************************************************
+    Final outcome completeness.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome IS NULL)
+        AS null_decision_outcome_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome NOT IN ('APPROVE', 'COUNTEROFFER', 'MANUAL_REVIEW', 'DECLINE')
+    ) AS invalid_decision_outcome_rows,
+
+    /***********************************************************************************************
+    Simulated reason-code completeness.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE primary_reason_code IS NULL)
+        AS null_primary_reason_code_rows,
+
+    COUNT(*) FILTER (WHERE primary_reason_family IS NULL)
+        AS null_primary_reason_family_rows,
+
+    COUNT(*) FILTER (WHERE triggered_reason_code_list IS NULL)
+        AS null_triggered_reason_code_list_rows,
+
+    /***********************************************************************************************
+    Requested / approved Expected Loss completeness.
+
+    Manual-review approved Expected Loss is allowed to remain NULL because MANUAL_REVIEW is
+    unresolved by design.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE requested_expected_loss_amount IS NULL)
+        AS null_requested_expected_loss_amount_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome IN ('APPROVE', 'COUNTEROFFER', 'DECLINE')
+          AND approved_expected_loss_amount IS NULL
+    ) AS null_required_approved_expected_loss_rows,
+
+    /***********************************************************************************************
+    Latest-run materialization timestamp.
+    ***********************************************************************************************/
+    MIN(latest_output_created_ts) AS min_latest_output_created_ts,
+    MAX(latest_output_created_ts) AS max_latest_output_created_ts
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.2A Row count by Module 1 input source.
+
+Purpose:
+    Confirm whether the current latest-run output came from Module 1 latest-run or Module 1 archive
+    source mode.
+
+Interpretation:
+    Formal campaign runs generally use ARCHIVE source mode to preserve the exact Module 1 scenario
+    slice used for comparison.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    module1_input_source,
+    module1_source_table_name,
+
+    COUNT(*) AS row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    module1_input_source,
+    module1_source_table_name
+
+ORDER BY
+    module1_input_source,
+    module1_source_table_name;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.2B Duplicate application diagnostic.
+
+Expected result:
+    zero rows.
+
+If any rows appear, the latest-run table is not unique at application_id and downstream
+application-level QA should not be interpreted until corrected.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    COUNT(*) AS duplicate_application_row_count
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY application_id
+
+HAVING COUNT(*) > 1
+
+ORDER BY duplicate_application_row_count DESC, application_id
+
+LIMIT 100;
+
+
+
+/***************************************************************************************************
+SECTION 14.3 — FINAL DECISION DISTRIBUTION AND FLAG RECONCILIATION
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate the final simulated decision distribution and ensure the final Boolean decision flags
+    reconcile to decision_outcome.
+
+    Section 14.3 answers:
+
+        "What did the strategy decide, and do the outcome flags agree with that final decision?"
+
+SQL PURPOSE:
+    1. Summarize final decision distribution.
+    2. Summarize final decision paths and resolution sources.
+    3. Check final flag reconciliation.
+    4. Check simulated_offer_exposure_flag reconciliation.
+
+BOUNDARY:
+    These are simulated strategy outcomes, not real applicant decisions.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.3A Final decision_outcome distribution.
+
+Purpose:
+    Show high-level strategy outcome mix.
+
+Interpretation:
+    This is the first business-facing distribution, but it is not enough by itself to validate the
+    strategy. Later sections review segment behavior, exposure, Expected Loss, counteroffers, reason
+    codes, and edge cases.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_latest_run,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount) AS avg_approved_amount,
+
+    AVG(requested_payment_to_income_ratio)
+        AS avg_requested_payment_to_income_ratio,
+
+    AVG(approved_payment_to_income_ratio)
+        AS avg_approved_payment_to_income_ratio,
+
+    AVG(requested_expected_loss_amount)
+        AS avg_requested_expected_loss_amount,
+
+    AVG(approved_expected_loss_amount)
+        AS avg_approved_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY decision_outcome
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.3B Decision path and resolution source distribution.
+
+Purpose:
+    Review how final outcomes were resolved.
+
+Interpretation:
+    decision_path and decision_resolution_source help explain whether outcomes came from clean
+    approval, feasible counteroffer, failed counteroffer resolution, preliminary manual review, or
+    preliminary decline routing.
+
+Boundary:
+    These are internal simulated strategy path labels, not customer communication language.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+    decision_path,
+    decision_resolution_source,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_latest_run
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    decision_outcome,
+    decision_path,
+    decision_resolution_source
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END,
+    decision_path,
+    decision_resolution_source;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.3C Final flag reconciliation diagnostic.
+
+Purpose:
+    Confirm exactly one final outcome flag is TRUE per row and that each flag maps to
+    decision_outcome.
+
+SQL logic:
+    Boolean flags are cast to integers and summed.
+
+Expected:
+    all violation counts = 0.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (
+        WHERE (
+            COALESCE(approval_flag::INT, 0)
+            + COALESCE(counteroffer_flag::INT, 0)
+            + COALESCE(manual_review_flag::INT, 0)
+            + COALESCE(decline_flag::INT, 0)
+        ) <> 1
+    ) AS final_outcome_flag_count_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE approval_flag IS DISTINCT FROM (decision_outcome = 'APPROVE')
+    ) AS approval_flag_reconciliation_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE counteroffer_flag IS DISTINCT FROM (decision_outcome = 'COUNTEROFFER')
+    ) AS counteroffer_flag_reconciliation_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE manual_review_flag IS DISTINCT FROM (decision_outcome = 'MANUAL_REVIEW')
+    ) AS manual_review_flag_reconciliation_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decline_flag IS DISTINCT FROM (decision_outcome = 'DECLINE')
+    ) AS decline_flag_reconciliation_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE simulated_offer_exposure_flag
+              IS DISTINCT FROM (decision_outcome IN ('APPROVE', 'COUNTEROFFER'))
+    ) AS simulated_offer_exposure_flag_reconciliation_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/***************************************************************************************************
+SECTION 14.4 — PRODUCT-LEVEL STRATEGY QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Evaluate whether final simulated strategy outcomes, approved exposure, requested Expected Loss,
+    approved Expected Loss, and reason-code patterns behave coherently across products.
+
+    Section 14.4 answers:
+
+        "How does the strategy behave by product, and is that behavior explainable through product
+         structure and product-policy controls?"
+
+SQL PURPOSE:
+    1. Summarize final decision outcomes by product.
+    2. Calculate product-level decision rates.
+    3. Compare requested exposure to approved exposure by product.
+    4. Compare requested-exposure Expected Loss to approved-exposure Expected Loss by product.
+    5. Review product-level simulated reason-code distributions.
+
+BUSINESS INTERPRETATION:
+    Product-level outcomes should reflect product-specific policy parameters and structural
+    differences.
+
+    Product type can affect:
+        requested exposure,
+        requested payment burden,
+        requested PTI,
+        LGD,
+        requested Expected Loss,
+        counteroffer feasibility,
+        approved exposure treatment,
+        final simulated strategy outcome,
+        and simulated explanation-code distribution.
+
+METRIC CONVENTION:
+    All-application approved metrics use COALESCE to treat unresolved manual-review approved exposure
+    as zero for portfolio-impact summaries.
+
+    Offer-row metrics use FILTER where simulated_offer_exposure_flag = TRUE.
+
+    requested_expected_loss_amount is requested-exposure Expected Loss.
+
+    approved_expected_loss_amount is approved-exposure Expected Loss.
+
+BOUNDARY:
+    Product-level QA supports strategy interpretation.
+
+    It does not define product policy for real applicants.
+    It does not create production underwriting guidance.
+    It does not override Section 2 product policy parameters.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.4A Product × decision_outcome distribution.
+
+Purpose:
+    Show final simulated outcome mix by product.
+
+SQL logic:
+    The CTE aggregates product × outcome metrics first.
+    The outer SELECT calculates pct_within_product using a window function over product.
+-----------------------------------------------------------------------------------------------*/
+
+WITH product_outcome AS (
+    SELECT
+        product_type_policy_key,
+        decision_outcome,
+
+        COUNT(*) AS row_count,
+
+        AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+        AVG(estimated_lgd) AS avg_estimated_lgd,
+
+        AVG(requested_amount) AS avg_requested_amount,
+
+        AVG(COALESCE(approved_amount, 0))
+            AS avg_approved_amount_all_apps,
+
+        AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_amount_offer_rows,
+
+        AVG(requested_payment_to_income_ratio)
+            AS avg_requested_payment_to_income_ratio,
+
+        AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_pti_offer_rows,
+
+        AVG(requested_expected_loss_amount)
+            AS avg_requested_expected_loss_amount,
+
+        AVG(COALESCE(approved_expected_loss_amount, 0))
+            AS avg_approved_expected_loss_all_apps,
+
+        AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_expected_loss_offer_rows,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS simulated_offer_exposure_count
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY
+        product_type_policy_key,
+        decision_outcome
+)
+
+SELECT
+    product_type_policy_key,
+    decision_outcome,
+    row_count,
+
+    ROUND(
+        100.0 * row_count::NUMERIC
+        / NULLIF(SUM(row_count) OVER (PARTITION BY product_type_policy_key), 0),
+        2
+    ) AS pct_within_product,
+
+    simulated_offer_exposure_count,
+
+    avg_synthetic_estimated_pd_proxy,
+    avg_estimated_lgd,
+
+    avg_requested_amount,
+    avg_approved_amount_all_apps,
+    avg_approved_amount_offer_rows,
+
+    avg_requested_payment_to_income_ratio,
+    avg_approved_pti_offer_rows,
+
+    avg_requested_expected_loss_amount,
+    avg_approved_expected_loss_all_apps,
+    avg_approved_expected_loss_offer_rows
+
+FROM product_outcome
+
+ORDER BY
+    product_type_policy_key,
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.4B Product-level decision-rate summary.
+
+Purpose:
+    Provide one compact row per product for executive and validation review.
+
+Interpretation:
+    A high decline rate, high manual-review rate, high counteroffer rate, or low simulated
+    offer-exposure rate may be valid, but it should be explainable through:
+        product exposure,
+        product PTI thresholds,
+        product Expected Loss thresholds,
+        product approved amount caps,
+        LGD,
+        score mix,
+        affordability mix,
+        counteroffer feasibility,
+        and reason-code distribution.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+
+    COUNT(*) AS applications,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE') AS approval_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER') AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW') AS manual_review_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE') AS decline_count,
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) AS simulated_offer_exposure_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS approval_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    SUM(requested_amount) AS total_requested_amount,
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+    SUM(COALESCE(approved_amount, 0))
+        / NULLIF(SUM(requested_amount), 0) AS approved_amount_capture_rate,
+
+    SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+    SUM(COALESCE(approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        / NULLIF(SUM(COALESCE(approved_amount, 0)), 0) AS approved_expected_loss_rate
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY product_type_policy_key
+
+ORDER BY product_type_policy_key;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.4C Product-level primary reason-code distribution.
+
+Purpose:
+    Review whether product-level behavior is explained by expected simulated reason-code themes.
+
+Boundary:
+    Reason codes are simulated strategy explanation codes, not customer communications.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    primary_reason_family,
+    primary_reason_code,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY product_type_policy_key), 0),
+        2
+    ) AS pct_within_product,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    product_type_policy_key,
+    primary_reason_family,
+    primary_reason_code
+
+ORDER BY
+    product_type_policy_key,
+    row_count DESC,
+    primary_reason_family,
+    primary_reason_code;
+
+
+
+/***************************************************************************************************
+SECTION 14.5 — SCORE-BAND STRATEGY QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Evaluate whether final simulated strategy outcomes behave coherently by borrower-quality segment.
+
+    Section 14.5 answers:
+
+        "Does the strategy generally provide more favorable simulated outcomes to stronger score
+         bands while preserving realistic overlap?"
+
+SQL PURPOSE:
+    1. Summarize final decision outcomes by score band.
+    2. Calculate score-band decision rates.
+    3. Compare synthetic estimated-risk proxy, requested PTI, requested Expected Loss, approved
+       exposure, and approved Expected Loss by score band.
+    4. Review score-band reason-code patterns.
+
+BUSINESS INTERPRETATION:
+    Stronger score bands should generally show higher approval / offer-exposure rates and lower
+    decline rates.
+
+    Product mix, exposure, DTI, PTI, and policy constraints can create realistic overlap.
+
+BOUNDARY:
+    Score band supports interpretation but is not the only decision driver.
+
+    estimated_pd remains the synthetic estimated-PD proxy from Module 1.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.5A Score band × final decision outcome.
+
+Purpose:
+    Review final simulated outcome distribution by score-band policy key.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY score_band_policy_key), 0),
+        2
+    ) AS pct_within_score_band,
+
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    score_band_policy_key,
+    decision_outcome
+
+ORDER BY
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.5B Score-band decision-rate summary.
+
+Purpose:
+    Provide one compact row per score band.
+
+Interpretation:
+    Directional score-band coherence means stronger score bands should usually show higher approval
+    and simulated offer-exposure rates, while weaker score bands should usually show higher review,
+    counteroffer, or decline behavior.
+
+    Perfect monotonicity is not required because product, affordability, DTI, and exposure signals
+    interact with score.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+
+    COUNT(*) AS applications,
+
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE') AS approval_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER') AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW') AS manual_review_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE') AS decline_count,
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) AS simulated_offer_exposure_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS approval_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+    SUM(COALESCE(approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY score_band_policy_key
+
+ORDER BY
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.5C Score-band primary reason-code distribution.
+
+Purpose:
+    Review whether explanation themes change by borrower-quality segment.
+
+Interpretation:
+    This output helps connect outcome distribution to explainability.
+
+    Stronger score bands should typically carry more APPROVAL-family reason codes.
+    Weaker score bands may carry more POLICY_STOP, MANUAL_REVIEW, or COUNTEROFFER-family reason
+    codes depending on strategy posture.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+    primary_reason_family,
+    primary_reason_code,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY score_band_policy_key), 0),
+        2
+    ) AS pct_within_score_band,
+
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    score_band_policy_key,
+    primary_reason_family,
+    primary_reason_code
+
+ORDER BY
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    row_count DESC,
+    primary_reason_family,
+    primary_reason_code;
+
+
+
+/***************************************************************************************************
+SECTION 14.6 — PRODUCT × SCORE DECISION MATRIX
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Show where simulated strategy outcomes concentrate across product and borrower-quality segments.
+
+    Section 14.6 answers:
+
+        "Which product × score intersections drive decision outcomes, exposure, and approved Expected
+         Loss?"
+
+SQL PURPOSE:
+    1. Summarize applications by product × score band.
+    2. Calculate final decision rates by product × score.
+    3. Calculate simulated offer-exposure rates by product × score.
+    4. Compare requested exposure, approved exposure, requested Expected Loss, and approved Expected
+       Loss by product × score.
+    5. Expand the matrix by final decision outcome.
+    6. Review product × score reason-code patterns.
+
+WHY PRODUCT × SCORE MATTERS:
+    Portfolio-level averages can hide important concentration.
+
+    Product × score analysis helps identify whether:
+        weaker-score unsecured segments drive approved Expected Loss,
+        stronger-score secured segments drive approved amount,
+        revolving segments drive counteroffer behavior,
+        or product guardrails concentrate decline / review outcomes.
+
+METRIC CONVENTIONS:
+    approval_rate:
+        APPROVE rows / applications
+
+    counteroffer_rate:
+        COUNTEROFFER rows / applications
+
+    manual_review_rate:
+        MANUAL_REVIEW rows / applications
+
+    decline_rate:
+        DECLINE rows / applications
+
+    simulated_offer_exposure_rate:
+        APPROVE + COUNTEROFFER rows / applications
+
+    All-application approved metrics:
+        use COALESCE(approved_amount, 0) and COALESCE(approved_expected_loss_amount, 0).
+
+    Offer-row approved metrics:
+        use only rows where simulated_offer_exposure_flag = TRUE.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.6A Product × score-band summary.
+
+Purpose:
+    Core segment matrix for validating product-aware strategy behavior across borrower-quality bands.
+
+Interpretation:
+    This is one of the most important Section 14 outputs for executive and validation review.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    score_band_policy_key,
+
+    COUNT(*) AS applications,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE') AS approval_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS approval_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER') AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW') AS manual_review_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE') AS decline_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) AS simulated_offer_exposure_count,
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(estimated_lgd) AS avg_estimated_lgd,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+    AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_amount_offer_rows,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_pti_offer_rows,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(COALESCE(approved_expected_loss_amount, 0))
+        AS avg_approved_expected_loss_all_apps,
+    AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_expected_loss_offer_rows,
+
+    SUM(requested_amount) AS total_requested_amount,
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+    SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+    SUM(COALESCE(approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    product_type_policy_key,
+    score_band_policy_key
+
+ORDER BY
+    product_type_policy_key,
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.6B Product × score × decision-outcome distribution.
+
+Purpose:
+    Identify whether a given product × score segment is dominated by one simulated strategy path.
+
+SQL logic:
+    The window function calculates pct_within_product_score_segment using the segment denominator.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    score_band_policy_key,
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(
+            SUM(COUNT(*)) OVER (
+                PARTITION BY product_type_policy_key, score_band_policy_key
+            ),
+            0
+        ),
+        2
+    ) AS pct_within_product_score_segment,
+
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    product_type_policy_key,
+    score_band_policy_key,
+    decision_outcome
+
+ORDER BY
+    product_type_policy_key,
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.6C Product × score × primary reason-code distribution.
+
+Purpose:
+    Connect segment-level outcomes to simulated explanation themes.
+
+Interpretation:
+    This output is useful for detecting whether product × score movement is being explained by
+    approval, counteroffer, manual-review, or policy-stop families in a coherent way.
+
+Boundary:
+    Reason codes are simulated strategy explanation codes only.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    score_band_policy_key,
+    primary_reason_family,
+    primary_reason_code,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(
+            SUM(COUNT(*)) OVER (
+                PARTITION BY product_type_policy_key, score_band_policy_key
+            ),
+            0
+        ),
+        2
+    ) AS pct_within_product_score_segment,
+
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    product_type_policy_key,
+    score_band_policy_key,
+    primary_reason_family,
+    primary_reason_code
+
+ORDER BY
+    product_type_policy_key,
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    row_count DESC,
+    primary_reason_family,
+    primary_reason_code;
+
+
+
+/***************************************************************************************************
+END OF PATCH 14-A THROUGH 14-C
+
+This patch replaces:
+    Section 14 header
+    Section 14.0
+    Section 14.1
+    Section 14.2
+    Section 14.3
+    Section 14.4
+    Section 14.5
+    Section 14.6
+
+This patch intentionally stops before:
+    Section 14.7 — Synthetic Risk Ordering QA
+
+Next patch:
+    Section 14.7 through Section 14.10
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M01615 -->
+
+
+---
+
+<a id="c038-m01617"></a>
+
+### C038-M01617
+
+**Andrew** · 2026-05-12T14:48:46.498000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01617 -->
+proceed with the next two sets of pass 3 patches (14-D through 14-E)
+<!-- END_MESSAGE C038-M01617 -->
+
+
+---
+
+<a id="c038-m01619"></a>
+
+### C038-M01619
+
+**ChatGPT** · 2026-05-12T14:59:04.578945-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01619 -->
+This patch covers **14-D through 14-E only**: **Section 14.7 through the end of Section 14.13**. It is still read-only against `credit_decisioning_sim.strategy_decisions` and continues the accepted Section 14 validation design. fileciteturn253file20 It also preserves the existing synthetic-risk ordering and counteroffer-validation intent from the current Section 14 material. fileciteturn253file18 fileciteturn253file17
+
+```sql
+/***************************************************************************************************
+SECTION 14.7 — SYNTHETIC RISK ORDERING QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that synthetic estimated-risk segmentation flows coherently into final simulated strategy
+    outcomes.
+
+    Section 14.7 answers:
+
+        "Does the strategy generally offer more favorable outcomes to lower synthetic-risk tiers
+         and route higher synthetic-risk tiers toward counteroffer, manual review, or decline in a
+         directionally coherent way?"
+
+SQL PURPOSE:
+    1. Summarize final decision outcomes by strategy_risk_tier.
+    2. Calculate approval, counteroffer, manual-review, decline, and simulated offer-exposure rates
+       by synthetic risk tier.
+    3. Compare requested PTI, requested Expected Loss, and approved Expected Loss by risk tier and
+       final outcome.
+    4. Provide a compact synthetic-risk-tier summary.
+    5. Compare average synthetic estimated-risk proxy between simulated offer rows and declined rows.
+    6. Produce directional synthetic-risk-ordering diagnostics.
+
+BUSINESS INTERPRETATION:
+    Higher synthetic estimated-risk tiers should generally show:
+        lower clean approval rates,
+        lower simulated offer-exposure rates,
+        higher manual-review rates,
+        higher decline rates,
+        or more counteroffer behavior when exposure treatment is feasible.
+
+    Counteroffer behavior may appear in elevated risk tiers where reduced exposure can satisfy
+    affordability and approved Expected Loss constraints.
+
+WHY PERFECT MONOTONICITY IS NOT REQUIRED:
+    Product mix, requested exposure, DTI, requested PTI, behavioral signals, product guardrails, and
+    counteroffer feasibility can create realistic overlap.
+
+    The validation expectation is broad directional coherence, not rigid deterministic sorting.
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the finalized Module 1 SQL field name.
+
+    In Section 14.7, estimated_pd is interpreted only as the synthetic estimated-PD proxy.
+
+    This QA block reviews directional ordering and strategy sensitivity.
+
+    It does not validate a calibrated default model.
+    It does not calculate rank-order performance statistics.
+    It does not produce production model validation evidence.
+
+REQUESTED VS APPROVED EXPECTED LOSS:
+    requested_expected_loss_amount is requested-exposure Expected Loss.
+
+    approved_expected_loss_amount is approved-exposure Expected Loss.
+
+    This section compares their behavior across synthetic risk tiers but does not recalculate either
+    field.
+
+READ-ONLY BOUNDARY:
+    Section 14.7 does not modify latest-run rows.
+    Section 14.7 does not modify archive rows.
+    Section 14.7 does not recalculate estimated_pd.
+    Section 14.7 does not recalculate approved exposure.
+    Section 14.7 does not recalculate approved Expected Loss.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.7A Synthetic risk tier × final decision outcome.
+
+Purpose:
+    Review how strategy_risk_tier maps into final simulated outcomes.
+
+Interpretation:
+    Lower synthetic risk tiers should generally show more APPROVE and positive offer-exposure
+    behavior.
+
+    Higher synthetic risk tiers should generally show more COUNTEROFFER, MANUAL_REVIEW, or DECLINE
+    behavior.
+
+    Exceptions should be explainable through product mix, affordability, DTI, requested exposure, or
+    reason-code evidence.
+-----------------------------------------------------------------------------------------------*/
+
+WITH risk_summary AS (
+    SELECT
+        strategy_risk_tier,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY strategy_risk_tier
+),
+
+risk_outcome AS (
+    SELECT
+        strategy_risk_tier,
+        decision_outcome,
+
+        COUNT(*) AS row_count,
+
+        AVG(credit_score) AS avg_credit_score,
+        AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+        AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+        AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+        AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY
+        strategy_risk_tier,
+        decision_outcome
+)
+
+SELECT
+    o.strategy_risk_tier,
+    o.decision_outcome,
+    o.row_count,
+
+    ROUND(
+        100.0 * o.row_count::NUMERIC / NULLIF(s.applications, 0),
+        2
+    ) AS pct_within_risk_tier,
+
+    o.avg_credit_score,
+    o.avg_synthetic_estimated_pd_proxy,
+    o.avg_requested_payment_to_income_ratio,
+    o.avg_requested_expected_loss_amount,
+    o.avg_approved_expected_loss_all_apps,
+
+    s.approval_rate,
+    s.counteroffer_rate,
+    s.manual_review_rate,
+    s.decline_rate,
+    s.simulated_offer_exposure_rate
+
+FROM risk_outcome o
+
+JOIN risk_summary s
+    ON s.strategy_risk_tier = o.strategy_risk_tier
+
+ORDER BY
+    CASE o.strategy_risk_tier
+        WHEN 'LOW_SYNTHETIC_RISK' THEN 1
+        WHEN 'MODERATE_SYNTHETIC_RISK' THEN 2
+        WHEN 'ELEVATED_SYNTHETIC_RISK' THEN 3
+        WHEN 'HIGH_SYNTHETIC_RISK' THEN 4
+        WHEN 'SEVERE_SYNTHETIC_RISK' THEN 5
+        ELSE 99
+    END,
+    CASE o.decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.7B Synthetic risk tier compact summary.
+
+Purpose:
+    Provide one row per synthetic risk tier for validation and executive review.
+
+Interpretation:
+    This is the clearest synthetic-risk ordering grid.
+
+    It should be reviewed alongside product, score-band, PTI, DTI, exposure, and reason-code outputs.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_risk_tier,
+
+    COUNT(*) AS applications,
+
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE') AS approval_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER') AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW') AS manual_review_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE') AS decline_count,
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) AS simulated_offer_exposure_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS approval_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+
+    AVG(approved_payment_to_income_ratio)
+        FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows,
+
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+    SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        AS total_approved_expected_loss_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+        AS approved_expected_loss_rate
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY strategy_risk_tier
+
+ORDER BY
+    CASE strategy_risk_tier
+        WHEN 'LOW_SYNTHETIC_RISK' THEN 1
+        WHEN 'MODERATE_SYNTHETIC_RISK' THEN 2
+        WHEN 'ELEVATED_SYNTHETIC_RISK' THEN 3
+        WHEN 'HIGH_SYNTHETIC_RISK' THEN 4
+        WHEN 'SEVERE_SYNTHETIC_RISK' THEN 5
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.7C Offer versus decline synthetic estimated-risk profile.
+
+Purpose:
+    Confirm declined rows generally have higher synthetic estimated-risk proxy than simulated
+    positive offer-exposure rows.
+
+Expected:
+    avg_synthetic_estimated_pd_proxy_decline_rows should generally be greater than or equal to the
+    offer-row average.
+
+Boundary:
+    This is directional QA. It is not model calibration.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS simulated_offer_exposure_rows,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS decline_rows,
+
+    AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_synthetic_estimated_pd_proxy_decline_rows,
+
+    AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+        - AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS decline_minus_offer_avg_synthetic_estimated_pd_proxy,
+
+    CASE
+        WHEN COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) = 0
+          OR COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE') = 0
+            THEN 'NOT_APPLICABLE_OFFER_OR_DECLINE_ROWS_MISSING'
+
+        WHEN AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+           >= AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            THEN 'SYNTHETIC_RISK_DIRECTIONALLY_COHERENT'
+
+        ELSE 'REVIEW_SYNTHETIC_RISK_DIRECTIONAL_ORDERING'
+    END AS synthetic_risk_directional_status
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/***************************************************************************************************
+SECTION 14.8 — REQUESTED PTI AFFORDABILITY QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that requested payment burden and approved payment burden behave coherently across final
+    simulated outcomes.
+
+    Section 14.8 answers:
+
+        "Does the strategy respond to requested affordability stress and reduce approved PTI when
+         counteroffer treatment is used?"
+
+SQL PURPOSE:
+    1. Summarize final outcomes by requested_pti_bucket.
+    2. Compare requested PTI and approved PTI by outcome.
+    3. Confirm final COUNTEROFFER rows are at or below counteroffer_target_pti.
+    4. Confirm approved PTI conventions remain outcome-consistent.
+
+BOUNDARY:
+    requested_payment_to_income_ratio is requested-structure PTI from Module 1.
+
+    approved_payment_to_income_ratio is a final approved-exposure strategy-simulation affordability
+    proxy.
+
+    approved_payment_to_income_ratio is not a contractual payment ratio, servicing calculation, or
+    billing-system output.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.8A Requested PTI bucket × final decision outcome.
+
+Purpose:
+    Review how requested-structure affordability pressure flows into final outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_pti_bucket,
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY requested_pti_bucket), 0),
+        2
+    ) AS pct_within_requested_pti_bucket,
+
+    AVG(requested_payment_to_income_ratio)
+        AS avg_requested_payment_to_income_ratio,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+
+    AVG(requested_expected_loss_amount)
+        AS avg_requested_expected_loss_amount,
+
+    AVG(COALESCE(approved_expected_loss_amount, 0))
+        AS avg_approved_expected_loss_all_apps
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    requested_pti_bucket,
+    decision_outcome
+
+ORDER BY
+    CASE requested_pti_bucket
+        WHEN 'LOW_REQUESTED_PTI' THEN 1
+        WHEN 'MODERATE_REQUESTED_PTI' THEN 2
+        WHEN 'ELEVATED_REQUESTED_PTI' THEN 3
+        WHEN 'HIGH_REQUESTED_PTI' THEN 4
+        WHEN 'SEVERE_REQUESTED_PTI' THEN 5
+        ELSE 99
+    END,
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.8B Requested versus approved PTI by final outcome.
+
+Expected:
+    APPROVE:
+        approved PTI should equal requested PTI.
+
+    COUNTEROFFER:
+        approved PTI should be below requested PTI and at or below counteroffer_target_pti.
+
+    MANUAL_REVIEW:
+        approved PTI should remain NULL.
+
+    DECLINE:
+        approved PTI should be zero.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_payment_to_income_ratio)
+        AS avg_requested_payment_to_income_ratio,
+
+    AVG(approved_payment_to_income_ratio)
+        AS avg_approved_payment_to_income_ratio,
+
+    AVG(
+        requested_payment_to_income_ratio - approved_payment_to_income_ratio
+    ) FILTER (
+        WHERE approved_payment_to_income_ratio IS NOT NULL
+    ) AS avg_pti_reduction_where_approved_pti_exists,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'APPROVE'
+          AND approved_payment_to_income_ratio IS DISTINCT FROM requested_payment_to_income_ratio
+    ) AS approve_pti_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND approved_payment_to_income_ratio <= counteroffer_target_pti
+    ) AS counteroffer_rows_at_or_below_target_pti,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND approved_payment_to_income_ratio > counteroffer_target_pti
+    ) AS counteroffer_rows_above_target_pti,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND approved_payment_to_income_ratio IS NOT NULL
+    ) AS manual_review_approved_pti_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_payment_to_income_ratio IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_approved_pti_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY decision_outcome
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.8C Product-level requested and approved PTI profile.
+
+Purpose:
+    Review affordability behavior by product.
+
+Interpretation:
+    Product-level PTI behavior should be explained by product-specific PTI thresholds, requested
+    exposure, term, APR proxy, and counteroffer feasibility.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+
+    COUNT(*) AS applications,
+
+    AVG(requested_payment_to_income_ratio)
+        AS avg_requested_payment_to_income_ratio_all_apps,
+
+    AVG(approved_payment_to_income_ratio)
+        FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows,
+
+    AVG(
+        requested_payment_to_income_ratio - approved_payment_to_income_ratio
+    ) FILTER (
+        WHERE simulated_offer_exposure_flag IS TRUE
+          AND approved_payment_to_income_ratio IS NOT NULL
+    ) AS avg_pti_reduction_offer_rows,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS counteroffer_rows,
+
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_requested_pti_counteroffer_rows,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_pti_counteroffer_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND approved_payment_to_income_ratio > counteroffer_target_pti
+    ) AS counteroffer_rows_above_target_pti
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY product_type_policy_key
+
+ORDER BY product_type_policy_key;
+
+
+
+/***************************************************************************************************
+SECTION 14.9 — DTI CAPACITY QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that DTI capacity pressure is visible and directionally coherent in final outcomes.
+
+    Section 14.9 answers:
+
+        "Does severe existing-obligation capacity pressure flow into review or decline behavior as
+         intended?"
+
+SQL PURPOSE:
+    1. Summarize final outcomes by dti_bucket.
+    2. Review DTI decline trigger behavior.
+    3. Confirm severe DTI rows are not silently treated as ordinary clean approvals.
+
+BOUNDARY:
+    DTI is an existing-obligation capacity signal.
+
+    In Module 2 V1.0, DTI is not directly counteroffer-adjustable because a counteroffer changes
+    requested exposure treatment, not the applicant's existing obligations.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.9A DTI bucket × final decision outcome.
+
+Purpose:
+    Review final outcomes by existing-obligation capacity segment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    dti_bucket,
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY dti_bucket), 0),
+        2
+    ) AS pct_within_dti_bucket,
+
+    AVG(debt_to_income_ratio) AS avg_debt_to_income_ratio,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+    AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    dti_bucket,
+    decision_outcome
+
+ORDER BY
+    CASE dti_bucket
+        WHEN 'LOW_DTI' THEN 1
+        WHEN 'MODERATE_DTI' THEN 2
+        WHEN 'ELEVATED_DTI' THEN 3
+        WHEN 'HIGH_DTI' THEN 4
+        WHEN 'SEVERE_DTI' THEN 5
+        ELSE 99
+    END,
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.9B DTI decline trigger behavior.
+
+Purpose:
+    Confirm severe DTI trigger rows resolve as high-priority existing-obligation capacity concerns.
+
+Expected:
+    dti_decline_trigger_flag = TRUE should generally resolve to DECLINE unless already captured by an
+    equivalent higher-priority route. If any are non-decline, review decision_path and reason code.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    dti_decline_trigger_flag,
+    decision_outcome,
+    decision_path,
+
+    COUNT(*) AS row_count,
+
+    AVG(debt_to_income_ratio) AS avg_debt_to_income_ratio,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    dti_decline_trigger_flag,
+    decision_outcome,
+    decision_path
+
+ORDER BY
+    dti_decline_trigger_flag DESC,
+    CASE decision_outcome
+        WHEN 'DECLINE' THEN 1
+        WHEN 'MANUAL_REVIEW' THEN 2
+        WHEN 'COUNTEROFFER' THEN 3
+        WHEN 'APPROVE' THEN 4
+        ELSE 99
+    END,
+    decision_path;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.9C Severe DTI non-decline diagnostic sample.
+
+Purpose:
+    Display rows where severe DTI was triggered but final outcome was not DECLINE.
+
+Expected:
+    This may return zero rows.
+
+Interpretation:
+    If rows appear, review whether another route explains the result and whether the behavior is
+    consistent with current strategy configuration.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+    product_type_policy_key,
+    score_band_policy_key,
+    credit_score,
+    debt_to_income_ratio,
+    dti_bucket,
+    dti_decline_trigger_flag,
+    requested_payment_to_income_ratio,
+    requested_pti_bucket,
+    estimated_pd AS synthetic_estimated_pd_proxy,
+    strategy_risk_tier,
+    decision_outcome,
+    decision_path,
+    decision_resolution_source,
+    primary_reason_code,
+    triggered_reason_code_list
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE dti_decline_trigger_flag IS TRUE
+  AND decision_outcome <> 'DECLINE'
+
+ORDER BY
+    debt_to_income_ratio DESC,
+    requested_payment_to_income_ratio DESC,
+    application_id
+
+LIMIT 100;
+
+
+
+/***************************************************************************************************
+SECTION 14.10 — REQUESTED VERSUS APPROVED EXPOSURE AND EXPECTED LOSS QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that final approved exposure and approved Expected Loss behave according to the final
+    simulated outcome conventions.
+
+    Section 14.10 answers:
+
+        "How did the strategy convert requested exposure and requested Expected Loss into approved
+         exposure and approved Expected Loss?"
+
+SQL PURPOSE:
+    1. Compare requested amount and approved amount by final outcome.
+    2. Compare requested Expected Loss and approved Expected Loss by final outcome.
+    3. Review requested exposure tier behavior.
+    4. Review requested Expected Loss tier behavior.
+    5. Review approved amount capture and approved Expected Loss rate.
+
+BOUNDARY:
+    approved_amount is simulated approved exposure, not booked exposure.
+
+    approved_expected_loss_amount is a synthetic strategy simulation metric, not a production
+    loss-rate forecast.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.10A Requested versus approved exposure by final decision outcome.
+
+Expected:
+    APPROVE:
+        approved amount equals requested amount.
+
+    COUNTEROFFER:
+        approved amount is positive and below requested amount.
+
+    MANUAL_REVIEW:
+        approved amount is NULL.
+
+    DECLINE:
+        approved amount is zero.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount) AS avg_approved_amount,
+
+    SUM(requested_amount) AS total_requested_amount,
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+    SUM(COALESCE(approved_amount, 0))
+        / NULLIF(SUM(requested_amount), 0) AS approved_amount_capture_rate,
+
+    AVG(exposure_reduction_amount) AS avg_exposure_reduction_amount,
+    AVG(exposure_reduction_pct) AS avg_exposure_reduction_pct,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'APPROVE'
+          AND approved_amount IS DISTINCT FROM requested_amount
+    ) AS approve_amount_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_amount IS NULL
+             OR approved_amount <= 0
+             OR approved_amount >= requested_amount
+          )
+    ) AS counteroffer_amount_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND approved_amount IS NOT NULL
+    ) AS manual_review_amount_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_amount_convention_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY decision_outcome
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.10B Requested versus approved Expected Loss by final decision outcome.
+
+Boundary:
+    requested_expected_loss_amount is requested-exposure Expected Loss.
+
+    approved_expected_loss_amount is approved-exposure Expected Loss.
+
+    approved_expected_loss_amount is a synthetic strategy simulation metric, not a production loss
+    forecast.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_expected_loss_amount)
+        AS avg_requested_expected_loss_amount,
+
+    AVG(approved_expected_loss_amount)
+        AS avg_approved_expected_loss_amount,
+
+    SUM(requested_expected_loss_amount)
+        AS total_requested_expected_loss_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        AS total_approved_expected_loss_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+        AS approved_expected_loss_rate,
+
+    AVG(approved_el_reduction_amount) AS avg_approved_el_reduction_amount,
+    AVG(approved_el_reduction_pct) AS avg_approved_el_reduction_pct,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'APPROVE'
+          AND approved_expected_loss_amount IS DISTINCT FROM requested_expected_loss_amount
+    ) AS approve_expected_loss_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_expected_loss_amount IS NULL
+             OR approved_expected_loss_amount < 0
+             OR approved_expected_loss_amount > requested_expected_loss_amount
+             OR approved_expected_loss_amount > product_approved_el_cap
+          )
+    ) AS counteroffer_expected_loss_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND approved_expected_loss_amount IS NOT NULL
+    ) AS manual_review_expected_loss_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_expected_loss_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_expected_loss_convention_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY decision_outcome
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.10C Requested exposure tier × final decision outcome.
+
+Purpose:
+    Review how requested exposure intensity flows into final outcomes.
+
+Interpretation:
+    High or extreme requested exposure can be routed through counteroffer, manual review, or decline
+    depending on product policy, affordability, Expected Loss, and strategy thresholds.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_exposure_tier,
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY requested_exposure_tier), 0),
+        2
+    ) AS pct_within_requested_exposure_tier,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+    AVG(exposure_reduction_pct) AS avg_exposure_reduction_pct,
+
+    SUM(requested_amount) AS total_requested_amount,
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    requested_exposure_tier,
+    decision_outcome
+
+ORDER BY
+    CASE requested_exposure_tier
+        WHEN 'BELOW_PRODUCT_MINIMUM' THEN 1
+        WHEN 'LOW_REQUESTED_EXPOSURE' THEN 2
+        WHEN 'WITHIN_PRODUCT_APPROVAL_CAP' THEN 3
+        WHEN 'WITHIN_PRODUCT_LIMITS' THEN 4
+        WHEN 'ABOVE_PRODUCT_APPROVAL_CAP' THEN 5
+        WHEN 'EXTREME_REQUESTED_EXPOSURE' THEN 6
+        ELSE 99
+    END,
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.10D Requested Expected Loss tier × final decision outcome.
+
+Purpose:
+    Review how requested-exposure Expected Loss pressure flows into final outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_expected_loss_tier,
+    decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY requested_expected_loss_tier), 0),
+        2
+    ) AS pct_within_requested_expected_loss_tier,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps,
+    AVG(approved_el_reduction_pct) AS avg_approved_el_reduction_pct,
+
+    SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+    SUM(COALESCE(approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    requested_expected_loss_tier,
+    decision_outcome
+
+ORDER BY
+    CASE requested_expected_loss_tier
+        WHEN 'LOW_REQUESTED_EL' THEN 1
+        WHEN 'MODERATE_REQUESTED_EL' THEN 2
+        WHEN 'ELEVATED_REQUESTED_EL' THEN 3
+        WHEN 'HIGH_REQUESTED_EL' THEN 4
+        WHEN 'SEVERE_REQUESTED_EL' THEN 5
+        ELSE 99
+    END,
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+SECTION 14.11 — COUNTEROFFER VALIDATION DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that final COUNTEROFFER outcomes are feasible, explainable, and consistent with the
+    governed exposure-treatment framework.
+
+    Section 14.11 answers:
+
+        "When Module 2 assigns a final COUNTEROFFER outcome, did the row pass reduced-exposure
+         feasibility testing, and does the final exposure treatment behave as intended?"
+
+SQL PURPOSE:
+    1. Summarize preliminary and final counteroffer populations.
+    2. Calculate counteroffer feasibility pass / fail rates.
+    3. Review final counteroffer exposure reduction, requested PTI, approved PTI, requested Expected
+       Loss, approved Expected Loss, and approved Expected Loss reduction.
+    4. Review failed preliminary counteroffer reasons.
+    5. Review counteroffer feasibility by product and score band.
+    6. Validate final counteroffer conventions.
+    7. Review final COUNTEROFFER simulated reason-code distribution.
+
+BUSINESS INTERPRETATION:
+    Final COUNTEROFFER rows should show:
+        approved_amount < requested_amount;
+        exposure_reduction_pct > 0;
+        counteroffer_amount = approved_amount;
+        approved_payment_to_income_ratio <= counteroffer_target_pti;
+        approved_expected_loss_amount <= product_approved_el_cap;
+        counteroffer_feasibility_pass_flag = TRUE;
+        primary_reason_family = COUNTEROFFER.
+
+WHY PRELIMINARY AND FINAL COUNTEROFFERS ARE BOTH REVIEWED:
+    Preliminary COUNTEROFFER routing means:
+
+        "This row should be tested for reduced-exposure feasibility."
+
+    Final COUNTEROFFER means:
+        Section 8 confirmed feasibility,
+        Section 9 resolved the row to final COUNTEROFFER,
+        and Section 10 assigned a counteroffer-family simulated reason code.
+
+    Reviewing both populations reveals:
+        how many rows were sent for feasibility testing,
+        how many passed,
+        how many failed,
+        and how final counteroffer outcomes differ by product and score band.
+
+COUNTEROFFER FEASIBILITY BOUNDARY:
+    counteroffer_feasibility_failure_reason is a feasibility diagnostic.
+
+    It is not a final simulated reason code.
+    It is not external communication text.
+    It is not a production decline reason.
+
+COUNTEROFFER OUTCOME BOUNDARY:
+    COUNTEROFFER is a simulated positive offer-exposure outcome for synthetic applicants.
+
+    It does not imply:
+        operational negotiation,
+        booked exposure,
+        funded exposure,
+        production approval,
+        operational account creation,
+        customer communication,
+        or real applicant treatment.
+
+APPROVED PTI BOUNDARY:
+    approved_payment_to_income_ratio is a Module 2 strategy-simulation affordability proxy.
+
+    It is not a contractual payment ratio.
+    It is not a servicing calculation.
+    It is not a billing-engine output.
+
+EXPECTED LOSS BOUNDARY:
+    requested_expected_loss_amount is requested-exposure Expected Loss.
+
+    approved_expected_loss_amount is approved-exposure Expected Loss after final simulated exposure
+    treatment.
+
+    Section 14.11 validates behavior and conventions. It does not recalculate Expected Loss.
+
+REASON-CODE BOUNDARY:
+    COUNTEROFFER reason codes are simulated strategy explanation codes.
+
+    They are used for QA, transparency, and strategy interpretation.
+
+    They are not regulatory notices, customer communications, adverse-action reasons, or fair-lending
+    conclusions.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11A Counteroffer summary.
+
+Purpose:
+    Provide the primary counteroffer performance and feasibility profile for the latest-run output.
+
+Interpretation:
+    preliminary_counteroffer_rows:
+        rows routed to reduced-exposure feasibility testing.
+
+    feasible_counteroffers:
+        preliminary COUNTEROFFER rows that passed feasibility testing.
+
+    failed_counteroffers:
+        preliminary COUNTEROFFER rows that failed feasibility testing.
+
+    final_counteroffer_rows:
+        rows that resolved to final COUNTEROFFER after feasibility and final decision resolution.
+
+    counteroffer_feasibility_pass_rate:
+        feasibility pass rate among preliminary COUNTEROFFER rows.
+
+Documentation use:
+    This is the headline counteroffer QA table. It supports explanation of how many rows were
+    counteroffer candidates, how many became feasible counteroffers, and what affordability / Expected
+    Loss improvement was achieved.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS final_counteroffer_rows,
+
+    COUNT(*) FILTER (WHERE preliminary_decision_outcome = 'COUNTEROFFER')
+        AS preliminary_counteroffer_rows,
+
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    ) AS feasible_counteroffers,
+
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS FALSE
+    ) AS failed_counteroffers,
+
+    COUNT(*) FILTER (
+        WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    )::NUMERIC
+    / NULLIF(
+        COUNT(*) FILTER (WHERE preliminary_decision_outcome = 'COUNTEROFFER'),
+        0
+    ) AS counteroffer_feasibility_pass_rate,
+
+    AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_exposure_reduction_pct_for_final_counteroffers,
+
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_requested_pti_for_final_counteroffers,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_pti_for_final_counteroffers,
+
+    AVG(
+        requested_payment_to_income_ratio - approved_payment_to_income_ratio
+    ) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_pti_reduction_for_final_counteroffers,
+
+    AVG(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_requested_expected_loss_for_final_counteroffers,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_expected_loss_for_final_counteroffers,
+
+    AVG(approved_el_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_el_reduction_pct_for_final_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11B Counteroffer feasibility failure reason distribution.
+
+Purpose:
+    Show why preliminary COUNTEROFFER rows failed feasibility testing.
+
+Interpretation:
+    These are Section 8 feasibility diagnostics only.
+
+    They help explain failed preliminary counteroffers before final decision resolution converts them
+    to MANUAL_REVIEW or DECLINE according to failed_counteroffer_resolution.
+
+Expected use:
+    Review whether failures are concentrated in:
+        PTI target constraints,
+        approved Expected Loss caps,
+        product minimums,
+        maximum exposure reduction,
+        product counteroffer permissions,
+        or rounding / raw amount feasibility.
+
+Boundary:
+    counteroffer_feasibility_failure_reason is not a final reason code and not external
+    communication language.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_feasibility_failure_reason,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_failed_preliminary_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+  AND counteroffer_feasibility_pass_flag IS FALSE
+
+GROUP BY counteroffer_feasibility_failure_reason
+
+ORDER BY
+    row_count DESC,
+    counteroffer_feasibility_failure_reason;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11C Product × counteroffer feasibility summary.
+
+Purpose:
+    Review counteroffer feasibility behavior by product.
+
+Interpretation:
+    Product differences may reflect product caps, minimum approved amount, LGD, requested exposure,
+    requested PTI, approved Expected Loss cap, and counteroffer settings.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag,
+
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    AVG(requested_amount) AS avg_requested_amount,
+
+    AVG(approved_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_amount_for_final_counteroffers,
+
+    AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_exposure_reduction_pct_for_final_counteroffers,
+
+    AVG(requested_payment_to_income_ratio)
+        AS avg_requested_payment_to_income_ratio,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_pti_for_final_counteroffers,
+
+    AVG(requested_expected_loss_amount)
+        AS avg_requested_expected_loss_amount,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_expected_loss_for_final_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag
+
+ORDER BY
+    product_type_policy_key,
+    counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11D Score band × counteroffer feasibility summary.
+
+Purpose:
+    Review counteroffer feasibility behavior by borrower-quality segment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+    counteroffer_feasibility_pass_flag,
+
+    COUNT(*) AS preliminary_counteroffer_rows,
+
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+
+    AVG(requested_amount) AS avg_requested_amount,
+
+    AVG(approved_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_amount_for_final_counteroffers,
+
+    AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_exposure_reduction_pct_for_final_counteroffers,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_expected_loss_for_final_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE preliminary_decision_outcome = 'COUNTEROFFER'
+
+GROUP BY
+    score_band_policy_key,
+    counteroffer_feasibility_pass_flag
+
+ORDER BY
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    counteroffer_feasibility_pass_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11E Final COUNTEROFFER convention diagnostic.
+
+Purpose:
+    Confirm final COUNTEROFFER rows satisfy reduced-exposure, affordability, Expected Loss, and
+    reason-family conventions.
+
+Expected:
+    all violation counts = 0.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS DISTINCT FROM TRUE
+    ) AS counteroffer_without_feasibility_pass_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_amount IS NULL
+             OR approved_amount <= 0
+             OR approved_amount >= requested_amount
+             OR counteroffer_amount IS DISTINCT FROM approved_amount
+          )
+    ) AS counteroffer_amount_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                exposure_reduction_flag IS DISTINCT FROM TRUE
+             OR exposure_reduction_amount IS NULL
+             OR exposure_reduction_amount <= 0
+             OR exposure_reduction_pct IS NULL
+             OR exposure_reduction_pct <= 0
+          )
+    ) AS counteroffer_exposure_reduction_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_payment_to_income_ratio IS NULL
+             OR approved_payment_to_income_ratio > counteroffer_target_pti
+          )
+    ) AS counteroffer_affordability_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_expected_loss_amount IS NULL
+             OR approved_expected_loss_amount < 0
+             OR approved_expected_loss_amount > requested_expected_loss_amount
+             OR approved_expected_loss_amount > product_approved_el_cap
+          )
+    ) AS counteroffer_expected_loss_convention_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND primary_reason_family IS DISTINCT FROM 'COUNTEROFFER'
+    ) AS counteroffer_reason_family_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.11F Final COUNTEROFFER primary reason-code distribution.
+
+Purpose:
+    Review which simulated counteroffer explanation themes dominate final COUNTEROFFER rows.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    primary_reason_code,
+
+    COUNT(*) AS final_counteroffer_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_final_counteroffers,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount) AS avg_approved_amount,
+    AVG(exposure_reduction_pct) AS avg_exposure_reduction_pct,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) AS avg_approved_payment_to_income_ratio,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount) AS avg_approved_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'COUNTEROFFER'
+
+GROUP BY primary_reason_code
+
+ORDER BY
+    final_counteroffer_rows DESC,
+    primary_reason_code;
+
+
+
+/***************************************************************************************************
+SECTION 14.12 — MANUAL REVIEW VALIDATION DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that MANUAL_REVIEW outcomes remain unresolved and explainable.
+
+    Section 14.12 answers:
+
+        "When the strategy assigns MANUAL_REVIEW, does the row remain unresolved, without simulated
+         positive offer exposure or approved exposure economics?"
+
+SQL PURPOSE:
+    1. Summarize manual-review population.
+    2. Review manual-review decision paths.
+    3. Review manual-review reason-code distribution.
+    4. Validate unresolved exposure, affordability, Expected Loss, and simulated offer-exposure
+       conventions.
+    5. Review product and score-band concentration of manual-review rows.
+
+BOUNDARY:
+    MANUAL_REVIEW is unresolved simulated routing.
+
+    It is not a completed operational review.
+    It is not a production queue decision.
+    It does not imply booked exposure, funded exposure, or customer treatment.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12A Manual-review summary.
+
+Purpose:
+    Provide the primary profile of final MANUAL_REVIEW outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS final_manual_review_rows,
+
+    COUNT(*) FILTER (WHERE preliminary_decision_outcome = 'MANUAL_REVIEW')
+        AS preliminary_manual_review_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS FALSE
+    ) AS failed_counteroffer_to_manual_review_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND preliminary_decision_path = 'SEVERE_REQUESTED_STRUCTURE_REVIEW'
+    ) AS severe_requested_structure_review_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND preliminary_decision_path = 'MANUAL_REVIEW_CANDIDATE'
+    ) AS manual_review_candidate_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND preliminary_decision_path = 'RESIDUAL_STRATEGY_REVIEW'
+    ) AS residual_strategy_review_rows,
+
+    AVG(total_rule_trigger_count) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_total_rule_trigger_count_for_manual_review_rows,
+
+    AVG(requested_amount) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_requested_amount_for_manual_review_rows,
+
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_requested_pti_for_manual_review_rows,
+
+    AVG(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_requested_expected_loss_for_manual_review_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12B Manual-review path and primary reason-code distribution.
+
+Purpose:
+    Explain why final MANUAL_REVIEW rows remained unresolved.
+
+Boundary:
+    primary_reason_code is a simulated strategy explanation code only.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_path,
+    decision_resolution_source,
+    primary_reason_code,
+
+    COUNT(*) AS final_manual_review_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_final_manual_review_rows,
+
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count,
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+
+GROUP BY
+    decision_path,
+    decision_resolution_source,
+    primary_reason_code
+
+ORDER BY
+    final_manual_review_rows DESC,
+    decision_path,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12C Manual-review unresolved convention diagnostic.
+
+Purpose:
+    Confirm final MANUAL_REVIEW rows do not carry approved-exposure economics.
+
+Expected:
+    all violation counts = 0.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND approved_amount IS NOT NULL
+    ) AS manual_review_approved_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND counteroffer_amount IS NOT NULL
+    ) AS manual_review_counteroffer_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND approved_monthly_payment_proxy IS NOT NULL
+    ) AS manual_review_approved_payment_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND approved_payment_to_income_ratio IS NOT NULL
+    ) AS manual_review_approved_pti_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND approved_expected_loss_amount IS NOT NULL
+    ) AS manual_review_approved_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND simulated_offer_exposure_flag IS DISTINCT FROM FALSE
+    ) AS manual_review_offer_exposure_flag_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND primary_reason_family IS DISTINCT FROM 'MANUAL_REVIEW'
+    ) AS manual_review_reason_family_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.12D Product × score manual-review concentration.
+
+Purpose:
+    Identify where unresolved MANUAL_REVIEW outcomes concentrate by product × score segment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    score_band_policy_key,
+
+    COUNT(*) AS segment_applications,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS manual_review_rows,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+    AVG(total_rule_trigger_count) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_total_rule_trigger_count_manual_review_rows,
+
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_requested_pti_manual_review_rows,
+
+    AVG(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_requested_expected_loss_manual_review_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    product_type_policy_key,
+    score_band_policy_key
+
+ORDER BY
+    manual_review_rate DESC NULLS LAST,
+    manual_review_rows DESC,
+    product_type_policy_key,
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+SECTION 14.13 — DECLINE AND POLICY-STOP VALIDATION DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that final DECLINE outcomes follow locked zero-exposure conventions and are explained by
+    policy-stop-style simulated reason codes.
+
+    Section 14.13 answers:
+
+        "Do final simulated no-offer outcomes behave as no-offer rows and remain explainable?"
+
+SQL PURPOSE:
+    1. Summarize decline population.
+    2. Review decline paths and policy-stop reason-code distribution.
+    3. Review hard policy stop, severe synthetic risk, severe DTI, and failed counteroffer decline
+       drivers.
+    4. Validate zero-exposure, zero-affordability, zero-Expected-Loss conventions.
+    5. Review product and score-band concentration of final DECLINE rows.
+
+BOUNDARY:
+    POLICY_STOP reason codes are internal simulated strategy explanation codes.
+
+    They are not adverse-action notices.
+    They are not customer communication language.
+    They are not production compliance determinations.
+    They are not fair-lending conclusions.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13A Decline summary.
+
+Purpose:
+    Provide the primary profile of final simulated no-offer outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS final_decline_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND hard_policy_stop_flag IS TRUE
+    ) AS hard_policy_stop_decline_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND synthetic_risk_decline_trigger_flag IS TRUE
+    ) AS synthetic_risk_decline_trigger_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND dti_decline_trigger_flag IS TRUE
+    ) AS dti_decline_trigger_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND preliminary_decision_outcome = 'COUNTEROFFER'
+          AND counteroffer_feasibility_pass_flag IS FALSE
+          AND failed_counteroffer_resolution = 'DECLINE'
+    ) AS failed_counteroffer_to_decline_rows,
+
+    AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_synthetic_estimated_pd_proxy_for_declines,
+
+    AVG(debt_to_income_ratio) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_dti_for_declines,
+
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_requested_pti_for_declines,
+
+    AVG(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_requested_expected_loss_for_declines,
+
+    AVG(total_rule_trigger_count) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_total_rule_trigger_count_for_declines
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13B Decline path and primary reason-code distribution.
+
+Purpose:
+    Explain final DECLINE paths and simulated policy-stop reason-code themes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_path,
+    decision_resolution_source,
+    primary_reason_code,
+
+    COUNT(*) AS final_decline_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_final_decline_rows,
+
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(debt_to_income_ratio) AS avg_debt_to_income_ratio,
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'DECLINE'
+
+GROUP BY
+    decision_path,
+    decision_resolution_source,
+    primary_reason_code
+
+ORDER BY
+    final_decline_rows DESC,
+    decision_path,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13C Decline zero-exposure convention diagnostic.
+
+Purpose:
+    Confirm final DECLINE rows follow the locked no-offer output convention.
+
+Expected:
+    all violation counts = 0.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_approved_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND counteroffer_amount IS NOT NULL
+    ) AS decline_counteroffer_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_monthly_payment_proxy IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_approved_payment_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_payment_to_income_ratio IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_approved_pti_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_expected_loss_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_approved_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND simulated_offer_exposure_flag IS DISTINCT FROM FALSE
+    ) AS decline_offer_exposure_flag_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND primary_reason_family IS DISTINCT FROM 'POLICY_STOP'
+    ) AS decline_reason_family_violation_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13D Product × score decline concentration.
+
+Purpose:
+    Identify where simulated no-offer outcomes concentrate by product × score segment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    score_band_policy_key,
+
+    COUNT(*) AS segment_applications,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS decline_rows,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_synthetic_estimated_pd_proxy_decline_rows,
+
+    AVG(debt_to_income_ratio) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_dti_decline_rows,
+
+    AVG(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_requested_expected_loss_decline_rows,
+
+    SUM(requested_amount) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS total_requested_amount_decline_rows,
+
+    SUM(requested_expected_loss_amount) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS total_requested_expected_loss_decline_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    product_type_policy_key,
+    score_band_policy_key
+
+ORDER BY
+    decline_rate DESC NULLS LAST,
+    decline_rows DESC,
+    product_type_policy_key,
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.13E Final DECLINE primary reason-code distribution.
+
+Purpose:
+    Review which simulated policy-stop explanation themes dominate final DECLINE rows.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    primary_reason_code,
+
+    COUNT(*) AS final_decline_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_final_decline_rows,
+
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(debt_to_income_ratio) AS avg_debt_to_income_ratio,
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'DECLINE'
+
+GROUP BY primary_reason_code
+
+ORDER BY
+    final_decline_rows DESC,
+    primary_reason_code;
+
+
+
+/***************************************************************************************************
+END OF PATCH 14-D THROUGH 14-E
+
+This patch replaces:
+    Section 14.7
+    Section 14.8
+    Section 14.9
+    Section 14.10
+    Section 14.11
+    Section 14.12
+    Section 14.13
+
+This patch intentionally stops before:
+    Section 14.14 — Simulated Reason-Code Coverage and Concentration QA
+
+Next patch:
+    Section 14.14 through Section 14.16
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M01619 -->
+
+
+---
+
+<a id="c038-m01621"></a>
+
+### C038-M01621
+
+**Andrew** · 2026-05-12T15:09:06.777000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01621 -->
+proceed with remaining section 14 pass 3
+<!-- END_MESSAGE C038-M01621 -->
+
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_84.md) · [Next](Part_86.md)

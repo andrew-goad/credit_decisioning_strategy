@@ -1,0 +1,2405 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 88</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 88 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_87.html">Previous</a><a href="Part_89.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m01740" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01740 · 2026-05-13T00:42:05.771496-04:00 · active path</p><div class="body"><p>You’re right. Do <strong>not</strong> use the full Section 17.20 rewrite I gave last time. Keep your <code>expected_campaign_shape</code> CTE in the clearer form with the product-guardrail expectation comment and <code>5</code> / <code>10</code> expected values. Your current Section 17.20 is the final acceptance rollup, so this should be a targeted <code>acceptance_inputs</code> CTE replacement only. fileciteturn274file0</p>
+<p>Replace only the existing <code>acceptance_inputs AS (...)</code> block with this:</p>
+<pre><code class="language-sql">acceptance_inputs AS (
+    SELECT
+        /*******************************************************************************************
+        Expected campaign shape.
+        *******************************************************************************************/
+        x.expected_campaign_runs,
+        x.expected_comparison_groups,
+        x.expected_archive_slices,
+        x.expected_archive_rows,
+        x.expected_rows_per_archive_slice,
+        x.expected_validation_rows_per_run,
+        x.expected_product_guardrail_campaign_runs,
+        x.expected_product_guardrail_policy_rows,
+
+        /*******************************************************************************************
+        Registry and archive.
+        *******************************************************************************************/
+        rr.active_campaign_registry_rows,
+        cr.active_comparison_registry_rows,
+
+        a.archived_strategy_scenario_slices,
+        a.total_archived_rows,
+        a.archive_slices_not_50000_rows,
+        a.archive_slices_with_duplicate_application_ids,
+
+        agd.duplicate_archive_grain_count,
+
+        /*******************************************************************************************
+        Comparison and source consistency.
+        *******************************************************************************************/
+        cmp.comparison_group_count,
+        cmp.comparison_ready_count,
+        cmp.comparison_review_count,
+
+        src.source_consistency_group_count,
+        src.source_consistency_pass_count,
+        src.source_consistency_review_count,
+        src.total_source_field_mismatch_rows,
+
+        /*******************************************************************************************
+        Evidence.
+        *******************************************************************************************/
+        ev.registry_run_count_for_evidence_check,
+
+        ev.executive_evidence_rows,
+        ev.executive_evidence_complete_run_count,
+        ev.executive_evidence_issue_run_count,
+
+        ev.parameter_snapshot_rows,
+        ev.parameter_snapshot_complete_run_count,
+        ev.parameter_snapshot_issue_run_count,
+
+        ev.validation_evidence_complete_run_count,
+        ev.validation_evidence_incomplete_run_count,
+        ev.min_validation_rows_per_run,
+        ev.max_validation_rows_per_run,
+        ev.total_validation_evidence_rows,
+
+        ev.segment_evidence_run_count,
+        ev.segment_evidence_issue_run_count,
+        ev.min_segment_rows_per_run,
+        ev.max_segment_rows_per_run,
+        ev.total_segment_evidence_rows,
+
+        /*******************************************************************************************
+        Final-output conventions.
+        *******************************************************************************************/
+        cv.critical_convention_violation_count,
+
+        /*******************************************************************************************
+        Product guardrail policy exact-value audit.
+
+        This assumes product_guardrail_policy_audit is registry-scoped upstream.
+        It should count only the five formal active campaign product-guardrail runs:
+            M2-06
+            M2-23
+            M2-26
+            M2-34
+            M2-36
+        *******************************************************************************************/
+        pga.product_guardrail_campaign_run_count,
+        pga.product_guardrail_parameter_snapshot_complete_run_count,
+        pga.product_guardrail_parameter_snapshot_issue_run_count,
+
+        pga.expected_product_guardrail_policy_rows AS actual_product_guardrail_policy_rows_checked,
+        pga.missing_product_guardrail_policy_rows,
+        pga.product_guardrail_policy_mismatch_rows,
+
+        /*******************************************************************************************
+        Gate-level flags.
+
+        These are included in the final output to make failed acceptance easier to troubleshoot.
+        *******************************************************************************************/
+        (
+            rr.active_campaign_registry_rows = x.expected_campaign_runs
+        ) AS campaign_registry_ready_flag,
+
+        (
+            cr.active_comparison_registry_rows = x.expected_comparison_groups
+        ) AS comparison_registry_ready_flag,
+
+        (
+            a.archived_strategy_scenario_slices = x.expected_archive_slices
+            AND a.total_archived_rows = x.expected_archive_rows
+            AND a.archive_slices_not_50000_rows = 0
+            AND a.archive_slices_with_duplicate_application_ids = 0
+            AND agd.duplicate_archive_grain_count = 0
+        ) AS archive_ready_flag,
+
+        (
+            cmp.comparison_group_count = x.expected_comparison_groups
+            AND cmp.comparison_ready_count = x.expected_comparison_groups
+            AND cmp.comparison_review_count = 0
+        ) AS comparison_ready_flag,
+
+        (
+            src.source_consistency_group_count = x.expected_comparison_groups
+            AND src.source_consistency_pass_count = x.expected_comparison_groups
+            AND src.source_consistency_review_count = 0
+            AND src.total_source_field_mismatch_rows = 0
+        ) AS source_consistency_ready_flag,
+
+        (
+            ev.registry_run_count_for_evidence_check = x.expected_campaign_runs
+            AND ev.executive_evidence_complete_run_count = x.expected_campaign_runs
+            AND ev.executive_evidence_issue_run_count = 0
+            AND ev.parameter_snapshot_complete_run_count = x.expected_campaign_runs
+            AND ev.parameter_snapshot_issue_run_count = 0
+            AND ev.validation_evidence_complete_run_count = x.expected_campaign_runs
+            AND ev.validation_evidence_incomplete_run_count = 0
+            AND ev.min_validation_rows_per_run = x.expected_validation_rows_per_run
+            AND ev.max_validation_rows_per_run = x.expected_validation_rows_per_run
+            AND ev.segment_evidence_run_count = x.expected_campaign_runs
+            AND ev.segment_evidence_issue_run_count = 0
+        ) AS evidence_ready_flag,
+
+        (
+            cv.critical_convention_violation_count = 0
+        ) AS final_output_conventions_ready_flag,
+
+        (
+            pga.product_guardrail_campaign_run_count = x.expected_product_guardrail_campaign_runs
+            AND pga.product_guardrail_parameter_snapshot_complete_run_count = x.expected_product_guardrail_campaign_runs
+            AND pga.product_guardrail_parameter_snapshot_issue_run_count = 0
+            AND pga.expected_product_guardrail_policy_rows = x.expected_product_guardrail_policy_rows
+            AND pga.missing_product_guardrail_policy_rows = 0
+            AND pga.product_guardrail_policy_mismatch_rows = 0
+        ) AS product_guardrail_policy_ready_flag
+
+    FROM expected_campaign_shape x
+    CROSS JOIN registry_summary rr
+    CROSS JOIN comparison_registry_summary cr
+    CROSS JOIN archive_summary a
+    CROSS JOIN archive_grain_duplicates agd
+    CROSS JOIN comparison_readiness cmp
+    CROSS JOIN source_consistency src
+    CROSS JOIN evidence_coverage ev
+    CROSS JOIN convention_summary cv
+    CROSS JOIN product_guardrail_policy_audit pga
+),
+</code></pre>
+<p>This keeps the update limited to <strong>17.20C</strong> and uses the previously intended product-guardrail fields.</p>
+</div></article><article id="c038-m01741" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01741 · 2026-05-13T00:49:15.737000-04:00 · active path</p><div class="body"><p>is this correct for your 17.20D?  you suggested: 17.20D — update the final SELECT</p>
+<p>In the final SELECT, add this field near the expected campaign shape fields:</p>
+<pre><code>expected_product_guardrail_campaign_runs,
+</code></pre>
+<p>Then replace the current product-guardrail output fields with these:</p>
+<pre><code>product_guardrail_campaign_run_count,
+product_guardrail_parameter_snapshot_complete_run_count,
+product_guardrail_parameter_snapshot_issue_run_count,
+
+actual_product_guardrail_policy_rows_checked,
+missing_product_guardrail_policy_rows,
+product_guardrail_policy_mismatch_rows        and this is what I did: 
+</code></pre>
+<p><strong>Attachments in export:</strong> <code>Pasted text(176).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01744" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01744 · 2026-05-13T00:51:29.334924-04:00 · active path</p><div class="body"><p>Yes — your <strong>17.20D final <code>SELECT</code> update is correct</strong> for the recommendation.</p>
+<p>You included the newly required expected-shape field:</p>
+<pre><code class="language-sql">expected_product_guardrail_campaign_runs,
+</code></pre>
+<p>and you included the revised product-guardrail audit output fields:</p>
+<pre><code class="language-sql">product_guardrail_campaign_run_count,
+product_guardrail_parameter_snapshot_complete_run_count,
+product_guardrail_parameter_snapshot_issue_run_count,
+
+actual_product_guardrail_policy_rows_checked,
+missing_product_guardrail_policy_rows,
+product_guardrail_policy_mismatch_rows
+</code></pre>
+<p>That matches the intended 17.20D update. The only difference is that you placed:</p>
+<pre><code class="language-sql">expected_product_guardrail_policy_rows,
+expected_product_guardrail_campaign_runs,
+</code></pre>
+<p>rather than:</p>
+<pre><code class="language-sql">expected_product_guardrail_campaign_runs,
+expected_product_guardrail_policy_rows,
+</code></pre>
+<p>That ordering is not a SQL issue. It will still work. For readability, I slightly prefer listing campaign runs first, then policy rows, because the logic is:</p>
+<pre><code class="language-text">5 product-guardrail campaign runs × 2 audited products = 10 product-policy audit rows
+</code></pre>
+<p>But your current ordering is valid. fileciteturn277file10</p>
+<p>The only thing to verify is that your upstream <strong><code>acceptance_inputs AS (...)</code></strong> block now exposes all of these fields:</p>
+<pre><code class="language-sql">x.expected_product_guardrail_campaign_runs,
+x.expected_product_guardrail_policy_rows,
+
+pga.product_guardrail_campaign_run_count,
+pga.product_guardrail_parameter_snapshot_complete_run_count,
+pga.product_guardrail_parameter_snapshot_issue_run_count,
+
+pga.expected_product_guardrail_policy_rows AS actual_product_guardrail_policy_rows_checked,
+pga.missing_product_guardrail_policy_rows,
+pga.product_guardrail_policy_mismatch_rows,
+</code></pre>
+<p>and that your <code>product_guardrail_policy_ready_flag</code> uses:</p>
+<pre><code class="language-sql">(
+    pga.product_guardrail_campaign_run_count = x.expected_product_guardrail_campaign_runs
+    AND pga.product_guardrail_parameter_snapshot_complete_run_count = x.expected_product_guardrail_campaign_runs
+    AND pga.product_guardrail_parameter_snapshot_issue_run_count = 0
+    AND pga.expected_product_guardrail_policy_rows = x.expected_product_guardrail_policy_rows
+    AND pga.missing_product_guardrail_policy_rows = 0
+    AND pga.product_guardrail_policy_mismatch_rows = 0
+) AS product_guardrail_policy_ready_flag
+</code></pre>
+<p>If those upstream pieces are present, your final <code>SELECT</code> is good.</p>
+<p>For cleaner presentation only, I would format your expected campaign shape fields like this:</p>
+<pre><code class="language-sql">/***********************************************************************************************
+Expected campaign shape.
+***********************************************************************************************/
+expected_campaign_runs,
+expected_comparison_groups,
+expected_archive_slices,
+expected_archive_rows,
+expected_rows_per_archive_slice,
+expected_validation_rows_per_run,
+expected_product_guardrail_campaign_runs,
+expected_product_guardrail_policy_rows,
+</code></pre>
+<p>But again: <strong>your pasted 17.20D field list is functionally correct.</strong></p>
+</div></article><article id="c038-m01745" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01745 · 2026-05-13T01:00:38.390000-04:00 · active path</p><div class="body"><p>evaluate the full code one more time.</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0(2).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01760" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01760 · 2026-05-13T01:08:08.082794-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-13, the current uploaded Module 2 code is in <strong>release-candidate / execution-ready shape</strong>. I would not make another code-design pass. The latest file has the key final updates in place: Section 1.4 cleanup includes the new Section 14 helper objects, Section 14 carries its validation context helpers and <code>tmp_m2_validation_status_summary</code>, Section 17.7 / 17.8 now check complete validation evidence at <strong>18 rows per run</strong>, and Section 17.20 now includes the product-guardrail campaign-run expectation and readiness logic. fileciteturn280file11 fileciteturn280file5 fileciteturn280file0 fileciteturn281file1</p>
+<h2>Verdict</h2>
+<p><strong>Static review result: ready for final PostgreSQL execution testing.</strong></p>
+<p>I would treat the current file as the canonical release candidate. I would only call it truly “final validated release” after the full runtime path completes and Section 17.20 returns:</p>
+<pre><code class="language-sql">MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+</code></pre>
+<p>I did not execute the SQL against PostgreSQL in this review. I performed a full static inspection of the uploaded file.</p>
+<h2>What I checked</h2>
+<p>The uploaded file has:</p>
+<table>
+<thead>
+<tr>
+<th>Static check</th>
+<th align="right">Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>File size reviewed</td>
+<td align="right">~2.22M characters</td>
+</tr>
+<tr>
+<td>Lines reviewed</td>
+<td align="right">59,125</td>
+</tr>
+<tr>
+<td>Formal section / subsection headers found</td>
+<td align="right">156</td>
+</tr>
+<tr>
+<td>Duplicate formal section headers</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Block comments <code>/* ... */</code></td>
+<td align="right">Balanced</td>
+</tr>
+<tr>
+<td><code>DO $$ ... END $$;</code> blocks</td>
+<td align="right">Balanced, 36 / 36</td>
+</tr>
+<tr>
+<td>Parentheses after comment/string stripping</td>
+<td align="right">Balanced</td>
+</tr>
+<tr>
+<td>Section 14 coverage</td>
+<td align="right">14.0 through 14.20 present</td>
+</tr>
+<tr>
+<td>Section 17 coverage</td>
+<td align="right">17.1 through 17.20 present</td>
+</tr>
+<tr>
+<td>Section 14.19 validation areas</td>
+<td align="right">18</td>
+</tr>
+<tr>
+<td>Section 2.5 campaign catalog rows</td>
+<td align="right">36</td>
+</tr>
+<tr>
+<td>Section 2.10 comparison groups</td>
+<td align="right">17</td>
+</tr>
+<tr>
+<td>Section 16.9</td>
+<td align="right">Present</td>
+</tr>
+<tr>
+<td>Section 17.20</td>
+<td align="right">Present once</td>
+</tr>
+</tbody></table>
+<h2>Key confirmations</h2>
+<p>Section 1.4 is now aligned with the new Section 14 design. It drops <code>tmp_m2_validation_archive_readiness_context</code>, <code>tmp_m2_validation_comparison_readiness_context</code>, <code>tmp_m2_validation_source_consistency_context</code>, and <code>tmp_m2_validation_status_summary</code>, and the commentary correctly explains why Section 14 also performs a local reset for rerun safety. fileciteturn280file11</p>
+<p>Section 14 is correctly positioned as the read-only latest-run validation layer. It identifies <code>credit_decisioning_sim.strategy_decisions</code> as the primary validation target, uses archive/comparison/source consistency as context, creates the three Section 14.0 helper objects, and materializes <code>tmp_m2_validation_status_summary</code> as the evidence spine consumed by Section 16. It also correctly treats missing Section 13 context as <code>NOT_APPLICABLE</code> rather than a hard failure. fileciteturn280file5 fileciteturn280file2</p>
+<p>Section 17.7 and 17.8 are now stronger than the earlier version. They no longer merely check <code>validation_rows &gt; 0</code>; they require validation rows to match the expected Section 14 validation spine, which is currently <strong>18 rows per run</strong>. That is the correct campaign-level acceptance standard. fileciteturn280file0</p>
+<p>Section 16.9 is still properly documented as the post-campaign frontier evidence synchronization layer, and Section 17 correctly states that it should run after all campaign runs are complete, Section 15 has been rerun from the completed archive, and Section 16.9 has synchronized fresh frontier fields into <code>strategy_run_evidence_summary</code>. fileciteturn280file6turn280file15</p>
+<p>Section 17.20 now has the intended expected campaign shape, including <code>expected_product_guardrail_campaign_runs = 5</code> and <code>expected_product_guardrail_policy_rows = 10</code>, with the five formal product-guardrail runs listed as M2-06, M2-23, M2-26, M2-34, and M2-36. fileciteturn281file1turn281file2</p>
+<p>The product-guardrail audit is now registry-scoped and stronger. It starts from formal active campaign product-guardrail runs, checks parameter snapshot completeness, audits UPL and revolving-line policy rows, and flags missing or mismatched product-policy values. The final <code>product_guardrail_policy_ready_flag</code> now requires the product-guardrail campaign-run count, complete parameter snapshot count, expected policy-row count, no missing rows, and no mismatches. fileciteturn281file0turn281file11</p>
+<h2>Minor observations, not required changes</h2>
+<p>The field name <code>actual_product_guardrail_policy_rows_checked</code> is acceptable, but semantically it is really the joined audit-row count from <code>pga.expected_product_guardrail_policy_rows</code>. It still works because the readiness flag compares it to the expected 10 audit rows and separately checks missing/mismatch counts. No change is required.</p>
+<p>The formal campaign shape hardcodes 50,000 rows per archive slice and 18 validation rows per run. That is correct for this V1.0 campaign. If the formal campaign size or Section 14 validation spine changes later, Section 17.7, Section 17.8, and Section 17.20 should be updated together.</p>
+<p>The banner still says <code>FINAL VALIDATED RELEASE</code>. That is fine after runtime acceptance, but strictly speaking the current status from this review is <strong>static release candidate</strong> until PostgreSQL execution and Section 17.20 acceptance pass.</p>
+<h2>Final recommendation</h2>
+<p>Do <strong>not</strong> make more code changes right now.</p>
+<p>Run the final execution path:</p>
+<pre><code class="language-text">all planned runs through Section 16.8
+→ fresh Section 15
+→ Section 16.9 synchronization
+→ Section 17
+→ confirm Section 17.20 returns MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+</code></pre>
+<p>My assessment: the architecture, commentary, workflow, validation spine, evidence capture, frontier synchronization, and final acceptance framework are now coherent and ready for runtime validation.</p>
+</div></article><article id="c038-m01761" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01761 · 2026-05-13T01:10:48.202000-04:00 · active path</p><div class="body"><p>why would we hardcode this?  we want this to be flexible for whatever the user chooses in module 1: The formal campaign shape hardcodes 50,000 rows per archive slice and 18 validation rows per run. That is correct for this V1.0 campaign. If the formal campaign size or Section 14 validation spine changes later, Section 17.7, Section 17.8, and Section 17.20 should be updated together.</p>
+</div></article><article id="c038-m01764" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01764 · 2026-05-13T01:13:38.181337-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-13, you’re right. The <strong>50,000 rows per archive slice</strong> should not be hardcoded if we want Module 2 to support whatever population size the user selected in Module 1. The current Section 17 commentary and checks still describe the current formal campaign shape as 36 runs, 17 comparison groups, 1,800,000 archived rows, and 50,000 rows per slice; that is valid for the campaign we just ran, but it should be treated as an observed/example campaign shape, not a permanent acceptance assumption. fileciteturn282file2</p>
+<p>I would revise the design this way:</p>
+<h2>1. Archive slice row counts should be dynamic</h2>
+<p>The better standard is:</p>
+<pre><code class="language-text">Each Module 2 archived slice should equal the row count of its selected Module 1 source slice.
+</code></pre>
+<p>So instead of this logic:</p>
+<pre><code class="language-sql">archived_rows = 50000
+</code></pre>
+<p>Section 17 should derive:</p>
+<pre><code class="language-sql">expected_source_rows
+</code></pre>
+<p>from the active campaign registry joined to the Module 1 scenario archive:</p>
+<pre><code class="language-text">strategy_run_campaign_registry
+→ module1_scenario_set_name
+→ module1_scenario_name
+→ population_id
+→ synthetic_applications_scenario_archive row count
+</code></pre>
+<p>Then Section 17 should check:</p>
+<pre><code class="language-sql">archived_rows = expected_source_rows
+distinct_application_id_count = expected_source_rows
+</code></pre>
+<p>That lets Module 1 use 50,000, 75,000, 100,000, or any other governed population size without breaking Module 2 acceptance.</p>
+<h2>2. Total archive rows should also be dynamic</h2>
+<p>Instead of hardcoding:</p>
+<pre><code class="language-sql">expected_archive_rows = 1800000
+</code></pre>
+<p>derive it as:</p>
+<pre><code class="language-sql">SUM(expected_source_rows) across active campaign runs
+</code></pre>
+<p>For the campaign we just ran, that naturally equals:</p>
+<pre><code class="language-text">36 × 50,000 = 1,800,000
+</code></pre>
+<p>But if a future Module 1 population uses 75,000 rows and the user runs 36 Module 2 campaign rows, the expected total becomes:</p>
+<pre><code class="language-text">36 × 75,000 = 2,700,000
+</code></pre>
+<p>without requiring code edits.</p>
+<h2>3. Validation rows should not be permanently hardcoded to 18 either</h2>
+<p>This one is slightly different. The <strong>18</strong> is not tied to Module 1. It comes from the current Section 14 validation status spine. Section 16.7 already validates each current run by checking that persistent validation evidence matches <code>tmp_m2_validation_status_summary</code>, which is the right local gatekeeper. fileciteturn282file3</p>
+<p>For Section 17 campaign acceptance, instead of hardcoding:</p>
+<pre><code class="language-sql">expected_validation_rows_per_run = 18
+</code></pre>
+<p>I would derive the validation evidence spine from the evidence table itself:</p>
+<pre><code class="language-text">expected validation key set =
+distinct validation_area + validation_test_name + validation_category
+across active campaign runs
+</code></pre>
+<p>Then each run should have:</p>
+<pre><code class="language-sql">validation_distinct_key_count = expected_validation_key_count
+validation_rows = validation_distinct_key_count
+</code></pre>
+<p>That gives us flexibility if Section 14 later grows from 18 checks to 19, 22, or 25 checks. It also protects against partial evidence capture by checking completeness per run. The current Section 17.7 / 17.8 wording explicitly says 18 validation rows and 25 segment rows, which was useful for our specific campaign but is too rigid for a reusable engine. fileciteturn282file12</p>
+<h2>4. What should remain hardcoded?</h2>
+<p>Very little.</p>
+<p>I would keep only values that are true design constants for a specific audit, such as the two audited product types in the product-guardrail exact-value audit:</p>
+<pre><code class="language-text">UNSECURED_PERSONAL_LOAN
+REVOLVING_LINE
+</code></pre>
+<p>Even the expected product-guardrail count can be dynamic:</p>
+<pre><code class="language-sql">expected_product_guardrail_campaign_runs =
+COUNT(*) active campaign runs where strategy_name = &#39;PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY&#39;
+
+expected_product_guardrail_policy_rows =
+expected_product_guardrail_campaign_runs × COUNT(expected audited products)
+</code></pre>
+<p>So we do not need to hardcode 5 or 10 either, except in explanatory comments about the formal campaign we ran.</p>
+<h2>Recommended design standard</h2>
+<p>I would change the Section 17 acceptance philosophy from:</p>
+<pre><code class="language-text">Does the campaign match the exact 36 × 50,000 formal campaign we just ran?
+</code></pre>
+<p>to:</p>
+<pre><code class="language-text">Does every active campaign registry run have one archived slice, and does each archived slice match its selected Module 1 source population?
+</code></pre>
+<p>That is the right standard for a reusable Module 2 engine.</p>
+<h2>Bottom line</h2>
+<p>Your instinct is correct. My prior wording was too specific to the campaign we just completed. The better version is:</p>
+<pre><code class="language-text">Do not hardcode Module 1 population size.
+Do not hardcode total archive rows.
+Do not hardcode validation-row count as a permanent constant.
+Derive expected archive counts from active campaign registry + Module 1 source counts.
+Derive expected validation completeness from the persisted validation evidence key set.
+</code></pre>
+<p>I would make one final Section 17 hardening pass to remove those hardcoded assumptions from 17.7, 17.8, and 17.20.</p>
+</div></article><article id="c038-m01765" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01765 · 2026-05-13T01:15:37.062000-04:00 · active path</p><div class="body"><p>is it only section 17 we need to change related to this hardcoding? no other sections?</p>
+</div></article><article id="c038-m01769" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01769 · 2026-05-13T01:18:16.177421-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-13, <strong>the required SQL logic changes are concentrated in Section 17</strong>. I would not change Sections 3–16 for this hardcoding issue, except for <strong>comment-only cleanup</strong> where Section 0 or Section 17 language still describes the old fixed campaign shape.</p>
+<p>The key reason: Sections 11, 12, 14, and 16 are already run-local or source-driven. Section 12 persists the already-materialized latest-run output rather than assuming a fixed row count, and Section 16.7 validates current-run evidence against <code>tmp_m2_validation_status_summary</code> and the latest-run product × score segment count rather than a fixed campaign population. fileciteturn281file29 fileciteturn281file12</p>
+<h2>What needs code changes</h2>
+<p><strong>Yes: Section 17 needs code changes.</strong> Specifically, the hardcoded acceptance logic appears in:</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Current issue</th>
+<th>Change needed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>17.1</strong></td>
+<td>Assumes <code>36</code> slices, <code>1,800,000</code> rows, and <code>50,000</code> rows per slice</td>
+<td>Derive expected slices and total rows from active campaign registry + expected Module 1 source counts</td>
+</tr>
+<tr>
+<td><strong>17.2</strong></td>
+<td>Comment says each slice should be <code>50,000</code></td>
+<td>Comment-only update or add expected-source-row display</td>
+</tr>
+<tr>
+<td><strong>17.4 / 17.5</strong></td>
+<td>Uses <code>archived_rows &lt;&gt; 50000</code> and <code>COUNT(*) = 36</code></td>
+<td>Compare archived rows to expected source rows per registry run</td>
+</tr>
+<tr>
+<td><strong>17.7 / 17.8</strong></td>
+<td>Uses <code>36</code> campaign runs and <code>18</code> validation rows</td>
+<td>Derive campaign run count from active registry and validation spine count from evidence/key set or Section 14 design</td>
+</tr>
+<tr>
+<td><strong>17.20</strong></td>
+<td>Hardcodes <code>36</code>, <code>17</code>, <code>1,800,000</code>, <code>50,000</code>, <code>18</code>, and product-guardrail <code>5/10</code></td>
+<td>Derive all except the audited product-value expectations</td>
+</tr>
+</tbody></table>
+<p>The retrieved current Section 17 snippets show these exact fixed assumptions: Section 17.1 expects <code>36</code>, <code>1,800,000</code>, and <code>50,000</code>; Section 17.4/17.5 check <code>archived_rows &lt;&gt; 50000</code>; Section 17.7/17.8 expect <code>36</code> runs and <code>18</code> validation rows; and Section 17.20 defines <code>expected_campaign_shape</code> with <code>36</code>, <code>17</code>, <code>1,800,000</code>, <code>50,000</code>, and <code>18</code>. fileciteturn283file9 fileciteturn283file11 fileciteturn282file7 fileciteturn282file2</p>
+<h2>What does <strong>not</strong> need code changes</h2>
+<p><strong>Section 13 does not need this fix.</strong> Its matched-comparison readiness already compares baseline and challenger row counts to each other and to their own distinct application counts; it does not require a hardcoded <code>50,000</code> population. That is the right pattern because matched comparison should prove equal population overlap, not assume a fixed population size. fileciteturn284file1</p>
+<p><strong>Section 14 does not need this fix.</strong> It validates the latest-run output and uses archive/comparison context, but its job is not full-campaign row-count acceptance. Section 14’s local validation boundary is latest-run QA, not campaign-shape enforcement. fileciteturn284file16</p>
+<p><strong>Section 16 does not need this fix.</strong> Section 16.7 is already designed to compare validation evidence to <code>tmp_m2_validation_status_summary</code> and segment evidence to the current latest-run segment count. That means it is already flexible for future Section 14 validation-spine changes and future Module 1 population sizes at the current-run level. fileciteturn281file12</p>
+<h2>Comment-only updates outside Section 17</h2>
+<p>I would also update <strong>Section 0 / job-aid commentary</strong> if it implies a fixed formal campaign shape. The current Section 0 describes the formal campaign framework and operating flow, but the reusable-engine standard should say Section 17 derives expected archive and evidence counts from the active campaign registry and selected Module 1 source populations, not from fixed 50,000-row assumptions. fileciteturn281file0</p>
+<p>Also, if you keep the old standalone “campaign query pack” outside the canonical SQL, that query pack still has hardcoded <code>50,000</code>, <code>1,800,000</code>, and <code>36</code> expectations. That is separate from the canonical module, but it should be updated or retired if you want all QA collateral to be flexible. fileciteturn281file8</p>
+<h2>Recommendation</h2>
+<p>Make one focused change set:</p>
+<ol>
+<li><strong>Patch Section 17 only for SQL logic.</strong></li>
+<li><strong>Update Section 0 and Section 17 comments to describe dynamic acceptance.</strong></li>
+<li><strong>Do not touch Sections 3–16 for this issue.</strong></li>
+<li><strong>Ignore or separately update old standalone QA queries if they are still part of your workflow.</strong></li>
+</ol>
+<p>The better acceptance principle is:</p>
+<pre><code class="language-text">For every active campaign registry run:
+    archived row count must equal that run’s selected Module 1 source population count;
+    archived distinct application count must equal archived row count;
+    evidence must exist once per active campaign registry run;
+    validation evidence must be complete relative to the validation evidence spine, not hardcoded to 18 forever.
+</code></pre>
+</div></article><article id="c038-m01770" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01770 · 2026-05-13T01:22:42.536000-04:00 · active path</p><div class="body"><p>thanks.  proceed with updating section 17 through 17.8 (current code attached):</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(177).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01773" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01773 · 2026-05-13T01:33:07.621524-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-13, the current Section 17 still frames the completed campaign around fixed counts like 36 active runs, 1,800,000 archived rows, 50,000 rows per slice, and 18 validation rows per run. This patch updates <strong>Section 17 through Section 17.8 only</strong> so archive and evidence acceptance are derived dynamically from the active campaign registry, Module 1 source slice counts, archived slice counts, and persisted validation evidence keys. fileciteturn286file7 fileciteturn285file15</p>
+<p>Replace your current <strong>Section 17 header through the end of Section 17.8</strong> with this. It intentionally stops before <strong>Section 17.9</strong>.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 17 — POST-CAMPAIGN ACCEPTANCE, EXPORT, PARAMETER AUDIT, AND STRATEGY EFFECT REVIEW
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide the final post-campaign control tower after all planned Module 2 campaign runs have been
+    completed, archived, validated, compared, summarized, synchronized, and captured into persistent
+    evidence.
+
+    Section 17 answers:
+
+        &quot;Is the completed Module 2 campaign structurally complete, registry-aligned,
+         evidence-complete, convention-clean, comparison-ready, source-consistent,
+         parameter-traceable, product-policy-audited, and analytically ready for final
+         interpretation?&quot;
+
+WHY THIS SECTION EXISTS:
+    Earlier sections execute, validate, archive, compare, summarize, and capture the strategy
+    campaign.
+
+        Section 11:
+            materializes the latest-run strategy output.
+
+        Section 12:
+            persists completed latest-run output into the governed strategy archive.
+
+        Section 13:
+            provides archive-backed matched baseline / challenger comparison.
+
+        Section 14:
+            validates latest-run behavior and creates validation evidence.
+
+        Section 15:
+            summarizes archive-backed strategy frontier tradeoffs.
+
+        Section 16.0–16.8:
+            persists run-level executive evidence, validation evidence, parameter snapshots, and
+            product × score segment evidence.
+
+        Section 16.9:
+            synchronizes fresh Section 15-derived frontier fields into persistent executive evidence
+            after the full campaign archive is complete.
+
+    Section 17 is different.
+
+    Section 17 does not create new strategy output.
+    Section 17 does not persist new evidence.
+    Section 17 does not synchronize frontier evidence.
+    Section 17 reviews the completed campaign from persistent archive, registry, comparison,
+    validation, parameter-snapshot, product-policy, and evidence objects.
+
+SECTION 17 WORKFLOW POSITION:
+    Section 17 is the final read-only acceptance layer.
+
+    It should be run after:
+
+        1. All planned Module 2 campaign runs have completed through Section 16.8.
+        2. Section 15 has been rerun once from the completed campaign archive.
+        3. Section 16.9 has synchronized fresh Section 15 frontier fields into:
+                credit_decisioning_sim.strategy_run_evidence_summary
+        4. Section 16 evidence rows exist for all accepted campaign runs.
+        5. Any known reruns, repair runs, or product-policy corrections have been completed.
+
+WHY SECTION 16.9 MUST COME BEFORE SECTION 17:
+    Section 15 is archive-wide.
+
+    Section 16.0–16.8 captures evidence one run at a time.
+
+    If a baseline or challenger was added or rerun after earlier evidence capture, older executive
+    evidence rows may still contain stale Section 15-derived frontier labels.
+
+    Section 16.9 formalizes the refresh so Section 17 evaluates the final synchronized evidence
+    state rather than a partially stale campaign evidence layer.
+
+DO NOT RUN SECTION 1 IMMEDIATELY BEFORE SECTION 17:
+    Section 1 drops the replaceable latest-run table and temporary objects.
+
+    Section 17 is designed to read persistent archive, registry, comparison, and evidence objects.
+
+    If the user needs to refresh frontier evidence before Section 17:
+        rerun Section 15 from the completed archive;
+        run Section 16.9;
+        then run Section 17.
+
+WHAT SECTION 17 INCLUDES:
+    17.1  Archive campaign inventory.
+    17.2  Archive slice detail.
+    17.3  Archive grain duplicate check.
+    17.4  Campaign registry to archive reconciliation.
+    17.5  Registry runs missing or mismatched in archive.
+    17.6  Archive slices without active campaign registry row.
+    17.7  Section 16 evidence coverage summary.
+    17.8  Section 16 evidence coverage detail by run.
+    17.9  Full-archive final-output convention checks.
+    17.10 Validation status summary by campaign run.
+    17.11 Validation REVIEW / NOT_APPLICABLE concentration.
+    17.12 Comparison registry readiness.
+    17.13 Matched comparison source-field consistency.
+    17.14 Executive evidence campaign summary.
+    17.15 Baseline × challenger delta summary.
+    17.16 Product guardrail strategy effect check.
+    17.17 Counteroffer-first strategy effect check.
+    17.18 Parameter snapshot profile audit.
+    17.19 Product guardrail policy exact-value audit.
+    17.20 Final Module 2 campaign acceptance rollup.
+
+WHY THE FORMER CAMPAIGN QUERIES 16–20 ARE AT THE END:
+    The prior standalone campaign QA queries 16–20 are now represented by the closing Section 17
+    checks:
+
+        product guardrail strategy effect check,
+        counteroffer-first strategy effect check,
+        parameter snapshot profile audit,
+        product guardrail policy exact-value audit,
+        and final campaign acceptance rollup.
+
+    Section 17 adds earlier campaign-wide completeness, reconciliation, evidence, convention, and
+    comparison-readiness checks first, then keeps those strategy-effect and acceptance checks as the
+    final executive acceptance layer.
+
+DYNAMIC ACCEPTANCE DESIGN:
+    Section 17 no longer assumes that every Module 1 source slice has 50,000 rows.
+
+    Instead, for every active campaign registry run, Section 17 derives the expected source population
+    row count from:
+
+        credit_decisioning_sim.synthetic_applications_scenario_archive
+
+    using:
+
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    Then Section 17 checks whether each archived Module 2 strategy slice has:
+
+        archived_rows = expected_module1_source_rows
+        distinct_application_id_count = expected_module1_source_rows
+
+    This allows Module 2 to work with any governed Module 1 population size selected by the user.
+
+VALIDATION EVIDENCE COMPLETENESS DESIGN:
+    Section 17 no longer hardcodes the Section 14 validation evidence spine as 18 rows forever.
+
+    Instead, Section 17 derives the validation evidence key set from persisted validation evidence
+    across active campaign registry runs:
+
+        validation_area
+        validation_test_name
+        validation_category
+
+    Each run should contain the full derived validation evidence key set, without duplicate
+    validation keys.
+
+SEGMENT EVIDENCE COMPLETENESS DESIGN:
+    Section 17 no longer assumes a fixed 25 product × score segment rows.
+
+    Instead, Section 17 derives expected segment evidence count from each archived strategy slice
+    using the distinct product × score × product-score segment combinations present in the archive.
+
+WHAT TO LOOK FOR IN SECTION 17 RESULTS:
+    Archive inventory:
+        Every active campaign registry run should have one matching archived strategy slice, and each
+        archived slice should match its selected Module 1 source population row count.
+
+    Archive grain:
+        Duplicate archive-grain count should be zero.
+
+    Registry reconciliation:
+        Every active campaign registry run should reconcile to the archive.
+
+    Evidence coverage:
+        Every accepted campaign run should have one executive evidence row, one parameter snapshot,
+        complete validation evidence, and complete segment evidence.
+
+    Final-output conventions:
+        Full-archive convention violation counts should be zero.
+
+    Validation status:
+        PASS rows are expected.
+        REVIEW rows should be interpreted before documentation.
+        NOT_APPLICABLE rows should be understood in context.
+
+    Comparison readiness:
+        Formal comparison groups should be ready after the full campaign archive is complete.
+
+    Source-field consistency:
+        Matched baseline and challenger source fields should match so Module 2 strategy deltas are not
+        contaminated by Module 1 population drift.
+
+    Executive evidence:
+        Frontier labels should reflect the fresh post-campaign Section 15 state after Section 16.9.
+
+    Parameter snapshots:
+        Strategy and product-policy payloads should be present and traceable for every accepted run.
+
+    Product guardrail audit:
+        Product-guardrail strategy runs should preserve intended exact UPL and revolving-line policy
+        values.
+
+READ-ONLY BOUNDARY:
+    Section 17 does not insert archive rows.
+    Section 17 does not delete archive rows.
+    Section 17 does not update archive rows.
+    Section 17 does not modify latest-run rows.
+    Section 17 does not modify evidence rows.
+    Section 17 does not modify campaign registry rows.
+    Section 17 does not modify comparison registry rows.
+    Section 17 does not modify strategy parameter rows.
+    Section 17 does not modify product-policy parameter rows.
+    Section 17 does not recalculate decisions.
+    Section 17 does not recalculate approved exposure.
+    Section 17 does not recalculate approved Expected Loss.
+    Section 17 does not reassign simulated reason codes.
+    Section 17 does not draft the BRD.
+    Section 17 does not draft the written Validation Summary.
+
+COMMON MISUSE TO AVOID:
+    Do not run Section 1 immediately before Section 17.
+    Do not interpret Section 17 as creating or repairing evidence.
+    Do not interpret Section 17 as recalculating frontier fields.
+    Do not interpret Section 17 as replacing Section 14 latest-run QA.
+    Do not interpret Section 17 as replacing the written Validation Summary.
+    Do not interpret simulated reason-code movement as customer communication language.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 17.1 — MODULE 2 ARCHIVE CAMPAIGN INVENTORY
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that active campaign registry runs have matching archived strategy slices, and that each
+    archived slice matches the row count of its selected Module 1 source population.
+
+SQL PURPOSE:
+    1. Read active campaign registry runs.
+    2. Derive expected source population row counts from the Module 1 scenario archive.
+    3. Read archived Module 2 strategy slice counts.
+    4. Compare archived row counts and distinct application_id counts to expected Module 1 source
+       counts.
+    5. Return one compact campaign inventory status row.
+
+DYNAMIC ACCEPTANCE PRINCIPLE:
+    The expected archived row count is not hardcoded.
+
+    For every active campaign registry run:
+
+        expected_module1_source_rows =
+            COUNT(*)
+            FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+            WHERE scenario_set_name = module1_scenario_set_name
+              AND scenario_name = module1_scenario_name
+              AND population_id = population_id
+
+EXPECTED RESULT:
+    active_campaign_registry_rows &gt; 0
+    module1_source_count_missing_runs = 0
+    registry_runs_missing_archive_rows = 0
+    registry_runs_with_archive_row_count_mismatch = 0
+    registry_runs_with_duplicate_application_ids = 0
+    archive_campaign_inventory_status = MODULE_2_ARCHIVE_INVENTORY_READY
+
+***************************************************************************************************/
+
+WITH active_campaign_runs AS (
+    SELECT
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        showcase_name,
+        comparison_group_id,
+        validation_evidence_group_id,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+module1_source_counts AS (
+    SELECT
+        scenario_set_name AS module1_scenario_set_name,
+        scenario_name AS module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS expected_module1_source_rows,
+        COUNT(DISTINCT application_id) AS expected_module1_distinct_application_id_count
+    FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    GROUP BY
+        scenario_set_name,
+        scenario_name,
+        population_id
+),
+
+archive_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+        MIN(archive_inserted_ts) AS first_archive_inserted_ts,
+        MAX(archive_inserted_ts) AS last_archive_inserted_ts
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+registry_archive_join AS (
+    SELECT
+        r.module1_run_id,
+        r.module2_run_id,
+        r.run_sequence_number,
+        r.showcase_id,
+        r.showcase_name,
+        r.comparison_group_id,
+        r.validation_evidence_group_id,
+
+        r.module1_scenario_set_name,
+        r.module1_scenario_name,
+        r.population_id,
+
+        r.strategy_set_name,
+        r.strategy_name,
+        r.strategy_version,
+
+        s.expected_module1_source_rows,
+        s.expected_module1_distinct_application_id_count,
+
+        COALESCE(a.archived_rows, 0) AS archived_rows,
+        COALESCE(a.distinct_application_id_count, 0) AS distinct_application_id_count,
+
+        a.first_archive_inserted_ts,
+        a.last_archive_inserted_ts
+
+    FROM active_campaign_runs r
+
+    LEFT JOIN module1_source_counts s
+        ON s.module1_scenario_set_name = r.module1_scenario_set_name
+       AND s.module1_scenario_name = r.module1_scenario_name
+       AND s.population_id = r.population_id
+
+    LEFT JOIN archive_counts a
+        ON a.strategy_set_name = r.strategy_set_name
+       AND a.strategy_name = r.strategy_name
+       AND a.strategy_version = r.strategy_version
+       AND a.module1_scenario_set_name = r.module1_scenario_set_name
+       AND a.module1_scenario_name = r.module1_scenario_name
+       AND a.population_id = r.population_id
+)
+
+SELECT
+    COUNT(*) AS active_campaign_registry_rows,
+
+    COUNT(DISTINCT (
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    )) AS distinct_module1_source_slices,
+
+    COUNT(*) FILTER (
+        WHERE expected_module1_source_rows IS NULL
+    ) AS module1_source_count_missing_runs,
+
+    SUM(COALESCE(expected_module1_source_rows, 0)) AS expected_total_active_campaign_source_rows,
+
+    COUNT(*) FILTER (
+        WHERE archived_rows &gt; 0
+    ) AS registry_runs_with_archive_rows,
+
+    COUNT(*) FILTER (
+        WHERE archived_rows = 0
+    ) AS registry_runs_missing_archive_rows,
+
+    SUM(archived_rows) AS total_active_campaign_archived_rows,
+
+    COUNT(*) FILTER (
+        WHERE expected_module1_source_rows IS NOT NULL
+          AND archived_rows &lt;&gt; expected_module1_source_rows
+    ) AS registry_runs_with_archive_row_count_mismatch,
+
+    COUNT(*) FILTER (
+        WHERE expected_module1_source_rows IS NOT NULL
+          AND distinct_application_id_count &lt;&gt; expected_module1_source_rows
+    ) AS registry_runs_with_duplicate_or_missing_application_ids,
+
+    MIN(first_archive_inserted_ts) AS first_campaign_archive_inserted_ts,
+    MAX(last_archive_inserted_ts) AS last_campaign_archive_inserted_ts,
+
+    CASE
+        WHEN COUNT(*) = 0
+            THEN &#39;REVIEW_NO_ACTIVE_CAMPAIGN_REGISTRY_RUNS&#39;
+
+        WHEN COUNT(*) FILTER (WHERE expected_module1_source_rows IS NULL) &gt; 0
+            THEN &#39;REVIEW_MODULE1_SOURCE_COUNTS_MISSING&#39;
+
+        WHEN COUNT(*) FILTER (WHERE archived_rows = 0) &gt; 0
+            THEN &#39;REVIEW_CAMPAIGN_ARCHIVE_MISSING_RUNS&#39;
+
+        WHEN COUNT(*) FILTER (
+            WHERE expected_module1_source_rows IS NOT NULL
+              AND archived_rows &lt;&gt; expected_module1_source_rows
+        ) &gt; 0
+            THEN &#39;REVIEW_CAMPAIGN_ARCHIVE_ROW_COUNT_MISMATCH&#39;
+
+        WHEN COUNT(*) FILTER (
+            WHERE expected_module1_source_rows IS NOT NULL
+              AND distinct_application_id_count &lt;&gt; expected_module1_source_rows
+        ) &gt; 0
+            THEN &#39;REVIEW_CAMPAIGN_ARCHIVE_APPLICATION_ID_GRAIN&#39;
+
+        ELSE &#39;MODULE_2_ARCHIVE_INVENTORY_READY&#39;
+    END AS archive_campaign_inventory_status
+
+FROM registry_archive_join;
+
+
+
+/***************************************************************************************************
+SECTION 17.2 — MODULE 2 ARCHIVE SLICE DETAIL
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Display every active campaign registry run and its matching archived strategy slice so reviewers
+    can confirm run-by-run archive completeness.
+
+SQL PURPOSE:
+    Produce one row per active campaign registry run with:
+        registry IDs,
+        Module 1 source lineage,
+        Module 2 strategy identity,
+        expected Module 1 source row count,
+        archived row count,
+        distinct archived application count,
+        row-count gap,
+        application-id grain gap,
+        and archive readiness status.
+
+EXPECTED RESULT:
+    One row per active campaign registry run.
+
+    Each row should generally show:
+        archived_rows = expected_module1_source_rows
+        distinct_application_id_count = expected_module1_source_rows
+        archive_slice_detail_status = ARCHIVE_SLICE_READY
+
+***************************************************************************************************/
+
+WITH active_campaign_runs AS (
+    SELECT
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        showcase_name,
+        comparison_group_id,
+        validation_evidence_group_id,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+module1_source_counts AS (
+    SELECT
+        scenario_set_name AS module1_scenario_set_name,
+        scenario_name AS module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS expected_module1_source_rows,
+        COUNT(DISTINCT application_id) AS expected_module1_distinct_application_id_count
+    FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    GROUP BY
+        scenario_set_name,
+        scenario_name,
+        population_id
+),
+
+archive_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+        MIN(strategy_run_id) AS min_strategy_run_id,
+        MAX(strategy_run_id) AS max_strategy_run_id,
+
+        MIN(archive_inserted_ts) AS first_archive_inserted_ts,
+        MAX(archive_inserted_ts) AS last_archive_inserted_ts
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+)
+
+SELECT
+    r.run_sequence_number,
+    r.module1_run_id,
+    r.module2_run_id,
+    r.showcase_id,
+    r.showcase_name,
+    r.comparison_group_id,
+    r.validation_evidence_group_id,
+
+    r.module1_scenario_set_name,
+    r.module1_scenario_name,
+    r.population_id,
+
+    r.strategy_set_name,
+    r.strategy_name,
+    r.strategy_version,
+
+    s.expected_module1_source_rows,
+    s.expected_module1_distinct_application_id_count,
+
+    COALESCE(a.archived_rows, 0) AS archived_rows,
+    COALESCE(a.distinct_application_id_count, 0) AS distinct_application_id_count,
+
+    COALESCE(a.archived_rows, 0) - COALESCE(s.expected_module1_source_rows, 0)
+        AS archived_row_count_gap,
+
+    COALESCE(a.distinct_application_id_count, 0) - COALESCE(s.expected_module1_source_rows, 0)
+        AS distinct_application_id_count_gap,
+
+    a.min_strategy_run_id,
+    a.max_strategy_run_id,
+
+    a.first_archive_inserted_ts,
+    a.last_archive_inserted_ts,
+
+    CASE
+        WHEN s.expected_module1_source_rows IS NULL
+            THEN &#39;REVIEW_MODULE1_SOURCE_COUNT_NOT_FOUND&#39;
+
+        WHEN COALESCE(a.archived_rows, 0) = 0
+            THEN &#39;REVIEW_ARCHIVE_SLICE_MISSING&#39;
+
+        WHEN a.archived_rows &lt;&gt; s.expected_module1_source_rows
+            THEN &#39;REVIEW_ARCHIVE_ROW_COUNT_MISMATCH&#39;
+
+        WHEN a.distinct_application_id_count &lt;&gt; s.expected_module1_source_rows
+            THEN &#39;REVIEW_ARCHIVE_APPLICATION_ID_GRAIN&#39;
+
+        ELSE &#39;ARCHIVE_SLICE_READY&#39;
+    END AS archive_slice_detail_status
+
+FROM active_campaign_runs r
+
+LEFT JOIN module1_source_counts s
+    ON s.module1_scenario_set_name = r.module1_scenario_set_name
+   AND s.module1_scenario_name = r.module1_scenario_name
+   AND s.population_id = r.population_id
+
+LEFT JOIN archive_counts a
+    ON a.strategy_set_name = r.strategy_set_name
+   AND a.strategy_name = r.strategy_name
+   AND a.strategy_version = r.strategy_version
+   AND a.module1_scenario_set_name = r.module1_scenario_set_name
+   AND a.module1_scenario_name = r.module1_scenario_name
+   AND a.population_id = r.population_id
+
+ORDER BY
+    r.run_sequence_number,
+    r.module1_scenario_set_name,
+    r.module1_scenario_name,
+    r.strategy_name,
+    r.strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 17.3 — MODULE 2 ARCHIVE GRAIN DUPLICATE CHECK
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm the archive is unique at the governed row-level archive grain.
+
+SQL PURPOSE:
+    Count duplicate rows at:
+
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+        application_id
+
+EXPECTED RESULT:
+    duplicate_archive_grain_count = 0
+    archive_grain_status = ARCHIVE_GRAIN_READY
+
+***************************************************************************************************/
+
+SELECT
+    COUNT(*) AS duplicate_archive_grain_count,
+
+    CASE
+        WHEN COUNT(*) = 0
+            THEN &#39;ARCHIVE_GRAIN_READY&#39;
+        ELSE &#39;REVIEW_DUPLICATE_ARCHIVE_GRAIN&#39;
+    END AS archive_grain_status
+
+FROM (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        application_id,
+
+        COUNT(*) AS row_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+
+    HAVING COUNT(*) &gt; 1
+) d;
+
+
+
+/***************************************************************************************************
+SECTION 17.4 — CAMPAIGN REGISTRY TO ARCHIVE RECONCILIATION
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm every active campaign registry run has exactly one matching archived strategy slice whose
+    row count matches the selected Module 1 source population.
+
+SQL PURPOSE:
+    Reconcile active campaign registry runs to archive counts and Module 1 source counts.
+
+EXPECTED RESULT:
+    registry_run_count &gt; 0
+    registry_runs_with_archive_rows = registry_run_count
+    registry_runs_missing_archive_rows = 0
+    registry_runs_with_archive_row_count_mismatch = 0
+    registry_runs_with_duplicate_or_missing_application_ids = 0
+    campaign_registry_archive_status = CAMPAIGN_REGISTRY_RECONCILES_TO_ARCHIVE
+
+***************************************************************************************************/
+
+WITH registry_runs AS (
+    SELECT
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        showcase_name,
+        comparison_group_id,
+        validation_evidence_group_id,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+module1_source_counts AS (
+    SELECT
+        scenario_set_name AS module1_scenario_set_name,
+        scenario_name AS module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS expected_module1_source_rows
+    FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    GROUP BY
+        scenario_set_name,
+        scenario_name,
+        population_id
+),
+
+archive_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+registry_archive_join AS (
+    SELECT
+        r.*,
+
+        s.expected_module1_source_rows,
+
+        COALESCE(a.archived_rows, 0) AS archived_rows,
+        COALESCE(a.distinct_application_id_count, 0) AS distinct_application_id_count
+
+    FROM registry_runs r
+
+    LEFT JOIN module1_source_counts s
+        ON s.module1_scenario_set_name = r.module1_scenario_set_name
+       AND s.module1_scenario_name = r.module1_scenario_name
+       AND s.population_id = r.population_id
+
+    LEFT JOIN archive_counts a
+        ON a.strategy_set_name = r.strategy_set_name
+       AND a.strategy_name = r.strategy_name
+       AND a.strategy_version = r.strategy_version
+       AND a.module1_scenario_set_name = r.module1_scenario_set_name
+       AND a.module1_scenario_name = r.module1_scenario_name
+       AND a.population_id = r.population_id
+)
+
+SELECT
+    COUNT(*) AS registry_run_count,
+
+    COUNT(*) FILTER (
+        WHERE expected_module1_source_rows IS NULL
+    ) AS registry_runs_missing_module1_source_count,
+
+    COUNT(*) FILTER (
+        WHERE archived_rows &gt; 0
+    ) AS registry_runs_with_archive_rows,
+
+    COUNT(*) FILTER (
+        WHERE archived_rows = 0
+    ) AS registry_runs_missing_archive_rows,
+
+    COUNT(*) FILTER (
+        WHERE expected_module1_source_rows IS NOT NULL
+          AND archived_rows &lt;&gt; expected_module1_source_rows
+    ) AS registry_runs_with_archive_row_count_mismatch,
+
+    COUNT(*) FILTER (
+        WHERE expected_module1_source_rows IS NOT NULL
+          AND distinct_application_id_count &lt;&gt; expected_module1_source_rows
+    ) AS registry_runs_with_duplicate_or_missing_application_ids,
+
+    CASE
+        WHEN COUNT(*) = 0
+            THEN &#39;REVIEW_NO_ACTIVE_CAMPAIGN_REGISTRY_RUNS&#39;
+
+        WHEN COUNT(*) FILTER (WHERE expected_module1_source_rows IS NULL) &gt; 0
+            THEN &#39;REVIEW_REGISTRY_MODULE1_SOURCE_COUNT_MISSING&#39;
+
+        WHEN COUNT(*) FILTER (WHERE archived_rows = 0) &gt; 0
+            THEN &#39;REVIEW_CAMPAIGN_REGISTRY_ARCHIVE_MISSING_RUNS&#39;
+
+        WHEN COUNT(*) FILTER (
+            WHERE expected_module1_source_rows IS NOT NULL
+              AND archived_rows &lt;&gt; expected_module1_source_rows
+        ) &gt; 0
+            THEN &#39;REVIEW_CAMPAIGN_REGISTRY_ARCHIVE_ROW_COUNT_MISMATCH&#39;
+
+        WHEN COUNT(*) FILTER (
+            WHERE expected_module1_source_rows IS NOT NULL
+              AND distinct_application_id_count &lt;&gt; expected_module1_source_rows
+        ) &gt; 0
+            THEN &#39;REVIEW_CAMPAIGN_REGISTRY_ARCHIVE_APPLICATION_ID_GRAIN&#39;
+
+        ELSE &#39;CAMPAIGN_REGISTRY_RECONCILES_TO_ARCHIVE&#39;
+    END AS campaign_registry_archive_status
+
+FROM registry_archive_join;
+
+
+
+/***************************************************************************************************
+SECTION 17.5 — REGISTRY RUNS MISSING OR MISMATCHED IN ARCHIVE
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide row-level troubleshooting detail for active campaign registry runs that do not reconcile
+    to the archive.
+
+SQL PURPOSE:
+    Display active registry runs where:
+        Module 1 source count is missing,
+        archive slice is missing,
+        archive row count differs from expected Module 1 source rows,
+        or archive distinct application_id count differs from expected Module 1 source rows.
+
+EXPECTED RESULT:
+    zero rows.
+
+***************************************************************************************************/
+
+WITH registry_runs AS (
+    SELECT
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        showcase_name,
+        comparison_group_id,
+        validation_evidence_group_id,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+module1_source_counts AS (
+    SELECT
+        scenario_set_name AS module1_scenario_set_name,
+        scenario_name AS module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS expected_module1_source_rows
+    FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    GROUP BY
+        scenario_set_name,
+        scenario_name,
+        population_id
+),
+
+archive_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+registry_archive_join AS (
+    SELECT
+        r.*,
+
+        s.expected_module1_source_rows,
+
+        COALESCE(a.archived_rows, 0) AS archived_rows,
+        COALESCE(a.distinct_application_id_count, 0) AS distinct_application_id_count,
+
+        COALESCE(a.archived_rows, 0) - COALESCE(s.expected_module1_source_rows, 0)
+            AS archived_row_count_gap,
+
+        COALESCE(a.distinct_application_id_count, 0) - COALESCE(s.expected_module1_source_rows, 0)
+            AS distinct_application_id_count_gap
+
+    FROM registry_runs r
+
+    LEFT JOIN module1_source_counts s
+        ON s.module1_scenario_set_name = r.module1_scenario_set_name
+       AND s.module1_scenario_name = r.module1_scenario_name
+       AND s.population_id = r.population_id
+
+    LEFT JOIN archive_counts a
+        ON a.strategy_set_name = r.strategy_set_name
+       AND a.strategy_name = r.strategy_name
+       AND a.strategy_version = r.strategy_version
+       AND a.module1_scenario_set_name = r.module1_scenario_set_name
+       AND a.module1_scenario_name = r.module1_scenario_name
+       AND a.population_id = r.population_id
+)
+
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    expected_module1_source_rows,
+    archived_rows,
+    distinct_application_id_count,
+    archived_row_count_gap,
+    distinct_application_id_count_gap,
+
+    CASE
+        WHEN expected_module1_source_rows IS NULL
+            THEN &#39;MODULE1_SOURCE_COUNT_NOT_FOUND&#39;
+
+        WHEN archived_rows = 0
+            THEN &#39;ARCHIVE_SLICE_MISSING&#39;
+
+        WHEN archived_rows &lt;&gt; expected_module1_source_rows
+            THEN &#39;ARCHIVE_ROW_COUNT_MISMATCH&#39;
+
+        WHEN distinct_application_id_count &lt;&gt; expected_module1_source_rows
+            THEN &#39;ARCHIVE_APPLICATION_ID_GRAIN_MISMATCH&#39;
+
+        ELSE &#39;ARCHIVE_SLICE_READY&#39;
+    END AS archive_reconciliation_issue_type
+
+FROM registry_archive_join
+
+WHERE expected_module1_source_rows IS NULL
+   OR archived_rows = 0
+   OR archived_rows &lt;&gt; expected_module1_source_rows
+   OR distinct_application_id_count &lt;&gt; expected_module1_source_rows
+
+ORDER BY
+    run_sequence_number,
+    module2_run_id;
+
+
+
+/***************************************************************************************************
+SECTION 17.6 — ARCHIVE SLICES WITHOUT ACTIVE CAMPAIGN REGISTRY ROW
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Identify archived strategy slices that are not represented by an active campaign registry row.
+
+SQL PURPOSE:
+    Surface archive slices that may be:
+        old development runs,
+        ad hoc custom experiments,
+        inactive campaign runs,
+        or archive rows that need documentation review.
+
+EXPECTED RESULT:
+    For a clean formal campaign archive, this may return zero rows.
+
+INTERPRETATION:
+    Rows returned here are not automatically invalid.
+
+    They should be reviewed because Section 17 acceptance is registry-scoped. Extra archive slices can
+    be legitimate historical evidence, but they should not be confused with the active campaign.
+
+***************************************************************************************************/
+
+WITH archive_slices AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+        MIN(archive_inserted_ts) AS first_archive_inserted_ts,
+        MAX(archive_inserted_ts) AS last_archive_inserted_ts
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+active_registry_runs AS (
+    SELECT
+        module2_run_id,
+        run_sequence_number,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+)
+
+SELECT
+    a.strategy_set_name,
+    a.strategy_name,
+    a.strategy_version,
+
+    a.module1_scenario_set_name,
+    a.module1_scenario_name,
+    a.population_id,
+
+    a.archived_rows,
+    a.distinct_application_id_count,
+
+    a.first_archive_inserted_ts,
+    a.last_archive_inserted_ts,
+
+    &#39;ARCHIVE_SLICE_WITHOUT_ACTIVE_CAMPAIGN_REGISTRY_ROW&#39; AS archive_registry_status
+
+FROM archive_slices a
+
+LEFT JOIN active_registry_runs r
+    ON r.strategy_set_name = a.strategy_set_name
+   AND r.strategy_name = a.strategy_name
+   AND r.strategy_version = a.strategy_version
+   AND r.module1_scenario_set_name = a.module1_scenario_set_name
+   AND r.module1_scenario_name = a.module1_scenario_name
+   AND r.population_id = a.population_id
+
+WHERE r.module2_run_id IS NULL
+
+ORDER BY
+    a.module1_scenario_set_name,
+    a.module1_scenario_name,
+    a.population_id,
+    a.strategy_name,
+    a.strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 17.7 — SECTION 16 EVIDENCE COVERAGE SUMMARY
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that persistent Section 16 evidence exists for every active campaign registry run and
+    that validation / segment evidence is complete relative to dynamically derived evidence spines.
+
+EVIDENCE TABLES CHECKED:
+    credit_decisioning_sim.strategy_run_evidence_summary
+    credit_decisioning_sim.strategy_run_validation_evidence
+    credit_decisioning_sim.strategy_run_parameter_snapshot
+    credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+DYNAMIC VALIDATION EVIDENCE DESIGN:
+    expected_validation_key_count is derived from distinct validation keys present across active
+    campaign runs:
+
+        validation_area
+        validation_test_name
+        validation_category
+
+    This avoids hardcoding the Section 14 validation spine row count.
+
+DYNAMIC SEGMENT EVIDENCE DESIGN:
+    expected_segment_rows is derived for each run from its archived strategy slice:
+
+        product_type_policy_key
+        score_band_policy_key
+        product_score_policy_segment
+
+    This avoids assuming a fixed product × score segment count.
+
+EXPECTED RESULT:
+    registry_run_count &gt; 0
+    expected_validation_key_count &gt; 0
+    runs_with_one_executive_evidence_row = registry_run_count
+    runs_with_one_parameter_snapshot_row = registry_run_count
+    runs_with_complete_validation_evidence_rows = registry_run_count
+    runs_with_complete_segment_evidence_rows = registry_run_count
+    evidence_coverage_issue_count = 0
+    evidence_campaign_status = SECTION_16_EVIDENCE_COVERAGE_READY
+
+***************************************************************************************************/
+
+WITH registry_runs AS (
+    SELECT
+        module2_run_id,
+        run_sequence_number,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+archive_segment_expected AS (
+    SELECT
+        r.module2_run_id,
+
+        COUNT(DISTINCT (
+            a.product_type_policy_key,
+            a.score_band_policy_key,
+            a.product_score_policy_segment
+        )) AS expected_segment_rows
+
+    FROM registry_runs r
+
+    LEFT JOIN credit_decisioning_sim.strategy_decisions_archive a
+        ON a.strategy_set_name = r.strategy_set_name
+       AND a.strategy_name = r.strategy_name
+       AND a.strategy_version = r.strategy_version
+       AND a.module1_scenario_set_name = r.module1_scenario_set_name
+       AND a.module1_scenario_name = r.module1_scenario_name
+       AND a.population_id = r.population_id
+
+    GROUP BY r.module2_run_id
+),
+
+executive_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS executive_rows
+    FROM credit_decisioning_sim.strategy_run_evidence_summary
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+parameter_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS parameter_rows
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+validation_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS validation_rows,
+
+        COUNT(DISTINCT (
+            validation_area,
+            validation_test_name,
+            validation_category
+        )) AS validation_distinct_key_count,
+
+        COUNT(*) - COUNT(DISTINCT (
+            validation_area,
+            validation_test_name,
+            validation_category
+        )) AS duplicate_validation_key_rows
+
+    FROM credit_decisioning_sim.strategy_run_validation_evidence
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+validation_key_catalog AS (
+    SELECT
+        COUNT(DISTINCT (
+            v.validation_area,
+            v.validation_test_name,
+            v.validation_category
+        )) AS expected_validation_key_count
+    FROM registry_runs r
+
+    JOIN credit_decisioning_sim.strategy_run_validation_evidence v
+        ON v.strategy_set_name = r.strategy_set_name
+       AND v.strategy_name = r.strategy_name
+       AND v.strategy_version = r.strategy_version
+       AND v.module1_scenario_set_name = r.module1_scenario_set_name
+       AND v.module1_scenario_name = r.module1_scenario_name
+       AND v.population_id = r.population_id
+),
+
+segment_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS segment_rows,
+
+        COUNT(DISTINCT (
+            product_type_policy_key,
+            score_band_policy_key,
+            product_score_policy_segment
+        )) AS segment_distinct_key_count,
+
+        COUNT(*) - COUNT(DISTINCT (
+            product_type_policy_key,
+            score_band_policy_key,
+            product_score_policy_segment
+        )) AS duplicate_segment_key_rows
+
+    FROM credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+joined AS (
+    SELECT
+        r.module2_run_id,
+        r.run_sequence_number,
+
+        COALESCE(e.executive_rows, 0) AS executive_rows,
+        COALESCE(p.parameter_rows, 0) AS parameter_rows,
+
+        COALESCE(v.validation_rows, 0) AS validation_rows,
+        COALESCE(v.validation_distinct_key_count, 0) AS validation_distinct_key_count,
+        COALESCE(v.duplicate_validation_key_rows, 0) AS duplicate_validation_key_rows,
+
+        COALESCE(vkc.expected_validation_key_count, 0) AS expected_validation_key_count,
+
+        COALESCE(s.segment_rows, 0) AS segment_rows,
+        COALESCE(s.segment_distinct_key_count, 0) AS segment_distinct_key_count,
+        COALESCE(s.duplicate_segment_key_rows, 0) AS duplicate_segment_key_rows,
+
+        COALESCE(ase.expected_segment_rows, 0) AS expected_segment_rows
+
+    FROM registry_runs r
+
+    CROSS JOIN validation_key_catalog vkc
+
+    LEFT JOIN archive_segment_expected ase
+        ON ase.module2_run_id = r.module2_run_id
+
+    LEFT JOIN executive_evidence e
+        ON e.strategy_set_name = r.strategy_set_name
+       AND e.strategy_name = r.strategy_name
+       AND e.strategy_version = r.strategy_version
+       AND e.module1_scenario_set_name = r.module1_scenario_set_name
+       AND e.module1_scenario_name = r.module1_scenario_name
+       AND e.population_id = r.population_id
+
+    LEFT JOIN parameter_evidence p
+        ON p.strategy_set_name = r.strategy_set_name
+       AND p.strategy_name = r.strategy_name
+       AND p.strategy_version = r.strategy_version
+       AND p.module1_scenario_set_name = r.module1_scenario_set_name
+       AND p.module1_scenario_name = r.module1_scenario_name
+       AND p.population_id = r.population_id
+
+    LEFT JOIN validation_evidence v
+        ON v.strategy_set_name = r.strategy_set_name
+       AND v.strategy_name = r.strategy_name
+       AND v.strategy_version = r.strategy_version
+       AND v.module1_scenario_set_name = r.module1_scenario_set_name
+       AND v.module1_scenario_name = r.module1_scenario_name
+       AND v.population_id = r.population_id
+
+    LEFT JOIN segment_evidence s
+        ON s.strategy_set_name = r.strategy_set_name
+       AND s.strategy_name = r.strategy_name
+       AND s.strategy_version = r.strategy_version
+       AND s.module1_scenario_set_name = r.module1_scenario_set_name
+       AND s.module1_scenario_name = r.module1_scenario_name
+       AND s.population_id = r.population_id
+)
+
+SELECT
+    COUNT(*) AS registry_run_count,
+
+    MAX(expected_validation_key_count) AS expected_validation_key_count,
+
+    COUNT(*) FILTER (
+        WHERE executive_rows = 1
+    ) AS runs_with_one_executive_evidence_row,
+
+    COUNT(*) FILTER (
+        WHERE parameter_rows = 1
+    ) AS runs_with_one_parameter_snapshot_row,
+
+    COUNT(*) FILTER (
+        WHERE expected_validation_key_count &gt; 0
+          AND validation_rows = expected_validation_key_count
+          AND validation_distinct_key_count = expected_validation_key_count
+          AND duplicate_validation_key_rows = 0
+    ) AS runs_with_complete_validation_evidence_rows,
+
+    COUNT(*) FILTER (
+        WHERE expected_validation_key_count = 0
+           OR validation_rows &lt;&gt; expected_validation_key_count
+           OR validation_distinct_key_count &lt;&gt; expected_validation_key_count
+           OR duplicate_validation_key_rows &lt;&gt; 0
+    ) AS runs_with_incomplete_validation_evidence_rows,
+
+    MIN(validation_rows) AS min_validation_rows_per_run,
+    MAX(validation_rows) AS max_validation_rows_per_run,
+
+    COUNT(*) FILTER (
+        WHERE expected_segment_rows &gt; 0
+          AND segment_rows = expected_segment_rows
+          AND segment_distinct_key_count = expected_segment_rows
+          AND duplicate_segment_key_rows = 0
+    ) AS runs_with_complete_segment_evidence_rows,
+
+    COUNT(*) FILTER (
+        WHERE expected_segment_rows = 0
+           OR segment_rows &lt;&gt; expected_segment_rows
+           OR segment_distinct_key_count &lt;&gt; expected_segment_rows
+           OR duplicate_segment_key_rows &lt;&gt; 0
+    ) AS runs_with_incomplete_segment_evidence_rows,
+
+    MIN(expected_segment_rows) AS min_expected_segment_rows_per_run,
+    MAX(expected_segment_rows) AS max_expected_segment_rows_per_run,
+    MIN(segment_rows) AS min_actual_segment_rows_per_run,
+    MAX(segment_rows) AS max_actual_segment_rows_per_run,
+
+    COUNT(*) FILTER (
+        WHERE executive_rows &lt;&gt; 1
+           OR parameter_rows &lt;&gt; 1
+           OR expected_validation_key_count = 0
+           OR validation_rows &lt;&gt; expected_validation_key_count
+           OR validation_distinct_key_count &lt;&gt; expected_validation_key_count
+           OR duplicate_validation_key_rows &lt;&gt; 0
+           OR expected_segment_rows = 0
+           OR segment_rows &lt;&gt; expected_segment_rows
+           OR segment_distinct_key_count &lt;&gt; expected_segment_rows
+           OR duplicate_segment_key_rows &lt;&gt; 0
+    ) AS evidence_coverage_issue_count,
+
+    CASE
+        WHEN COUNT(*) = 0
+            THEN &#39;REVIEW_NO_ACTIVE_CAMPAIGN_REGISTRY_RUNS&#39;
+
+        WHEN MAX(expected_validation_key_count) = 0
+            THEN &#39;REVIEW_VALIDATION_EVIDENCE_KEY_CATALOG_MISSING&#39;
+
+        WHEN COUNT(*) FILTER (
+            WHERE executive_rows = 1
+              AND parameter_rows = 1
+              AND expected_validation_key_count &gt; 0
+              AND validation_rows = expected_validation_key_count
+              AND validation_distinct_key_count = expected_validation_key_count
+              AND duplicate_validation_key_rows = 0
+              AND expected_segment_rows &gt; 0
+              AND segment_rows = expected_segment_rows
+              AND segment_distinct_key_count = expected_segment_rows
+              AND duplicate_segment_key_rows = 0
+        ) = COUNT(*)
+            THEN &#39;SECTION_16_EVIDENCE_COVERAGE_READY&#39;
+
+        ELSE &#39;REVIEW_SECTION_16_EVIDENCE_COVERAGE&#39;
+    END AS evidence_campaign_status
+
+FROM joined;
+
+
+
+/***************************************************************************************************
+SECTION 17.8 — SECTION 16 EVIDENCE COVERAGE DETAIL BY RUN
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Display evidence counts for each individual campaign run and confirm complete evidence capture
+    without relying on fixed campaign size, fixed validation-row count, or fixed segment-row count.
+
+SQL PURPOSE:
+    Provide one row per active campaign registry run with:
+        executive evidence count,
+        parameter snapshot count,
+        validation evidence counts,
+        derived expected validation key count,
+        segment evidence counts,
+        derived expected segment count,
+        and per-run evidence capture status.
+
+EXPECTED RESULT:
+    One row per active campaign registry run.
+
+    Each row should generally show:
+        executive_rows = 1
+        parameter_rows = 1
+        validation_rows = expected_validation_key_count
+        validation_evidence_row_gap = 0
+        duplicate_validation_key_rows = 0
+        segment_rows = expected_segment_rows
+        segment_evidence_row_gap = 0
+        duplicate_segment_key_rows = 0
+        evidence_capture_status = EVIDENCE_CAPTURE_READY
+
+***************************************************************************************************/
+
+WITH registry_runs AS (
+    SELECT
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        showcase_name,
+        comparison_group_id,
+        validation_evidence_group_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+archive_segment_expected AS (
+    SELECT
+        r.module2_run_id,
+
+        COUNT(DISTINCT (
+            a.product_type_policy_key,
+            a.score_band_policy_key,
+            a.product_score_policy_segment
+        )) AS expected_segment_rows
+
+    FROM registry_runs r
+
+    LEFT JOIN credit_decisioning_sim.strategy_decisions_archive a
+        ON a.strategy_set_name = r.strategy_set_name
+       AND a.strategy_name = r.strategy_name
+       AND a.strategy_version = r.strategy_version
+       AND a.module1_scenario_set_name = r.module1_scenario_set_name
+       AND a.module1_scenario_name = r.module1_scenario_name
+       AND a.population_id = r.population_id
+
+    GROUP BY r.module2_run_id
+),
+
+executive_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS executive_rows
+    FROM credit_decisioning_sim.strategy_run_evidence_summary
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+parameter_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS parameter_rows
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+validation_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS validation_rows,
+
+        COUNT(DISTINCT (
+            validation_area,
+            validation_test_name,
+            validation_category
+        )) AS validation_distinct_key_count,
+
+        COUNT(*) - COUNT(DISTINCT (
+            validation_area,
+            validation_test_name,
+            validation_category
+        )) AS duplicate_validation_key_rows
+
+    FROM credit_decisioning_sim.strategy_run_validation_evidence
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+validation_key_catalog AS (
+    SELECT
+        COUNT(DISTINCT (
+            v.validation_area,
+            v.validation_test_name,
+            v.validation_category
+        )) AS expected_validation_key_count
+    FROM registry_runs r
+
+    JOIN credit_decisioning_sim.strategy_run_validation_evidence v
+        ON v.strategy_set_name = r.strategy_set_name
+       AND v.strategy_name = r.strategy_name
+       AND v.strategy_version = r.strategy_version
+       AND v.module1_scenario_set_name = r.module1_scenario_set_name
+       AND v.module1_scenario_name = r.module1_scenario_name
+       AND v.population_id = r.population_id
+),
+
+segment_evidence AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS segment_rows,
+
+        COUNT(DISTINCT (
+            product_type_policy_key,
+            score_band_policy_key,
+            product_score_policy_segment
+        )) AS segment_distinct_key_count,
+
+        COUNT(*) - COUNT(DISTINCT (
+            product_type_policy_key,
+            score_band_policy_key,
+            product_score_policy_segment
+        )) AS duplicate_segment_key_rows
+
+    FROM credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+)
+
+SELECT
+    r.module2_run_id,
+    r.run_sequence_number,
+    r.showcase_id,
+    r.showcase_name,
+    r.comparison_group_id,
+    r.validation_evidence_group_id,
+
+    r.module1_scenario_set_name,
+    r.module1_scenario_name,
+    r.population_id,
+
+    r.strategy_name,
+    r.strategy_version,
+
+    COALESCE(e.executive_rows, 0) AS executive_rows,
+    COALESCE(p.parameter_rows, 0) AS parameter_rows,
+
+    COALESCE(vkc.expected_validation_key_count, 0) AS expected_validation_key_count,
+    COALESCE(v.validation_rows, 0) AS validation_rows,
+    COALESCE(v.validation_distinct_key_count, 0) AS validation_distinct_key_count,
+
+    COALESCE(v.validation_rows, 0)
+        - COALESCE(vkc.expected_validation_key_count, 0)
+        AS validation_evidence_row_gap,
+
+    COALESCE(v.duplicate_validation_key_rows, 0) AS duplicate_validation_key_rows,
+
+    COALESCE(ase.expected_segment_rows, 0) AS expected_segment_rows,
+    COALESCE(s.segment_rows, 0) AS segment_rows,
+    COALESCE(s.segment_distinct_key_count, 0) AS segment_distinct_key_count,
+
+    COALESCE(s.segment_rows, 0)
+        - COALESCE(ase.expected_segment_rows, 0)
+        AS segment_evidence_row_gap,
+
+    COALESCE(s.duplicate_segment_key_rows, 0) AS duplicate_segment_key_rows,
+
+    CASE
+        WHEN COALESCE(e.executive_rows, 0) = 1
+         AND COALESCE(p.parameter_rows, 0) = 1
+         AND COALESCE(vkc.expected_validation_key_count, 0) &gt; 0
+         AND COALESCE(v.validation_rows, 0) = COALESCE(vkc.expected_validation_key_count, 0)
+         AND COALESCE(v.validation_distinct_key_count, 0) = COALESCE(vkc.expected_validation_key_count, 0)
+         AND COALESCE(v.duplicate_validation_key_rows, 0) = 0
+         AND COALESCE(ase.expected_segment_rows, 0) &gt; 0
+         AND COALESCE(s.segment_rows, 0) = COALESCE(ase.expected_segment_rows, 0)
+         AND COALESCE(s.segment_distinct_key_count, 0) = COALESCE(ase.expected_segment_rows, 0)
+         AND COALESCE(s.duplicate_segment_key_rows, 0) = 0
+            THEN &#39;EVIDENCE_CAPTURE_READY&#39;
+
+        ELSE &#39;EVIDENCE_CAPTURE_REVIEW_REQUIRED&#39;
+    END AS evidence_capture_status
+
+FROM registry_runs r
+
+CROSS JOIN validation_key_catalog vkc
+
+LEFT JOIN archive_segment_expected ase
+    ON ase.module2_run_id = r.module2_run_id
+
+LEFT JOIN executive_evidence e
+    ON e.strategy_set_name = r.strategy_set_name
+   AND e.strategy_name = r.strategy_name
+   AND e.strategy_version = r.strategy_version
+   AND e.module1_scenario_set_name = r.module1_scenario_set_name
+   AND e.module1_scenario_name = r.module1_scenario_name
+   AND e.population_id = r.population_id
+
+LEFT JOIN parameter_evidence p
+    ON p.strategy_set_name = r.strategy_set_name
+   AND p.strategy_name = r.strategy_name
+   AND p.strategy_version = r.strategy_version
+   AND p.module1_scenario_set_name = r.module1_scenario_set_name
+   AND p.module1_scenario_name = r.module1_scenario_name
+   AND p.population_id = r.population_id
+
+LEFT JOIN validation_evidence v
+    ON v.strategy_set_name = r.strategy_set_name
+   AND v.strategy_name = r.strategy_name
+   AND v.strategy_version = r.strategy_version
+   AND v.module1_scenario_set_name = r.module1_scenario_set_name
+   AND v.module1_scenario_name = r.module1_scenario_name
+   AND v.population_id = r.population_id
+
+LEFT JOIN segment_evidence s
+    ON s.strategy_set_name = r.strategy_set_name
+   AND s.strategy_name = r.strategy_name
+   AND s.strategy_version = r.strategy_version
+   AND s.module1_scenario_set_name = r.module1_scenario_set_name
+   AND s.module1_scenario_name = r.module1_scenario_name
+   AND s.population_id = r.population_id
+
+ORDER BY r.run_sequence_number;
+</code></pre>
+<p>This patch removes the hardcoded <strong>50,000</strong>, <strong>1,800,000</strong>, <strong>36</strong>, <strong>18</strong>, and <strong>25</strong> assumptions from the first acceptance block. The remaining Section 17.9–17.20 blocks can stay in place for now, but Section 17.20 will still need the same dynamic treatment later so the final rollup agrees with this updated 17.1–17.8 logic.</p>
+</div></article><article id="c038-m01775" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01775 · 2026-05-13T07:37:13.282000-04:00 · active path</p><div class="body"><p>thanks. proceed with reviewing sections 17.9 through 17.16 (current code attached) to see if they need updated regarding the hardcoded acceptance logic and the changes we just made thru 17.8.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(178).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01780" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01780 · 2026-05-13T07:42:37.198963-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-13, <strong>yes — Sections 17.9 through 17.16 need targeted updates</strong>, but not all for the same reason. The core issue is that Sections 17.1–17.8 are now moving toward <strong>dynamic, active-campaign-registry-scoped acceptance</strong>, while parts of 17.9–17.16 still describe or assume the old fixed formal campaign shape: <strong>36 runs, 17 comparisons, 50,000 rows per slice, 1,800,000 total rows, and 5 product-guardrail runs</strong>. The attached Section 17 still contains that fixed-shape language in the header and in later expectations. fileciteturn286file0</p>
+<h2>Summary recommendation</h2>
+<p>Update <strong>17.9–17.16</strong>, but do it as a focused alignment pass, not a full redesign.</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th align="right">Needs logic change?</th>
+<th align="right">Needs comment change?</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>17.9</strong></td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+<td>It currently checks the full archive. It should check active campaign registry archive rows only, otherwise old ad hoc archive slices can affect acceptance.</td>
+</tr>
+<tr>
+<td><strong>17.10</strong></td>
+<td align="right">Yes, light</td>
+<td align="right">Yes</td>
+<td>Should be active-registry-scoped and aligned to dynamic validation evidence completeness.</td>
+</tr>
+<tr>
+<td><strong>17.11</strong></td>
+<td align="right">Yes, light</td>
+<td align="right">Yes</td>
+<td>Same as 17.10; should review REVIEW / NOT_APPLICABLE concentration only for active campaign runs.</td>
+</tr>
+<tr>
+<td><strong>17.12</strong></td>
+<td align="right">Yes, material</td>
+<td align="right">Yes</td>
+<td>Must remove 50,000 / 17 assumptions and derive expected matched counts from Module 1 source rows.</td>
+</tr>
+<tr>
+<td><strong>17.13</strong></td>
+<td align="right">Yes, material</td>
+<td align="right">Yes</td>
+<td>Should align with dynamic comparison readiness and source consistency for active comparison groups.</td>
+</tr>
+<tr>
+<td><strong>17.14</strong></td>
+<td align="right">Yes, light-to-moderate</td>
+<td align="right">Yes</td>
+<td>Current comments still say 36 rows and applications = 50,000. Query should join active campaign registry and display expected source rows / gaps.</td>
+</tr>
+<tr>
+<td><strong>17.15</strong></td>
+<td align="right">Yes, moderate</td>
+<td align="right">Yes</td>
+<td>Current comments say expected 17 rows. Should derive active comparison count and include readiness/source status context.</td>
+</tr>
+<tr>
+<td><strong>17.16</strong></td>
+<td align="right">Yes, moderate</td>
+<td align="right">Yes</td>
+<td>Should derive product-guardrail runs from active registry, not assume exactly five, even if our formal campaign example has five.</td>
+</tr>
+</tbody></table>
+<h2>Section-by-section review</h2>
+<h3>17.9 — Full-archive final-output convention checks</h3>
+<p>This should be changed.</p>
+<p>The current intent is sound: validate decision flags, exposure conventions, affordability conventions, Expected Loss conventions, and reason-code conventions across archived rows. But now that 17.1–17.8 are registry-scoped, 17.9 should not scan the entire <code>strategy_decisions_archive</code> blindly. If historical ad hoc or inactive archive slices exist, they could pollute Section 17 acceptance.</p>
+<p>Recommended change: rename / reframe it from <strong>full archive</strong> to <strong>active campaign archive convention checks</strong>, and build a CTE that starts from active campaign registry rows, then joins to matching archive rows.</p>
+<p>No hardcoded row count is needed. This section should only ask:</p>
+<pre><code class="language-text">Do all archived rows belonging to active campaign registry runs satisfy final output conventions?
+</code></pre>
+<h3>17.10 — Validation status summary by campaign run</h3>
+<p>This should be lightly updated.</p>
+<p>It probably does not need major business logic changes, but it should be scoped through active campaign registry rows. The updated 17.7 / 17.8 logic already derives the validation key catalog dynamically, so 17.10 should not imply a fixed 18-row validation spine.</p>
+<p>Recommended change: join <code>strategy_run_campaign_registry</code> to <code>strategy_run_validation_evidence</code>, and summarize validation statuses per active registry run. Keep <code>PASS</code>, <code>REVIEW</code>, and <code>NOT_APPLICABLE</code> counts, but do not hardcode the expected number of validation rows.</p>
+<h3>17.11 — Validation REVIEW / NOT_APPLICABLE concentration</h3>
+<p>This should be lightly updated.</p>
+<p>Same logic as 17.10: scope to active campaign registry rows. This prevents old development evidence from appearing in final campaign review. It should remain a review table, not an acceptance gate.</p>
+<p>Recommended change: active registry join, then filter <code>validation_status IN (&#39;REVIEW&#39;, &#39;NOT_APPLICABLE&#39;)</code>.</p>
+<h3>17.12 — Comparison registry readiness</h3>
+<p>This definitely needs a material update.</p>
+<p>This section is the biggest remaining dynamic-acceptance gap. The current Section 17 materials still describe all 17 formal comparison groups as expected and still use fixed 50,000-row assumptions in comparison readiness language. fileciteturn286file5</p>
+<p>Recommended change: for each active comparison registry row, derive:</p>
+<pre><code class="language-text">expected_module1_source_rows
+</code></pre>
+<p>from:</p>
+<pre><code class="language-sql">credit_decisioning_sim.synthetic_applications_scenario_archive
+</code></pre>
+<p>using:</p>
+<pre><code class="language-sql">module1_scenario_set_name
+module1_scenario_name
+population_id
+</code></pre>
+<p>Then require:</p>
+<pre><code class="language-sql">baseline_archived_rows = expected_module1_source_rows
+challenger_archived_rows = expected_module1_source_rows
+baseline_distinct_application_id_count = expected_module1_source_rows
+challenger_distinct_application_id_count = expected_module1_source_rows
+matched_application_id_count = expected_module1_source_rows
+baseline_only_application_id_count = 0
+challenger_only_application_id_count = 0
+</code></pre>
+<p>This removes both the fixed <strong>17</strong> and fixed <strong>50,000</strong> assumptions.</p>
+<h3>17.13 — Matched comparison source-field consistency</h3>
+<p>This also needs a material update.</p>
+<p>The current source-field consistency logic is conceptually correct: compare immutable Module 1 source fields between baseline and challenger using <code>IS DISTINCT FROM</code>. The attached code shows the correct direction by comparing fields such as estimated LGD and requested Expected Loss and producing <code>SOURCE_FIELDS_MATCH</code> / <code>SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED</code>. fileciteturn287file3</p>
+<p>But it should align with dynamic Section 17.12:</p>
+<pre><code class="language-text">active comparison registry row
+→ expected Module 1 source count
+→ matched baseline/challenger rows
+→ source-field mismatch counts
+</code></pre>
+<p>Recommended change: preserve the field comparisons, but ensure every active comparison group appears even if the match is missing or incomplete. The status should distinguish:</p>
+<pre><code class="language-text">SOURCE_FIELDS_MATCH
+SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED
+COMPARISON_NOT_READY_SOURCE_CONSISTENCY_NOT_EVALUABLE
+</code></pre>
+<h3>17.14 — Executive evidence campaign summary</h3>
+<p>This needs comment cleanup and probably a light logic alignment.</p>
+<p>The current code says the expected result is <strong>36 rows</strong> and each row should have <strong>applications = 50,000</strong>. That is now wrong for a flexible Module 1 population size. fileciteturn287file1</p>
+<p>Recommended change: start from active campaign registry rows and left join <code>strategy_run_evidence_summary</code>. Add:</p>
+<pre><code class="language-sql">expected_module1_source_rows
+applications_minus_expected_source_rows
+executive_evidence_status
+</code></pre>
+<p>This lets the grid continue to be an executive evidence table, but it becomes flexible.</p>
+<h3>17.15 — Baseline × challenger delta summary</h3>
+<p>This needs comment cleanup and moderate logic alignment.</p>
+<p>The current comment says expected result is <strong>17 rows</strong>. That should become:</p>
+<pre><code class="language-text">one row per active comparison registry group
+</code></pre>
+<p>The query should be driven by <code>strategy_comparison_campaign_registry</code>, not by an assumed count. If it already does that, then the SQL may only need light additions: include dynamic readiness/source consistency fields from updated 17.12 / 17.13 logic, or recompute them locally.</p>
+<p>Recommended change: ensure the output has these fields:</p>
+<pre><code class="language-sql">comparison_readiness_status
+source_consistency_status
+expected_module1_source_rows
+matched_application_id_count
+baseline_only_application_id_count
+challenger_only_application_id_count
+</code></pre>
+<p>Then the deltas are easier to trust.</p>
+<h3>17.16 — Product guardrail strategy effect check</h3>
+<p>This needs moderate alignment.</p>
+<p>The current Section 17 header still treats the product-guardrail expectation as <strong>5 product-guardrail runs × 2 audited products = 10 rows</strong>. That is true for our campaign, but it should not be a permanent hardcoded acceptance assumption. fileciteturn286file0</p>
+<p>For 17.16 specifically, the product-guardrail strategy effect check should derive product-guardrail runs from the active campaign registry:</p>
+<pre><code class="language-sql">WHERE strategy_name = &#39;PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY&#39;
+  AND registry_active_flag IS TRUE
+</code></pre>
+<p>Then compare each product-guardrail challenger to the relevant baseline for the same Module 1 scenario / population.</p>
+<p>It can still highlight UPL and revolving-line effects because those are the intended audited products, but the number of product-guardrail runs should be dynamic.</p>
+<h2>What does <strong>not</strong> need to change much</h2>
+<p>Sections <strong>17.10, 17.11, 17.14, and 17.15</strong> are mostly evidence-review / display sections. They do not need heavy acceptance logic unless you want them to produce explicit status flags. The key requirement is that they should be <strong>active-campaign scoped</strong> and should stop saying fixed counts like 36, 17, or 50,000.</p>
+<p>Sections <strong>17.12 and 17.13</strong> are the important logic updates because they are true comparison-readiness and source-consistency controls.</p>
+<p>Section <strong>17.9</strong> should be scoped to active campaign rows so the convention checks match the acceptance philosophy from 17.1–17.8.</p>
+<h2>Suggested patch sequence</h2>
+<p>I would split the next work into three patches:</p>
+<pre><code class="language-text">Patch A: 17.9–17.11
+    Registry-scoped archive convention checks and validation evidence review.
+
+Patch B: 17.12–17.13
+    Dynamic comparison readiness and matched source-field consistency.
+
+Patch C: 17.14–17.16
+    Executive evidence summary, baseline × challenger delta summary, and product-guardrail strategy effect check.
+</code></pre>
+<p>Do not patch 17.20 yet. Once 17.9–17.16 are aligned, then 17.20 should be updated to consume the same dynamic acceptance assumptions.</p>
+</div></article><article id="c038-m01781" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01781 · 2026-05-13T07:46:41.801000-04:00 · active path</p><div class="body"><p>Thanks.  Perform each of these patches and then provide one 17.9-17.6 full copy paste.  Patch A: 17.9–17.11
+    Registry-scoped archive convention checks and validation evidence review.</p>
+<p>Patch B: 17.12–17.13
+    Dynamic comparison readiness and matched source-field consistency.</p>
+<p>Patch C: 17.14–17.16
+    Executive evidence summary, baseline × challenger delta summary, and product-guardrail strategy effect check.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

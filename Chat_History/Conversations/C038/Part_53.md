@@ -1,0 +1,2507 @@
+# Module 2 Decision Simulator Build
+
+## Part 53
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_52.md) · [Next](Part_54.md)
+
+<a id="c038-m00994"></a>
+
+### C038-M00994
+
+**ChatGPT** · 2026-05-10T09:39:35.898765-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00994 -->
+Below is the full copy-paste replacement for **Section 14.14 through Section 14.16**, using your current uploaded section as the base and upgrading the query-level and inline SQL commentary to the same instructional standard as the prior Section 14 chunks. fileciteturn112file15 fileciteturn112file16 fileciteturn112file12
+
+```sql
+/***************************************************************************************************
+SECTION 14.14 — REASON-CODE COVERAGE AND ALIGNMENT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that every final simulated Module 2 strategy outcome is explainable through
+    deterministic, outcome-aligned, boundary-safe simulated reason codes.
+
+    Section 14.14 answers:
+
+        "Does every latest-run row have a simulated explanation code, and do those explanation codes
+         align to the final decision outcome without crossing interpretation boundaries?"
+
+SQL PURPOSE:
+    1. Validate reason-code completeness.
+    2. Validate reason priority and reason count fields.
+    3. Check for prohibited boundary terms in reason-code fields.
+    4. Review decision_outcome × primary_reason_family alignment.
+    5. Review decision_outcome × primary_reason_code distribution.
+    6. Review population-level primary reason-code distribution.
+    7. Review secondary and tertiary reason-code diagnostic distribution.
+    8. Review reason-code count by final outcome.
+    9. Review reason-family leakage.
+    10. Surface high reason-code concentration for interpretation.
+
+WHY REASON-CODE QA MATTERS:
+    Final outcomes alone are not enough for a governed credit strategy simulator.
+
+    A mature strategy output should be able to answer both:
+        "What happened?"
+        and
+        "Why did it happen under the simulated strategy?"
+
+    Section 14.14 validates the "why" layer.
+
+CREDIT RISK INTERPRETATION:
+    Reason codes help explain whether outcomes were driven by:
+        approval-as-requested logic,
+        counteroffer exposure treatment,
+        affordability adjustment,
+        synthetic estimated-risk pressure,
+        requested Expected Loss pressure,
+        product exposure limits,
+        manual-review uncertainty,
+        hard simulated policy stops,
+        or residual fallback behavior.
+
+    This matters because portfolio-level rates can be misleading without explanation.
+
+    For example:
+        a high decline rate may be acceptable under a tighter synthetic-risk strategy if the dominant
+        reason codes align to synthetic-risk or severe capacity pressure.
+
+        a high counteroffer rate may be acceptable if reason codes show affordability or product-limit
+        driven reduced-exposure treatment.
+
+        a high manual-review rate may require operational-burden review if reason codes show residual
+        or mixed-signal uncertainty.
+
+EXPECTED FAMILY ALIGNMENT:
+    APPROVE:
+        primary_reason_family = APPROVAL
+
+    COUNTEROFFER:
+        primary_reason_family = COUNTEROFFER
+
+    MANUAL_REVIEW:
+        primary_reason_family = MANUAL_REVIEW
+
+    DECLINE:
+        primary_reason_family = POLICY_STOP
+
+SECONDARY AND TERTIARY REASON BOUNDARY:
+    secondary_reason_code and tertiary_reason_code are diagnostics only.
+
+    They do not change:
+        decision_outcome,
+        decision_path,
+        approved exposure,
+        approved PTI,
+        approved Expected Loss,
+        or simulated offer-exposure status.
+
+REASON-CODE BOUNDARY:
+    Reason codes are simulated strategy explanation codes only.
+
+    They support:
+        transparency,
+        QA review,
+        strategy interpretation,
+        portfolio diagnostics,
+        decision-path traceability,
+        matched strategy comparison,
+        executive evidence capture,
+        and validation documentation.
+
+    They are not:
+        customer communications,
+        regulatory notices,
+        adverse-action reasons,
+        production compliance determinations,
+        fair-lending conclusions,
+        or real applicant treatment explanations.
+
+WHAT TO LOOK FOR:
+    Completeness diagnostics:
+        missing reason-code counts should be zero.
+
+    Family alignment:
+        outcome-family mismatch counts should be zero.
+
+    Prohibited terminology:
+        prohibited_boundary_term_rows should be zero.
+
+    Concentration:
+        high reason-code concentration is not automatically a defect, but it should be interpreted
+        before documentation.
+
+REVIEW TRIGGERS:
+    Any missing primary reason code:
+        means a final simulated outcome is not explainable.
+
+    Any decision_outcome × primary_reason_family mismatch:
+        means reason-code family alignment should be reviewed.
+
+    Any prohibited boundary term:
+        means simulated explanation codes may be using terminology that implies external notices or
+        compliance conclusions.
+
+    A dominant primary reason code:
+        may be valid, but should be explained through strategy design, product mix, score mix,
+        affordability pressure, exposure limits, or synthetic-risk posture.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    COUNT(*) FILTER:
+        Calculates defect counts and conditional counts without removing the rest of the population
+        from the query.
+
+    NULLIF(BTRIM(field), ''):
+        Treats blank or whitespace-only text as missing.
+
+    ILIKE:
+        Performs case-insensitive pattern matching for prohibited boundary terms.
+
+    GROUP BY:
+        Creates distribution summaries by outcome, reason family, reason code, and reason count.
+
+    WINDOW SUM:
+        Creates population-share percentages without requiring a separate denominator join.
+
+    CASE:
+        Converts concentration or alignment patterns into readable diagnostic status labels.
+
+DOCUMENTATION USE:
+    Section 14.14 is central validation evidence for explainability.
+
+    It should be reviewed before using any reason-code language in:
+        executive summaries,
+        README results,
+        Validation Summary narrative,
+        LinkedIn portfolio storytelling,
+        or future strategy comparison writeups.
+
+READ-ONLY BOUNDARY:
+    Section 14.14 does not modify latest-run rows.
+    Section 14.14 does not modify archive rows.
+    Section 14.14 does not reassign reason codes.
+    Section 14.14 does not recalculate decisions.
+    Section 14.14 does not recalculate approved exposure.
+    Section 14.14 does not recalculate approved Expected Loss.
+    Section 14.14 does not create customer communication text.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.14A Reason-code completeness and prohibited-boundary-term diagnostics.
+
+Business purpose:
+    Provide the compact reason-code completeness and boundary-discipline control card.
+
+Credit risk interpretation:
+    A completed strategy output should be explainable for every row.
+
+    If the final decision outcome is present but the reason-code fields are missing, the strategy
+    output becomes difficult to defend in validation, executive review, and comparison analysis.
+
+What to look for:
+    null_primary_reason_code_rows:
+        expected zero.
+
+    null_primary_reason_family_rows:
+        expected zero.
+
+    null_triggered_reason_code_list_rows:
+        expected zero.
+
+    invalid_reason_priority_rank_rows:
+        expected zero.
+
+    invalid_reason_code_count_rows:
+        expected zero.
+
+    prohibited_boundary_term_rows:
+        expected zero.
+
+Review triggers:
+    Any nonzero missing or invalid count requires review.
+
+    Any prohibited boundary term requires terminology correction because reason codes must remain
+    simulated strategy explanation codes.
+
+SQL mechanics:
+    FILTER creates separate defect counts in one query.
+
+    NULLIF(BTRIM(...), '') treats blank text as missing.
+
+    ILIKE checks reason-code strings for boundary-crossing terms regardless of case.
+
+Documentation use:
+    This query supports the validation statement that simulated reason-code fields are complete and
+    boundary-safe.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    Missing primary reason code.
+
+    Expected:
+        zero.
+
+    Interpretation:
+        Every final simulated outcome should have one highest-priority simulated explanation code.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE primary_reason_code IS NULL
+           OR NULLIF(BTRIM(primary_reason_code), '') IS NULL
+    ) AS null_or_blank_primary_reason_code_rows,
+
+    /***********************************************************************************************
+    Missing reason family.
+
+    Expected:
+        zero.
+
+    Interpretation:
+        Reason family provides the broad explanation class and should align with final outcome family.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE primary_reason_family IS NULL
+           OR NULLIF(BTRIM(primary_reason_family), '') IS NULL
+    ) AS null_or_blank_primary_reason_family_rows,
+
+    /***********************************************************************************************
+    Missing triggered reason-code list.
+
+    Expected:
+        zero.
+
+    Interpretation:
+        triggered_reason_code_list preserves the full same-outcome-family explanation list created
+        by the Section 10 candidate → rank → pivot pattern.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE triggered_reason_code_list IS NULL
+           OR NULLIF(BTRIM(triggered_reason_code_list), '') IS NULL
+    ) AS null_or_blank_triggered_reason_code_list_rows,
+
+    /***********************************************************************************************
+    Missing or invalid reason priority rank.
+
+    Expected:
+        zero.
+
+    Interpretation:
+        reason_priority_rank should identify the priority of the primary reason code.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE reason_priority_rank IS NULL
+           OR reason_priority_rank <= 0
+    ) AS invalid_reason_priority_rank_rows,
+
+    /***********************************************************************************************
+    Missing or invalid reason-code count.
+
+    Expected:
+        zero.
+
+    Interpretation:
+        reason_code_count should be at least one because every final simulated outcome should have
+        at least one explanation code.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE reason_code_count IS NULL
+           OR reason_code_count < 1
+    ) AS invalid_reason_code_count_rows,
+
+    /***********************************************************************************************
+    Prohibited boundary-term count.
+
+    Expected:
+        zero.
+
+    Interpretation:
+        These terms are excluded because they imply external notices, regulatory frameworks, or
+        compliance conclusions rather than internal simulated strategy explanation codes.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE COALESCE(primary_reason_code, '') ILIKE '%ADVERSE_ACTION%'
+           OR COALESCE(secondary_reason_code, '') ILIKE '%ADVERSE_ACTION%'
+           OR COALESCE(tertiary_reason_code, '') ILIKE '%ADVERSE_ACTION%'
+           OR COALESCE(triggered_reason_code_list, '') ILIKE '%ADVERSE_ACTION%'
+
+           OR COALESCE(primary_reason_code, '') ILIKE '%REGULATORY%'
+           OR COALESCE(secondary_reason_code, '') ILIKE '%REGULATORY%'
+           OR COALESCE(tertiary_reason_code, '') ILIKE '%REGULATORY%'
+           OR COALESCE(triggered_reason_code_list, '') ILIKE '%REGULATORY%'
+
+           OR COALESCE(primary_reason_code, '') ILIKE '%CUSTOMER_NOTICE%'
+           OR COALESCE(secondary_reason_code, '') ILIKE '%CUSTOMER_NOTICE%'
+           OR COALESCE(tertiary_reason_code, '') ILIKE '%CUSTOMER_NOTICE%'
+           OR COALESCE(triggered_reason_code_list, '') ILIKE '%CUSTOMER_NOTICE%'
+
+           OR COALESCE(primary_reason_code, '') ILIKE '%FAIR_LENDING%'
+           OR COALESCE(secondary_reason_code, '') ILIKE '%FAIR_LENDING%'
+           OR COALESCE(tertiary_reason_code, '') ILIKE '%FAIR_LENDING%'
+           OR COALESCE(triggered_reason_code_list, '') ILIKE '%FAIR_LENDING%'
+    ) AS prohibited_boundary_term_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.14B Decision outcome × primary reason-family alignment.
+
+Business purpose:
+    Confirm that the broad simulated reason family reconciles to the final simulated outcome.
+
+Credit risk interpretation:
+    Reason-family alignment protects interpretability.
+
+    A final APPROVE should not carry a POLICY_STOP primary reason family.
+    A final DECLINE should not carry an APPROVAL primary reason family.
+    A final COUNTEROFFER should not carry a MANUAL_REVIEW primary reason family.
+
+Expected:
+    family_alignment_status should be REASON_FAMILY_ALIGNED for every displayed group.
+
+What to look for:
+    APPROVE       → APPROVAL
+    COUNTEROFFER  → COUNTEROFFER
+    MANUAL_REVIEW → MANUAL_REVIEW
+    DECLINE       → POLICY_STOP
+
+Review triggers:
+    Any REASON_FAMILY_ALIGNMENT_REVIEW_REQUIRED row should be reviewed before the output is used in
+    validation or executive storytelling.
+
+SQL mechanics:
+    GROUP BY creates one row per decision_outcome × primary_reason_family pair.
+
+    CASE translates the expected mapping into a readable status.
+
+Documentation use:
+    This query supports the statement that simulated explanation families are outcome-aligned.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+    primary_reason_family,
+
+    /***********************************************************************************************
+    Count rows in this outcome × reason-family combination.
+    ***********************************************************************************************/
+    COUNT(*) AS row_count,
+
+    /***********************************************************************************************
+    Percent within each final decision outcome.
+
+    SQL mechanics:
+        SUM(COUNT(*)) OVER (PARTITION BY decision_outcome) creates the outcome-level denominator.
+    ***********************************************************************************************/
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY decision_outcome), 0),
+        2
+    ) AS pct_within_decision_outcome,
+
+    /***********************************************************************************************
+    Family alignment status.
+
+    REVIEW indicates a reason-family / final-outcome mismatch.
+    ***********************************************************************************************/
+    CASE
+        WHEN decision_outcome = 'APPROVE'
+         AND primary_reason_family = 'APPROVAL'
+            THEN 'REASON_FAMILY_ALIGNED'
+
+        WHEN decision_outcome = 'COUNTEROFFER'
+         AND primary_reason_family = 'COUNTEROFFER'
+            THEN 'REASON_FAMILY_ALIGNED'
+
+        WHEN decision_outcome = 'MANUAL_REVIEW'
+         AND primary_reason_family = 'MANUAL_REVIEW'
+            THEN 'REASON_FAMILY_ALIGNED'
+
+        WHEN decision_outcome = 'DECLINE'
+         AND primary_reason_family = 'POLICY_STOP'
+            THEN 'REASON_FAMILY_ALIGNED'
+
+        ELSE 'REASON_FAMILY_ALIGNMENT_REVIEW_REQUIRED'
+    END AS family_alignment_status
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    decision_outcome,
+    primary_reason_family
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END,
+    primary_reason_family;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.14C Decision outcome × primary reason-code distribution.
+
+Business purpose:
+    Show the dominant simulated explanation codes inside each final outcome.
+
+Credit risk interpretation:
+    This query explains the composition of each final outcome.
+
+    For example:
+        APPROVE rows should generally concentrate in APPROVED_AS_REQUESTED.
+        COUNTEROFFER rows should show which exposure, affordability, risk, or Expected Loss limits
+        drove reduced-exposure treatment.
+        MANUAL_REVIEW rows should show which unresolved or mixed-signal drivers remain.
+        DECLINE rows should show which simulated policy-stop drivers explain no-offer outcomes.
+
+What to look for:
+    Reason-code distribution should align with the strategy story.
+
+Review triggers:
+    A reason code dominating an outcome is not automatically bad, but it should be explainable.
+
+    Unexpected reason codes inside an outcome family should be reviewed.
+
+SQL mechanics:
+    GROUP BY decision_outcome, primary_reason_family, primary_reason_code creates one row per
+    final-outcome explanation pattern.
+
+    Window denominator partitions by decision_outcome so pct_within_decision_outcome is easy to read.
+
+Documentation use:
+    This query is a high-value reason-code exhibit for Validation Summary and executive narrative.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code,
+
+    /***********************************************************************************************
+    Count rows in this final outcome × primary reason-code group.
+    ***********************************************************************************************/
+    COUNT(*) AS row_count,
+
+    /***********************************************************************************************
+    Percent within the final decision outcome.
+
+    Use:
+        Understand reason-code composition inside each outcome.
+    ***********************************************************************************************/
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY decision_outcome), 0),
+        2
+    ) AS pct_within_decision_outcome,
+
+    /***********************************************************************************************
+    Percent of the full latest-run population.
+
+    Use:
+        Understand how important this reason-code pattern is to the total portfolio story.
+    ***********************************************************************************************/
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_population
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END,
+    row_count DESC,
+    primary_reason_family,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.14D Population-level primary reason-code distribution.
+
+Business purpose:
+    Identify the most common simulated strategy explanation codes across the full latest-run
+    population.
+
+Credit risk interpretation:
+    This is the portfolio-level explanation-code ranking.
+
+    It helps answer:
+        "What reason-code families and specific codes define the current run story?"
+
+What to look for:
+    Top reason-code patterns should be consistent with the strategy posture.
+
+    A tighter synthetic-risk strategy may show more synthetic-risk policy-stop or review-related
+    reasons.
+
+    A counteroffer-focused strategy may show more counteroffer affordability or exposure-limit reasons.
+
+Review triggers:
+    Very high concentration in one reason code should be interpreted before documentation.
+
+SQL mechanics:
+    GROUP BY reason family and code creates reason-code counts.
+
+    SUM(COUNT(*)) OVER () creates the full-population denominator.
+
+Documentation use:
+    This query often feeds executive explanation language and Section 16 evidence interpretation.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    primary_reason_family,
+    primary_reason_code,
+
+    /***********************************************************************************************
+    Count rows with this primary reason code.
+    ***********************************************************************************************/
+    COUNT(*) AS row_count,
+
+    /***********************************************************************************************
+    Full-population share of this primary reason code.
+    ***********************************************************************************************/
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_population,
+
+    /***********************************************************************************************
+    Average synthetic estimated-risk proxy for this primary reason-code group.
+
+    This helps reviewers test whether the reason-code group aligns with borrower risk profile.
+    ***********************************************************************************************/
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+
+    /***********************************************************************************************
+    Average requested PTI for this reason-code group.
+
+    This helps connect reason-code patterns to affordability pressure.
+    ***********************************************************************************************/
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+
+    /***********************************************************************************************
+    Approved exposure and approved Expected Loss contribution for this reason-code group.
+
+    COALESCE converts unresolved / no-offer outcomes to zero for all-application impact.
+    ***********************************************************************************************/
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+    SUM(COALESCE(approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    primary_reason_family,
+    primary_reason_code
+
+ORDER BY
+    row_count DESC,
+    primary_reason_family,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.14E Secondary and tertiary reason-code diagnostic distribution.
+
+Business purpose:
+    Review additional same-family explanation signals assigned after the primary reason code.
+
+Credit risk interpretation:
+    Secondary and tertiary reason codes help explain multi-driver cases.
+
+    For example:
+        a final COUNTEROFFER may have primary affordability adjustment plus secondary Expected Loss
+        limit or product exposure-limit reasons.
+
+    These fields are diagnostic only.
+
+Expected:
+    NULL secondary and tertiary values are normal when only one reason applied.
+
+What to look for:
+    Secondary and tertiary codes should not duplicate primary reason codes.
+
+    Concentrations in secondary / tertiary reasons can reveal additional strategy pressure not visible
+    from primary reason codes alone.
+
+Review triggers:
+    Duplicated primary / secondary / tertiary reason codes should be reviewed.
+
+SQL mechanics:
+    The first SELECT summarizes secondary_reason_code.
+    The second SELECT summarizes tertiary_reason_code.
+    UNION ALL combines them into one diagnostic table.
+
+Documentation use:
+    Use this query when a final outcome population appears to have multiple drivers.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    'SECONDARY_REASON_CODE' AS reason_code_position,
+    secondary_reason_code AS reason_code,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_population
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY secondary_reason_code
+
+UNION ALL
+
+SELECT
+    'TERTIARY_REASON_CODE' AS reason_code_position,
+    tertiary_reason_code AS reason_code,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_population
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY tertiary_reason_code
+
+ORDER BY
+    reason_code_position,
+    row_count DESC,
+    reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.14F Reason-code count distribution by final outcome.
+
+Business purpose:
+    Show how many same-family simulated explanation drivers were active for each final outcome.
+
+Credit risk interpretation:
+    reason_code_count > 1 means multiple same-outcome-family explanation codes were active.
+
+    This is common in complex profiles where risk, affordability, exposure, and Expected Loss signals
+    overlap.
+
+What to look for:
+    APPROVE rows may commonly have reason_code_count = 1.
+
+    COUNTEROFFER, MANUAL_REVIEW, and DECLINE rows may have higher counts when multiple drivers apply.
+
+Review triggers:
+    Very high reason_code_count values should be reviewed to ensure overlapping triggers remain
+    explainable and not excessive.
+
+SQL mechanics:
+    GROUP BY decision_outcome, reason_code_count creates one row per outcome × explanation-count
+    pattern.
+
+    The window denominator partitions by decision_outcome so pct_within_decision_outcome is easy to
+    interpret.
+
+Documentation use:
+    Supports transparency around multi-driver strategy explanations.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+    reason_code_count,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY decision_outcome), 0),
+        2
+    ) AS pct_within_decision_outcome
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    decision_outcome,
+    reason_code_count
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END,
+    reason_code_count;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.14G Reason-family leakage diagnostic.
+
+Business purpose:
+    Surface rows where primary_reason_family does not match the expected final decision outcome
+    family.
+
+Expected:
+    zero rows.
+
+Credit risk interpretation:
+    A leakage row means the final outcome and explanation family are inconsistent.
+
+    That weakens interpretation and should be reviewed before the output is used in validation or
+    executive storytelling.
+
+SQL mechanics:
+    The WHERE clause keeps only rows where expected outcome-family mapping is violated.
+
+    LIMIT 100 keeps the diagnostic bounded.
+
+Documentation use:
+    If zero rows are returned, this query supports the statement that reason-family leakage was not
+    observed.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    product_type_policy_key,
+    score_band_policy_key,
+    decision_outcome,
+    decision_path,
+    primary_reason_family,
+    primary_reason_code,
+    triggered_reason_code_list
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE (
+        decision_outcome = 'APPROVE'
+        AND primary_reason_family IS DISTINCT FROM 'APPROVAL'
+      )
+   OR (
+        decision_outcome = 'COUNTEROFFER'
+        AND primary_reason_family IS DISTINCT FROM 'COUNTEROFFER'
+      )
+   OR (
+        decision_outcome = 'MANUAL_REVIEW'
+        AND primary_reason_family IS DISTINCT FROM 'MANUAL_REVIEW'
+      )
+   OR (
+        decision_outcome = 'DECLINE'
+        AND primary_reason_family IS DISTINCT FROM 'POLICY_STOP'
+      )
+
+ORDER BY
+    decision_outcome,
+    primary_reason_family,
+    application_id
+
+LIMIT 100;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.14H Primary reason-code concentration diagnostic.
+
+Business purpose:
+    Identify whether one simulated primary reason code dominates the latest-run explanation story.
+
+Credit risk interpretation:
+    Concentration is not automatically a defect.
+
+    A dominant reason code may be expected if the active strategy is intentionally narrow, such as:
+        tighter synthetic-risk strategy,
+        tighter affordability strategy,
+        counteroffer-first exposure strategy,
+        product-specific guardrail strategy,
+        manual-review reduction strategy.
+
+What to look for:
+    REASON_CODE_CONCENTRATION_WITHIN_REVIEW_RANGE:
+        no single reason code exceeds the review threshold.
+
+    REASON_CODE_CONCENTRATION_REVIEW_REQUIRED:
+        one reason code exceeds the review threshold and should be interpreted.
+
+Review triggers:
+    A dominant reason code should be connected to strategy settings, product mix, score mix,
+    affordability pressure, exposure limits, or scenario design.
+
+Threshold boundary:
+    The 0.500000 threshold is a QA review prompt only.
+
+    It is not:
+        a production policy limit,
+        an empirical validation cutoff,
+        a regulatory threshold,
+        or a strategy acceptance criterion.
+
+SQL mechanics:
+    reason_distribution calculates the population share of each primary reason code.
+
+    CASE labels the concentration status.
+
+Documentation use:
+    This query supports a balanced narrative: concentration may be evidence of strategy focus, but it
+    should be explained.
+-----------------------------------------------------------------------------------------------*/
+
+WITH reason_distribution AS (
+    SELECT
+        primary_reason_code,
+
+        COUNT(*) AS row_count,
+
+        /*******************************************************************************************
+        Population share of each primary reason code.
+
+        SQL mechanics:
+            SUM(COUNT(*)) OVER () supplies the full population denominator.
+        *******************************************************************************************/
+        COUNT(*)::NUMERIC / NULLIF(SUM(COUNT(*)) OVER (), 0)
+            AS primary_reason_code_share
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY primary_reason_code
+)
+
+SELECT
+    primary_reason_code,
+    row_count,
+    primary_reason_code_share,
+
+    /***********************************************************************************************
+    Diagnostic concentration status.
+
+    REVIEW is a prompt for interpretation, not an automatic invalidation.
+    ***********************************************************************************************/
+    CASE
+        WHEN primary_reason_code_share > 0.500000
+            THEN 'REASON_CODE_CONCENTRATION_REVIEW_REQUIRED'
+        ELSE 'REASON_CODE_CONCENTRATION_WITHIN_REVIEW_RANGE'
+    END AS reason_code_concentration_status
+
+FROM reason_distribution
+
+ORDER BY
+    primary_reason_code_share DESC,
+    primary_reason_code;
+
+
+
+/***************************************************************************************************
+SECTION 14.15 — SIMULATED OFFER-EXPOSURE PROFILE
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Summarize the profile of rows where the simulated strategy produced positive offer exposure.
+
+    Section 14.15 answers:
+
+        "Who received simulated positive offer exposure, and what are the approved exposure,
+         affordability, synthetic risk, LGD, and approved Expected Loss characteristics of those
+         rows?"
+
+SQL PURPOSE:
+    1. Summarize overall simulated offer-exposure rate.
+    2. Split offer rows between APPROVE and COUNTEROFFER.
+    3. Summarize approved amount, synthetic estimated-risk proxy, LGD, requested PTI, approved PTI,
+       requested Expected Loss, and approved Expected Loss among offer rows.
+    4. Review simulated offer-exposure profile by product.
+    5. Review simulated offer-exposure profile by score band.
+    6. Review simulated offer-exposure profile by product × score band.
+
+WHY SIMULATED OFFER-EXPOSURE QA MATTERS:
+    Approval rate alone can understate access when the strategy preserves access through
+    counteroffers.
+
+    simulated_offer_exposure_flag captures both:
+        final APPROVE,
+        final COUNTEROFFER.
+
+    This gives a broader view of simulated positive offer exposure than approval rate alone.
+
+CREDIT RISK INTERPRETATION:
+    Simulated offer exposure is where the strategy accepts positive exposure in the synthetic
+    applicant population.
+
+    Reviewers should evaluate:
+        how many rows receive positive simulated offer exposure,
+        whether those rows are mostly approvals or counteroffers,
+        what approved amount is assigned,
+        what synthetic estimated-risk proxy those rows carry,
+        what approved PTI those rows carry,
+        and what approved Expected Loss those rows carry.
+
+WHY THIS PROFILE IS SEPARATE FROM ALL-APPLICATION METRICS:
+    All-application metrics show total portfolio impact.
+
+    Offer-row metrics show the profile of rows where the simulated strategy assigned positive
+    exposure.
+
+    Both are useful, but they answer different questions.
+
+    All-application example:
+        "What is the total approved amount across the whole application population?"
+
+    Offer-row example:
+        "Among rows that received simulated offer exposure, what is the average approved amount?"
+
+TERMINOLOGY:
+    Use:
+        simulated offer exposure,
+        offer rows,
+        positive offer outcomes.
+
+    Do not interpret these rows as:
+        booked exposure,
+        funded exposure,
+        operational account creation,
+        production approval,
+        customer treatment,
+        or real applicant treatment.
+
+EXPECTED OUTCOME CONVENTION:
+    simulated_offer_exposure_flag should be TRUE only for:
+        APPROVE
+        COUNTEROFFER
+
+    It should be FALSE for:
+        MANUAL_REVIEW
+        DECLINE
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the SQL field name and is interpreted as the synthetic estimated-PD proxy.
+
+    Section 14.15 summarizes the offered population risk proxy.
+
+    It does not recalibrate or validate a production default model.
+
+EXPECTED LOSS BOUNDARY:
+    requested_expected_loss_amount is requested-exposure Expected Loss.
+
+    approved_expected_loss_amount is approved-exposure Expected Loss after final simulated exposure
+    treatment.
+
+    Section 14.15 summarizes these metrics. It does not recalculate them.
+
+WHAT TO LOOK FOR:
+    offer_count:
+        APPROVE + COUNTEROFFER rows.
+
+    simulated_offer_exposure_rate:
+        positive simulated offer-exposure rate.
+
+    approval_share_of_offers and counteroffer_share_of_offers:
+        whether positive offer exposure is mostly as-requested approvals or reduced-exposure
+        counteroffers.
+
+    total_approved_amount:
+        total simulated approved exposure among positive offer rows.
+
+    total_approved_expected_loss_amount:
+        total simulated approved Expected Loss among positive offer rows.
+
+REVIEW TRIGGERS:
+    A very high counteroffer_share_of_offers:
+        may indicate dependence on reduced-exposure treatment.
+
+    A high avg_synthetic_estimated_pd_proxy_offer_rows:
+        may indicate elevated offered-population risk.
+
+    A high approved Expected Loss rate:
+        may indicate risk discipline review is needed.
+
+    Product or score-band concentrations:
+        should be connected to product, score, affordability, and reason-code diagnostics.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    FILTER:
+        Restricts aggregates to simulated offer rows or specific offer outcomes.
+
+    COALESCE:
+        Converts unresolved or no-offer rows to zero only when calculating all-application impact
+        metrics.
+
+    NULLIF:
+        Protects share and rate calculations from divide-by-zero.
+
+    GROUP BY:
+        Produces product, score-band, and product × score-band offer-exposure profiles.
+
+DOCUMENTATION USE:
+    Section 14.15 supports the executive access / exposure story:
+        how much positive simulated offer exposure was assigned,
+        where it concentrated,
+        and what approved-risk economics came with it.
+
+READ-ONLY BOUNDARY:
+    Section 14.15 does not modify latest-run rows.
+    Section 14.15 does not modify archive rows.
+    Section 14.15 does not book exposure.
+    Section 14.15 does not fund accounts.
+    Section 14.15 does not recalculate approved exposure.
+    Section 14.15 does not recalculate approved Expected Loss.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.15A Overall simulated offer-exposure profile.
+
+Business purpose:
+    Provide the headline simulated positive offer-exposure profile.
+
+Credit risk interpretation:
+    This query answers the executive access question:
+
+        "How much of the population received positive simulated offer exposure?"
+
+    It also explains whether positive offer exposure came through:
+        APPROVE,
+        or COUNTEROFFER.
+
+What to look for:
+    offer_count:
+        APPROVE + COUNTEROFFER rows.
+
+    simulated_offer_exposure_rate:
+        offer_count / total latest-run population.
+
+    approval_share_of_offers:
+        share of offer rows that were as-requested approvals.
+
+    counteroffer_share_of_offers:
+        share of offer rows that preserved access through reduced exposure.
+
+Review triggers:
+    If offer_count is zero, positive offer-exposure economics are not applicable.
+
+    If counteroffer_share_of_offers is very high, review counteroffer feasibility and exposure
+    treatment.
+
+    If approved Expected Loss is high among offer rows, review risk, LGD, product mix, and approved
+    amount.
+
+SQL mechanics:
+    FILTER calculates offer-row counts and offer-row averages in one table.
+
+    NULLIF protects denominators when offer_count is zero.
+
+Documentation use:
+    This is the headline simulated offer-exposure QA table.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    Total latest-run population.
+    ***********************************************************************************************/
+    COUNT(*) AS applications,
+
+    /***********************************************************************************************
+    Positive simulated offer-exposure count.
+
+    Expected:
+        equals APPROVE rows + COUNTEROFFER rows.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS offer_count,
+
+    /***********************************************************************************************
+    Positive simulated offer-exposure rate.
+
+    Denominator:
+        full latest-run population.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    Approval and counteroffer counts among all applications.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')
+        AS approval_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS counteroffer_count,
+
+    /***********************************************************************************************
+    Share of offer rows that are final APPROVE.
+
+    Denominator:
+        offer_count.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS approval_share_of_offers,
+
+    /***********************************************************************************************
+    Share of offer rows that are final COUNTEROFFER.
+
+    Denominator:
+        offer_count.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS counteroffer_share_of_offers,
+
+    /***********************************************************************************************
+    Approved exposure totals and averages among simulated offer rows.
+    ***********************************************************************************************/
+    SUM(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_amount_offer_rows,
+
+    AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_amount_offer_rows,
+
+    /***********************************************************************************************
+    Offered-population risk, LGD, and affordability profile.
+    ***********************************************************************************************/
+    AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    AVG(estimated_lgd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_estimated_lgd_offer_rows,
+
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_requested_payment_to_income_ratio_offer_rows,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss among simulated offer rows.
+    ***********************************************************************************************/
+    SUM(requested_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_requested_expected_loss_amount_offer_rows,
+
+    SUM(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_expected_loss_amount_offer_rows,
+
+    AVG(requested_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_requested_expected_loss_amount_offer_rows,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_expected_loss_amount_offer_rows,
+
+    /***********************************************************************************************
+    Approved Expected Loss rate among offer rows.
+
+    Formula:
+        total approved Expected Loss / total approved amount
+
+    Boundary:
+        This is a synthetic strategy metric, not a production loss-rate forecast.
+    ***********************************************************************************************/
+    SUM(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        / NULLIF(
+            SUM(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS approved_expected_loss_rate_offer_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.15B Product-level simulated offer-exposure profile.
+
+Business purpose:
+    Show where positive simulated offer exposure concentrates by product.
+
+Credit risk interpretation:
+    Product type affects requested amount, payment structure, LGD, product caps, counteroffer
+    feasibility, approved amount, and approved Expected Loss.
+
+What to look for:
+    Products with high simulated_offer_exposure_rate:
+        drive access.
+
+    Products with high total_approved_amount_offer_rows:
+        drive approved exposure.
+
+    Products with high total_approved_expected_loss_amount_offer_rows:
+        drive approved Expected Loss.
+
+Review triggers:
+    Product-level offer exposure should be interpreted against product risk, score mix, PTI, LGD,
+    requested exposure, and reason-code distribution.
+
+SQL mechanics:
+    GROUP BY product_type_policy_key creates one row per product.
+
+    FILTER isolates offer rows and outcome types while preserving product-level denominators.
+
+Documentation use:
+    This query supports product-level executive and validation storytelling.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+
+    /***********************************************************************************************
+    Product population size.
+    ***********************************************************************************************/
+    COUNT(*) AS applications,
+
+    /***********************************************************************************************
+    Positive simulated offer-exposure count and rate by product.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS offer_count,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    Offer composition by final outcome.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')
+        AS approval_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS counteroffer_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS approval_share_of_offers,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS counteroffer_share_of_offers,
+
+    /***********************************************************************************************
+    Product-level approved exposure and approved Expected Loss among offer rows.
+    ***********************************************************************************************/
+    SUM(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_amount_offer_rows,
+
+    AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_amount_offer_rows,
+
+    SUM(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_expected_loss_amount_offer_rows,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_expected_loss_amount_offer_rows,
+
+    /***********************************************************************************************
+    Product-level offered population risk and affordability profile.
+    ***********************************************************************************************/
+    AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    AVG(estimated_lgd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_estimated_lgd_offer_rows,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY product_type_policy_key
+
+ORDER BY product_type_policy_key;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.15C Score-band simulated offer-exposure profile.
+
+Business purpose:
+    Show where positive simulated offer exposure concentrates by score band.
+
+Credit risk interpretation:
+    Score bands describe borrower-quality segmentation.
+
+    Stronger score bands should generally show higher simulated offer-exposure rates and lower
+    offered-population synthetic estimated-risk proxy.
+
+    Weaker score bands may still receive offer exposure when product, affordability, exposure, and
+    reason-code conditions support it.
+
+What to look for:
+    Offer exposure should generally be stronger in better score bands.
+
+    Counteroffer share may rise in intermediate score bands if reduced exposure preserves access.
+
+Review triggers:
+    Very high offer exposure in weaker score bands should be explained through product mix,
+    affordability, exposure, DTI, and reason codes.
+
+SQL mechanics:
+    GROUP BY score_band_policy_key creates one row per score band.
+
+    Custom ORDER BY places score bands from strongest to weakest.
+
+Documentation use:
+    This query supports borrower-quality access and exposure interpretation.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+
+    /***********************************************************************************************
+    Score-band population size.
+    ***********************************************************************************************/
+    COUNT(*) AS applications,
+
+    /***********************************************************************************************
+    Positive simulated offer exposure by score band.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS offer_count,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    Offer composition by final outcome.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')
+        AS approval_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS counteroffer_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS approval_share_of_offers,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS counteroffer_share_of_offers,
+
+    /***********************************************************************************************
+    Score-band risk and exposure profile among offer rows.
+    ***********************************************************************************************/
+    AVG(credit_score) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_credit_score_offer_rows,
+
+    AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_amount_offer_rows,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_expected_loss_amount_offer_rows,
+
+    SUM(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_expected_loss_amount_offer_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY score_band_policy_key
+
+ORDER BY
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.15D Product × score-band simulated offer-exposure profile.
+
+Business purpose:
+    Show where positive simulated offer exposure concentrates at the product × score-band
+    intersection.
+
+Credit risk interpretation:
+    Product × score is often where the most important strategy story emerges.
+
+    Portfolio-level offer exposure can look reasonable while a specific product × score segment is
+    driving most approved exposure or approved Expected Loss.
+
+What to look for:
+    Identify segments with:
+        high offer_count,
+        high simulated_offer_exposure_rate,
+        high total_approved_amount_offer_rows,
+        high total_approved_expected_loss_amount_offer_rows,
+        high counteroffer_share_of_offers.
+
+Review triggers:
+    Segments with high approved Expected Loss should be interpreted before documentation.
+
+    Segments with high counteroffer share should be connected to affordability, exposure, and
+    counteroffer feasibility diagnostics.
+
+SQL mechanics:
+    GROUP BY product_type_policy_key, score_band_policy_key creates the segment grain.
+
+    FILTER isolates offer rows and offer composition.
+
+Documentation use:
+    This query is a strong companion to Section 16 product × score segment evidence.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    score_band_policy_key,
+
+    /***********************************************************************************************
+    Segment population size.
+    ***********************************************************************************************/
+    COUNT(*) AS applications,
+
+    /***********************************************************************************************
+    Simulated offer-exposure count and rate for the product × score segment.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS offer_count,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    Offer composition by final outcome.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')
+        AS approval_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS counteroffer_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS approval_share_of_offers,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE),
+            0
+        ) AS counteroffer_share_of_offers,
+
+    /***********************************************************************************************
+    Offer-row exposure, risk, affordability, and Expected Loss metrics by segment.
+    ***********************************************************************************************/
+    SUM(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_amount_offer_rows,
+
+    AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_amount_offer_rows,
+
+    AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows,
+
+    SUM(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_expected_loss_amount_offer_rows,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_expected_loss_amount_offer_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    product_type_policy_key,
+    score_band_policy_key
+
+ORDER BY
+    product_type_policy_key,
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+END OF SECTION 14.15 — SIMULATED OFFER-EXPOSURE PROFILE
+
+This partial Section 14 chunk has established:
+    1. Simulated reason-code completeness diagnostics.
+    2. Simulated reason-code family alignment diagnostics.
+    3. Simulated reason-code distribution and concentration diagnostics.
+    4. Simulated reason-code boundary-term diagnostics.
+    5. Overall simulated offer-exposure profile.
+    6. Product-level simulated offer-exposure profile.
+    7. Score-band simulated offer-exposure profile.
+    8. Product × score-band simulated offer-exposure profile.
+    9. Continued interpretation of estimated_pd as the synthetic estimated-PD proxy.
+    10. Continued distinction between requested-exposure Expected Loss and approved-exposure Expected
+        Loss.
+    11. Continued simulated offer-exposure boundary discipline.
+    12. Continued simulated reason-code boundary discipline.
+
+No latest-run output rows have been modified.
+No archive rows have been modified.
+No strategy parameter rows have been modified.
+No product policy parameter rows have been modified.
+No decision outcomes have been recalculated.
+No simulated reason codes have been reassigned.
+No approved exposure has been recalculated.
+No approved Expected Loss has been recalculated.
+No BRD or Validation Summary documentation has been drafted.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 14.16 — MIXED-SIGNAL AND EDGE-CASE REVIEW
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that realistic edge cases remain visible, bounded, traceable, and explainable in the
+    completed latest-run Module 2 strategy output.
+
+    Section 14.16 answers:
+
+        "Do realistic edge cases exist in the strategy output, and can reviewers trace those cases
+         through product structure, borrower profile, affordability, synthetic estimated-risk tier,
+         rule triggers, exposure treatment, final outcome, and simulated reason codes?"
+
+SQL PURPOSE:
+    1. Provide targeted sample queries for major mixed-signal and edge-case populations.
+    2. Review strong-credit / high-requested-PTI cases.
+    3. Review weak-credit / low-requested-PTI cases.
+    4. Review large-exposure / low-synthetic-risk cases.
+    5. Review high-synthetic-risk / low-exposure cases.
+    6. Review high-DTI / low-requested-PTI cases.
+    7. Review multiple mixed-signal cases.
+    8. Review borderline profiles.
+    9. Review counteroffer cases with large exposure reductions.
+    10. Review residual manual-review fallback cases.
+    11. Review residual decline fallback cases, if any.
+    12. Summarize mixed-signal and borderline population distribution.
+
+WHY EDGE-CASE REVIEW MATTERS:
+    A governed synthetic strategy simulator should not force every applicant into rigid, perfectly
+    separated risk profiles.
+
+    Realistic credit portfolios contain overlap:
+        strong credit with affordability stress,
+        weaker credit with manageable requested PTI,
+        large requested exposure with low synthetic estimated-risk,
+        high synthetic estimated-risk with low exposure,
+        high DTI with low requested PTI,
+        threshold-adjacent borderline cases,
+        and multiple simultaneous signals.
+
+    These cases are not automatically defects.
+
+    They are evidence that the synthetic portfolio preserves realistic borrower / structure overlap.
+
+CREDIT RISK INTERPRETATION:
+    Edge cases help demonstrate that strategy outcomes are not determined by a single variable.
+
+    For example:
+        strong credit can still have affordability stress;
+        weak credit can still have low requested PTI;
+        low synthetic-risk applicants can still request large exposure;
+        high synthetic-risk applicants can still request low exposure;
+        high DTI can coexist with low requested PTI.
+
+    These cases should remain visible and explainable.
+
+WHAT TO LOOK FOR:
+    Edge-case samples should be:
+        present where expected,
+        bounded in size,
+        interpretable through staged diagnostics,
+        aligned to final outcome conventions,
+        and explainable through reason codes.
+
+REVIEW TRIGGERS:
+    Edge cases require review when they:
+        dominate the population,
+        violate final output conventions,
+        produce unexplained approvals,
+        produce unexplained declines,
+        have residual fallback paths without clear diagnostics,
+        or create extreme approved exposure / approved Expected Loss concentrations.
+
+SAMPLE LIMITS:
+    Sample queries use LIMIT 25.
+
+    This supports diagnostic review without overwhelming the validation evidence package.
+
+    These samples are not intended to provide full population counts. The summary query at the end
+    provides population-level mixed-signal and borderline counts.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    WHERE:
+        Selects a targeted edge-case population.
+
+    ORDER BY:
+        Sorts the most review-relevant rows first, such as highest PTI, highest estimated_pd,
+        largest exposure, or highest trigger count.
+
+    LIMIT:
+        Keeps sample outputs bounded and reviewable.
+
+    CASE and GROUP BY:
+        Used in summary diagnostics to convert edge-case labels into interpretable population
+        evidence.
+
+BOUNDARY:
+    Section 14.16 does not suppress edge cases.
+    Section 14.16 does not relabel edge cases.
+    Section 14.16 does not recalculate outcomes.
+    Section 14.16 does not reassign reason codes.
+    Section 14.16 does not treat edge-case presence as automatic failure.
+
+DOCUMENTATION USE:
+    Section 14.16 is valuable for the Validation Summary because it demonstrates that residual and
+    mixed-signal cases were reviewed rather than hidden.
+
+READ-ONLY BOUNDARY:
+    Section 14.16 does not modify latest-run rows.
+    Section 14.16 does not modify archive rows.
+    Section 14.16 does not recalculate decisions.
+    Section 14.16 does not recalculate approved exposure.
+    Section 14.16 does not recalculate approved Expected Loss.
+    Section 14.16 does not reassign simulated reason codes.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16A Strong credit / high requested PTI sample.
+
+Business purpose:
+    Review applicants with strong score-band profiles but elevated requested-structure affordability
+    pressure.
+
+Credit risk interpretation:
+    Strong credit quality does not eliminate affordability risk.
+
+    This edge case helps validate that high requested PTI remains visible even when credit score is
+    strong.
+
+What to look for:
+    Review whether final outcomes and reason codes reflect affordability pressure, counteroffer
+    treatment, manual review, or approval-as-requested logic.
+
+Review triggers:
+    Strong-credit / severe-requested-PTI rows that receive APPROVE should be explainable through
+    income, requested amount, product, DTI, synthetic risk tier, and reason code.
+
+SQL mechanics:
+    WHERE selects stronger score bands and high / severe requested PTI buckets.
+
+    ORDER BY requested PTI descending surfaces the most affordability-stressed rows first.
+
+Documentation use:
+    Supports the validation statement that the simulator preserves realistic strong-credit /
+    high-affordability-pressure overlap.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    credit_score,
+    annual_income,
+    requested_amount,
+
+    requested_payment_to_income_ratio,
+    approved_payment_to_income_ratio,
+
+    /***********************************************************************************************
+    Alias estimated_pd for interpretation clarity while preserving the original SQL field.
+    ***********************************************************************************************/
+    estimated_pd AS synthetic_estimated_pd_proxy,
+
+    strategy_risk_tier,
+    requested_pti_bucket,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE score_band_policy_key IN ('SUPER_PRIME', 'PRIME')
+  AND requested_pti_bucket IN ('HIGH_REQUESTED_PTI', 'SEVERE_REQUESTED_PTI')
+
+ORDER BY
+    requested_payment_to_income_ratio DESC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16B Weak credit / low requested PTI sample.
+
+Business purpose:
+    Review applicants with weaker score-band profiles but manageable requested-structure affordability.
+
+Credit risk interpretation:
+    Weak credit quality does not automatically imply high requested PTI.
+
+    This edge case validates realistic overlap between borrower quality and requested-product
+    affordability.
+
+What to look for:
+    Review whether final outcomes are explained by synthetic estimated-risk proxy, DTI, product, hard
+    policy stops, requested Expected Loss, or reason codes.
+
+Review triggers:
+    Weak-credit / low-PTI approvals may be acceptable if synthetic estimated-risk proxy, product,
+    exposure, and reason codes support the outcome.
+
+SQL mechanics:
+    WHERE selects weaker score bands and low / moderate requested PTI buckets.
+
+    ORDER BY estimated_pd descending surfaces the riskiest weak-credit profiles first.
+
+Documentation use:
+    Supports the validation statement that weaker-credit applicants can still have manageable
+    requested affordability, preserving realistic portfolio overlap.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    credit_score,
+    annual_income,
+    requested_amount,
+
+    requested_payment_to_income_ratio,
+
+    estimated_pd AS synthetic_estimated_pd_proxy,
+
+    strategy_risk_tier,
+    requested_pti_bucket,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE score_band_policy_key IN ('SUBPRIME', 'DEEP_SUBPRIME')
+  AND requested_pti_bucket IN ('LOW_REQUESTED_PTI', 'MODERATE_REQUESTED_PTI')
+
+ORDER BY
+    estimated_pd DESC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16C Large exposure / low synthetic-risk sample.
+
+Business purpose:
+    Review rows where requested exposure is large while synthetic estimated-risk tier remains low.
+
+Credit risk interpretation:
+    Large requested exposure can create exposure-management or Expected Loss pressure even when
+    synthetic estimated-risk proxy is low.
+
+What to look for:
+    Review approved amount, decision outcome, and reason code.
+
+    Strong cases may be approved if exposure and affordability remain within product thresholds.
+
+    Other cases may counteroffer because exposure treatment is needed despite low synthetic risk.
+
+Review triggers:
+    Very large requested exposure with high approved amount should be interpreted through product
+    type, LGD, approved Expected Loss, and product caps.
+
+SQL mechanics:
+    WHERE selects rows marked by mixed_signal_profile_type.
+
+    ORDER BY requested_amount descending surfaces the largest requested exposures first.
+
+Documentation use:
+    Supports review of exposure-driven strategy behavior beyond borrower-risk score alone.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    requested_amount,
+    requested_exposure_tier,
+
+    strategy_risk_tier,
+    estimated_pd AS synthetic_estimated_pd_proxy,
+
+    requested_payment_to_income_ratio,
+    approved_amount,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE mixed_signal_profile_type IN (
+        'LARGE_EXPOSURE_LOW_RISK',
+        'MULTIPLE_MIXED_SIGNALS'
+)
+
+ORDER BY
+    requested_amount DESC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16D High synthetic risk / low exposure sample.
+
+Business purpose:
+    Review rows where synthetic estimated-risk tier is high while requested exposure is relatively
+    low.
+
+Credit risk interpretation:
+    Low exposure does not erase high synthetic estimated-risk.
+
+    This sample helps reviewers see how the strategy handles high-risk / low-exposure overlap.
+
+What to look for:
+    Outcomes should be explainable through risk tier, reason code, and decision path.
+
+    Some rows may decline or review despite low exposure if synthetic estimated-risk proxy is severe.
+
+Review triggers:
+    High-risk / low-exposure approvals should be reviewed for product, affordability, DTI, and
+    reason-code support.
+
+SQL mechanics:
+    WHERE selects the high-risk / low-exposure mixed-signal profiles.
+
+    ORDER BY estimated_pd descending and requested_amount ascending surfaces the most pronounced
+    examples first.
+
+Documentation use:
+    Supports validation that exposure size is not the only strategy driver.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    requested_amount,
+    requested_exposure_tier,
+
+    strategy_risk_tier,
+    estimated_pd AS synthetic_estimated_pd_proxy,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE mixed_signal_profile_type IN (
+        'HIGH_RISK_LOW_EXPOSURE',
+        'MULTIPLE_MIXED_SIGNALS'
+)
+
+ORDER BY
+    estimated_pd DESC,
+    requested_amount ASC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16E High DTI / low requested PTI sample.
+
+Business purpose:
+    Review rows where existing-obligation capacity pressure is high even though requested-product PTI
+    is low.
+
+Credit risk interpretation:
+    DTI and requested PTI are different affordability concepts.
+
+    DTI reflects existing obligations.
+    requested PTI reflects the burden of the requested product structure.
+
+    A borrower can have high existing debt burden but a low requested-product payment ratio.
+
+What to look for:
+    Final outcome should be explainable through DTI bucket, decision path, and reason code.
+
+Review triggers:
+    High-DTI / low-requested-PTI approvals should be reviewed for strategy intent, score band,
+    product type, synthetic risk, and reason-code support.
+
+SQL mechanics:
+    WHERE selects the high-DTI / low-requested-PTI mixed-signal profile.
+
+    ORDER BY DTI descending and requested PTI ascending surfaces the clearest overlap examples first.
+
+Documentation use:
+    Supports validation that the module distinguishes existing-obligation capacity from requested
+    product affordability.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    debt_to_income_ratio,
+    requested_payment_to_income_ratio,
+
+    dti_bucket,
+    requested_pti_bucket,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE mixed_signal_profile_type IN (
+        'HIGH_DTI_LOW_REQUESTED_PTI',
+        'MULTIPLE_MIXED_SIGNALS'
+)
+
+ORDER BY
+    debt_to_income_ratio DESC,
+    requested_payment_to_income_ratio ASC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16F Multiple mixed-signal profiles.
+
+Business purpose:
+    Review rows where more than one mixed-signal condition is active.
+
+Credit risk interpretation:
+    Multiple mixed signals indicate profiles that do not fit simple one-dimensional risk ordering.
+
+    These are often valuable for manual-review, counteroffer, or reason-code explainability review.
+
+What to look for:
+    Review whether final outcomes and primary reason codes reflect the most important risk or
+    affordability driver.
+
+Review triggers:
+    Multiple mixed-signal rows with residual fallback paths should be reviewed closely.
+
+SQL mechanics:
+    WHERE selects mixed_signal_profile_type = MULTIPLE_MIXED_SIGNALS.
+
+    ORDER BY mixed_signal_condition_count and total_rule_trigger_count surfaces the most complex
+    rows first.
+
+Documentation use:
+    Supports the validation statement that complex overlapping profiles remain visible.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    mixed_signal_profile_type,
+    mixed_signal_condition_count,
+
+    strategy_risk_tier,
+    requested_pti_bucket,
+    dti_bucket,
+    requested_exposure_tier,
+    requested_expected_loss_tier,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE mixed_signal_profile_type = 'MULTIPLE_MIXED_SIGNALS'
+
+ORDER BY
+    mixed_signal_condition_count DESC,
+    total_rule_trigger_count DESC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16G Borderline profiles.
+
+Business purpose:
+    Review threshold-adjacent rows identified by governed borderline-profile logic.
+
+Credit risk interpretation:
+    Borderline profiles are important because small threshold movements could affect routing,
+    exposure treatment, or reason-code behavior.
+
+What to look for:
+    Borderline rows should be explainable through risk tier, PTI bucket, DTI bucket, requested
+    Expected Loss tier, decision path, and reason code.
+
+Review triggers:
+    A high concentration of borderline rows may indicate strategy thresholds are highly sensitive.
+
+SQL mechanics:
+    WHERE selects borderline_profile_flag = TRUE.
+
+    ORDER BY total_rule_trigger_count descending surfaces threshold-adjacent rows with the most
+    overlapping triggers first.
+
+Documentation use:
+    Supports validation evidence that threshold-adjacent cases were visible and reviewed.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    borderline_profile_flag,
+
+    strategy_risk_tier,
+    requested_pti_bucket,
+    dti_bucket,
+    requested_expected_loss_tier,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE borderline_profile_flag IS TRUE
+
+ORDER BY
+    total_rule_trigger_count DESC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16H Counteroffer cases with large exposure reductions.
+
+Business purpose:
+    Review final COUNTEROFFER rows with the largest exposure reductions.
+
+Credit risk interpretation:
+    Large exposure reductions can preserve simulated access while reducing approved exposure,
+    approved PTI, and approved Expected Loss.
+
+    They can also indicate reliance on aggressive exposure treatment.
+
+What to look for:
+    Counteroffer amount should equal approved amount.
+    approved_amount should be below requested_amount.
+    approved PTI should improve relative to requested PTI.
+    approved Expected Loss should be reduced relative to requested Expected Loss.
+
+Review triggers:
+    Very large reductions should be interpreted through product minimums, maximum reduction settings,
+    PTI targets, and approved Expected Loss caps.
+
+SQL mechanics:
+    WHERE selects final COUNTEROFFER rows.
+
+    ORDER BY exposure_reduction_pct and exposure_reduction_amount surfaces the largest reductions.
+
+Documentation use:
+    Supports counteroffer strategy interpretation and exposure-management narrative.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    requested_amount,
+    approved_amount,
+    counteroffer_amount,
+
+    exposure_reduction_amount,
+    exposure_reduction_pct,
+
+    requested_payment_to_income_ratio,
+    approved_payment_to_income_ratio,
+
+    requested_expected_loss_amount,
+    approved_expected_loss_amount,
+
+    primary_reason_code
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'COUNTEROFFER'
+
+ORDER BY
+    exposure_reduction_pct DESC,
+    exposure_reduction_amount DESC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16I Manual review residual fallback cases.
+
+Business purpose:
+    Surface manual-review rows that reached residual fallback paths.
+
+Credit risk interpretation:
+    Residual fallback manual review is intentionally conservative.
+
+    It prevents unclassified or ambiguous profiles from silently becoming approvals or declines.
+
+Expected:
+    These rows should be small and explainable.
+
+Review triggers:
+    A large residual manual-review population may indicate the routing hierarchy needs refinement.
+
+SQL mechanics:
+    WHERE selects final MANUAL_REVIEW rows with residual strategy review paths.
+
+    ORDER BY total_rule_trigger_count highlights the rows with the most overlapping triggers.
+
+Documentation use:
+    Supports transparency around unresolved residual routing.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    decision_outcome,
+    decision_path,
+    decision_resolution_source,
+
+    primary_reason_code,
+
+    total_rule_trigger_count,
+    mixed_signal_profile_type,
+    borderline_profile_flag
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'MANUAL_REVIEW'
+  AND decision_path IN (
+        'RESIDUAL_STRATEGY_REVIEW',
+        'FINAL_RESIDUAL_STRATEGY_REVIEW'
+  )
+
+ORDER BY
+    total_rule_trigger_count DESC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16J Decline residual fallback cases, if any.
+
+Business purpose:
+    Surface final DECLINE rows where the simulated policy-stop explanation is residual rather than
+    tied to a more specific trigger.
+
+Credit risk interpretation:
+    Residual decline should generally be non-dominant.
+
+    If present, it should be explainable through route history, decision path, and trigger flags.
+
+Expected:
+    Often zero rows or very few rows.
+
+Review triggers:
+    A large residual decline population may indicate missing reason-code specificity or routing
+    hierarchy refinement need.
+
+SQL mechanics:
+    WHERE selects final DECLINE rows with the residual policy-stop primary reason.
+
+Documentation use:
+    Supports validation that residual no-offer outcomes were reviewed rather than hidden.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+    applicant_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    decision_outcome,
+    decision_path,
+    decision_resolution_source,
+
+    primary_reason_code,
+
+    total_rule_trigger_count,
+
+    hard_policy_stop_flag,
+    synthetic_risk_decline_trigger_flag,
+    dti_decline_trigger_flag
+
+FROM credit_decisioning_sim.strategy_decisions
+
+WHERE decision_outcome = 'DECLINE'
+  AND primary_reason_code = 'POLICY_STOP_RESIDUAL_DECLINE'
+
+ORDER BY
+    total_rule_trigger_count DESC,
+    application_id
+
+LIMIT 25;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.16K Mixed-signal and borderline population summary.
+
+Business purpose:
+    Summarize mixed-signal and borderline behavior at population level.
+
+Credit risk interpretation:
+    Edge cases are not only sample records.
+
+    This query shows how much of the population is affected by mixed-signal and borderline
+    diagnostics and how those rows resolve into final outcomes.
+
+What to look for:
+    Mixed-signal and borderline cases should be present but bounded.
+
+    Their decision_outcome distribution should be explainable through the strategy design.
+
+Review triggers:
+    Very high mixed-signal or borderline concentration should be interpreted before documentation.
+
+SQL mechanics:
+    GROUP BY mixed_signal_profile_type, borderline_profile_flag, decision_outcome creates one row per
+    edge-case diagnostic pattern.
+
+    SUM(COUNT(*)) OVER () creates the full latest-run population denominator.
+
+Documentation use:
+    This is the population-level companion to the edge-case sample queries above.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    mixed_signal_profile_type,
+    borderline_profile_flag,
+    decision_outcome,
+
+    /***********************************************************************************************
+    Count rows in each mixed-signal × borderline × final outcome group.
+    ***********************************************************************************************/
+    COUNT(*) AS row_count,
+
+    /***********************************************************************************************
+    Percent of full latest-run population represented by this group.
+    ***********************************************************************************************/
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_population,
+
+    /***********************************************************************************************
+    Average synthetic estimated-risk proxy for this edge-case group.
+    ***********************************************************************************************/
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+
+    /***********************************************************************************************
+    Average requested PTI for this edge-case group.
+    ***********************************************************************************************/
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+
+    /***********************************************************************************************
+    All-application approved exposure and approved Expected Loss impact.
+
+    COALESCE converts unresolved / no-offer rows to zero for population-impact review.
+    ***********************************************************************************************/
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+    SUM(COALESCE(approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    mixed_signal_profile_type,
+    borderline_profile_flag,
+    decision_outcome
+
+ORDER BY
+    CASE mixed_signal_profile_type
+        WHEN 'NO_MIXED_SIGNAL_PROFILE' THEN 1
+        WHEN 'STRONG_CREDIT_HIGH_PTI' THEN 2
+        WHEN 'WEAK_CREDIT_LOW_PTI' THEN 3
+        WHEN 'LARGE_EXPOSURE_LOW_RISK' THEN 4
+        WHEN 'HIGH_RISK_LOW_EXPOSURE' THEN 5
+        WHEN 'HIGH_DTI_LOW_REQUESTED_PTI' THEN 6
+        WHEN 'MULTIPLE_MIXED_SIGNALS' THEN 7
+        ELSE 99
+    END,
+    borderline_profile_flag,
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+END OF SECTION 14.16 — MIXED-SIGNAL AND EDGE-CASE REVIEW
+
+If execution reaches this point:
+    1. Reason-code completeness and boundary diagnostics have been reviewed.
+    2. Reason-code family alignment diagnostics have been reviewed.
+    3. Reason-code distribution and concentration diagnostics have been reviewed.
+    4. Simulated offer-exposure profile has been reviewed overall.
+    5. Simulated offer-exposure profile has been reviewed by product.
+    6. Simulated offer-exposure profile has been reviewed by score band.
+    7. Simulated offer-exposure profile has been reviewed by product × score band.
+    8. Strong-credit / high-requested-PTI edge cases are available for review.
+    9. Weak-credit / low-requested-PTI edge cases are available for review.
+    10. Large-exposure / low-synthetic-risk cases are available for review.
+    11. High-synthetic-risk / low-exposure cases are available for review.
+    12. High-DTI / low-requested-PTI cases are available for review.
+    13. Multiple mixed-signal cases are available for review.
+    14. Borderline cases are available for review.
+    15. Large counteroffer exposure-reduction cases are available for review.
+    16. Residual manual-review fallback cases are available for review.
+    17. Residual decline fallback cases are available for review.
+    18. Mixed-signal and borderline population summary is available.
+    19. estimated_pd remains interpreted as the synthetic estimated-PD proxy.
+    20. requested_expected_loss_amount remains requested-exposure Expected Loss.
+    21. approved_expected_loss_amount remains approved-exposure Expected Loss.
+    22. simulated_offer_exposure_flag remains a simulated positive offer-exposure indicator only.
+    23. simulated reason codes remain internal strategy explanation codes only.
+
+No latest-run output rows have been modified.
+No archive rows have been modified.
+No strategy parameter rows have been modified.
+No product policy parameter rows have been modified.
+No decision outcomes have been recalculated.
+No simulated reason codes have been reassigned.
+No approved exposure has been recalculated.
+No approved Expected Loss has been recalculated.
+No BRD or Validation Summary documentation has been drafted.
+
+Next section:
+    Section 14.17 should continue the latest-run QA framework by reviewing archive readiness,
+    matched comparison readiness, and whether Section 13 source-field consistency evidence is
+    available for the final validation-status summary.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M00994 -->
+
+
+---
+
+<a id="c038-m00995"></a>
+
+### C038-M00995
+
+**Andrew** · 2026-05-10T09:44:22.927000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00995 -->
+let's do one more pass for commentary. Please note that besides the headers we want instructional commentary that details how the sql logic is working. the commentary/headers are supposed to do 3 main things: 1) Advise on the who/what/why/how to run and interpret the code and parameters; 2) teach the credit risk concepts and nuts and bolts; 3) teach how the sql logic is working. folks going through this code should not only understand how to use/interpret but also should learn about credit risk analytics and SQL. this is the elite level we are striving for. besides header comments, we expect in line comments explaining the sql logic and line by line process. here is the section 14.17-14.19 again. if suggested changes, return the full copy paste of those sections in one copy paste block.
+<!-- END_MESSAGE C038-M00995 -->
+
+
+**Attachments in export:** `Pasted text(157).txt`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_52.md) · [Next](Part_54.md)

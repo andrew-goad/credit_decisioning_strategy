@@ -1,0 +1,3336 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 64</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 64 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_63.html">Previous</a><a href="Part_65.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m01145" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01145 · 2026-05-10T12:57:39.087037-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-10, your updated file <strong>does fix the prior hard blocker</strong>: <code>avg_apr_proxy_offer_rows</code> now has <code>NUMERIC</code> in the persistent segment evidence table definition, and Sections <strong>14.11–14.13</strong> are restored before Section 14.14. The remaining formal-script hardening item is exactly the Section 16.1E schema-evolution block: the current version still only adds registry-linkage columns to older evidence tables, so an older persistent table could still be missing non-registry columns that later inserts reference. fileciteturn144file0 fileciteturn145file0</p>
+<p>Your plan to <strong>drop evidence tables before the campaign run</strong> is good. That will force the current <code>CREATE TABLE IF NOT EXISTS</code> definitions to create the correct schema fresh. Still, for the canonical governed script, I recommend replacing the current 16.1E block with the expanded version below. This makes reruns safer after future edits and prevents “existing table missing column” failures. One caveat: <code>ADD COLUMN IF NOT EXISTS</code> fixes missing columns; it does <strong>not</strong> fix existing columns with the wrong data type. Dropping the evidence tables before the campaign run handles that concern cleanly.</p>
+<h2>Re-evaluation after your update</h2>
+<p>I would now mark the file as:</p>
+<pre><code class="language-text">STATUS: READY FOR TARGETED 16.1E PATCH + SMOKE TEST
+FULL CAMPAIGN RUN: WAIT UNTIL 16.1E PATCH IS INSERTED OR EVIDENCE TABLES ARE DROPPED CLEANLY
+</code></pre>
+<p>The two prior blockers are addressed:</p>
+<pre><code class="language-text">1. avg_apr_proxy_offer_rows NUMERIC is fixed.
+2. Sections 14.11, 14.12, and 14.13 are restored before Section 14.14.
+</code></pre>
+<p>The remaining action is not a logic blocker if you drop the evidence tables first, but it is a governance-quality patch for canonical rerun safety:</p>
+<pre><code class="language-text">Replace Section 16.1E with the expanded schema-hardening block below.
+</code></pre>
+<hr>
+<h1>Before — current Section 16.1E block</h1>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+16.1E Evidence table schema hardening for registry-linkage patch.
+
+Business purpose:
+    Add registry-linkage columns to evidence tables that may already exist from a prior version of
+    Section 16.
+
+Why this is necessary:
+    CREATE TABLE IF NOT EXISTS does not modify an existing table.
+
+    Without these ALTER TABLE statements, an older evidence table could exist without the new
+    run-ID columns, causing later INSERT statements to fail.
+
+SQL mechanics:
+    Each ALTER TABLE statement is idempotent because ADD COLUMN IF NOT EXISTS only adds the column
+    when the target table does not already have it.
+
+Boundary:
+    These statements add columns only when needed.
+
+    They do not delete rows.
+    They do not update rows.
+    They do not alter strategy outputs.
+-----------------------------------------------------------------------------------------------*/
+
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+</code></pre>
+<hr>
+<h1>After — replacement Section 16.1E block</h1>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+16.1E Evidence table schema hardening for full evidence-table rerun safety.
+
+Business purpose:
+    Add any missing evidence-table columns to persistent evidence tables that may already exist from
+    a prior version of Section 16.
+
+Why this is necessary:
+    CREATE TABLE IF NOT EXISTS creates a table only when it does not already exist.
+
+    It does not upgrade an older persistent table.
+
+    If a prior development version created one of the evidence tables with a narrower schema, later
+    Section 16 INSERT statements can fail because the table exists but lacks one or more current
+    evidence columns.
+
+Formal governed-script position:
+    The evidence tables should persist across the campaign.
+
+    They should not be dropped during ordinary reruns.
+
+    Therefore this block hardens all four persistent evidence tables against missing-column drift.
+
+Important limitation:
+    ADD COLUMN IF NOT EXISTS handles missing columns.
+
+    It does not correct existing columns with the wrong data type.
+
+    If an evidence table exists with incorrect column types, use a one-time evidence-table rebuild or
+    an explicit ALTER COLUMN TYPE migration.
+
+Operational note:
+    Explicit INSERT column lists are used later in Section 16.
+
+    Therefore column order in an older table does not need to match the CREATE TABLE definition
+    exactly after columns are added.
+
+SQL mechanics:
+    Each ALTER TABLE statement is idempotent.
+
+    Existing columns are left untouched.
+
+    Missing columns are added.
+
+Boundary:
+    These statements do not delete rows.
+    These statements do not update rows.
+    These statements do not modify latest-run output.
+    These statements do not modify archive output.
+    These statements do not modify campaign registry rows.
+    These statements do not recalculate strategy outputs.
+-----------------------------------------------------------------------------------------------*/
+
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS evidence_snapshot_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS evidence_snapshot_id TEXT,
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN,
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT,
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT,
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER,
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT,
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT,
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT,
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT,
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT,
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER,
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT,
+    ADD COLUMN IF NOT EXISTS module1_parameter_family_changed TEXT,
+    ADD COLUMN IF NOT EXISTS module1_parameter_change_summary TEXT,
+    ADD COLUMN IF NOT EXISTS module2_strategy_family_changed TEXT,
+    ADD COLUMN IF NOT EXISTS module2_parameter_change_summary TEXT,
+    ADD COLUMN IF NOT EXISTS expected_storyline TEXT,
+    ADD COLUMN IF NOT EXISTS observed_storyline TEXT,
+    ADD COLUMN IF NOT EXISTS validation_notes TEXT,
+    ADD COLUMN IF NOT EXISTS module2_model_version TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_set_name TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_name TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_version TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_run_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS latest_output_created_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS archive_inserted_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS archive_run_flag BOOLEAN,
+    ADD COLUMN IF NOT EXISTS strategy_archive_reset_mode TEXT,
+    ADD COLUMN IF NOT EXISTS failed_counteroffer_resolution TEXT,
+    ADD COLUMN IF NOT EXISTS module1_input_source TEXT,
+    ADD COLUMN IF NOT EXISTS module1_source_table_name TEXT,
+    ADD COLUMN IF NOT EXISTS module1_model_version TEXT,
+    ADD COLUMN IF NOT EXISTS module1_scenario_set_name TEXT,
+    ADD COLUMN IF NOT EXISTS module1_scenario_name TEXT,
+    ADD COLUMN IF NOT EXISTS population_id TEXT,
+    ADD COLUMN IF NOT EXISTS anchor_date DATE,
+    ADD COLUMN IF NOT EXISTS applications BIGINT,
+    ADD COLUMN IF NOT EXISTS distinct_application_id_count BIGINT,
+    ADD COLUMN IF NOT EXISTS duplicate_application_count BIGINT,
+    ADD COLUMN IF NOT EXISTS approval_count BIGINT,
+    ADD COLUMN IF NOT EXISTS counteroffer_count BIGINT,
+    ADD COLUMN IF NOT EXISTS manual_review_count BIGINT,
+    ADD COLUMN IF NOT EXISTS decline_count BIGINT,
+    ADD COLUMN IF NOT EXISTS offer_count BIGINT,
+    ADD COLUMN IF NOT EXISTS approval_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS counteroffer_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS manual_review_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS decline_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS simulated_offer_exposure_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS approval_share_of_offers NUMERIC,
+    ADD COLUMN IF NOT EXISTS counteroffer_share_of_offers NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_requested_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_approved_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_amount_capture_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_requested_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_approved_amount_all_apps NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_approved_amount_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_exposure_reduction_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS counteroffer_requested_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS counteroffer_approved_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS counteroffer_exposure_reduction_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS counteroffer_exposure_reduction_pct_avg NUMERIC,
+    ADD COLUMN IF NOT EXISTS manual_review_requested_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS manual_review_requested_expected_loss_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS decline_requested_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS decline_requested_expected_loss_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_requested_payment_to_income_ratio NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_approved_payment_to_income_ratio_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_apr_proxy_all_apps NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_apr_proxy_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS requested_amount_weighted_apr_proxy NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_amount_weighted_apr_proxy NUMERIC,
+    ADD COLUMN IF NOT EXISTS requested_amount_x_apr_proxy_sum NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_amount_x_apr_proxy_sum NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_loan_term_months_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_amount_weighted_term_months NUMERIC,
+    ADD COLUMN IF NOT EXISTS term_missing_or_revolving_count BIGINT,
+    ADD COLUMN IF NOT EXISTS secured_approved_amount_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS unsecured_approved_amount_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS revolving_approved_amount_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS installment_approved_amount_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS mortgage_approved_amount_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS product_approved_amount_mix_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS product_approved_expected_loss_mix_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS product_offer_rate_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS avg_synthetic_estimated_pd_proxy_all_apps NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_synthetic_estimated_pd_proxy_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_synthetic_estimated_pd_proxy_declined_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_estimated_lgd_all_apps NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_estimated_lgd_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_requested_expected_loss_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_approved_expected_loss_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_requested_expected_loss_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_approved_expected_loss_all_apps NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_approved_expected_loss_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS requested_expected_loss_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_expected_loss_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_amount_per_approved_expected_loss_dollar NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_primary_reason_family TEXT,
+    ADD COLUMN IF NOT EXISTS top_primary_reason_code TEXT,
+    ADD COLUMN IF NOT EXISTS top_primary_reason_population_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_non_approval_primary_reason_family TEXT,
+    ADD COLUMN IF NOT EXISTS top_non_approval_primary_reason_code TEXT,
+    ADD COLUMN IF NOT EXISTS top_non_approval_reason_population_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_policy_stop_primary_reason_family TEXT,
+    ADD COLUMN IF NOT EXISTS top_policy_stop_primary_reason_code TEXT,
+    ADD COLUMN IF NOT EXISTS top_policy_stop_reason_population_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_reason_code_delta_driver_family TEXT,
+    ADD COLUMN IF NOT EXISTS top_reason_code_delta_driver_code TEXT,
+    ADD COLUMN IF NOT EXISTS top_reason_code_delta_driver_baseline_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_reason_code_delta_driver_strategy_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_reason_code_delta_population_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_counteroffer_reason_code TEXT,
+    ADD COLUMN IF NOT EXISTS top_manual_review_reason_code TEXT,
+    ADD COLUMN IF NOT EXISTS top_decline_reason_code TEXT,
+    ADD COLUMN IF NOT EXISTS frontier_position_type TEXT,
+    ADD COLUMN IF NOT EXISTS executive_frontier_quadrant TEXT,
+    ADD COLUMN IF NOT EXISTS frontier_interpretation_note TEXT,
+    ADD COLUMN IF NOT EXISTS validation_pass_count BIGINT,
+    ADD COLUMN IF NOT EXISTS validation_review_count BIGINT,
+    ADD COLUMN IF NOT EXISTS validation_not_applicable_count BIGINT,
+    ADD COLUMN IF NOT EXISTS validation_review_items TEXT,
+    ADD COLUMN IF NOT EXISTS validation_status_summary_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS top_approved_amount_product TEXT,
+    ADD COLUMN IF NOT EXISTS top_approved_amount_product_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_approved_expected_loss_product TEXT,
+    ADD COLUMN IF NOT EXISTS top_approved_expected_loss_product_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_counteroffer_product TEXT,
+    ADD COLUMN IF NOT EXISTS top_decline_product TEXT,
+    ADD COLUMN IF NOT EXISTS highest_offer_rate_product TEXT,
+    ADD COLUMN IF NOT EXISTS lowest_offer_rate_product TEXT,
+    ADD COLUMN IF NOT EXISTS top_approved_amount_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS top_approved_expected_loss_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS top_counteroffer_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS top_decline_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS highest_offer_rate_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS lowest_offer_rate_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS highest_approved_el_rate_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS top_approved_amount_product_score_segment TEXT,
+    ADD COLUMN IF NOT EXISTS top_approved_el_product_score_segment TEXT,
+    ADD COLUMN IF NOT EXISTS top_counteroffer_product_score_segment TEXT,
+    ADD COLUMN IF NOT EXISTS top_decline_product_score_segment TEXT,
+    ADD COLUMN IF NOT EXISTS highest_approved_el_rate_product_score_segment TEXT,
+    ADD COLUMN IF NOT EXISTS largest_delta_approved_amount_product TEXT,
+    ADD COLUMN IF NOT EXISTS largest_delta_approved_el_product TEXT,
+    ADD COLUMN IF NOT EXISTS largest_delta_offer_rate_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS largest_delta_decline_rate_score_band TEXT,
+    ADD COLUMN IF NOT EXISTS largest_delta_approved_el_product_score_segment TEXT,
+    ADD COLUMN IF NOT EXISTS module3_growth_inputs_available_flag BOOLEAN,
+    ADD COLUMN IF NOT EXISTS module3_growth_input_gap_note TEXT,
+    ADD COLUMN IF NOT EXISTS module3_revenue_model_required_flag BOOLEAN,
+    ADD COLUMN IF NOT EXISTS module3_boundary_note TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS evidence_snapshot_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN,
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT,
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT,
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER,
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT,
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT,
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT,
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT,
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT,
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER,
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT,
+    ADD COLUMN IF NOT EXISTS module2_model_version TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_set_name TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_name TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_version TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_run_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS module1_scenario_set_name TEXT,
+    ADD COLUMN IF NOT EXISTS module1_scenario_name TEXT,
+    ADD COLUMN IF NOT EXISTS population_id TEXT,
+    ADD COLUMN IF NOT EXISTS validation_area TEXT,
+    ADD COLUMN IF NOT EXISTS validation_test_name TEXT,
+    ADD COLUMN IF NOT EXISTS validation_category TEXT,
+    ADD COLUMN IF NOT EXISTS validation_status TEXT,
+    ADD COLUMN IF NOT EXISTS observed_value TEXT,
+    ADD COLUMN IF NOT EXISTS expected_behavior TEXT,
+    ADD COLUMN IF NOT EXISTS interpretation TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS evidence_snapshot_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS evidence_snapshot_id TEXT,
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN,
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT,
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT,
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER,
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT,
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT,
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT,
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT,
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT,
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER,
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT,
+    ADD COLUMN IF NOT EXISTS module2_model_version TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_set_name TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_name TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_version TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_run_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS module1_scenario_set_name TEXT,
+    ADD COLUMN IF NOT EXISTS module1_scenario_name TEXT,
+    ADD COLUMN IF NOT EXISTS population_id TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_params_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS product_policy_params_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS run_story_params_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS parameter_snapshot_hash TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS evidence_snapshot_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN,
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT,
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT,
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER,
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT,
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT,
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT,
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT,
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT,
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER,
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT,
+    ADD COLUMN IF NOT EXISTS module2_model_version TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_set_name TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_name TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_version TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS strategy_run_ts TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS module1_scenario_set_name TEXT,
+    ADD COLUMN IF NOT EXISTS module1_scenario_name TEXT,
+    ADD COLUMN IF NOT EXISTS population_id TEXT,
+    ADD COLUMN IF NOT EXISTS product_type_policy_key TEXT,
+    ADD COLUMN IF NOT EXISTS score_band_policy_key TEXT,
+    ADD COLUMN IF NOT EXISTS product_score_policy_segment TEXT,
+    ADD COLUMN IF NOT EXISTS applications BIGINT,
+    ADD COLUMN IF NOT EXISTS approval_count BIGINT,
+    ADD COLUMN IF NOT EXISTS counteroffer_count BIGINT,
+    ADD COLUMN IF NOT EXISTS manual_review_count BIGINT,
+    ADD COLUMN IF NOT EXISTS decline_count BIGINT,
+    ADD COLUMN IF NOT EXISTS offer_count BIGINT,
+    ADD COLUMN IF NOT EXISTS approval_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS counteroffer_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS manual_review_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS decline_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS simulated_offer_exposure_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_requested_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_approved_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_amount_capture_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_requested_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_approved_amount_all_apps NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_approved_amount_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_apr_proxy_all_apps NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_apr_proxy_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS requested_amount_weighted_apr_proxy NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_amount_weighted_apr_proxy NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_loan_term_months_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_amount_weighted_term_months NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_synthetic_estimated_pd_proxy_all_apps NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_synthetic_estimated_pd_proxy_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_estimated_lgd_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_requested_expected_loss_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS total_approved_expected_loss_amount NUMERIC,
+    ADD COLUMN IF NOT EXISTS approved_expected_loss_rate NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_requested_payment_to_income_ratio NUMERIC,
+    ADD COLUMN IF NOT EXISTS avg_approved_payment_to_income_ratio_offer_rows NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_primary_reason_family TEXT,
+    ADD COLUMN IF NOT EXISTS top_primary_reason_code TEXT,
+    ADD COLUMN IF NOT EXISTS top_primary_reason_population_share NUMERIC,
+    ADD COLUMN IF NOT EXISTS top_non_approval_primary_reason_family TEXT,
+    ADD COLUMN IF NOT EXISTS top_non_approval_primary_reason_code TEXT,
+    ADD COLUMN IF NOT EXISTS top_non_approval_reason_population_share NUMERIC;
+</code></pre>
+<hr>
+<h2>Section 15 baseline join: why I flagged it, and what I recommend</h2>
+<p>The current Section 15 baseline-relative frontier design defines baseline availability where <code>BASELINE_STRATEGY</code> exists for the same <code>strategy_set_name</code>, <code>module1_scenario_set_name</code>, <code>module1_scenario_name</code>, and <code>population_id</code>. That is adequate for the current <strong>V1_0-only</strong> strategy campaign because the archive should only contain one baseline strategy version per comparable frontier group. fileciteturn144file16</p>
+<p>The future issue is this: the archive grain and replacement key explicitly include <code>strategy_version</code>, which means the archive is designed to retain strategy-version-specific slices. fileciteturn144file10 If later you archive both:</p>
+<pre><code class="language-text">BASELINE_STRATEGY / V1_0
+BASELINE_STRATEGY / V1_1
+TIGHTER_SYNTHETIC_RISK_STRATEGY / V1_1
+</code></pre>
+<p>then a Section 15 baseline join that does <strong>not</strong> include <code>strategy_version</code> can accidentally match a challenger to more than one baseline, or to the wrong baseline version. That can create duplicate frontier rows or incorrect baseline-relative deltas.</p>
+<p>My recommended approach is:</p>
+<pre><code class="language-text">Current V1_0 campaign:
+    No immediate blocker. Existing Section 15 baseline logic is acceptable if all campaign runs use V1_0.
+
+Future-proof canonical script:
+    Make Section 15 baseline matching version-explicit by adding strategy_version to:
+        baseline_groups,
+        frontier_group_reason_universe,
+        baseline_reason_population_shares,
+        top_reason_code_delta_driver joins,
+        and final baseline_reference join.
+</code></pre>
+<p>The simplest future-safe policy is:</p>
+<pre><code class="language-text">A strategy frontier point should compare to BASELINE_STRATEGY with the same:
+    strategy_set_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+</code></pre>
+<p>That is clean, deterministic, and consistent with the archive grain.</p>
+<p>A more flexible alternative would be a registry-driven baseline-version map, where a challenger can explicitly compare to a different baseline version. I would <strong>not</strong> add that complexity yet. For this project, same-version matching is the right first governed design.</p>
+<p>The exact Section 15.3 concept patch would be:</p>
+<pre><code class="language-sql">/* Add strategy_version to comparable baseline group. */
+baseline_groups AS (
+    SELECT DISTINCT
+        strategy_set_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM baseline_reference
+),
+
+/* Add strategy_version to reason-code universe. */
+frontier_group_reason_universe AS (
+    SELECT DISTINCT
+        strategy_set_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+    FROM reason_population_shares
+),
+
+/* Add strategy_version to baseline reason shares. */
+baseline_reason_population_shares AS (
+    SELECT
+        strategy_set_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code,
+        reason_population_share AS baseline_reason_population_share
+    FROM reason_population_shares
+    WHERE strategy_name = &#39;BASELINE_STRATEGY&#39;
+),
+
+/* In top_reason_code_delta_driver, join baseline_groups by strategy_version too. */
+JOIN baseline_groups bg
+    ON bg.strategy_set_name = s.strategy_set_name
+   AND bg.strategy_version = s.strategy_version
+   AND bg.module1_scenario_set_name = s.module1_scenario_set_name
+   AND bg.module1_scenario_name = s.module1_scenario_name
+   AND bg.population_id = s.population_id
+
+/* Join reason-code universe by strategy_version too. */
+JOIN frontier_group_reason_universe u
+    ON u.strategy_set_name = s.strategy_set_name
+   AND u.strategy_version = s.strategy_version
+   AND u.module1_scenario_set_name = s.module1_scenario_set_name
+   AND u.module1_scenario_name = s.module1_scenario_name
+   AND u.population_id = s.population_id
+
+/* Join baseline reason shares by strategy_version too. */
+LEFT JOIN baseline_reason_population_shares br
+    ON br.strategy_set_name = s.strategy_set_name
+   AND br.strategy_version = s.strategy_version
+   AND br.module1_scenario_set_name = s.module1_scenario_set_name
+   AND br.module1_scenario_name = s.module1_scenario_name
+   AND br.population_id = s.population_id
+   AND br.primary_reason_family = u.primary_reason_family
+   AND br.primary_reason_code = u.primary_reason_code
+
+/* In the final baseline_reference join, add strategy_version. */
+LEFT JOIN baseline_reference b
+    ON b.strategy_set_name = s.strategy_set_name
+   AND b.strategy_version = s.strategy_version
+   AND b.module1_scenario_set_name = s.module1_scenario_set_name
+   AND b.module1_scenario_name = s.module1_scenario_name
+   AND b.population_id = s.population_id
+</code></pre>
+<p>I would treat that Section 15 patch as <strong>future-proofing</strong>, not a campaign blocker for the current V1_0 run. The 16.1E schema-hardening patch is the one I would insert now.</p>
+</div></article><article id="c038-m01147" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01147 · 2026-05-10T13:02:59.529000-04:00 · active path</p><div class="body"><p>I updated 16.1E block. Now let&#39;s talk about next steps and remind me of our campaign run tables (module 1 parameter tables and module 2 parameter tables).</p>
+</div></article><article id="c038-m01152" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01152 · 2026-05-10T13:06:51.751000-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-10, the updated Module 2 flow is now set up so Section 16 consumes the Section 3 campaign-registry match, Section 14 validation summary, Section 15 frontier summary, and the active Module 2 strategy / product-policy parameter cards before writing persistent evidence tables. That means the next phase should shift from code hardening to controlled campaign execution and evidence review. fileciteturn147file13</p>
+<h2>Current status</h2>
+<p>With the expanded <strong>16.1E</strong> block in place, I would treat the canonical Module 2 file as <strong>campaign-prep ready</strong>, subject to one clean smoke test.</p>
+<p>Your plan to drop the Section 16 evidence tables before the formal campaign is still good. The expanded <code>ALTER TABLE ... ADD COLUMN IF NOT EXISTS</code> block protects reruns and future schema drift, while the one-time drop gives us a clean campaign evidence base.</p>
+<p>I would drop only the evidence tables, not the archive or registry tables, unless you intentionally want to restart the entire campaign history:</p>
+<pre><code class="language-sql">DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_evidence_summary;
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_validation_evidence;
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_parameter_snapshot;
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_segment_evidence_summary;
+</code></pre>
+<p>Do <strong>not</strong> drop these ordinary campaign-control tables unless you are intentionally rebuilding the campaign roadmap:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_run_campaign_registry
+credit_decisioning_sim.strategy_comparison_campaign_registry
+</code></pre>
+<p>And do <strong>not</strong> drop the Module 2 archive unless you want to lose completed strategy slices:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p>Section 1 is intentionally designed to preserve the archive, campaign registry, and evidence history tables during normal reruns, while dropping only transient execution objects and the replaceable latest-run output. fileciteturn147file14</p>
+<h2>Recommended next steps</h2>
+<p>First, do one <strong>clean smoke test</strong> before the formal campaign. Use the current baseline combination:</p>
+<pre><code class="language-text">Module 1:
+MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+
+Module 2:
+MODULE2_BASELINE_STRATEGY_SET / BASELINE_STRATEGY / V1_0
+</code></pre>
+<p>That run should prove the final canonical file can execute from Section 1 through Section 16 with the new 16.1E block, restored Sections 14.11–14.13, registry matching, archive persistence, frontier output, validation summary, and evidence capture.</p>
+<p>Second, run the <strong>tighter synthetic-risk strategy</strong> against the same archived Module 1 population:</p>
+<pre><code class="language-text">Module 1:
+MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+
+Module 2:
+MODULE2_BASELINE_STRATEGY_SET / TIGHTER_SYNTHETIC_RISK_STRATEGY / V1_0
+</code></pre>
+<p>That gives you the first clean baseline-versus-challenger pair. Section 13 should then be able to compare the archived baseline and challenger slices under the same Module 1 scenario and population, and Section 15 should classify both frontier points.</p>
+<p>Third, after the challenger run, review Section 16.8 carefully. That should be the “post-run evidence packet” after every campaign run: row counts, executive evidence summary, validation REVIEW / NOT_APPLICABLE rows, product × score segment evidence, parameter snapshot hash, and registry linkage diagnostics. Section 16 is explicitly designed to persist executive evidence, validation evidence, parameter snapshots, and product × score evidence for later Validation Summary, README, LinkedIn, and Module 3 planning. fileciteturn147file13</p>
+<p>Fourth, once the baseline/challenger pair is clean, continue the broader campaign matrix. At that point, the work becomes repetitive and controlled: update the active Module 1 or Module 2 parameter row, confirm registry mapping, run, archive, validate, capture evidence, review Section 16.8, then move to the next run.</p>
+<h2>Campaign run tables — Module 1</h2>
+<p>For <strong>Module 1</strong>, the primary parameter table is:</p>
+<pre><code class="language-text">tmp_module1_params
+</code></pre>
+<p>This is the single-row temporary configuration object for the Module 1 run. It carries scenario identity, generation assumptions, archive behavior, product mix, score mix, APR anchors, LGD assumptions, and other governed Module 1 simulation controls. The Module 1 code describes it as a temporary table used as a single-row configuration object, with <code>scenario_set_name</code> serving as the comparison family / project grouping and <code>scenario_name</code> identifying the individual run inside that family. fileciteturn149file2</p>
+<p>The key Module 1 run identity fields to check before each run are:</p>
+<pre><code class="language-text">scenario_set_name
+scenario_name
+population_id
+</code></pre>
+<p>For our current baseline run:</p>
+<pre><code class="language-text">scenario_set_name = MODULE1_V2_BASELINE_SET
+scenario_name     = BASELINE_V2
+population_id     = BASE_POPULATION_V1
+</code></pre>
+<p>The primary Module 1 output tables are:</p>
+<pre><code class="language-text">credit_decisioning_sim.synthetic_applications
+credit_decisioning_sim.synthetic_applications_scenario_archive
+</code></pre>
+<p><code>synthetic_applications</code> is the latest-run Module 1 output. <code>synthetic_applications_scenario_archive</code> is the persistent scenario archive used for controlled downstream Module 2 runs. Module 1 inserts the latest run into the scenario archive when <code>archive_run_flag = TRUE</code>, and the archive is indexed by scenario set, scenario name, population, application, product, and score fields for comparison and downstream use. fileciteturn148file0</p>
+<h2>Campaign run tables — Module 2</h2>
+<p>For <strong>Module 2</strong>, the two main temporary parameter tables are:</p>
+<pre><code class="language-text">tmp_module2_strategy_params
+tmp_module2_product_policy_params
+</code></pre>
+<p><code>tmp_module2_strategy_params</code> is the active strategy card. It contains the Module 2 strategy identity, Module 1 source selection, archive controls, registry requirement flag, synthetic estimated-risk thresholds, PTI thresholds, DTI thresholds, rule controls, decision conventions, and failed-counteroffer resolution. <code>tmp_module2_product_policy_params</code> is the product-policy card, with one row per supported product and product-specific PTI, requested Expected Loss, approved Expected Loss cap, exposure, counteroffer, manual-review, and rounding controls. Section 5 explicitly depends on both objects before strategy segmentation can proceed. fileciteturn147file0</p>
+<p>The key Module 2 strategy identity fields are:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+strategy_run_id
+strategy_run_ts
+</code></pre>
+<p>The Module 1 source-selection fields inside <code>tmp_module2_strategy_params</code> are:</p>
+<pre><code class="language-text">module1_input_source
+source_module1_scenario_set_name
+source_module1_scenario_name
+source_population_id
+</code></pre>
+<p>For formal campaign runs, we should use:</p>
+<pre><code class="language-text">module1_input_source = ARCHIVE
+</code></pre>
+<p>That makes Module 2 consume the selected Module 1 archived scenario slice rather than whatever happens to be in the latest-run Module 1 table. Section 4 supports both latest-run and archive inputs, but it documents archive input as the controlled source for a selected Module 1 scenario archive slice. fileciteturn147file4</p>
+<p>The persistent Module 2 campaign registry tables are:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_run_campaign_registry
+credit_decisioning_sim.strategy_comparison_campaign_registry
+</code></pre>
+<p><code>strategy_run_campaign_registry</code> maps technical run keys to documentation IDs such as:</p>
+<pre><code class="language-text">module1_run_id
+module2_run_id
+run_sequence_number
+showcase_id
+showcase_name
+comparison_group_id
+validation_evidence_group_id
+readme_storyline_label
+linkedin_post_sequence
+validation_summary_section_hint
+</code></pre>
+<p>Those IDs are evidence-linkage metadata. They do not replace the technical SQL key. Section 16 uses them to connect SQL output to archive slices, comparison results, evidence rows, and future Validation Summary claims. fileciteturn147file13</p>
+<p><code>strategy_comparison_campaign_registry</code> controls the active baseline-versus-challenger comparison by <code>comparison_group_id</code>. Section 13 is designed to use a governed comparison selector rather than inferring comparisons from the latest-run table, because the latest-run table changes every time a new strategy is executed. fileciteturn146file18</p>
+<p>The primary Module 2 output tables are:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions
+credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p><code>strategy_decisions</code> is the replaceable latest-run output. <code>strategy_decisions_archive</code> is the governed historical layer used for comparison, frontier analysis, validation evidence review, and documentation traceability. fileciteturn146file51</p>
+<p>The persistent Module 2 evidence tables are:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_run_evidence_summary
+credit_decisioning_sim.strategy_run_validation_evidence
+credit_decisioning_sim.strategy_run_parameter_snapshot
+credit_decisioning_sim.strategy_run_segment_evidence_summary
+</code></pre>
+<p>These are the tables we should drop once before the formal campaign if we want a clean evidence base. Section 16 then recreates or reuses them, deletes prior evidence only for the current run key, and captures validation evidence, parameter snapshots, segment evidence, and executive evidence for each completed run. fileciteturn147file13</p>
+<h2>Practical run checklist</h2>
+<p>For each <strong>Module 1</strong> run:</p>
+<pre><code class="language-text">1. Update tmp_module1_params.
+2. Confirm scenario_set_name / scenario_name / population_id.
+3. Confirm archive_run_flag = TRUE for campaign runs.
+4. Run Module 1.
+5. Confirm credit_decisioning_sim.synthetic_applications is populated.
+6. Confirm credit_decisioning_sim.synthetic_applications_scenario_archive has the expected scenario slice.
+7. Review Module 1 QA outputs before using the scenario in Module 2.
+</code></pre>
+<p>For each <strong>Module 2</strong> run:</p>
+<pre><code class="language-text">1. Update tmp_module2_strategy_params.
+2. Confirm tmp_module2_product_policy_params.
+3. Confirm source_module1_scenario_set_name / source_module1_scenario_name / source_population_id.
+4. Confirm the run exists in strategy_run_campaign_registry.
+5. Confirm the intended comparison exists in strategy_comparison_campaign_registry.
+6. Run Sections 1–12 to create latest-run output and archive it.
+7. Run Section 13 once a baseline/challenger pair exists.
+8. Run Section 14 validation QA.
+9. Run Section 15 frontier summary.
+10. Run Section 16 evidence capture.
+11. Review Section 16.8 before moving to the next run.
+</code></pre>
+<p>The next move I recommend is: <strong>run the Module 2 baseline strategy once on the Module 1 baseline archive, then run the tighter synthetic-risk strategy, then review Section 13 / 14 / 15 / 16 outputs as the first formal campaign pair.</strong></p>
+</div></article><article id="c038-m01153" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01153 · 2026-05-10T13:14:57.375000-04:00 · active path</p><div class="body"><p>full code ran just fine.</p>
+</div></article><article id="c038-m01156" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01156 · 2026-05-10T13:16:50.154800-04:00 · active path</p><div class="body"><p>Excellent. That is the point where I would <strong>stop code hardening and freeze the canonical Module 2 SQL</strong>, except for parameter-table edits needed to run each campaign scenario / strategy.</p>
+<p>A clean full execution is meaningful because the file is now exercising the full path:</p>
+<pre><code class="language-text">Module 1 source selection
+→ strategy segmentation
+→ rule flags
+→ preliminary routing
+→ exposure treatment
+→ final decision resolution
+→ reason-code assignment
+→ latest-run output
+→ archive persistence
+→ comparison diagnostics
+→ validation QA
+→ frontier summary
+→ persistent evidence capture
+</code></pre>
+<p>The code structure supports that interpretation: Section 11 materializes the latest-run strategy output, Section 12 persists the governed archive, Section 13 handles matched archive comparison, Section 14 validates the completed latest-run output, Section 15 summarizes archive-backed frontier tradeoffs, and Section 16 persists executive evidence, validation evidence, parameter snapshots, and product × score evidence. fileciteturn149file20 fileciteturn149file19 fileciteturn149file18 fileciteturn149file17 fileciteturn149file10 fileciteturn149file8</p>
+<h2>What this means</h2>
+<p>If the full code ran through Section 16 without exceptions, then the big runtime risks we were worried about are resolved:</p>
+<pre><code class="language-text">1. The restored Section 14.11–14.13 blocks are syntactically valid.
+2. The Section 16.1 evidence-table schema is compatible with the later inserts.
+3. The archive persistence layer executed.
+4. The validation summary object was available for Section 16.
+5. The frontier summary object was available for Section 16.
+6. Evidence capture inserted successfully.
+7. Section 16.7 local evidence gatekeepers did not find a blocking evidence issue.
+</code></pre>
+<p>Section 16.7 is designed to either complete successfully or raise a clear exception when executive evidence, validation evidence, parameter snapshot evidence, segment evidence, or registry-linkage evidence is incomplete. So a clean pass is a strong local acceptance signal for the evidence-capture layer. fileciteturn149file2</p>
+<h2>Immediate next step: freeze the code</h2>
+<p>I would now create a clean internal checkpoint:</p>
+<pre><code class="language-text">Module 2 V1.0 canonical SQL — campaign-run candidate
+Status: runtime smoke test passed
+Code hardening: frozen
+Allowed edits going forward: parameter tables and campaign registry active rows only
+</code></pre>
+<p>At this point, avoid further broad commentary edits. The file has already proven it runs, and the bigger project risk now shifts from code syntax to <strong>campaign operation discipline</strong>.</p>
+<h2>Before the formal campaign</h2>
+<p>Since you plan to drop evidence tables before formal campaign runs, do that once immediately before starting the official sequence:</p>
+<pre><code class="language-sql">DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_evidence_summary;
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_validation_evidence;
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_parameter_snapshot;
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_segment_evidence_summary;
+</code></pre>
+<p>Do <strong>not</strong> drop these unless you intentionally want to restart history or roadmap metadata:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions_archive
+credit_decisioning_sim.strategy_run_campaign_registry
+credit_decisioning_sim.strategy_comparison_campaign_registry
+</code></pre>
+<p>Section 1 is designed to preserve archive, registry, and evidence history under ordinary rerun behavior, while Section 12 governs archive persistence and Section 16 governs evidence replacement at the current run key. fileciteturn149file30 fileciteturn149file19 fileciteturn149file8</p>
+<h2>First formal run pair</h2>
+<p>I would start with the baseline pair we have been anchoring around:</p>
+<pre><code class="language-text">Run 1:
+Module 1 scenario:
+    MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+
+Module 2 strategy:
+    MODULE2_BASELINE_STRATEGY_SET / BASELINE_STRATEGY / V1_0
+</code></pre>
+<p>Then:</p>
+<pre><code class="language-text">Run 2:
+Module 1 scenario:
+    MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+
+Module 2 strategy:
+    MODULE2_BASELINE_STRATEGY_SET / TIGHTER_SYNTHETIC_RISK_STRATEGY / V1_0
+</code></pre>
+<p>That gives the first clean baseline-versus-challenger pair. Section 13 should then show a governed matched comparison, Section 15 should show a small frontier, and Section 16 should capture persistent run evidence for both rows. Section 13’s purpose is exactly to compare archived Module 2 strategy runs applied to the same Module 1 scenario and population. fileciteturn149file18</p>
+<h2>After every Module 2 campaign run</h2>
+<p>Use Section 16.8 as the post-run evidence review packet. It is designed to show evidence row counts, the executive evidence row, REVIEW / NOT_APPLICABLE validation evidence, product × score evidence, parameter snapshot hash, and registry-linkage consistency. fileciteturn149file1</p>
+<p>The review rhythm should be:</p>
+<pre><code class="language-text">1. Confirm Section 16.8A evidence row counts.
+2. Review Section 16.8B executive evidence summary.
+3. Review Section 16.8C validation REVIEW / NOT_APPLICABLE rows.
+4. Review Section 16.8D product × score segment evidence.
+5. Review Section 16.8E parameter snapshot hash.
+6. Review Section 16.8F registry-linkage consistency.
+</code></pre>
+<p>For campaign tracking, after each run I would record:</p>
+<pre><code class="language-text">module1_run_id
+module2_run_id
+run_sequence_number
+showcase_id
+comparison_group_id
+validation_evidence_group_id
+run_registry_match_status
+strategy_name
+strategy_version
+module1_scenario_name
+population_id
+validation_pass_count
+validation_review_count
+validation_not_applicable_count
+frontier_position_type
+executive_frontier_quadrant
+parameter_snapshot_hash
+</code></pre>
+<h2>Campaign operating rule</h2>
+<p>From here forward, the safest rule is:</p>
+<pre><code class="language-text">Do not edit downstream logic during the campaign.
+Only change:
+    tmp_module2_strategy_params
+    tmp_module2_product_policy_params, if needed
+    active campaign registry rows
+    active comparison registry rows
+</code></pre>
+<p>That keeps the campaign evidence clean. If the logic changes mid-campaign, earlier and later runs are no longer strictly comparable without versioning the code itself.</p>
+<p>My recommendation: <strong>freeze the code, drop only the Section 16 evidence tables if you want a clean evidence base, then begin the baseline + tighter synthetic-risk formal pair.</strong></p>
+</div></article><article id="c038-m01157" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01157 · 2026-05-10T13:18:20.032000-04:00 · active path</p><div class="body"><p>we had nice parameter charts with that showed what the values should be for all parameters for each module 1 and module 2 campaign run.  can you re-provide those and enhance if needed?</p>
+</div></article><article id="c038-m01176" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01176 · 2026-05-10T13:29:11.566399-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-10, the current Module 2 SQL uses Section 2 as the governed parameter/control layer: <code>tmp_module2_strategy_params</code> is the one-row active strategy card, <code>tmp_module2_product_policy_params</code> is the product-policy card, and the campaign registries map technical Module 1 / Module 2 keys to run IDs, comparison groups, and validation evidence IDs. Section 3 then gatekeeps that setup before any downstream strategy logic runs. fileciteturn150file5</p>
+<p>Below is the enhanced runbook-style version of the parameter charts. The rows are meant to tell you <strong>what to set before each campaign run</strong>. Since both modules are parameter-card driven, the operating rule is:</p>
+<pre><code class="language-text">Module 1:
+    Edit tmp_module1_params for the selected M1 run.
+    Run Module 1.
+    Archive the completed scenario slice.
+
+Module 2:
+    Edit tmp_module2_strategy_params for the selected M2 run.
+    Confirm tmp_module2_product_policy_params profile.
+    Confirm registry row exists.
+    Run full Module 2.
+    Review Section 16.8 evidence outputs.
+</code></pre>
+<hr>
+<h1>1. Module 1 — baseline constants to preserve unless the scenario says otherwise</h1>
+<p>The Module 1 baseline is a 50,000-row synthetic population using <code>BASE_POPULATION_V1</code>, with a 2025 application window and an anchor date of <code>2025-12-31</code>. The Module 1 BRD also defines the baseline product mix, score-band mix, product amount bounds, term structures, APR anchors, and LGD assumptions. fileciteturn151file15 fileciteturn151file16 fileciteturn151file1</p>
+<table>
+<thead>
+<tr>
+<th>Parameter family</th>
+<th align="right">Parameter</th>
+<th align="right">Baseline value</th>
+<th>Keep constant unless…</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Run size</td>
+<td align="right"><code>application_count</code></td>
+<td align="right"><code>50000</code></td>
+<td>Always keep fixed for campaign comparability</td>
+</tr>
+<tr>
+<td>Population</td>
+<td align="right"><code>population_id</code></td>
+<td align="right"><code>BASE_POPULATION_V1</code></td>
+<td>Always keep fixed when doing matched scenario / strategy comparison</td>
+</tr>
+<tr>
+<td>Application window</td>
+<td align="right"><code>portfolio_start_date</code></td>
+<td align="right"><code>2025-01-01</code></td>
+<td>Keep fixed unless creating a time-window scenario</td>
+</tr>
+<tr>
+<td>Application window</td>
+<td align="right"><code>portfolio_end_date</code></td>
+<td align="right"><code>2025-12-31</code></td>
+<td>Keep fixed unless creating a time-window scenario</td>
+</tr>
+<tr>
+<td>Reporting date</td>
+<td align="right"><code>anchor_date</code></td>
+<td align="right"><code>2025-12-31</code></td>
+<td>Keep fixed for current campaign</td>
+</tr>
+<tr>
+<td>Archive</td>
+<td align="right"><code>archive_run_flag</code></td>
+<td align="right"><code>TRUE</code></td>
+<td>Keep true for formal campaign runs</td>
+</tr>
+<tr>
+<td>Archive</td>
+<td align="right"><code>archive_reset_mode</code></td>
+<td align="right"><code>SCENARIO_ONLY</code></td>
+<td>Recommended rerun mode</td>
+</tr>
+<tr>
+<td>Rate environment</td>
+<td align="right"><code>rate_shift_bps</code></td>
+<td align="right"><code>0</code></td>
+<td>Change only for rate-up / rate-down scenarios</td>
+</tr>
+<tr>
+<td>Product mix</td>
+<td align="right">Mortgage / Revolving / Auto / Personal / HELOC</td>
+<td align="right"><code>30% / 25% / 20% / 15% / 10%</code></td>
+<td>Change only for product-mix scenarios</td>
+</tr>
+<tr>
+<td>Score mix</td>
+<td align="right">Super Prime / Prime / Near Prime / Subprime / Deep Subprime</td>
+<td align="right"><code>18% / 28% / 24% / 18% / 12%</code></td>
+<td>Change only for credit-box scenarios</td>
+</tr>
+<tr>
+<td>Base APR</td>
+<td align="right">Mortgage / Auto / Personal / Revolving / HELOC</td>
+<td align="right"><code>6.00% / 6.50% / 11.00% / 20.00% / 8.00%</code></td>
+<td>Usually keep fixed; rate scenarios should use <code>rate_shift_bps</code></td>
+</tr>
+<tr>
+<td>LGD</td>
+<td align="right">Mortgage / Auto / Personal / Revolving / HELOC</td>
+<td align="right"><code>20% / 45% / 70% / 85% / 25%</code></td>
+<td>Change only for LGD severity scenarios</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>2. Module 1 — campaign scenario parameter chart</h1>
+<p>Use this as the run-order and parameter-edit chart for <code>tmp_module1_params</code>.</p>
+<table>
+<thead>
+<tr>
+<th align="right">M1 run</th>
+<th>Showcase</th>
+<th><code>scenario_set_name</code></th>
+<th><code>scenario_name</code></th>
+<th>Primary parameter family</th>
+<th>Main parameter edit</th>
+<th>Feeds Module 2 runs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">M1-01</td>
+<td>SC01 Baseline Strategy Frontier</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td>Baseline</td>
+<td>Baseline product mix, score mix, rate, exposure, LGD</td>
+<td>M2-01 to M2-07</td>
+</tr>
+<tr>
+<td align="right">M1-02</td>
+<td>SC02 Rate Environment Sensitivity</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_200BP</code></td>
+<td>Rate environment</td>
+<td><code>rate_shift_bps = +200</code></td>
+<td>M2-08, M2-11</td>
+</tr>
+<tr>
+<td align="right">M1-03</td>
+<td>SC02 Rate Environment Sensitivity</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td>Rate environment</td>
+<td><code>rate_shift_bps = -200</code></td>
+<td>M2-09, M2-13</td>
+</tr>
+<tr>
+<td align="right">M1-04</td>
+<td>SC02 Rate Environment Sensitivity</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_300BP</code></td>
+<td>Rate environment</td>
+<td><code>rate_shift_bps = +300</code></td>
+<td>M2-10, M2-12</td>
+</tr>
+<tr>
+<td align="right">M1-05</td>
+<td>SC03 Credit Box Sensitivity</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_BOX_BASELINE_REFERENCE</code></td>
+<td>Credit-box baseline</td>
+<td>Baseline score mix under credit-box scenario set</td>
+<td>M2-14</td>
+</tr>
+<tr>
+<td align="right">M1-06</td>
+<td>SC03 Credit Box Sensitivity</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>PRIME_GROWTH_SCORE_MIX</code></td>
+<td>Score mix</td>
+<td>Stronger-score / prime-growth score mix</td>
+<td>M2-15</td>
+</tr>
+<tr>
+<td align="right">M1-07</td>
+<td>SC03 Credit Box Sensitivity</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td>Score mix</td>
+<td>More near-prime weight</td>
+<td>M2-16, M2-17, M2-18</td>
+</tr>
+<tr>
+<td align="right">M1-08</td>
+<td>SC03 Credit Box Sensitivity</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td>Score mix</td>
+<td>Weaker-score / stress mix</td>
+<td>M2-19, M2-20</td>
+</tr>
+<tr>
+<td align="right">M1-09</td>
+<td>SC04 Portfolio Mix Sensitivity</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>PRODUCT_MIX_BASELINE_REFERENCE</code></td>
+<td>Product-mix baseline</td>
+<td>Baseline product mix under product-mix scenario set</td>
+<td>M2-21</td>
+</tr>
+<tr>
+<td align="right">M1-10</td>
+<td>SC04 Portfolio Mix Sensitivity</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td>Product mix</td>
+<td>Higher unsecured personal loan share</td>
+<td>M2-22, M2-23</td>
+</tr>
+<tr>
+<td align="right">M1-11</td>
+<td>SC04 Portfolio Mix Sensitivity</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>SECURED_BALANCE_GROWTH_MIX</code></td>
+<td>Product mix</td>
+<td>Higher secured-balance share</td>
+<td>M2-24</td>
+</tr>
+<tr>
+<td align="right">M1-12</td>
+<td>SC04 Portfolio Mix Sensitivity</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td>Product mix</td>
+<td>Higher revolving-line share</td>
+<td>M2-25, M2-26</td>
+</tr>
+<tr>
+<td align="right">M1-13</td>
+<td>SC05 Exposure Intensity Sensitivity</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>EXPOSURE_BASELINE_REFERENCE</code></td>
+<td>Exposure baseline</td>
+<td>Baseline requested-exposure behavior</td>
+<td>M2-27</td>
+</tr>
+<tr>
+<td align="right">M1-14</td>
+<td>SC05 Exposure Intensity Sensitivity</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td>Exposure intensity</td>
+<td>Higher requested-balance appetite</td>
+<td>M2-28, M2-29</td>
+</tr>
+<tr>
+<td align="right">M1-15</td>
+<td>SC05 Exposure Intensity Sensitivity</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td>Exposure intensity</td>
+<td>Lower requested-balance appetite</td>
+<td>M2-30</td>
+</tr>
+<tr>
+<td align="right">M1-16</td>
+<td>SC06 LGD Severity Sensitivity</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>LGD_BASELINE_REFERENCE</code></td>
+<td>LGD baseline</td>
+<td>Baseline LGD values</td>
+<td>M2-31</td>
+</tr>
+<tr>
+<td align="right">M1-17</td>
+<td>SC06 LGD Severity Sensitivity</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>SECURED_SEVERITY_STRESS</code></td>
+<td>LGD severity</td>
+<td>Higher secured-product LGD assumptions</td>
+<td>M2-32</td>
+</tr>
+<tr>
+<td align="right">M1-18</td>
+<td>SC06 LGD Severity Sensitivity</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td>LGD severity</td>
+<td>Higher unsecured / revolving LGD assumptions</td>
+<td>M2-33, M2-34</td>
+</tr>
+<tr>
+<td align="right">M1-19</td>
+<td>SC06 LGD Severity Sensitivity</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td>LGD severity</td>
+<td>Broad LGD stress across secured and unsecured products</td>
+<td>M2-35, M2-36</td>
+</tr>
+</tbody></table>
+<p>The current Module 2 comparison registry includes comparison groups through <code>CG17</code>, including <code>UNSECURED_SEVERITY_BASELINE_STRATEGY_VS_PRODUCT_GUARDRAILS</code> for M2-33 versus M2-34 and <code>BROAD_LGD_STRESS_BASELINE_STRATEGY_VS_PRODUCT_GUARDRAILS</code> for M2-35 versus M2-36. fileciteturn158file6</p>
+<hr>
+<h1>3. Module 1 — recommended numeric scenario overrides</h1>
+<p>These are the enhanced values I would use to make the campaign clean, interpretable, and executive-readable. Baseline constants come from the Module 1 design artifacts; scenario overrides are the recommended campaign values to install when creating each Module 1 scenario row.</p>
+<h2>3.1 Rate environment scenarios</h2>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th align="right"><code>rate_shift_bps</code></th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_V2</code></td>
+<td align="right"><code>0</code></td>
+<td>Current-rate baseline</td>
+</tr>
+<tr>
+<td><code>RATE_UP_200BP</code></td>
+<td align="right"><code>+200</code></td>
+<td>Moderate rate stress</td>
+</tr>
+<tr>
+<td><code>RATE_DOWN_200BP</code></td>
+<td align="right"><code>-200</code></td>
+<td>Rate relief / growth opportunity</td>
+</tr>
+<tr>
+<td><code>RATE_UP_300BP</code></td>
+<td align="right"><code>+300</code></td>
+<td>Stronger rate stress</td>
+</tr>
+</tbody></table>
+<h2>3.2 Score mix scenarios</h2>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th align="right">Super Prime</th>
+<th align="right">Prime</th>
+<th align="right">Near Prime</th>
+<th align="right">Subprime</th>
+<th align="right">Deep Subprime</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline / reference</td>
+<td align="right">18%</td>
+<td align="right">28%</td>
+<td align="right">24%</td>
+<td align="right">18%</td>
+<td align="right">12%</td>
+<td>Diversified default score mix</td>
+</tr>
+<tr>
+<td><code>PRIME_GROWTH_SCORE_MIX</code></td>
+<td align="right">26%</td>
+<td align="right">36%</td>
+<td align="right">22%</td>
+<td align="right">10%</td>
+<td align="right">6%</td>
+<td>Stronger-credit growth population</td>
+</tr>
+<tr>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td align="right">12%</td>
+<td align="right">22%</td>
+<td align="right">36%</td>
+<td align="right">20%</td>
+<td align="right">10%</td>
+<td>Tests expansion into near-prime</td>
+</tr>
+<tr>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td align="right">8%</td>
+<td align="right">16%</td>
+<td align="right">22%</td>
+<td align="right">30%</td>
+<td align="right">24%</td>
+<td>Tests weaker-credit mix and risk tightening</td>
+</tr>
+</tbody></table>
+<h2>3.3 Product mix scenarios</h2>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th align="right">Mortgage</th>
+<th align="right">Revolving Line</th>
+<th align="right">Auto Loan</th>
+<th align="right">Unsecured Personal Loan</th>
+<th align="right">HELOC</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline / reference</td>
+<td align="right">30%</td>
+<td align="right">25%</td>
+<td align="right">20%</td>
+<td align="right">15%</td>
+<td align="right">10%</td>
+<td>Diversified consumer-retail mix</td>
+</tr>
+<tr>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td align="right">20%</td>
+<td align="right">20%</td>
+<td align="right">15%</td>
+<td align="right">35%</td>
+<td align="right">10%</td>
+<td>Tests unsecured growth pressure</td>
+</tr>
+<tr>
+<td><code>SECURED_BALANCE_GROWTH_MIX</code></td>
+<td align="right">40%</td>
+<td align="right">12%</td>
+<td align="right">25%</td>
+<td align="right">8%</td>
+<td align="right">15%</td>
+<td>Tests secured balance growth</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td align="right">20%</td>
+<td align="right">40%</td>
+<td align="right">15%</td>
+<td align="right">15%</td>
+<td align="right">10%</td>
+<td>Tests revolving-line concentration</td>
+</tr>
+</tbody></table>
+<h2>3.4 LGD severity scenarios</h2>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th align="right">Mortgage LGD</th>
+<th align="right">Auto LGD</th>
+<th align="right">Personal LGD</th>
+<th align="right">Revolving LGD</th>
+<th align="right">HELOC LGD</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline / reference</td>
+<td align="right">20%</td>
+<td align="right">45%</td>
+<td align="right">70%</td>
+<td align="right">85%</td>
+<td align="right">25%</td>
+<td>Baseline severity assumptions</td>
+</tr>
+<tr>
+<td><code>SECURED_SEVERITY_STRESS</code></td>
+<td align="right">28%</td>
+<td align="right">55%</td>
+<td align="right">70%</td>
+<td align="right">85%</td>
+<td align="right">35%</td>
+<td>Stresses collateral-backed severity</td>
+</tr>
+<tr>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td align="right">20%</td>
+<td align="right">45%</td>
+<td align="right">85%</td>
+<td align="right">95%</td>
+<td align="right">25%</td>
+<td>Stresses unsecured / revolving severity</td>
+</tr>
+<tr>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td align="right">28%</td>
+<td align="right">55%</td>
+<td align="right">85%</td>
+<td align="right">95%</td>
+<td align="right">35%</td>
+<td>Stresses all product severity families</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>4. Module 2 — strategy profile parameter chart</h1>
+<p>The current patched Module 2 file’s active strategy row is set to <code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code> on the archived Module 1 <code>BASELINE_V2</code> population, with <code>campaign_registry_required_flag = TRUE</code>, <code>module1_input_source = ARCHIVE</code>, and <code>strategy_archive_reset_mode = STRATEGY_SCENARIO_ONLY</code>. Its tighter synthetic-risk thresholds are <code>0.060000 / 0.120000 / 0.250000 / 0.300000</code> for approve / counteroffer / review / decline synthetic estimated-PD proxy thresholds. fileciteturn154file0 fileciteturn154file9</p>
+<table>
+<thead>
+<tr>
+<th>Strategy profile</th>
+<th>Strategy name</th>
+<th align="right">Approve max estimated-PD proxy</th>
+<th align="right">Counteroffer max estimated-PD proxy</th>
+<th align="right">Review max estimated-PD proxy</th>
+<th align="right">Decline min estimated-PD proxy</th>
+<th align="right">Global approve PTI</th>
+<th align="right">Global review PTI</th>
+<th align="right">Global decline PTI</th>
+<th align="right">Approve DTI</th>
+<th align="right">Review DTI</th>
+<th align="right">Decline DTI</th>
+<th>Failed counteroffer resolution</th>
+<th>Product policy profile</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline</td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">0.080000</td>
+<td align="right">0.160000</td>
+<td align="right">0.300000</td>
+<td align="right">0.350000</td>
+<td align="right">0.250000</td>
+<td align="right">0.400000</td>
+<td align="right">0.550000</td>
+<td align="right">0.430000</td>
+<td align="right">0.600000</td>
+<td align="right">0.600000</td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Baseline product policy</td>
+</tr>
+<tr>
+<td>Tighter synthetic risk</td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">0.060000</td>
+<td align="right">0.120000</td>
+<td align="right">0.250000</td>
+<td align="right">0.300000</td>
+<td align="right">0.250000</td>
+<td align="right">0.400000</td>
+<td align="right">0.550000</td>
+<td align="right">0.430000</td>
+<td align="right">0.600000</td>
+<td align="right">0.600000</td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Baseline product policy</td>
+</tr>
+<tr>
+<td>Growth oriented</td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td align="right">0.100000</td>
+<td align="right">0.200000</td>
+<td align="right">0.350000</td>
+<td align="right">0.400000</td>
+<td align="right">0.280000</td>
+<td align="right">0.430000</td>
+<td align="right">0.580000</td>
+<td align="right">0.460000</td>
+<td align="right">0.630000</td>
+<td align="right">0.630000</td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Growth product policy</td>
+</tr>
+<tr>
+<td>Tighter affordability</td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td align="right">0.080000</td>
+<td align="right">0.160000</td>
+<td align="right">0.300000</td>
+<td align="right">0.350000</td>
+<td align="right">0.220000</td>
+<td align="right">0.350000</td>
+<td align="right">0.500000</td>
+<td align="right">0.400000</td>
+<td align="right">0.550000</td>
+<td align="right">0.550000</td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Affordability-tight product policy</td>
+</tr>
+<tr>
+<td>Counteroffer first</td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td align="right">0.080000</td>
+<td align="right">0.160000</td>
+<td align="right">0.300000</td>
+<td align="right">0.350000</td>
+<td align="right">0.250000</td>
+<td align="right">0.400000</td>
+<td align="right">0.550000</td>
+<td align="right">0.430000</td>
+<td align="right">0.600000</td>
+<td align="right">0.600000</td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Counteroffer-first product policy</td>
+</tr>
+<tr>
+<td>Product-specific guardrails</td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td align="right">0.080000</td>
+<td align="right">0.160000</td>
+<td align="right">0.300000</td>
+<td align="right">0.350000</td>
+<td align="right">0.250000</td>
+<td align="right">0.400000</td>
+<td align="right">0.550000</td>
+<td align="right">0.430000</td>
+<td align="right">0.600000</td>
+<td align="right">0.600000</td>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Product-guardrail policy</td>
+</tr>
+<tr>
+<td>Manual-review reduction</td>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td align="right">0.080000</td>
+<td align="right">0.160000</td>
+<td align="right">0.300000</td>
+<td align="right">0.350000</td>
+<td align="right">0.250000</td>
+<td align="right">0.400000</td>
+<td align="right">0.550000</td>
+<td align="right">0.430000</td>
+<td align="right">0.600000</td>
+<td align="right">0.600000</td>
+<td><code>DECLINE</code></td>
+<td>Baseline product policy</td>
+</tr>
+</tbody></table>
+<p>The baseline and tighter synthetic-risk rows above are source-backed from the SQL snippets. The remaining strategy profiles are the enhanced campaign runbook values I recommend so that each strategy has a clear, distinct interpretation: growth, affordability discipline, exposure treatment, product-specific guardrails, or review-burden reduction. The registry descriptions support those strategy families: growth loosens selected tolerances, affordability tightening tightens PTI controls, counteroffer management emphasizes reduced-exposure treatment, product guardrails target selected unsecured / revolving products, and manual-review reduction resolves failed counteroffers to final no-offer outcomes. fileciteturn157file8 fileciteturn157file10</p>
+<hr>
+<h1>5. Module 2 — baseline product-policy parameter chart</h1>
+<p>Module 2 product policy must contain exactly one row for each supported product: <code>MORTGAGE</code>, <code>HELOC</code>, <code>AUTO_LOAN</code>, <code>UNSECURED_PERSONAL_LOAN</code>, and <code>REVOLVING_LINE</code>. Section 3 validates product-policy cardinality, supported products, threshold ordering, exposure bounds, counteroffer controls, and rounding settings before downstream logic runs. fileciteturn160file13</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Approve PTI</th>
+<th align="right">Review PTI</th>
+<th align="right">Decline PTI</th>
+<th align="right">Counteroffer target PTI</th>
+<th align="right">Approve max requested EL</th>
+<th align="right">Review max requested EL</th>
+<th align="right">Decline min requested EL</th>
+<th align="right">Approved EL cap</th>
+<th align="right">Min approved amount</th>
+<th align="right">Max approved amount</th>
+<th align="right">Min counteroffer %</th>
+<th align="right">Max exposure reduction %</th>
+<th align="right">Rounding</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right">0.350000</td>
+<td align="right">0.450000</td>
+<td align="right">0.550000</td>
+<td align="right">0.320000</td>
+<td align="right">10000</td>
+<td align="right">20000</td>
+<td align="right">40000</td>
+<td align="right">10000</td>
+<td align="right">75000</td>
+<td align="right">800000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">5000</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right">0.250000</td>
+<td align="right">0.350000</td>
+<td align="right">0.450000</td>
+<td align="right">0.220000</td>
+<td align="right">8000</td>
+<td align="right">16000</td>
+<td align="right">30000</td>
+<td align="right">7000</td>
+<td align="right">10000</td>
+<td align="right">175000</td>
+<td align="right">0.400000</td>
+<td align="right">0.500000</td>
+<td align="right">1000</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">0.180000</td>
+<td align="right">0.280000</td>
+<td align="right">0.380000</td>
+<td align="right">0.160000</td>
+<td align="right">3500</td>
+<td align="right">7000</td>
+<td align="right">12000</td>
+<td align="right">3000</td>
+<td align="right">5000</td>
+<td align="right">65000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">0.150000</td>
+<td align="right">0.250000</td>
+<td align="right">0.350000</td>
+<td align="right">0.130000</td>
+<td align="right">3000</td>
+<td align="right">6000</td>
+<td align="right">10000</td>
+<td align="right">2500</td>
+<td align="right">1000</td>
+<td align="right">35000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">0.120000</td>
+<td align="right">0.200000</td>
+<td align="right">0.300000</td>
+<td align="right">0.100000</td>
+<td align="right">2000</td>
+<td align="right">4000</td>
+<td align="right">8000</td>
+<td align="right">1800</td>
+<td align="right">1000</td>
+<td align="right">20000</td>
+<td align="right">0.500000</td>
+<td align="right">0.500000</td>
+<td align="right">500</td>
+</tr>
+</tbody></table>
+<p>The baseline product policy rows explicitly state they are simulated strategy defaults, not production underwriting limits, final approved credit policy, empirical calibration, real customer treatment rules, or regulatory thresholds. fileciteturn161file4</p>
+<hr>
+<h1>6. Module 2 — enhanced product-policy profiles by strategy</h1>
+<p>Use these product-policy edits when the strategy profile calls for product-policy behavior rather than only global strategy threshold changes.</p>
+<table>
+<thead>
+<tr>
+<th>Product policy profile</th>
+<th>Products affected</th>
+<th>What to change</th>
+<th>Recommended values</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline product policy</td>
+<td>All products</td>
+<td>Use baseline product policy table above</td>
+<td>No changes</td>
+</tr>
+<tr>
+<td>Growth product policy</td>
+<td>All products</td>
+<td>Modestly expand offer capacity while preserving guardrails</td>
+<td>Increase <code>product_max_approved_amount</code> by ~10%; increase <code>product_approved_el_cap</code> by ~10%; leave counteroffer controls unchanged</td>
+</tr>
+<tr>
+<td>Affordability-tight product policy</td>
+<td>All products</td>
+<td>Tighten payment burden tolerance</td>
+<td>Reduce each product’s <code>product_approve_max_pti</code>, <code>product_review_max_pti</code>, <code>product_decline_min_pti</code>, and <code>counteroffer_target_pti</code> by ~2–5 percentage points, keeping order intact</td>
+</tr>
+<tr>
+<td>Counteroffer-first product policy</td>
+<td>All products, especially larger-balance products</td>
+<td>Force more reduced-exposure treatment</td>
+<td>Reduce <code>counteroffer_target_pti</code>; reduce <code>product_approved_el_cap</code> by ~15–25%; reduce selected <code>product_max_approved_amount</code>; keep <code>counteroffer_allowed_flag = TRUE</code></td>
+</tr>
+<tr>
+<td>Product-guardrail policy</td>
+<td><code>UNSECURED_PERSONAL_LOAN</code>, <code>REVOLVING_LINE</code></td>
+<td>Tighten unsecured / revolving guardrails</td>
+<td>UPL: lower max approved amount toward 25k–30k and approved EL cap toward 2k. Revolving: lower max approved amount toward 15k–18k and approved EL cap toward 1.2k–1.5k</td>
+</tr>
+<tr>
+<td>Manual-review reduction product policy</td>
+<td>All products</td>
+<td>Use baseline product policy</td>
+<td>Change strategy-level <code>failed_counteroffer_resolution</code> to <code>DECLINE</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h1>7. Module 2 — full campaign run map</h1>
+<p>This is the practical “what should I set for this M2 run?” table. For each row:</p>
+<pre><code class="language-text">tmp_module2_strategy_params.source_module1_scenario_set_name = M1 scenario_set_name
+tmp_module2_strategy_params.source_module1_scenario_name     = M1 scenario_name
+tmp_module2_strategy_params.source_population_id             = BASE_POPULATION_V1
+tmp_module2_strategy_params.strategy_name                    = listed strategy
+tmp_module2_strategy_params.strategy_version                 = V1_0
+tmp_module2_strategy_params.module1_input_source             = ARCHIVE
+tmp_module2_strategy_params.archive_run_flag                 = TRUE
+tmp_module2_strategy_params.strategy_archive_reset_mode       = STRATEGY_SCENARIO_ONLY
+tmp_module2_strategy_params.campaign_registry_required_flag   = TRUE
+</code></pre>
+<p>The campaign registry maps these technical keys to <code>module1_run_id</code>, <code>module2_run_id</code>, <code>showcase_id</code>, <code>comparison_group_id</code>, <code>validation_evidence_group_id</code>, README labels, and LinkedIn sequence metadata. fileciteturn150file16</p>
+<table>
+<thead>
+<tr>
+<th align="right">M2 run</th>
+<th align="right">Source M1 run</th>
+<th>Module 1 scenario</th>
+<th>Strategy profile</th>
+<th>Comparison role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">M2-01</td>
+<td align="right">M1-01</td>
+<td><code>BASELINE_V2</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline reference for CG01–CG06</td>
+</tr>
+<tr>
+<td align="right">M2-02</td>
+<td align="right">M1-01</td>
+<td><code>BASELINE_V2</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>Challenger for CG01</td>
+</tr>
+<tr>
+<td align="right">M2-03</td>
+<td align="right">M1-01</td>
+<td><code>BASELINE_V2</code></td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>Challenger for CG02</td>
+</tr>
+<tr>
+<td align="right">M2-04</td>
+<td align="right">M1-01</td>
+<td><code>BASELINE_V2</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>Challenger for CG03</td>
+</tr>
+<tr>
+<td align="right">M2-05</td>
+<td align="right">M1-01</td>
+<td><code>BASELINE_V2</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>Challenger for CG04</td>
+</tr>
+<tr>
+<td align="right">M2-06</td>
+<td align="right">M1-01</td>
+<td><code>BASELINE_V2</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Challenger for CG05</td>
+</tr>
+<tr>
+<td align="right">M2-07</td>
+<td align="right">M1-01</td>
+<td><code>BASELINE_V2</code></td>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td>Challenger for CG06</td>
+</tr>
+<tr>
+<td align="right">M2-08</td>
+<td align="right">M1-02</td>
+<td><code>RATE_UP_200BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG07</td>
+</tr>
+<tr>
+<td align="right">M2-09</td>
+<td align="right">M1-03</td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG09</td>
+</tr>
+<tr>
+<td align="right">M2-10</td>
+<td align="right">M1-04</td>
+<td><code>RATE_UP_300BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG08</td>
+</tr>
+<tr>
+<td align="right">M2-11</td>
+<td align="right">M1-02</td>
+<td><code>RATE_UP_200BP</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>Challenger for CG07</td>
+</tr>
+<tr>
+<td align="right">M2-12</td>
+<td align="right">M1-04</td>
+<td><code>RATE_UP_300BP</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>Challenger for CG08</td>
+</tr>
+<tr>
+<td align="right">M2-13</td>
+<td align="right">M1-03</td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>Challenger for CG09</td>
+</tr>
+<tr>
+<td align="right">M2-14</td>
+<td align="right">M1-05</td>
+<td><code>CREDIT_BOX_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Credit-box reference</td>
+</tr>
+<tr>
+<td align="right">M2-15</td>
+<td align="right">M1-06</td>
+<td><code>PRIME_GROWTH_SCORE_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Prime-growth baseline</td>
+</tr>
+<tr>
+<td align="right">M2-16</td>
+<td align="right">M1-07</td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG10–CG11</td>
+</tr>
+<tr>
+<td align="right">M2-17</td>
+<td align="right">M1-07</td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>Challenger for CG10</td>
+</tr>
+<tr>
+<td align="right">M2-18</td>
+<td align="right">M1-07</td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>Challenger for CG11</td>
+</tr>
+<tr>
+<td align="right">M2-19</td>
+<td align="right">M1-08</td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG12</td>
+</tr>
+<tr>
+<td align="right">M2-20</td>
+<td align="right">M1-08</td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>Challenger for CG12</td>
+</tr>
+<tr>
+<td align="right">M2-21</td>
+<td align="right">M1-09</td>
+<td><code>PRODUCT_MIX_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Product-mix reference</td>
+</tr>
+<tr>
+<td align="right">M2-22</td>
+<td align="right">M1-10</td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG13</td>
+</tr>
+<tr>
+<td align="right">M2-23</td>
+<td align="right">M1-10</td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Challenger for CG13</td>
+</tr>
+<tr>
+<td align="right">M2-24</td>
+<td align="right">M1-11</td>
+<td><code>SECURED_BALANCE_GROWTH_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Secured-balance baseline</td>
+</tr>
+<tr>
+<td align="right">M2-25</td>
+<td align="right">M1-12</td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG14</td>
+</tr>
+<tr>
+<td align="right">M2-26</td>
+<td align="right">M1-12</td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Challenger for CG14</td>
+</tr>
+<tr>
+<td align="right">M2-27</td>
+<td align="right">M1-13</td>
+<td><code>EXPOSURE_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Exposure-intensity reference</td>
+</tr>
+<tr>
+<td align="right">M2-28</td>
+<td align="right">M1-14</td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG15</td>
+</tr>
+<tr>
+<td align="right">M2-29</td>
+<td align="right">M1-14</td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>Challenger for CG15</td>
+</tr>
+<tr>
+<td align="right">M2-30</td>
+<td align="right">M1-15</td>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Low-balance baseline</td>
+</tr>
+<tr>
+<td align="right">M2-31</td>
+<td align="right">M1-16</td>
+<td><code>LGD_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>LGD reference</td>
+</tr>
+<tr>
+<td align="right">M2-32</td>
+<td align="right">M1-17</td>
+<td><code>SECURED_SEVERITY_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Secured severity baseline</td>
+</tr>
+<tr>
+<td align="right">M2-33</td>
+<td align="right">M1-18</td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG16</td>
+</tr>
+<tr>
+<td align="right">M2-34</td>
+<td align="right">M1-18</td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Challenger for CG16</td>
+</tr>
+<tr>
+<td align="right">M2-35</td>
+<td align="right">M1-19</td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline for CG17</td>
+</tr>
+<tr>
+<td align="right">M2-36</td>
+<td align="right">M1-19</td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Challenger for CG17</td>
+</tr>
+</tbody></table>
+<p>The registry snippets explicitly define SC01 baseline strategy frontier comparisons, SC02 rate environment comparisons, SC03 credit-box comparisons, SC04 product-mix comparisons, SC05 exposure-intensity comparison, and SC06 LGD severity comparisons through CG17. fileciteturn158file8 fileciteturn157file12 fileciteturn157file16 fileciteturn158file6</p>
+<hr>
+<h1>8. Strategy profile → M2 run lookup</h1>
+<p>This is the quickest operational chart when editing Section 2.2.</p>
+<table>
+<thead>
+<tr>
+<th>Strategy profile</th>
+<th>M2 run IDs</th>
+<th>Main interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>M2-01, M2-08, M2-09, M2-10, M2-14, M2-15, M2-16, M2-19, M2-21, M2-22, M2-24, M2-25, M2-27, M2-28, M2-30, M2-31, M2-32, M2-33, M2-35</td>
+<td>Reference strategy behavior under each Module 1 scenario</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>M2-02, M2-17, M2-20</td>
+<td>Synthetic-risk discipline / approved Expected Loss reduction</td>
+</tr>
+<tr>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>M2-03, M2-13</td>
+<td>Simulated offer-growth and approved amount expansion</td>
+</tr>
+<tr>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>M2-04, M2-11, M2-12</td>
+<td>Approved PTI discipline under baseline and rate stress</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>M2-05, M2-18, M2-29</td>
+<td>Exposure management through reduced-exposure treatment</td>
+</tr>
+<tr>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>M2-06, M2-23, M2-26, M2-34, M2-36</td>
+<td>Unsecured / revolving / severity guardrail testing</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td>M2-07</td>
+<td>Operational review-burden reduction through final no-offer resolution</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>9. Run-order recommendation</h1>
+<p>I would run the campaign in this order:</p>
+<pre><code class="language-text">Phase 1 — Pure Module 2 frontier on baseline population
+    M1-01
+    M2-01 through M2-07
+
+Phase 2 — Rate sensitivity
+    M1-02 → M2-08, M2-11
+    M1-04 → M2-10, M2-12
+    M1-03 → M2-09, M2-13
+
+Phase 3 — Credit-box sensitivity
+    M1-05 → M2-14
+    M1-06 → M2-15
+    M1-07 → M2-16, M2-17, M2-18
+    M1-08 → M2-19, M2-20
+
+Phase 4 — Product-mix sensitivity
+    M1-09 → M2-21
+    M1-10 → M2-22, M2-23
+    M1-11 → M2-24
+    M1-12 → M2-25, M2-26
+
+Phase 5 — Exposure-intensity sensitivity
+    M1-13 → M2-27
+    M1-14 → M2-28, M2-29
+    M1-15 → M2-30
+
+Phase 6 — LGD severity sensitivity
+    M1-16 → M2-31
+    M1-17 → M2-32
+    M1-18 → M2-33, M2-34
+    M1-19 → M2-35, M2-36
+</code></pre>
+<p>After each Module 2 run, use Section 16.8 as the post-run evidence packet: it shows evidence row counts, the executive evidence row, validation rows needing review, product × score evidence, parameter snapshot hash, and registry-linkage diagnostics. fileciteturn150file10</p>
+<hr>
+<h1>10. One important enhancement I would add</h1>
+<p>For the formal campaign, I would add a <strong>parameter-profile lookup table</strong> or at least a commented runbook block above Section 2.2 so you do not have to manually remember which numeric thresholds belong to <code>BASELINE_STRATEGY</code>, <code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code>, <code>GROWTH_ORIENTED_STRATEGY</code>, and the other profiles.</p>
+<p>Right now, the script is correct as a one-active-row system, but the campaign is easier to operate if the file also contains a compact reference block like:</p>
+<pre><code class="language-text">Strategy profile:
+    BASELINE_STRATEGY
+    TIGHTER_SYNTHETIC_RISK_STRATEGY
+    GROWTH_ORIENTED_STRATEGY
+    TIGHTER_AFFORDABILITY_STRATEGY
+    COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+    PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+    MANUAL_REVIEW_REDUCTION_STRATEGY
+
+Product policy profile:
+    BASELINE_PRODUCT_POLICY
+    GROWTH_PRODUCT_POLICY
+    AFFORDABILITY_TIGHT_PRODUCT_POLICY
+    COUNTEROFFER_FIRST_PRODUCT_POLICY
+    PRODUCT_GUARDRAIL_POLICY
+</code></pre>
+<p>That would reduce operator error. Section 16.4 already snapshots the active strategy parameters, product-policy parameters, and run-story metadata as JSONB and creates a <code>parameter_snapshot_hash</code>, so once the run is executed the evidence layer will preserve exactly what parameter payload produced the result. fileciteturn149file5</p>
+</div></article><article id="c038-m01178" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01178 · 2026-05-10T14:32:07.929000-04:00 · active path</p><div class="body"><p>did you intend to call The SC05 Intensity Set or should it be sensitivity_set like the rest?</p>
+</div></article><article id="c038-m01183" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01183 · 2026-05-10T14:33:51.123407-04:00 · active path</p><div class="body"><p>Yes — you caught a naming inconsistency. I <strong>did not intend</strong> for SC05 to be named differently from the other sensitivity scenario families.</p>
+<p>For canonical campaign naming, I recommend changing:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SET
+</code></pre>
+<p>to:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<p>The current Module 2 registry rows label SC05 as <strong>“Exposure Intensity Sensitivity”</strong> but use <code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code> for M1-13 / M2-27, M1-14 / M2-28, M1-14 / M2-29, and M1-15 / M2-30. The CG15 comparison registry also uses <code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code>. fileciteturn163file0 fileciteturn163file9</p>
+<p>The cleaner convention is:</p>
+<pre><code class="language-text">SC03: MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET
+SC04: MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET
+SC05: MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+SC06: MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET
+</code></pre>
+<p>SC04 and SC06 already follow the <code>_SENSITIVITY_SET</code> convention in the registry. fileciteturn163file0 fileciteturn163file1</p>
+<p>The reason to fix it now is that <code>module1_scenario_set_name</code> is not just a label. It is part of the technical run key used for Module 1 source selection, Module 2 registry matching, archive replacement, comparison, frontier grouping, and Section 16 evidence capture. If we leave SC05 as <code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code>, it will still work if all tables are consistent, but it will look like an exception and could create avoidable confusion later.</p>
+<p>I would patch every SC05 occurrence to:</p>
+<pre><code class="language-sql">&#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+</code></pre>
+<p>Specifically update:</p>
+<pre><code class="language-text">M1-13 / M2-27
+M1-14 / M2-28
+M1-14 / M2-29
+M1-15 / M2-30
+CG15
+any Module 1 parameter row for M1-13 through M1-15
+any tmp_module2_strategy_params source field when running M2-27 through M2-30
+</code></pre>
+<p>Do this <strong>before the formal campaign run</strong>. Since the successful run was a smoke test, I would not worry about preserving the shorter-name archive/evidence slices. For the formal run, standardize the name and rebuild those slices cleanly.</p>
+</div></article><article id="c038-m01184" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01184 · 2026-05-10T14:43:12.757000-04:00 · active path</p><div class="body"><p>I made an error on some module 1 runs.  can you give me a query to delete all where scenario_set_name is &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;</p>
+</div></article><article id="c038-m01187" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01187 · 2026-05-10T14:45:02.915129-04:00 · active path</p><div class="body"><p>Yes. For <strong>Module 1 archived scenario rows</strong>, the main delete target should be:</p>
+<pre><code class="language-sql">credit_decisioning_sim.synthetic_applications_scenario_archive
+</code></pre>
+<p>That is the Module 1 scenario archive table Module 2 consumes when <code>module1_input_source = &#39;ARCHIVE&#39;</code>. Module 2 then carries that lineage forward as <code>module1_scenario_set_name</code>, <code>module1_scenario_name</code>, and <code>population_id</code>, so cleaning the mistaken Module 1 archive slice is the right first move. fileciteturn165file59</p>
+<p>Use this safe transaction pattern.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+DELETE MODULE 1 ARCHIVED SCENARIO RUNS FOR SC05 EXPOSURE INTENSITY SENSITIVITY SET
+
+Purpose:
+    Remove mistakenly-created Module 1 archive rows where scenario_set_name equals:
+
+        MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+
+Primary target:
+    credit_decisioning_sim.synthetic_applications_scenario_archive
+
+Important:
+    Review the preview counts first.
+
+    If the delete counts look correct, run COMMIT.
+    If the delete counts look wrong, run ROLLBACK instead of COMMIT.
+***************************************************************************************************/
+
+BEGIN;
+
+
+/*-----------------------------------------------------------------------------------------------
+1. Preview rows that will be deleted.
+
+Expected:
+    This should show only the mistaken Module 1 exposure-intensity scenario runs.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS rows_to_delete
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_set_name,
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+2. Delete the mistaken Module 1 archived scenario rows.
+
+The RETURNING clause gives a post-delete count by scenario_name and population_id before you commit.
+-----------------------------------------------------------------------------------------------*/
+
+WITH deleted_rows AS (
+    DELETE FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+    RETURNING
+        scenario_set_name,
+        scenario_name,
+        population_id
+)
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS deleted_row_count
+FROM deleted_rows
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_set_name,
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+3. Commit only if the deleted counts are correct.
+
+Use one of these:
+    COMMIT;
+    ROLLBACK;
+-----------------------------------------------------------------------------------------------*/
+
+-- COMMIT;
+-- ROLLBACK;
+</code></pre>
+<p>If your <strong>latest-run Module 1 table</strong> also currently contains the bad scenario set, run this separately after reviewing the counts:</p>
+<pre><code class="language-sql">/***************************************************************************************************
+OPTIONAL — DELETE CURRENT MODULE 1 LATEST-RUN ROWS FOR THE SAME SCENARIO SET
+
+Use only if credit_decisioning_sim.synthetic_applications currently contains the mistaken
+MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET latest-run output.
+***************************************************************************************************/
+
+BEGIN;
+
+
+/* Preview latest-run rows. */
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS rows_to_delete
+FROM credit_decisioning_sim.synthetic_applications
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_set_name,
+    scenario_name,
+    population_id;
+
+
+/* Delete latest-run rows if preview confirms they are wrong. */
+WITH deleted_rows AS (
+    DELETE FROM credit_decisioning_sim.synthetic_applications
+    WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+    RETURNING
+        scenario_set_name,
+        scenario_name,
+        population_id
+)
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS deleted_row_count
+FROM deleted_rows
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_set_name,
+    scenario_name,
+    population_id;
+
+
+-- COMMIT;
+-- ROLLBACK;
+</code></pre>
+<p>If any <strong>Module 2 runs already consumed</strong> those mistaken Module 1 slices, also clean the downstream Module 2 archive/evidence for that same lineage before rerunning. Module 2’s archive/evidence grain uses <code>module1_scenario_set_name</code>, <code>module1_scenario_name</code>, and <code>population_id</code>, so downstream cleanup should use <code>module1_scenario_set_name</code>, not <code>scenario_set_name</code>. fileciteturn165file51</p>
+<pre><code class="language-sql">/***************************************************************************************************
+OPTIONAL — DOWNSTREAM MODULE 2 CLEANUP FOR RUNS THAT CONSUMED THE MISTAKEN MODULE 1 SCENARIO SET
+
+Use only if Module 2 has already been run against:
+
+    MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+
+This removes downstream Module 2 latest-run, archive, and Section 16 evidence rows tied to that
+Module 1 scenario set.
+***************************************************************************************************/
+
+BEGIN;
+
+
+/* Preview affected Module 2 archive rows. */
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    COUNT(*) AS module2_archive_rows_to_delete
+FROM credit_decisioning_sim.strategy_decisions_archive
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+GROUP BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version
+ORDER BY
+    module1_scenario_name,
+    strategy_name,
+    strategy_version;
+
+
+/* Delete Module 2 latest-run rows if current latest-run used the bad scenario set. */
+DELETE FROM credit_decisioning_sim.strategy_decisions
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;;
+
+
+/* Delete Module 2 archive rows for the bad scenario set. */
+DELETE FROM credit_decisioning_sim.strategy_decisions_archive
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;;
+
+
+/* Delete Section 16 executive evidence rows for the bad scenario set. */
+DELETE FROM credit_decisioning_sim.strategy_run_evidence_summary
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;;
+
+
+/* Delete Section 16 validation evidence rows for the bad scenario set. */
+DELETE FROM credit_decisioning_sim.strategy_run_validation_evidence
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;;
+
+
+/* Delete Section 16 parameter snapshot rows for the bad scenario set. */
+DELETE FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;;
+
+
+/* Delete Section 16 product × score segment evidence rows for the bad scenario set. */
+DELETE FROM credit_decisioning_sim.strategy_run_segment_evidence_summary
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;;
+
+
+-- COMMIT;
+-- ROLLBACK;
+</code></pre>
+<p>My recommendation: run the <strong>Module 1 archive delete first</strong>, then rerun the corrected SC05 Module 1 scenarios with the intended canonical name. Only run the downstream Module 2 cleanup block if those incorrect Module 1 slices had already fed Module 2 runs.</p>
+</div></article><article id="c038-m01188" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01188 · 2026-05-10T14:48:43.483000-04:00 · active path</p><div class="body"><p>I know why I messed up, in your response above you show me 3.3 product mix scenarios but then you skip to 3.4 lgd severity scenarios.  you never show me what the parameters are for the exposure intensity sensitivity.</p>
+</div></article><article id="c038-m01194" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01194 · 2026-05-10T14:52:33.592220-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-10, you are right — I skipped the <strong>Exposure Intensity Sensitivity</strong> parameter chart between Product Mix and LGD Severity. That omission made SC05 ambiguous. The current Module 2 registry identifies SC05 as <strong>Exposure Intensity Sensitivity</strong>, with <code>HIGH_BALANCE_APPETITE</code> described as higher requested-exposure intensity and <code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code> described as lower requested-exposure intensity. fileciteturn167file9</p>
+<p>The missing chart should have been this:</p>
+<h2>3.4 Exposure intensity sensitivity scenarios</h2>
+<p>These scenarios should change <strong>requested exposure bounds</strong>, not product mix, score mix, rate environment, or LGD. Module 1’s <code>tmp_module1_params</code> parameter card has explicit product amount bound fields such as <code>min_personal_amt</code>, <code>max_personal_amt</code>, <code>min_auto_amt</code>, <code>max_auto_amt</code>, <code>min_revolving_amt</code>, <code>max_revolving_amt</code>, <code>min_heloc_amt</code>, <code>max_heloc_amt</code>, <code>min_mortgage_amt</code>, and <code>max_mortgage_amt</code>. fileciteturn168file0</p>
+<p>The baseline Module 1 V2.0 amount bounds are:</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Baseline min</th>
+<th align="right">Baseline max</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">1,000</td>
+<td align="right">50,000</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">5,000</td>
+<td align="right">80,000</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">1,000</td>
+<td align="right">30,000</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right">10,000</td>
+<td align="right">250,000</td>
+</tr>
+<tr>
+<td><code>MORTGAGE</code></td>
+<td align="right">75,000</td>
+<td align="right">1,500,000</td>
+</tr>
+</tbody></table>
+<p>Those bounds are explicitly described in Module 1 as the ranges that shape first-stage requested amount anchors by product. fileciteturn169file0</p>
+<h2>Corrected SC05 Module 1 parameter chart</h2>
+<p>Use this as the missing exposure-intensity section.</p>
+<table>
+<thead>
+<tr>
+<th align="right">M1 run</th>
+<th>Scenario set</th>
+<th>Scenario name</th>
+<th>Parameter family</th>
+<th>What changes</th>
+<th>What stays fixed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">M1-13</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code></td>
+<td><code>EXPOSURE_BASELINE_REFERENCE</code></td>
+<td>Exposure baseline</td>
+<td>Use baseline product amount bounds</td>
+<td>Product mix, score mix, rate shift, LGD, population</td>
+</tr>
+<tr>
+<td align="right">M1-14</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code></td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td>Higher requested exposure</td>
+<td>Increase product max requested amount bounds</td>
+<td>Product mix, score mix, rate shift, LGD, population</td>
+</tr>
+<tr>
+<td align="right">M1-15</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code></td>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td>Lower requested exposure</td>
+<td>Decrease product max requested amount bounds</td>
+<td>Product mix, score mix, rate shift, LGD, population</td>
+</tr>
+</tbody></table>
+<h2>Recommended numeric values</h2>
+<p>I would keep the <strong>minimums unchanged</strong> and move the <strong>maximums</strong>. That isolates exposure appetite without creating strange low-end behavior or unnecessary conflicts with downstream Module 2 product minimums.</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th align="right">Personal min</th>
+<th align="right">Personal max</th>
+<th align="right">Auto min</th>
+<th align="right">Auto max</th>
+<th align="right">Revolving min</th>
+<th align="right">Revolving max</th>
+<th align="right">HELOC min</th>
+<th align="right">HELOC max</th>
+<th align="right">Mortgage min</th>
+<th align="right">Mortgage max</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>EXPOSURE_BASELINE_REFERENCE</code></td>
+<td align="right">1,000</td>
+<td align="right">50,000</td>
+<td align="right">5,000</td>
+<td align="right">80,000</td>
+<td align="right">1,000</td>
+<td align="right">30,000</td>
+<td align="right">10,000</td>
+<td align="right">250,000</td>
+<td align="right">75,000</td>
+<td align="right">1,500,000</td>
+</tr>
+<tr>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td align="right">1,000</td>
+<td align="right">62,500</td>
+<td align="right">5,000</td>
+<td align="right">100,000</td>
+<td align="right">1,000</td>
+<td align="right">37,500</td>
+<td align="right">10,000</td>
+<td align="right">312,500</td>
+<td align="right">75,000</td>
+<td align="right">1,875,000</td>
+</tr>
+<tr>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td align="right">1,000</td>
+<td align="right">37,500</td>
+<td align="right">5,000</td>
+<td align="right">60,000</td>
+<td align="right">1,000</td>
+<td align="right">22,500</td>
+<td align="right">10,000</td>
+<td align="right">187,500</td>
+<td align="right">75,000</td>
+<td align="right">1,125,000</td>
+</tr>
+</tbody></table>
+<p>That is a clean <strong>+25% / -25% max-bound design</strong>:</p>
+<pre><code class="language-text">HIGH_BALANCE_APPETITE:
+    max amount bounds = baseline × 1.25
+
+LOW_BALANCE_CONSERVATIVE_REQUESTS:
+    max amount bounds = baseline × 0.75
+
+Minimum amount bounds:
+    unchanged from baseline
+</code></pre>
+<h2>Why these are the right levers</h2>
+<p>Exposure intensity should affect <code>requested_amount</code>, <code>amount_to_income_ratio</code>, requested PTI, requested Expected Loss, and later Module 2 approved-exposure behavior. Module 1 defines <code>amount_to_income_ratio</code> as requested amount divided by annual income and treats it as a useful secondary stress signal for exposure appetite interpretation. fileciteturn167file0</p>
+<p>So SC05 should be interpreted as:</p>
+<pre><code class="language-text">HIGH_BALANCE_APPETITE:
+    Same population.
+    Same product mix.
+    Same score mix.
+    Same rates.
+    Same LGD.
+    Higher requested exposure ceilings.
+    Expected effect: higher requested amount, higher amount-to-income, potentially higher PTI and Expected Loss.
+
+LOW_BALANCE_CONSERVATIVE_REQUESTS:
+    Same population.
+    Same product mix.
+    Same score mix.
+    Same rates.
+    Same LGD.
+    Lower requested exposure ceilings.
+    Expected effect: lower requested amount, lower amount-to-income, potentially lower PTI and Expected Loss.
+</code></pre>
+<h2>Corrected run linkage</h2>
+<table>
+<thead>
+<tr>
+<th align="right">M1 run</th>
+<th>M1 scenario</th>
+<th align="right">Feeds M2 run(s)</th>
+<th>M2 strategy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">M1-13</td>
+<td><code>EXPOSURE_BASELINE_REFERENCE</code></td>
+<td align="right">M2-27</td>
+<td><code>BASELINE_STRATEGY</code></td>
+</tr>
+<tr>
+<td align="right">M1-14</td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td align="right">M2-28</td>
+<td><code>BASELINE_STRATEGY</code></td>
+</tr>
+<tr>
+<td align="right">M1-14</td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td align="right">M2-29</td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+</tr>
+<tr>
+<td align="right">M1-15</td>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td align="right">M2-30</td>
+<td><code>BASELINE_STRATEGY</code></td>
+</tr>
+</tbody></table>
+<p>The retrieved registry rows show this exact SC05 run intent, though the older retrieved file still used <code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code>; based on our naming decision, the canonical set name should now be <code>MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET</code>. fileciteturn167file9</p>
+<h2>Corrected numbering for the parameter runbook</h2>
+<p>The prior runbook section should now read:</p>
+<pre><code class="language-text">3.1 Rate environment scenarios
+3.2 Score mix scenarios
+3.3 Product mix scenarios
+3.4 Exposure intensity sensitivity scenarios
+3.5 LGD severity scenarios
+</code></pre>
+<p>The missing SC05 chart is what caused the ambiguity. The clean campaign approach is to rerun M1-13 through M1-15 using the canonical scenario set name and the amount-bound values above, then rerun their downstream M2 runs.</p>
+</div></article><article id="c038-m01196" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01196 · 2026-05-10T15:19:04.703000-04:00 · active path</p><div class="body"><p>the erroneous lgd rows under the exposure_intensity_sensitivity are still there</p>
+<p><strong>Attachments in export:</strong> <code>image(68).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01198" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01198 · 2026-05-10T15:20:57.348631-04:00 · active path</p><div class="body"><p>Yes — the preview is showing exactly the problem: under</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<p>you have the three valid SC05 exposure-intensity rows <strong>plus</strong> three LGD rows that belong under the LGD severity scenario set. The LGD rows are:</p>
+<pre><code class="language-text">BROAD_LGD_STRESS
+SECURED_SEVERITY_STRESS
+UNSECURED_SEVERITY_STRESS
+</code></pre>
+<p>The prior block in your screenshot is only the <strong>preview query</strong>, so it did not delete anything yet. fileciteturn170file0</p>
+<p>Do <strong>not</strong> delete all six rows unless you want to rerun the full SC05 exposure-intensity set. Use this targeted cleanup instead.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+TARGETED CLEANUP — DELETE ERRONEOUS LGD SCENARIOS FROM EXPOSURE INTENSITY SCENARIO SET
+
+Purpose:
+    Remove only LGD severity scenarios that were mistakenly archived under:
+
+        MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+
+Correct rows to preserve under this scenario set:
+    EXPOSURE_BASELINE_REFERENCE
+    HIGH_BALANCE_APPETITE
+    LOW_BALANCE_CONSERVATIVE_REQUESTS
+
+Erroneous rows to delete:
+    BROAD_LGD_STRESS
+    SECURED_SEVERITY_STRESS
+    UNSECURED_SEVERITY_STRESS
+
+Primary target:
+    credit_decisioning_sim.synthetic_applications_scenario_archive
+
+Important:
+    If you are still inside the prior BEGIN transaction from your screenshot, do not run BEGIN again.
+    Either continue in that open transaction or ROLLBACK and restart cleanly.
+***************************************************************************************************/
+
+BEGIN;
+
+
+/*-----------------------------------------------------------------------------------------------
+1. Preview only the erroneous LGD rows that will be deleted.
+
+Expected:
+    3 rows, each with 50,000 records:
+        BROAD_LGD_STRESS
+        SECURED_SEVERITY_STRESS
+        UNSECURED_SEVERITY_STRESS
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS rows_to_delete
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  )
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+2. Delete only the erroneous LGD rows.
+
+Expected deleted count:
+    150,000 total rows if each of the three mistaken scenarios has 50,000 rows.
+-----------------------------------------------------------------------------------------------*/
+
+WITH deleted_rows AS (
+    DELETE FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+      AND scenario_name IN (
+            &#39;BROAD_LGD_STRESS&#39;,
+            &#39;SECURED_SEVERITY_STRESS&#39;,
+            &#39;UNSECURED_SEVERITY_STRESS&#39;
+      )
+    RETURNING
+        scenario_set_name,
+        scenario_name,
+        population_id
+)
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS deleted_row_count
+FROM deleted_rows
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+3. Verify remaining rows under the exposure-intensity scenario set.
+
+Expected:
+    Only these three rows should remain:
+        EXPOSURE_BASELINE_REFERENCE
+        HIGH_BALANCE_APPETITE
+        LOW_BALANCE_CONSERVATIVE_REQUESTS
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS remaining_row_count
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+4. Commit only if the preview, delete, and remaining-row checks look correct.
+
+Use COMMIT if correct.
+Use ROLLBACK if anything looks wrong.
+-----------------------------------------------------------------------------------------------*/
+
+-- COMMIT;
+-- ROLLBACK;
+</code></pre>
+<p>If those bad LGD rows also exist in the <strong>current Module 1 latest-run table</strong>, use this optional cleanup:</p>
+<pre><code class="language-sql">/***************************************************************************************************
+OPTIONAL CLEANUP — DELETE ERRONEOUS LGD SCENARIOS FROM MODULE 1 LATEST-RUN TABLE
+
+Use only if credit_decisioning_sim.synthetic_applications currently contains one of the mistaken
+LGD scenarios under MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET.
+***************************************************************************************************/
+
+BEGIN;
+
+
+/* Preview latest-run rows. */
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS rows_to_delete
+FROM credit_decisioning_sim.synthetic_applications
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  )
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+/* Delete latest-run rows only if preview confirms they are wrong. */
+WITH deleted_rows AS (
+    DELETE FROM credit_decisioning_sim.synthetic_applications
+    WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+      AND scenario_name IN (
+            &#39;BROAD_LGD_STRESS&#39;,
+            &#39;SECURED_SEVERITY_STRESS&#39;,
+            &#39;UNSECURED_SEVERITY_STRESS&#39;
+      )
+    RETURNING
+        scenario_set_name,
+        scenario_name,
+        population_id
+)
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS deleted_row_count
+FROM deleted_rows
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+-- COMMIT;
+-- ROLLBACK;
+</code></pre>
+<p>If Module 2 already consumed any of those erroneous LGD slices under the wrong Module 1 scenario set, also clean downstream Module 2 archive/evidence rows:</p>
+<pre><code class="language-sql">/***************************************************************************************************
+OPTIONAL DOWNSTREAM MODULE 2 CLEANUP — ONLY IF MODULE 2 CONSUMED THE ERRONEOUS LGD SLICES
+
+This removes Module 2 latest-run, archive, and evidence rows tied to the mistaken Module 1 lineage:
+
+    module1_scenario_set_name = MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+    module1_scenario_name IN:
+        BROAD_LGD_STRESS
+        SECURED_SEVERITY_STRESS
+        UNSECURED_SEVERITY_STRESS
+
+Use only if Module 2 was already run against those mistaken Module 1 archive rows.
+***************************************************************************************************/
+
+BEGIN;
+
+
+/* Preview affected Module 2 archive slices. */
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    COUNT(*) AS module2_archive_rows_to_delete
+FROM credit_decisioning_sim.strategy_decisions_archive
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND module1_scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  )
+GROUP BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version
+ORDER BY
+    module1_scenario_name,
+    strategy_name,
+    strategy_version;
+
+
+/* Delete Module 2 latest-run rows if current latest-run used the mistaken lineage. */
+DELETE FROM credit_decisioning_sim.strategy_decisions
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND module1_scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  );
+
+
+/* Delete Module 2 archive rows for the mistaken lineage. */
+DELETE FROM credit_decisioning_sim.strategy_decisions_archive
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND module1_scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  );
+
+
+/* Delete Section 16 evidence rows for the mistaken lineage. */
+DELETE FROM credit_decisioning_sim.strategy_run_evidence_summary
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND module1_scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  );
+
+DELETE FROM credit_decisioning_sim.strategy_run_validation_evidence
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND module1_scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  );
+
+DELETE FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND module1_scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  );
+
+DELETE FROM credit_decisioning_sim.strategy_run_segment_evidence_summary
+WHERE module1_scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND module1_scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  );
+
+
+-- COMMIT;
+-- ROLLBACK;
+</code></pre>
+<p>After cleanup, rerun the LGD scenarios under:</p>
+<pre><code class="language-text">MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET
+</code></pre>
+<p>and keep the exposure-intensity set limited to:</p>
+<pre><code class="language-text">EXPOSURE_BASELINE_REFERENCE
+HIGH_BALANCE_APPETITE
+LOW_BALANCE_CONSERVATIVE_REQUESTS
+</code></pre>
+</div></article><article id="c038-m01200" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01200 · 2026-05-10T15:33:53.019000-04:00 · active path</p><div class="body"><p>Finished module 1 campaign.  will begin module 2 campaign shortly.  please review these QA</p>
+<p><strong>Attachments in export:</strong> <code>image(70).png</code>, <code>image(71).png</code>, <code>module1_synthetic_application_risk_engine_v2.0_10.03_QA_product_score_scenario_summary_campaign.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01209" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01209 · 2026-05-10T15:37:56.271460-04:00 · active path</p><div class="body"><p>Your Module 1 campaign QA looks <strong>clean and ready to feed Module 2</strong>. I do not see a blocking issue in the screenshots.</p>
+<p>I reviewed three things from what you showed: the scenario-level metric summary, the archive inventory, and the uploaded product × score × scenario QA CSV. The design expectation for Module 1 is controlled scenario testing with matched populations and deterministic outputs, so the key QA question is whether each scenario has 50,000 rows, stable lineage, isolated parameter movement, and expected directional risk behavior before Module 2 consumes the archive. That is exactly the scenario discipline Module 1 was designed to support. fileciteturn170file67</p>
+<h2>Overall QA verdict</h2>
+<pre><code class="language-text">STATUS: PASS — MODULE 1 CAMPAIGN READY FOR MODULE 2 INPUT
+</code></pre>
+<p>The archive now shows <strong>19 scenario slices</strong>, each with:</p>
+<pre><code class="language-text">rows_archived = 50,000
+population_id = BASE_POPULATION_V1
+first_archived_ts = last_archived_ts for each slice
+</code></pre>
+<p>That means each scenario slice appears to have landed as one clean archive insertion. The bad LGD rows under the exposure-intensity set are no longer present in the archive view. SC05 now contains only:</p>
+<pre><code class="language-text">EXPOSURE_BASELINE_REFERENCE
+HIGH_BALANCE_APPETITE
+LOW_BALANCE_CONSERVATIVE_REQUESTS
+</code></pre>
+<p>And SC06 correctly contains:</p>
+<pre><code class="language-text">LGD_BASELINE_REFERENCE
+SECURED_SEVERITY_STRESS
+UNSECURED_SEVERITY_STRESS
+BROAD_LGD_STRESS
+</code></pre>
+<p>The uploaded product × score QA CSV also reconciles: <strong>475 rows = 19 scenarios × 5 products × 5 score bands</strong>, and every scenario sums to <strong>50,000 applications</strong>. That is exactly what I would want before starting the Module 2 strategy campaign.</p>
+<h2>Scenario behavior review</h2>
+<h3>Baseline / reference scenarios</h3>
+<p>These rows correctly match the baseline metrics:</p>
+<pre><code class="language-text">BASELINE_V2
+CREDIT_BOX_BASELINE_REFERENCE
+EXPOSURE_BASELINE_REFERENCE
+LGD_BASELINE_REFERENCE
+PORTFOLIO_MIX_BASELINE_REFERENCE
+</code></pre>
+<p>They all show the same baseline profile:</p>
+<pre><code class="language-text">applications:          50,000
+avg_requested_amount:  about 133,329
+avg_apr:               0.1456
+avg_monthly_payment:   about 1,510.70
+avg_pti:               0.1650
+avg_pd:                0.1634
+avg_lgd:               0.4923
+avg_expected_loss:     about 4,788.67
+total_expected_loss:   about 239.43M
+</code></pre>
+<p>That is good. It means each scenario family’s baseline reference is properly anchored to the same default population / product / score / exposure / LGD / rate setup.</p>
+<h3>Rate sensitivity scenarios</h3>
+<p>The rate scenarios behave as expected:</p>
+<pre><code class="language-text">RATE_DOWN_200BP:
+    avg_apr drops to 0.1285
+    avg_monthly_payment drops to about 1,385
+    avg_pti drops to 0.1535
+    avg_expected_loss declines modestly
+
+RATE_UP_200BP:
+    avg_apr rises to 0.1614
+    avg_monthly_payment rises to about 1,612
+    avg_pti rises to 0.1741
+    avg_expected_loss rises modestly
+
+RATE_UP_300BP:
+    avg_apr rises further to 0.1685
+    avg_monthly_payment rises to about 1,645
+    avg_pti rises to 0.1771
+    avg_expected_loss rises modestly again
+</code></pre>
+<p>This is directionally correct: rate movement flows into APR, payment, PTI, and then modestly into estimated-PD proxy / Expected Loss. That matches the Module 1 design principle that the engine should preserve the transparent chain from rate environment to APR, payment burden, affordability, estimated risk, and Expected Loss. fileciteturn170file67</p>
+<h3>Credit box sensitivity scenarios</h3>
+<p>These look especially strong.</p>
+<pre><code class="language-text">PRIME_GROWTH_SCORE_MIX:
+    avg_pd drops to 0.1095
+    avg_expected_loss drops to about 3,499.56
+    total_expected_loss drops to about 174.98M
+
+NEAR_PRIME_EXPANSION_MIX:
+    avg_pd rises modestly to 0.1741
+    total_expected_loss rises to about 262.86M
+
+CREDIT_STRESS_SCORE_MIX:
+    avg_pd rises sharply to 0.2511
+    avg_expected_loss rises to about 6,770.82
+    total_expected_loss rises to about 338.54M
+</code></pre>
+<p>That is the right gradient. Prime growth improves risk; near-prime expansion adds moderate risk; credit stress materially increases risk. This is exactly the kind of directional borrower-quality behavior Module 1 validation was intended to confirm. The Module 1 Validation Summary emphasizes deterministic population comparability and directional estimated-risk / Expected Loss behavior, so these outputs are aligned with the validated framework. fileciteturn170file68</p>
+<h3>Exposure intensity sensitivity scenarios</h3>
+<p>This now looks correct and clean.</p>
+<pre><code class="language-text">EXPOSURE_BASELINE_REFERENCE:
+    avg_requested_amount about 133,329
+    total_expected_loss about 239.43M
+
+HIGH_BALANCE_APPETITE:
+    avg_requested_amount rises to about 149,334
+    avg_monthly_payment rises to about 1,729.54
+    avg_pti rises to 0.1886
+    total_expected_loss rises to about 276.42M
+
+LOW_BALANCE_CONSERVATIVE_REQUESTS:
+    avg_requested_amount drops to about 112,405
+    avg_monthly_payment drops to about 1,248.95
+    avg_pti drops to 0.1379
+    total_expected_loss drops to about 198.63M
+</code></pre>
+<p>This is the cleanest possible SC05 behavior: APR, LGD, product mix, and score mix remain effectively stable, while requested exposure and downstream affordability / Expected Loss move. That means the exposure-intensity scenarios are isolating the intended lever.</p>
+<h3>LGD severity sensitivity scenarios</h3>
+<p>These also look correct.</p>
+<pre><code class="language-text">LGD_BASELINE_REFERENCE:
+    avg_lgd 0.4923
+    total_expected_loss about 239.43M
+
+SECURED_SEVERITY_STRESS:
+    avg_lgd 0.5462
+    total_expected_loss about 309.92M
+
+UNSECURED_SEVERITY_STRESS:
+    avg_lgd 0.5400
+    total_expected_loss about 247.53M
+
+BROAD_LGD_STRESS:
+    avg_lgd 0.5939
+    total_expected_loss about 318.02M
+</code></pre>
+<p>The important point: requested amount, APR, PTI, and PD remain stable while LGD and Expected Loss move. That means the LGD scenarios are isolating severity assumptions properly.</p>
+<p>The secured severity stress has a much larger total Expected Loss impact than unsecured severity stress, which is reasonable because the portfolio contains large secured-balance products. Broad LGD stress is highest, as expected.</p>
+<h3>Portfolio mix sensitivity scenarios</h3>
+<p>The product mix scenarios also look directionally coherent.</p>
+<pre><code class="language-text">UNSECURED_GROWTH_MIX:
+    avg_requested_amount drops to about 101,418
+    avg_lgd rises to 0.5487
+    total_expected_loss drops to about 211.99M
+
+REVOLVING_LINE_EXPANSION_MIX:
+    avg_requested_amount drops to about 99,288
+    avg_apr rises to 0.1685
+    avg_lgd rises to 0.5785
+    total_expected_loss drops to about 203.52M
+
+SECURED_BALANCE_GROWTH_MIX:
+    avg_requested_amount rises to about 172,558
+    avg_lgd drops to 0.3871
+    total_expected_loss rises to about 281.35M
+</code></pre>
+<p>These results are plausible. Unsecured and revolving mixes raise LGD / APR characteristics but reduce average requested amount materially, so total Expected Loss can still decline versus baseline. Secured-balance growth lowers average LGD but raises requested exposure enough to increase total Expected Loss. That is exactly the kind of product-structure tradeoff Module 2 should later interpret.</p>
+<h2>Archive inventory review</h2>
+<p>The archive inventory in your screenshot is now clean:</p>
+<pre><code class="language-text">MODULE1_V2_BASELINE_SET:
+    BASELINE_V2
+    RATE_DOWN_200BP
+    RATE_UP_200BP
+    RATE_UP_300BP
+
+MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET:
+    CREDIT_BOX_BASELINE_REFERENCE
+    CREDIT_STRESS_SCORE_MIX
+    NEAR_PRIME_EXPANSION_MIX
+    PRIME_GROWTH_SCORE_MIX
+
+MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET:
+    EXPOSURE_BASELINE_REFERENCE
+    HIGH_BALANCE_APPETITE
+    LOW_BALANCE_CONSERVATIVE_REQUESTS
+
+MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET:
+    BROAD_LGD_STRESS
+    LGD_BASELINE_REFERENCE
+    SECURED_SEVERITY_STRESS
+    UNSECURED_SEVERITY_STRESS
+
+MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET:
+    PORTFOLIO_MIX_BASELINE_REFERENCE
+    REVOLVING_LINE_EXPANSION_MIX
+    SECURED_BALANCE_GROWTH_MIX
+    UNSECURED_GROWTH_MIX
+</code></pre>
+<p>That is the intended 19-run Module 1 campaign inventory.</p>
+<h2>Final pre-Module 2 checks I would run</h2>
+<p>Before starting Module 2, run this one compact check to confirm no old naming artifacts or misplaced scenario rows remain.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+MODULE 1 CAMPAIGN FINAL READINESS CHECK BEFORE MODULE 2
+
+Expected:
+    total_archived_scenario_slices = 19
+    total_archived_rows = 950000
+    bad_row_count = 0
+***************************************************************************************************/
+
+WITH expected_scenarios AS (
+    SELECT *
+    FROM (
+        VALUES
+            (&#39;MODULE1_V2_BASELINE_SET&#39;, &#39;BASELINE_V2&#39;),
+            (&#39;MODULE1_V2_BASELINE_SET&#39;, &#39;RATE_DOWN_200BP&#39;),
+            (&#39;MODULE1_V2_BASELINE_SET&#39;, &#39;RATE_UP_200BP&#39;),
+            (&#39;MODULE1_V2_BASELINE_SET&#39;, &#39;RATE_UP_300BP&#39;),
+
+            (&#39;MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET&#39;, &#39;CREDIT_BOX_BASELINE_REFERENCE&#39;),
+            (&#39;MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET&#39;, &#39;PRIME_GROWTH_SCORE_MIX&#39;),
+            (&#39;MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET&#39;, &#39;NEAR_PRIME_EXPANSION_MIX&#39;),
+            (&#39;MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET&#39;, &#39;CREDIT_STRESS_SCORE_MIX&#39;),
+
+            (&#39;MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET&#39;, &#39;PORTFOLIO_MIX_BASELINE_REFERENCE&#39;),
+            (&#39;MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET&#39;, &#39;UNSECURED_GROWTH_MIX&#39;),
+            (&#39;MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET&#39;, &#39;SECURED_BALANCE_GROWTH_MIX&#39;),
+            (&#39;MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET&#39;, &#39;REVOLVING_LINE_EXPANSION_MIX&#39;),
+
+            (&#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;, &#39;EXPOSURE_BASELINE_REFERENCE&#39;),
+            (&#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;, &#39;HIGH_BALANCE_APPETITE&#39;),
+            (&#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;, &#39;LOW_BALANCE_CONSERVATIVE_REQUESTS&#39;),
+
+            (&#39;MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET&#39;, &#39;LGD_BASELINE_REFERENCE&#39;),
+            (&#39;MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET&#39;, &#39;SECURED_SEVERITY_STRESS&#39;),
+            (&#39;MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET&#39;, &#39;UNSECURED_SEVERITY_STRESS&#39;),
+            (&#39;MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET&#39;, &#39;BROAD_LGD_STRESS&#39;)
+    ) v(scenario_set_name, scenario_name)
+),
+
+archive_inventory AS (
+    SELECT
+        scenario_set_name,
+        scenario_name,
+        population_id,
+        COUNT(*) AS archived_rows
+    FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    GROUP BY
+        scenario_set_name,
+        scenario_name,
+        population_id
+),
+
+unexpected_rows AS (
+    SELECT a.*
+    FROM archive_inventory a
+    LEFT JOIN expected_scenarios e
+        ON e.scenario_set_name = a.scenario_set_name
+       AND e.scenario_name = a.scenario_name
+    WHERE e.scenario_set_name IS NULL
+),
+
+missing_rows AS (
+    SELECT e.*
+    FROM expected_scenarios e
+    LEFT JOIN archive_inventory a
+        ON a.scenario_set_name = e.scenario_set_name
+       AND a.scenario_name = e.scenario_name
+       AND a.population_id = &#39;BASE_POPULATION_V1&#39;
+    WHERE a.scenario_set_name IS NULL
+)
+
+SELECT
+    (SELECT COUNT(*) FROM archive_inventory) AS total_archived_scenario_slices,
+    (SELECT SUM(archived_rows) FROM archive_inventory) AS total_archived_rows,
+    (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows &lt;&gt; 50000) AS scenario_slices_not_50000_rows,
+    (SELECT COUNT(*) FROM unexpected_rows) AS unexpected_scenario_slice_count,
+    (SELECT COUNT(*) FROM missing_rows) AS missing_expected_scenario_slice_count,
+    CASE
+        WHEN (SELECT COUNT(*) FROM archive_inventory) = 19
+         AND (SELECT SUM(archived_rows) FROM archive_inventory) = 950000
+         AND (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows &lt;&gt; 50000) = 0
+         AND (SELECT COUNT(*) FROM unexpected_rows) = 0
+         AND (SELECT COUNT(*) FROM missing_rows) = 0
+            THEN &#39;MODULE_1_CAMPAIGN_READY_FOR_MODULE_2&#39;
+        ELSE &#39;REVIEW_MODULE_1_CAMPAIGN_ARCHIVE_BEFORE_MODULE_2&#39;
+    END AS module1_campaign_readiness_status;
+</code></pre>
+<p>Also run this specific old-name check:</p>
+<pre><code class="language-sql">SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS row_count
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name IN (
+    &#39;MODULE1_V2_EXPOSURE_INTENSITY_SET&#39;,
+    &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+)
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_set_name,
+    scenario_name;
+</code></pre>
+<p>Expected: only the <code>_SENSITIVITY_SET</code> version should appear, and it should have exactly the three SC05 exposure-intensity rows.</p>
+<h2>Module 2 readiness note</h2>
+<p>Before you begin Module 2, make sure the Module 2 campaign registry and comparison registry now use the corrected scenario set name everywhere:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<p>especially for:</p>
+<pre><code class="language-text">M2-27
+M2-28
+M2-29
+M2-30
+CG15
+</code></pre>
+<p>If those registry rows still use the older <code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code>, Section 3 registry matching will either fail or force you into a mismatch. Since your Module 2 file is designed to use formal registry matching and then carry those IDs into Section 16 evidence capture, the registry needs to be exact before the run. Module 2’s Section 3 and Section 16 framework are specifically designed to use the registry as the run-ID and evidence-linkage source. fileciteturn170file29</p>
+<p>My recommendation: <strong>proceed to Module 2 after running the two final readiness checks above.</strong></p>
+</div></article><article id="c038-m01210" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01210 · 2026-05-10T15:42:47.233000-04:00 · active path</p><div class="body"><p>when I run your query i get 3 unexpected:</p>
+<p><strong>Attachments in export:</strong> <code>image(72).png</code>, <code>image(74).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m01213" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01213 · 2026-05-10T15:44:02.320911-04:00 · active path</p><div class="body"><p>Yes — the query is doing its job correctly. You still have <strong>three extra LGD scenario slices archived under the SC05 exposure-intensity scenario set</strong>.</p>
+<p>Your readiness output shows:</p>
+<pre><code class="language-text">total_archived_scenario_slices = 22
+total_archived_rows            = 1,100,000
+unexpected_scenario_slice_count = 3
+missing_expected_scenario_slice_count = 0
+</code></pre>
+<p>That means:</p>
+<pre><code class="language-text">Expected: 19 slices × 50,000 = 950,000 rows
+Actual:   22 slices × 50,000 = 1,100,000 rows
+Extra:     3 slices × 50,000 = 150,000 rows
+</code></pre>
+<p>The three unexpected rows are exactly these misplaced LGD scenarios:</p>
+<pre><code class="language-text">BROAD_LGD_STRESS
+SECURED_SEVERITY_STRESS
+UNSECURED_SEVERITY_STRESS
+</code></pre>
+<p>They currently exist under:</p>
+<pre><code class="language-text">MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET
+</code></pre>
+<p>They should exist only under:</p>
+<pre><code class="language-text">MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET
+</code></pre>
+<p>Use this targeted cleanup. It will preserve the valid SC05 rows:</p>
+<pre><code class="language-text">EXPOSURE_BASELINE_REFERENCE
+HIGH_BALANCE_APPETITE
+LOW_BALANCE_CONSERVATIVE_REQUESTS
+</code></pre>
+<pre><code class="language-sql">/***************************************************************************************************
+TARGETED MODULE 1 ARCHIVE CLEANUP
+
+Purpose:
+    Delete only the three LGD severity scenarios that were accidentally archived under the SC05
+    exposure-intensity scenario set.
+
+Do not delete the full exposure-intensity set.
+
+Rows to delete:
+    MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET / BROAD_LGD_STRESS
+    MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET / SECURED_SEVERITY_STRESS
+    MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET / UNSECURED_SEVERITY_STRESS
+
+Expected delete count:
+    150,000 rows total
+    50,000 rows per scenario
+***************************************************************************************************/
+
+BEGIN;
+
+
+/*-----------------------------------------------------------------------------------------------
+1. Preview the exact rows that will be deleted.
+
+Expected:
+    3 rows, each with 50,000 records.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS rows_to_delete
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+  AND scenario_name IN (
+        &#39;BROAD_LGD_STRESS&#39;,
+        &#39;SECURED_SEVERITY_STRESS&#39;,
+        &#39;UNSECURED_SEVERITY_STRESS&#39;
+  )
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+2. Delete only the misplaced LGD rows from the exposure-intensity scenario set.
+
+This does not touch the correctly archived LGD severity rows under:
+
+    MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET
+-----------------------------------------------------------------------------------------------*/
+
+WITH deleted_rows AS (
+    DELETE FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+      AND scenario_name IN (
+            &#39;BROAD_LGD_STRESS&#39;,
+            &#39;SECURED_SEVERITY_STRESS&#39;,
+            &#39;UNSECURED_SEVERITY_STRESS&#39;
+      )
+    RETURNING
+        scenario_set_name,
+        scenario_name,
+        population_id
+)
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS deleted_row_count
+FROM deleted_rows
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+3. Verify the exposure-intensity scenario set now contains only the valid SC05 rows.
+
+Expected:
+    EXPOSURE_BASELINE_REFERENCE          50,000
+    HIGH_BALANCE_APPETITE               50,000
+    LOW_BALANCE_CONSERVATIVE_REQUESTS   50,000
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS remaining_row_count
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+4. Verify the LGD severity scenario set still contains the correct LGD rows.
+
+Expected:
+    LGD_BASELINE_REFERENCE          50,000
+    SECURED_SEVERITY_STRESS         50,000
+    UNSECURED_SEVERITY_STRESS       50,000
+    BROAD_LGD_STRESS                50,000
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS remaining_row_count
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET&#39;
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+5. Commit only if the preview, delete count, and verification outputs are correct.
+
+Expected final Module 1 archive state:
+    19 scenario slices
+    950,000 total archived rows
+    0 unexpected scenario slices
+    0 missing expected scenario slices
+-----------------------------------------------------------------------------------------------*/
+
+-- COMMIT;
+-- ROLLBACK;
+</code></pre>
+<p>After you commit, rerun the readiness query. The expected result should be:</p>
+<pre><code class="language-text">total_archived_scenario_slices          = 19
+total_archived_rows                     = 950000
+scenario_slices_not_50000_rows          = 0
+unexpected_scenario_slice_count         = 0
+missing_expected_scenario_slice_count   = 0
+module1_campaign_readiness_status       = MODULE_1_CAMPAIGN_READY_FOR_MODULE_2
+</code></pre>
+<p>Also check whether you are still inside an open transaction from a prior cleanup attempt. If yes, either finish that transaction first with <code>COMMIT;</code> or <code>ROLLBACK;</code> before starting this block.</p>
+</div></article><article id="c038-m01214" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01214 · 2026-05-10T15:44:37.867000-04:00 · active path</p><div class="body"><p>i ran your targeted cleanup earlier.  why would i still show this?</p>
+</div></article><article id="c038-m01217" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01217 · 2026-05-10T15:46:26.419000-04:00 · active path</p><div class="body"><p>oh...because i didn&#39;t say commit</p>
+</div></article><article id="c038-m01221" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01221 · 2026-05-10T15:47:36.194127-04:00 · active path</p><div class="body"><p>Exactly. That explains it.</p>
+<p>Because the cleanup block used:</p>
+<pre><code class="language-sql">BEGIN;
+</code></pre>
+<p>the <code>DELETE</code> stayed inside an open transaction until you explicitly ran:</p>
+<pre><code class="language-sql">COMMIT;
+</code></pre>
+<p>If <code>COMMIT;</code> stayed commented out, then one of two things happened:</p>
+<ol>
+<li>The rows were deleted only inside that open transaction, but not persisted.</li>
+<li>The transaction was later rolled back automatically or manually, so the rows came back.</li>
+</ol>
+<p>Run this now first:</p>
+<pre><code class="language-sql">COMMIT;
+</code></pre>
+<p>Then rerun the readiness check. If the prior delete transaction is still open in that same connection, this should finalize it.</p>
+<p>If the rows still show after that, the prior transaction was already gone or rolled back. In that case, rerun the targeted delete with <code>COMMIT;</code> explicitly included:</p>
+<pre><code class="language-sql">BEGIN;
+
+WITH deleted_rows AS (
+    DELETE FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+    WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+      AND population_id = &#39;BASE_POPULATION_V1&#39;
+      AND scenario_name IN (
+            &#39;BROAD_LGD_STRESS&#39;,
+            &#39;SECURED_SEVERITY_STRESS&#39;,
+            &#39;UNSECURED_SEVERITY_STRESS&#39;
+      )
+    RETURNING
+        scenario_set_name,
+        scenario_name,
+        population_id
+)
+SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS deleted_row_count
+FROM deleted_rows
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+
+COMMIT;
+</code></pre>
+<p>Then verify:</p>
+<pre><code class="language-sql">SELECT
+    scenario_set_name,
+    scenario_name,
+    population_id,
+    COUNT(*) AS remaining_row_count
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive
+WHERE scenario_set_name = &#39;MODULE1_V2_EXPOSURE_INTENSITY_SENSITIVITY_SET&#39;
+GROUP BY
+    scenario_set_name,
+    scenario_name,
+    population_id
+ORDER BY
+    scenario_name,
+    population_id;
+</code></pre>
+<p>Expected remaining SC05 rows:</p>
+<pre><code class="language-text">EXPOSURE_BASELINE_REFERENCE          50,000
+HIGH_BALANCE_APPETITE               50,000
+LOW_BALANCE_CONSERVATIVE_REQUESTS   50,000
+</code></pre>
+<p>Then rerun the readiness query. Expected:</p>
+<pre><code class="language-text">total_archived_scenario_slices          = 19
+total_archived_rows                     = 950,000
+scenario_slices_not_50000_rows          = 0
+unexpected_scenario_slice_count         = 0
+missing_expected_scenario_slice_count   = 0
+module1_campaign_readiness_status       = MODULE_1_CAMPAIGN_READY_FOR_MODULE_2
+</code></pre>
+<p>Small operational rule going forward: whenever we use <code>BEGIN;</code> for cleanup, the script must end with either a real <code>COMMIT;</code> or a real <code>ROLLBACK;</code> — not a commented one.</p>
+</div></article><article id="c038-m01222" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01222 · 2026-05-10T15:53:08.555000-04:00 · active path</p><div class="body"><p>ok, now that we&#39;ve locked down module 1 campaign.  please re-post the module 2 campaign parameter run guide tables so I do not have to scroll up to get them.  thanks.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

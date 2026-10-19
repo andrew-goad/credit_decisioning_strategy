@@ -1,0 +1,3269 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 83</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 83 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_82.html">Previous</a><a href="Part_84.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m01601" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01601 · 2026-05-12T12:08:57.801563-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-12, Section 13 is the archive inventory and matched strategy comparison layer. It is expected to use <code>credit_decisioning_sim.strategy_decisions_archive</code> and <code>credit_decisioning_sim.strategy_comparison_campaign_registry</code>, create <code>tmp_m2_strategy_comparison_params</code>, <code>tmp_m2_strategy_comparison_readiness</code>, <code>tmp_m2_strategy_comparison_matched_rows</code>, and <code>tmp_m2_strategy_comparison_source_consistency</code>, and remain read-only against latest-run and archive outputs. fileciteturn252file7</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 13 — ARCHIVE INVENTORY AND MATCHED STRATEGY COMPARISON FRAMEWORK
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide read-only archive inventory and governed matched strategy comparison diagnostics.
+
+    Section 13 answers:
+
+        &quot;How do two archived Module 2 strategy runs differ when applied to the same Module 1
+         scenario and population?&quot;
+
+    Section 13 does not answer:
+
+        &quot;Is the current latest-run output valid?&quot;
+        &quot;Which strategy is best?&quot;
+        &quot;Should either strategy be used in production?&quot;
+        &quot;What should happen to a real applicant?&quot;
+
+    Section 13 is the archive comparison layer.
+
+    Section 12 persists completed latest-run outputs into the archive.
+    Section 13 inspects archived outputs and compares one selected baseline / challenger pair.
+
+SQL PURPOSE:
+    1. Confirm archive and comparison-registry dependencies exist.
+    2. Load one active governed comparison from:
+            credit_decisioning_sim.strategy_comparison_campaign_registry
+    3. Materialize:
+            tmp_m2_strategy_comparison_params
+    4. Provide archive inventory diagnostics.
+    5. Evaluate selected comparison readiness.
+    6. Materialize matched baseline / challenger applicant rows into:
+            tmp_m2_strategy_comparison_matched_rows
+    7. Compare baseline and challenger outcomes across:
+            portfolio-level metrics,
+            decision migration,
+            applicant-level deltas,
+            product segments,
+            score-band segments,
+            product × score segments,
+            reason-code movement,
+            simulated offer-exposure transitions,
+            approved exposure transitions,
+            approved Expected Loss transitions.
+    8. Validate immutable Module 1 source-field consistency in:
+            tmp_m2_strategy_comparison_source_consistency
+    9. Provide compact comparison-readiness and source-consistency diagnostics for Section 14.
+    10. Avoid mutating archive history or recalculating strategy outcomes.
+
+WHO SHOULD REVIEW THIS SECTION:
+    Credit strategy reviewers:
+        Confirm that the selected baseline / challenger comparison answers the intended strategy
+        question and that observed deltas are interpreted as downstream Module 2 strategy movement.
+
+    Model governance / validation reviewers:
+        Confirm that comparison readiness, matched population discipline, and immutable source-field
+        consistency are established before comparison deltas are used as validation evidence.
+
+    SQL reviewers:
+        Confirm that Section 13 reads from the archive, uses application_id for matched comparison,
+        does not infer comparison selection from the latest-run table, and does not mutate permanent
+        outputs.
+
+    Portfolio / executive reviewers:
+        Use the outputs to understand how strategy changes move simulated offer exposure, approved
+        exposure, approved Expected Loss, decision mix, and reason-code themes.
+
+WHEN TO RUN THIS SECTION:
+    Run Section 13 after:
+
+        Section 12 — Strategy Decision Archive Persistence Layer
+
+    Section 13 should be run before:
+
+        Section 14 — Module 2 Validation, QA, and Strategy Outcome Diagnostics
+
+    Section 13 outputs are also useful for:
+
+        Section 15 — Strategy Frontier Summary and Executive Comparison View
+        Section 16 — Strategy Run Evidence Capture and Executive Story Register
+
+INPUTS:
+    credit_decisioning_sim.strategy_decisions_archive
+        Governed archive of completed Module 2 strategy runs.
+
+    credit_decisioning_sim.strategy_comparison_campaign_registry
+        Persistent governed comparison registry seeded in Section 2 and activated through the
+        selected comparison group.
+
+TEMPORARY OUTPUTS:
+    tmp_m2_strategy_comparison_params
+        One-row active comparison selector.
+
+    tmp_m2_strategy_comparison_readiness
+        One-row comparison readiness diagnostic.
+
+    tmp_m2_strategy_comparison_matched_rows
+        Applicant-level baseline / challenger matched comparison table.
+
+    tmp_m2_strategy_comparison_source_consistency
+        One-row immutable source-field consistency diagnostic.
+
+GRAIN:
+    Archive row-level grain:
+
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+        application_id
+
+    Matched comparison grain:
+
+        application_id
+
+    within the same:
+
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+WHY SECTION 13 USES THE ARCHIVE:
+    credit_decisioning_sim.strategy_decisions is the replaceable latest-run table.
+
+    It changes whenever a new strategy run is materialized.
+
+    A governed comparison requires two completed archived slices, so Section 13 reads from:
+
+        credit_decisioning_sim.strategy_decisions_archive
+
+WHY SECTION 13 USES THE COMPARISON REGISTRY:
+    A comparison should be selected deliberately.
+
+    Inferring the baseline or challenger from the current latest-run table is unsafe because the
+    latest-run table changes every time a run is executed.
+
+    Section 13 therefore uses:
+
+        credit_decisioning_sim.strategy_comparison_campaign_registry
+
+    and materializes exactly one active comparison into:
+
+        tmp_m2_strategy_comparison_params
+
+WHY BASELINE AND CHALLENGER MUST SHARE MODULE 1 LINEAGE:
+    Module 2 strategy comparison should isolate downstream strategy effects.
+
+    In Module 2 V1.0, baseline and challenger must share:
+
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    Comparing different Module 1 scenarios would mix upstream population / rate / credit-box /
+    exposure-intensity / LGD-severity effects with downstream Module 2 strategy effects.
+
+WHY APPLICATION_ID IS THE MATCH KEY:
+    application_id identifies the same synthetic application within the same Module 1 scenario and
+    population.
+
+    Matching by application_id lets reviewers observe how the same synthetic applicant moved from
+    baseline outcome to challenger outcome.
+
+WHY TIMESTAMPS AND STRATEGY_RUN_ID ARE NOT MATCH KEYS:
+    strategy_run_id, strategy_run_ts, latest_output_created_ts, and archive_inserted_ts are audit
+    metadata.
+
+    They support traceability, but they do not define matched comparison grain.
+
+WHY DECISION MIGRATION MATTERS:
+    Decision migration shows how the challenger moved each synthetic applicant relative to baseline.
+
+    Examples:
+        APPROVE → COUNTEROFFER:
+            access retained, but exposure reduced.
+
+        APPROVE → DECLINE:
+            risk or policy tightening.
+
+        DECLINE → APPROVE:
+            access expansion.
+
+        MANUAL_REVIEW → DECLINE:
+            review-burden reduction through final no-offer routing.
+
+WHY REQUESTED AND APPROVED EXPECTED LOSS ARE BOTH COMPARED:
+    requested_expected_loss_amount is requested-exposure Expected Loss from Module 1.
+
+    approved_expected_loss_amount is approved-exposure Expected Loss after Module 2 final exposure
+    treatment.
+
+    Requested Expected Loss helps confirm source-risk consistency.
+    Approved Expected Loss shows downstream strategy impact after approvals, counteroffers, manual
+    reviews, and declines are resolved.
+
+WHY SOURCE-FIELD CONSISTENCY IS VALIDATED:
+    Matched comparison should isolate Module 2 strategy effects.
+
+    If immutable Module 1 fields differ between baseline and challenger rows, the comparison may
+    reflect source-selection error, population drift, upstream scenario mismatch, or archive
+    corruption rather than true Module 2 strategy movement.
+
+    Section 13 therefore compares baseline and challenger values for:
+        product_type_policy_key
+        score_band_policy_key
+        credit_score
+        annual_income
+        requested_amount
+        requested_monthly_payment_proxy
+        requested_payment_to_income_ratio
+        amount_to_income_ratio
+        estimated_pd
+        estimated_lgd
+        requested_expected_loss_amount
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    using IS DISTINCT FROM for NULL-safe comparison.
+
+READINESS STATUS INTERPRETATION:
+    READY_FOR_MATCHED_COMPARISON:
+        Baseline and challenger slices exist, are unique at application_id, share the selected Module 1
+        scenario / population, and fully overlap by application_id.
+
+    Any other readiness status:
+        Inventory outputs are still useful, but matched comparison deltas should not be interpreted as
+        valid baseline / challenger movement.
+
+SOURCE CONSISTENCY STATUS INTERPRETATION:
+    SOURCE_FIELDS_MATCH:
+        Immutable Module 1 fields match across matched baseline / challenger rows.
+
+    SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED:
+        Do not interpret strategy deltas as pure Module 2 strategy movement until source mismatches
+        are reviewed.
+
+    NOT_APPLICABLE_NOT_READY_FOR_MATCHED_COMPARISON:
+        Selected comparison was not ready, so source-field consistency cannot be evaluated.
+
+SIMULATED OFFER EXPOSURE BOUNDARY:
+    simulated_offer_exposure_flag identifies simulated positive offer exposure.
+
+    It is TRUE for:
+        APPROVE
+        COUNTEROFFER
+
+    It is FALSE for:
+        MANUAL_REVIEW
+        DECLINE
+
+    It does not imply:
+        booked exposure,
+        funded exposure,
+        account creation,
+        production approval,
+        customer treatment,
+        or real applicant treatment.
+
+REASON-CODE BOUNDARY:
+    Reason-code movement explains internal simulated strategy explanation themes.
+
+    It is not:
+        customer communication,
+        regulatory notice language,
+        adverse-action language,
+        fair-lending conclusion,
+        or production compliance evidence.
+
+SECTION 13 IS NOT THE FULL QA FRAMEWORK:
+    Section 13 compares archived strategy slices.
+
+    Section 14 validates the completed latest-run output.
+
+    Section 16 persists executive and validation evidence.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    Registry-selected comparison:
+        Uses persistent comparison metadata rather than latest-run inference.
+
+    Archive grain:
+        Compares completed historical strategy slices.
+
+    FULL OUTER JOIN:
+        Measures overlap and baseline-only / challenger-only application_id values.
+
+    Application-level matched join:
+        Pairs the same synthetic applicant across two strategies.
+
+    COUNT(*) FILTER:
+        Creates concise conditional counts for outcome and diagnostic metrics.
+
+    NULLIF:
+        Prevents divide-by-zero in rate calculations.
+
+    COALESCE:
+        Treats unresolved / no-offer approved exposure and approved Expected Loss as zero for
+        all-application portfolio-impact metrics.
+
+    IS DISTINCT FROM:
+        Compares nullable fields safely.
+
+    CASE:
+        Classifies readiness status, migration type, and source-consistency status.
+
+READ-ONLY BOUNDARY:
+    Section 13 does not insert archive rows.
+    Section 13 does not delete archive rows.
+    Section 13 does not update archive rows.
+    Section 13 does not modify latest-run rows.
+    Section 13 does not recalculate decision_outcome.
+    Section 13 does not recalculate approved exposure.
+    Section 13 does not recalculate approved Expected Loss.
+    Section 13 does not reassign simulated reason codes.
+    Section 13 does not modify strategy parameters.
+    Section 13 does not modify product-policy parameters.
+    Section 13 does not insert evidence rows.
+    Section 13 does not draft documentation.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 13.0 — GOVERNED COMPARISON PARAMETER SETUP
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Load the single active baseline / challenger comparison from the persistent comparison registry.
+
+    Section 13.0 answers:
+
+        &quot;Which governed baseline / challenger comparison should this Section 13 review use?&quot;
+
+SQL PURPOSE:
+    1. Drop prior temporary Section 13 helper tables.
+    2. Confirm archive table exists.
+    3. Confirm comparison registry exists.
+    4. Confirm required registry columns exist.
+    5. Confirm exactly one active comparison row exists.
+    6. Reject placeholder comparison identifiers.
+    7. Reject same-strategy baseline / challenger selections.
+    8. Materialize tmp_m2_strategy_comparison_params.
+    9. Display the active comparison selection.
+
+BOUNDARY:
+    This section creates temporary helper objects only.
+
+    It does not read applicant rows yet.
+    It does not compare strategy outcomes yet.
+    It does not modify archive rows.
+
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_comparison_params;
+DROP TABLE IF EXISTS tmp_m2_strategy_comparison_readiness;
+DROP TABLE IF EXISTS tmp_m2_strategy_comparison_matched_rows;
+DROP TABLE IF EXISTS tmp_m2_strategy_comparison_source_consistency;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.0A Persistent archive and comparison-registry dependency gatekeeper.
+
+Business purpose:
+    Fail clearly if the archive or comparison registry required for governed comparison is missing.
+
+SQL mechanics:
+    TO_REGCLASS checks whether persistent tables exist.
+    information_schema.columns checks whether the comparison registry has the expected schema.
+    COUNT(*) validates active comparison cardinality.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+DECLARE
+    v_archive_exists BOOLEAN;
+    v_registry_exists BOOLEAN;
+    v_required_registry_column_gap_count BIGINT;
+    v_active_comparison_count BIGINT;
+    v_placeholder_count BIGINT;
+    v_same_strategy_count BIGINT;
+BEGIN
+    /***********************************************************************************************
+    Archive dependency check.
+
+    Section 13 can summarize an empty archive, but the archive table itself must exist.
+    Section 12 creates / reuses credit_decisioning_sim.strategy_decisions_archive.
+    ***********************************************************************************************/
+    SELECT TO_REGCLASS(&#39;credit_decisioning_sim.strategy_decisions_archive&#39;) IS NOT NULL
+    INTO v_archive_exists;
+
+    IF v_archive_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13 failure: strategy_decisions_archive does not exist. Run Section 12 archive setup / persistence before Section 13.&#39;;
+    END IF;
+
+
+    /***********************************************************************************************
+    Comparison registry dependency check.
+
+    Comparison selection should come from the persistent comparison campaign registry, not from
+    latest-run inference.
+    ***********************************************************************************************/
+    SELECT TO_REGCLASS(&#39;credit_decisioning_sim.strategy_comparison_campaign_registry&#39;) IS NOT NULL
+    INTO v_registry_exists;
+
+    IF v_registry_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13 failure: strategy_comparison_campaign_registry does not exist. Run Section 2 registry setup before Section 13.&#39;;
+    END IF;
+
+
+    /***********************************************************************************************
+    Registry schema check.
+
+    Business purpose:
+        Section 13 needs comparison IDs, run IDs, strategy keys, Module 1 lineage, story metadata,
+        and active flags.
+
+    SQL mechanics:
+        The VALUES list defines required column names.
+        NOT EXISTS flags missing registry fields.
+    ***********************************************************************************************/
+    SELECT COUNT(*)
+    INTO v_required_registry_column_gap_count
+    FROM (
+        VALUES
+            (&#39;comparison_group_id&#39;),
+            (&#39;comparison_set_name&#39;),
+            (&#39;showcase_id&#39;),
+            (&#39;showcase_name&#39;),
+            (&#39;baseline_module2_run_id&#39;),
+            (&#39;challenger_module2_run_id&#39;),
+            (&#39;baseline_strategy_set_name&#39;),
+            (&#39;baseline_strategy_name&#39;),
+            (&#39;baseline_strategy_version&#39;),
+            (&#39;challenger_strategy_set_name&#39;),
+            (&#39;challenger_strategy_name&#39;),
+            (&#39;challenger_strategy_version&#39;),
+            (&#39;module1_scenario_set_name&#39;),
+            (&#39;module1_scenario_name&#39;),
+            (&#39;population_id&#39;),
+            (&#39;expected_comparison_storyline&#39;),
+            (&#39;primary_metric_focus&#39;),
+            (&#39;active_comparison_flag&#39;),
+            (&#39;registry_active_flag&#39;),
+            (&#39;registry_created_ts&#39;),
+            (&#39;registry_updated_ts&#39;)
+    ) AS required_columns(column_name)
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns c
+        WHERE c.table_schema = &#39;credit_decisioning_sim&#39;
+          AND c.table_name = &#39;strategy_comparison_campaign_registry&#39;
+          AND c.column_name = required_columns.column_name
+    );
+
+    IF v_required_registry_column_gap_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13 failure: strategy_comparison_campaign_registry is missing required column(s).&#39;;
+    END IF;
+
+
+    /***********************************************************************************************
+    Active comparison cardinality.
+
+    Expected:
+        exactly one row where:
+            active_comparison_flag = TRUE
+            registry_active_flag = TRUE
+
+    Business purpose:
+        Section 13 should compare one selected baseline / challenger pair at a time.
+    ***********************************************************************************************/
+    SELECT COUNT(*)
+    INTO v_active_comparison_count
+    FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+    WHERE active_comparison_flag IS TRUE
+      AND registry_active_flag IS TRUE;
+
+    IF v_active_comparison_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13 failure: expected exactly one active comparison registry row, found %.&#39;,
+            v_active_comparison_count;
+    END IF;
+
+
+    /***********************************************************************************************
+    Placeholder protection.
+
+    Business purpose:
+        Prevent accidental interpretation of placeholder registry metadata as real comparison
+        evidence.
+    ***********************************************************************************************/
+    SELECT COUNT(*)
+    INTO v_placeholder_count
+    FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+    WHERE active_comparison_flag IS TRUE
+      AND registry_active_flag IS TRUE
+      AND (
+             comparison_group_id ILIKE &#39;%PLACEHOLDER%&#39;
+          OR comparison_set_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR baseline_module2_run_id ILIKE &#39;%PLACEHOLDER%&#39;
+          OR challenger_module2_run_id ILIKE &#39;%PLACEHOLDER%&#39;
+          OR baseline_strategy_set_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR baseline_strategy_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR baseline_strategy_version ILIKE &#39;%PLACEHOLDER%&#39;
+          OR challenger_strategy_set_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR challenger_strategy_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR challenger_strategy_version ILIKE &#39;%PLACEHOLDER%&#39;
+      );
+
+    IF v_placeholder_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13 failure: active comparison registry row contains placeholder comparison or strategy identifiers.&#39;;
+    END IF;
+
+
+    /***********************************************************************************************
+    Same-strategy protection.
+
+    Business purpose:
+        A baseline / challenger comparison should compare different Module 2 strategy identities.
+
+        If this fires, the selected comparison does not test strategy movement.
+    ***********************************************************************************************/
+    SELECT COUNT(*)
+    INTO v_same_strategy_count
+    FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+    WHERE active_comparison_flag IS TRUE
+      AND registry_active_flag IS TRUE
+      AND baseline_strategy_set_name = challenger_strategy_set_name
+      AND baseline_strategy_name = challenger_strategy_name
+      AND baseline_strategy_version = challenger_strategy_version;
+
+    IF v_same_strategy_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13 failure: active comparison selects the same strategy as both baseline and challenger.&#39;;
+    END IF;
+END $$;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.0B Canonical active comparison parameter table.
+
+Business purpose:
+    Materialize the one active comparison into a temporary object used by every downstream Section 13
+    query.
+
+SQL logic:
+    SELECT from the persistent comparison registry where active_comparison_flag and
+    registry_active_flag are TRUE.
+
+Compatibility:
+    Section 14 expects tmp_m2_strategy_comparison_params and tmp_m2_strategy_comparison_readiness
+    to exist when matched-comparison readiness is reviewed.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TEMP TABLE tmp_m2_strategy_comparison_params
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    comparison_group_id,
+    comparison_set_name,
+
+    showcase_id,
+    showcase_name,
+
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    expected_comparison_storyline,
+    primary_metric_focus,
+
+    active_comparison_flag,
+    registry_active_flag,
+    registry_created_ts,
+    registry_updated_ts
+
+FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+
+WHERE active_comparison_flag IS TRUE
+  AND registry_active_flag IS TRUE;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.0C Active comparison selector output.
+
+Purpose:
+    Show the governed comparison selected for this Section 13 review.
+
+Expected:
+    exactly one row.
+
+Interpretation:
+    This is the comparison plan.
+    It does not prove the baseline and challenger slices exist in the archive.
+    Section 13.2 readiness evaluates archive availability and row matching.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    comparison_group_id,
+    comparison_set_name,
+
+    showcase_id,
+    showcase_name,
+
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    expected_comparison_storyline,
+    primary_metric_focus,
+
+    registry_created_ts,
+    registry_updated_ts
+
+FROM tmp_m2_strategy_comparison_params;
+
+
+
+/***************************************************************************************************
+SECTION 13.1 — ARCHIVE INVENTORY
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Show what archived Module 2 strategy slices are available before matched comparison is
+    interpreted.
+
+    Section 13.1 answers:
+
+        &quot;What completed strategy / scenario / population slices exist in the archive?&quot;
+
+SQL PURPOSE:
+    1. Summarize archived strategy slices.
+    2. Display archived decision-outcome distribution by slice.
+    3. Check archive row-level grain duplicate groups.
+
+BOUNDARY:
+    Archive inventory is read-only.
+
+    It does not select the comparison.
+    It does not mutate archive rows.
+    It does not validate the latest-run output.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.1A Archive inventory by strategy / Module 1 scenario / population.
+
+Expected:
+    One row per archived strategy / scenario / population slice.
+
+Interpretation:
+    Use this output to confirm the selected baseline and challenger slices are present.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS archived_rows,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+    COUNT(*) - COUNT(DISTINCT application_id)
+        AS duplicate_application_row_count,
+
+    MIN(strategy_run_id) AS min_strategy_run_id,
+    MAX(strategy_run_id) AS max_strategy_run_id,
+
+    MIN(strategy_run_ts) AS min_strategy_run_ts,
+    MAX(strategy_run_ts) AS max_strategy_run_ts,
+
+    MIN(archive_inserted_ts) AS first_archive_inserted_ts,
+    MAX(archive_inserted_ts) AS last_archive_inserted_ts
+
+FROM credit_decisioning_sim.strategy_decisions_archive
+
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.1B Archived decision-outcome inventory by slice.
+
+Purpose:
+    Show the final outcome mix for every archived slice.
+
+Interpretation:
+    This is inventory, not matched comparison.
+
+    The same decision_outcome distribution can mean different things depending on product, score,
+    requested exposure, affordability, and reason-code mix.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    decision_outcome,
+
+    COUNT(*) AS archived_rows,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(
+            SUM(COUNT(*)) OVER (
+                PARTITION BY
+                    strategy_set_name,
+                    strategy_name,
+                    strategy_version,
+                    module1_scenario_set_name,
+                    module1_scenario_name,
+                    population_id
+            ),
+            0
+        ),
+        2
+    ) AS pct_within_archived_slice
+
+FROM credit_decisioning_sim.strategy_decisions_archive
+
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    decision_outcome
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    CASE decision_outcome
+        WHEN &#39;APPROVE&#39; THEN 1
+        WHEN &#39;COUNTEROFFER&#39; THEN 2
+        WHEN &#39;MANUAL_REVIEW&#39; THEN 3
+        WHEN &#39;DECLINE&#39; THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.1C Archive row-level grain duplicate diagnostic.
+
+Purpose:
+    Confirm the archive is unique at:
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+        application_id
+
+Expected:
+    duplicate_archive_grain_count = 0.
+
+Interpretation:
+    Duplicate archive grain can corrupt matched comparison and frontier analysis.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) AS duplicate_archive_grain_count
+
+FROM (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id,
+        COUNT(*) AS row_count
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+
+    HAVING COUNT(*) &gt; 1
+) d;
+
+
+
+/***************************************************************************************************
+SECTION 13.2 — SELECTED COMPARISON READINESS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Evaluate whether the selected baseline / challenger comparison is ready for matched comparison.
+
+    Section 13.2 answers:
+
+        &quot;Do the selected baseline and challenger archived slices exist, have clean application grain,
+         and fully overlap by application_id?&quot;
+
+SQL PURPOSE:
+    1. Count archived baseline rows.
+    2. Count archived challenger rows.
+    3. Count distinct application_id values for each side.
+    4. Count duplicate application_id rows within each side.
+    5. Count matched, baseline-only, and challenger-only application_id values.
+    6. Assign readiness_status.
+    7. Persist the readiness result into tmp_m2_strategy_comparison_readiness.
+
+IMPORTANT:
+    Section 13.2 does not fail solely because selected archive slices are not ready.
+
+    It records readiness status so inventory can still be reviewed and Section 14 can surface
+    NOT_APPLICABLE comparison status where appropriate.
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_strategy_comparison_readiness
+ON COMMIT PRESERVE ROWS
+AS
+WITH params AS (
+    /***********************************************************************************************
+    One-row active comparison selector from Section 13.0.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+
+baseline_slice AS (
+    /***********************************************************************************************
+    Baseline archived slice selected by baseline strategy identity and Module 1 lineage.
+    ***********************************************************************************************/
+    SELECT
+        b.application_id
+    FROM params p
+
+    LEFT JOIN credit_decisioning_sim.strategy_decisions_archive b
+        ON b.strategy_set_name = p.baseline_strategy_set_name
+       AND b.strategy_name = p.baseline_strategy_name
+       AND b.strategy_version = p.baseline_strategy_version
+       AND b.module1_scenario_set_name = p.module1_scenario_set_name
+       AND b.module1_scenario_name = p.module1_scenario_name
+       AND b.population_id = p.population_id
+),
+
+challenger_slice AS (
+    /***********************************************************************************************
+    Challenger archived slice selected by challenger strategy identity and the same Module 1 lineage.
+    ***********************************************************************************************/
+    SELECT
+        c.application_id
+    FROM params p
+
+    LEFT JOIN credit_decisioning_sim.strategy_decisions_archive c
+        ON c.strategy_set_name = p.challenger_strategy_set_name
+       AND c.strategy_name = p.challenger_strategy_name
+       AND c.strategy_version = p.challenger_strategy_version
+       AND c.module1_scenario_set_name = p.module1_scenario_set_name
+       AND c.module1_scenario_name = p.module1_scenario_name
+       AND c.population_id = p.population_id
+),
+
+baseline_counts AS (
+    /***********************************************************************************************
+    Baseline row and grain diagnostics.
+    ***********************************************************************************************/
+    SELECT
+        COUNT(application_id) AS baseline_archived_row_count,
+        COUNT(DISTINCT application_id) AS baseline_distinct_application_id_count,
+        COUNT(application_id) - COUNT(DISTINCT application_id)
+            AS baseline_duplicate_application_row_count
+    FROM baseline_slice
+),
+
+challenger_counts AS (
+    /***********************************************************************************************
+    Challenger row and grain diagnostics.
+    ***********************************************************************************************/
+    SELECT
+        COUNT(application_id) AS challenger_archived_row_count,
+        COUNT(DISTINCT application_id) AS challenger_distinct_application_id_count,
+        COUNT(application_id) - COUNT(DISTINCT application_id)
+            AS challenger_duplicate_application_row_count
+    FROM challenger_slice
+),
+
+application_overlap AS (
+    /***********************************************************************************************
+    Application-level overlap diagnostics.
+
+    SQL mechanics:
+        FULL OUTER JOIN keeps application IDs that appear on either side.
+
+    Business interpretation:
+        Complete overlap is required for clean matched comparison.
+    ***********************************************************************************************/
+    SELECT
+        COUNT(*) FILTER (
+            WHERE b.application_id IS NOT NULL
+              AND c.application_id IS NOT NULL
+        ) AS matched_application_id_count,
+
+        COUNT(*) FILTER (
+            WHERE b.application_id IS NOT NULL
+              AND c.application_id IS NULL
+        ) AS baseline_only_application_id_count,
+
+        COUNT(*) FILTER (
+            WHERE b.application_id IS NULL
+              AND c.application_id IS NOT NULL
+        ) AS challenger_only_application_id_count
+
+    FROM (
+        SELECT DISTINCT application_id
+        FROM baseline_slice
+        WHERE application_id IS NOT NULL
+    ) b
+
+    FULL OUTER JOIN (
+        SELECT DISTINCT application_id
+        FROM challenger_slice
+        WHERE application_id IS NOT NULL
+    ) c
+        ON c.application_id = b.application_id
+)
+
+SELECT
+    p.comparison_group_id,
+    p.comparison_set_name,
+
+    p.showcase_id,
+    p.showcase_name,
+
+    p.baseline_module2_run_id,
+    p.challenger_module2_run_id,
+
+    p.module1_scenario_set_name,
+    p.module1_scenario_name,
+    p.population_id,
+
+    p.baseline_strategy_set_name,
+    p.baseline_strategy_name,
+    p.baseline_strategy_version,
+
+    p.challenger_strategy_set_name,
+    p.challenger_strategy_name,
+    p.challenger_strategy_version,
+
+    (
+        p.baseline_strategy_set_name = p.challenger_strategy_set_name
+        AND p.baseline_strategy_name = p.challenger_strategy_name
+        AND p.baseline_strategy_version = p.challenger_strategy_version
+    ) AS same_strategy_selected_flag,
+
+    bc.baseline_archived_row_count,
+    cc.challenger_archived_row_count,
+
+    bc.baseline_distinct_application_id_count,
+    cc.challenger_distinct_application_id_count,
+
+    bc.baseline_duplicate_application_row_count,
+    cc.challenger_duplicate_application_row_count,
+
+    ao.matched_application_id_count,
+    ao.baseline_only_application_id_count,
+    ao.challenger_only_application_id_count,
+
+    CASE
+        WHEN (
+            p.baseline_strategy_set_name = p.challenger_strategy_set_name
+            AND p.baseline_strategy_name = p.challenger_strategy_name
+            AND p.baseline_strategy_version = p.challenger_strategy_version
+        )
+            THEN &#39;NOT_READY_SAME_STRATEGY_SELECTED&#39;
+
+        WHEN bc.baseline_archived_row_count = 0
+         AND cc.challenger_archived_row_count = 0
+            THEN &#39;NOT_READY_BASELINE_AND_CHALLENGER_ARCHIVE_MISSING&#39;
+
+        WHEN bc.baseline_archived_row_count = 0
+            THEN &#39;NOT_READY_BASELINE_ARCHIVE_MISSING&#39;
+
+        WHEN cc.challenger_archived_row_count = 0
+            THEN &#39;NOT_READY_CHALLENGER_ARCHIVE_MISSING&#39;
+
+        WHEN bc.baseline_duplicate_application_row_count &gt; 0
+          OR cc.challenger_duplicate_application_row_count &gt; 0
+            THEN &#39;NOT_READY_DUPLICATE_APPLICATION_ID_IN_ARCHIVE_SLICE&#39;
+
+        WHEN bc.baseline_archived_row_count &lt;&gt; bc.baseline_distinct_application_id_count
+          OR cc.challenger_archived_row_count &lt;&gt; cc.challenger_distinct_application_id_count
+            THEN &#39;NOT_READY_ARCHIVE_SLICE_NOT_UNIQUE_AT_APPLICATION_ID&#39;
+
+        WHEN bc.baseline_distinct_application_id_count &lt;&gt; cc.challenger_distinct_application_id_count
+            THEN &#39;NOT_READY_BASELINE_CHALLENGER_ROW_COUNT_MISMATCH&#39;
+
+        WHEN ao.matched_application_id_count &lt;&gt; bc.baseline_distinct_application_id_count
+          OR ao.matched_application_id_count &lt;&gt; cc.challenger_distinct_application_id_count
+          OR ao.baseline_only_application_id_count &gt; 0
+          OR ao.challenger_only_application_id_count &gt; 0
+            THEN &#39;NOT_READY_INCOMPLETE_APPLICATION_ID_OVERLAP&#39;
+
+        ELSE &#39;READY_FOR_MATCHED_COMPARISON&#39;
+    END AS readiness_status,
+
+    p.expected_comparison_storyline,
+    p.primary_metric_focus
+
+FROM params p
+CROSS JOIN baseline_counts bc
+CROSS JOIN challenger_counts cc
+CROSS JOIN application_overlap ao;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.2A Selected comparison readiness output.
+
+Expected:
+    readiness_status = READY_FOR_MATCHED_COMPARISON
+    before interpreting matched baseline / challenger deltas.
+
+Boundary:
+    This query does not mutate archive rows.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    comparison_group_id,
+    comparison_set_name,
+
+    showcase_id,
+    showcase_name,
+
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+
+    same_strategy_selected_flag,
+
+    baseline_archived_row_count,
+    challenger_archived_row_count,
+
+    baseline_distinct_application_id_count,
+    challenger_distinct_application_id_count,
+
+    baseline_duplicate_application_row_count,
+    challenger_duplicate_application_row_count,
+
+    matched_application_id_count,
+    baseline_only_application_id_count,
+    challenger_only_application_id_count,
+
+    readiness_status,
+    expected_comparison_storyline,
+    primary_metric_focus
+
+FROM tmp_m2_strategy_comparison_readiness;
+
+
+
+/***************************************************************************************************
+SECTION 13.3 — MATCHED BASELINE / CHALLENGER APPLICANT TABLE
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Materialize row-level matched baseline / challenger comparison evidence.
+
+    Section 13.3 answers:
+
+        &quot;For each synthetic applicant that exists in both archived slices, what changed between the
+         baseline and challenger strategy?&quot;
+
+SQL PURPOSE:
+    1. Join baseline and challenger archived rows by application_id.
+    2. Preserve selected comparison metadata.
+    3. Preserve immutable Module 1 source fields for consistency checks.
+    4. Preserve final outcomes, final exposure, approved affordability, approved Expected Loss, and
+       reason-code fields for comparison diagnostics.
+    5. Create diagnostic deltas and migration labels used by downstream Section 13 outputs.
+
+IMPORTANT:
+    This table may be empty when readiness_status is not READY_FOR_MATCHED_COMPARISON.
+
+    That is intentional.
+
+    Readiness is interpreted through tmp_m2_strategy_comparison_readiness.
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_strategy_comparison_matched_rows
+ON COMMIT PRESERVE ROWS
+AS
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+
+matched_rows AS (
+    SELECT
+        /*******************************************************************************************
+        Comparison registry metadata.
+        *******************************************************************************************/
+        p.comparison_group_id,
+        p.comparison_set_name,
+        p.showcase_id,
+        p.showcase_name,
+
+        p.baseline_module2_run_id,
+        p.challenger_module2_run_id,
+
+        p.expected_comparison_storyline,
+        p.primary_metric_focus,
+
+        /*******************************************************************************************
+        Matched application key.
+        *******************************************************************************************/
+        b.application_id,
+        b.applicant_id AS baseline_applicant_id,
+        c.applicant_id AS challenger_applicant_id,
+
+        /*******************************************************************************************
+        Module 1 lineage selected for the comparison.
+        *******************************************************************************************/
+        p.module1_scenario_set_name AS comparison_module1_scenario_set_name,
+        p.module1_scenario_name AS comparison_module1_scenario_name,
+        p.population_id AS comparison_population_id,
+
+
+        /*******************************************************************************************
+        Baseline strategy identity.
+        *******************************************************************************************/
+        b.module2_model_version AS baseline_module2_model_version,
+        b.strategy_set_name AS baseline_strategy_set_name,
+        b.strategy_name AS baseline_strategy_name,
+        b.strategy_version AS baseline_strategy_version,
+        b.strategy_run_id AS baseline_strategy_run_id,
+        b.strategy_run_ts AS baseline_strategy_run_ts,
+        b.archive_inserted_ts AS baseline_archive_inserted_ts,
+
+
+        /*******************************************************************************************
+        Challenger strategy identity.
+        *******************************************************************************************/
+        c.module2_model_version AS challenger_module2_model_version,
+        c.strategy_set_name AS challenger_strategy_set_name,
+        c.strategy_name AS challenger_strategy_name,
+        c.strategy_version AS challenger_strategy_version,
+        c.strategy_run_id AS challenger_strategy_run_id,
+        c.strategy_run_ts AS challenger_strategy_run_ts,
+        c.archive_inserted_ts AS challenger_archive_inserted_ts,
+
+
+        /*******************************************************************************************
+        Immutable Module 1 source fields — baseline.
+        These should match challenger values in a clean matched comparison.
+        *******************************************************************************************/
+        b.module1_scenario_set_name AS baseline_module1_scenario_set_name,
+        b.module1_scenario_name AS baseline_module1_scenario_name,
+        b.population_id AS baseline_population_id,
+
+        b.product_type_policy_key AS baseline_product_type_policy_key,
+        b.score_band_policy_key AS baseline_score_band_policy_key,
+        b.credit_score AS baseline_credit_score,
+        b.annual_income AS baseline_annual_income,
+        b.requested_amount AS baseline_requested_amount,
+        b.requested_monthly_payment_proxy AS baseline_requested_monthly_payment_proxy,
+        b.requested_payment_to_income_ratio AS baseline_requested_payment_to_income_ratio,
+        b.amount_to_income_ratio AS baseline_amount_to_income_ratio,
+        b.estimated_pd AS baseline_estimated_pd,
+        b.estimated_lgd AS baseline_estimated_lgd,
+        b.requested_expected_loss_amount AS baseline_requested_expected_loss_amount,
+
+
+        /*******************************************************************************************
+        Immutable Module 1 source fields — challenger.
+        These should match baseline values in a clean matched comparison.
+        *******************************************************************************************/
+        c.module1_scenario_set_name AS challenger_module1_scenario_set_name,
+        c.module1_scenario_name AS challenger_module1_scenario_name,
+        c.population_id AS challenger_population_id,
+
+        c.product_type_policy_key AS challenger_product_type_policy_key,
+        c.score_band_policy_key AS challenger_score_band_policy_key,
+        c.credit_score AS challenger_credit_score,
+        c.annual_income AS challenger_annual_income,
+        c.requested_amount AS challenger_requested_amount,
+        c.requested_monthly_payment_proxy AS challenger_requested_monthly_payment_proxy,
+        c.requested_payment_to_income_ratio AS challenger_requested_payment_to_income_ratio,
+        c.amount_to_income_ratio AS challenger_amount_to_income_ratio,
+        c.estimated_pd AS challenger_estimated_pd,
+        c.estimated_lgd AS challenger_estimated_lgd,
+        c.requested_expected_loss_amount AS challenger_requested_expected_loss_amount,
+
+
+        /*******************************************************************************************
+        Common segment dimensions.
+
+        COALESCE is used only for grouping convenience. Source consistency is validated separately.
+        *******************************************************************************************/
+        COALESCE(b.product_type_policy_key, c.product_type_policy_key)
+            AS product_type_policy_key,
+
+        COALESCE(b.score_band_policy_key, c.score_band_policy_key)
+            AS score_band_policy_key,
+
+        COALESCE(b.product_score_policy_segment, c.product_score_policy_segment)
+            AS product_score_policy_segment,
+
+
+        /*******************************************************************************************
+        Baseline diagnostic segmentation and triggers.
+        *******************************************************************************************/
+        b.strategy_risk_tier AS baseline_strategy_risk_tier,
+        b.requested_pti_bucket AS baseline_requested_pti_bucket,
+        b.dti_bucket AS baseline_dti_bucket,
+        b.requested_exposure_tier AS baseline_requested_exposure_tier,
+        b.requested_expected_loss_tier AS baseline_requested_expected_loss_tier,
+        b.mixed_signal_profile_type AS baseline_mixed_signal_profile_type,
+        b.borderline_profile_flag AS baseline_borderline_profile_flag,
+        b.total_rule_trigger_count AS baseline_total_rule_trigger_count,
+
+
+        /*******************************************************************************************
+        Challenger diagnostic segmentation and triggers.
+        *******************************************************************************************/
+        c.strategy_risk_tier AS challenger_strategy_risk_tier,
+        c.requested_pti_bucket AS challenger_requested_pti_bucket,
+        c.dti_bucket AS challenger_dti_bucket,
+        c.requested_exposure_tier AS challenger_requested_exposure_tier,
+        c.requested_expected_loss_tier AS challenger_requested_expected_loss_tier,
+        c.mixed_signal_profile_type AS challenger_mixed_signal_profile_type,
+        c.borderline_profile_flag AS challenger_borderline_profile_flag,
+        c.total_rule_trigger_count AS challenger_total_rule_trigger_count,
+
+
+        /*******************************************************************************************
+        Baseline final decision and final exposure fields.
+        *******************************************************************************************/
+        b.decision_outcome AS baseline_decision_outcome,
+        b.decision_path AS baseline_decision_path,
+        b.decision_resolution_source AS baseline_decision_resolution_source,
+
+        b.approval_flag AS baseline_approval_flag,
+        b.counteroffer_flag AS baseline_counteroffer_flag,
+        b.manual_review_flag AS baseline_manual_review_flag,
+        b.decline_flag AS baseline_decline_flag,
+        b.simulated_offer_exposure_flag AS baseline_simulated_offer_exposure_flag,
+
+        b.approved_amount AS baseline_approved_amount,
+        b.counteroffer_amount AS baseline_counteroffer_amount,
+        b.exposure_reduction_amount AS baseline_exposure_reduction_amount,
+        b.exposure_reduction_pct AS baseline_exposure_reduction_pct,
+
+        b.approved_payment_to_income_ratio AS baseline_approved_payment_to_income_ratio,
+        b.approved_expected_loss_amount AS baseline_approved_expected_loss_amount,
+        b.approved_el_reduction_amount AS baseline_approved_el_reduction_amount,
+        b.approved_el_reduction_pct AS baseline_approved_el_reduction_pct,
+
+        b.primary_reason_family AS baseline_primary_reason_family,
+        b.primary_reason_code AS baseline_primary_reason_code,
+        b.secondary_reason_code AS baseline_secondary_reason_code,
+        b.tertiary_reason_code AS baseline_tertiary_reason_code,
+        b.triggered_reason_code_list AS baseline_triggered_reason_code_list,
+        b.reason_code_count AS baseline_reason_code_count,
+
+
+        /*******************************************************************************************
+        Challenger final decision and final exposure fields.
+        *******************************************************************************************/
+        c.decision_outcome AS challenger_decision_outcome,
+        c.decision_path AS challenger_decision_path,
+        c.decision_resolution_source AS challenger_decision_resolution_source,
+
+        c.approval_flag AS challenger_approval_flag,
+        c.counteroffer_flag AS challenger_counteroffer_flag,
+        c.manual_review_flag AS challenger_manual_review_flag,
+        c.decline_flag AS challenger_decline_flag,
+        c.simulated_offer_exposure_flag AS challenger_simulated_offer_exposure_flag,
+
+        c.approved_amount AS challenger_approved_amount,
+        c.counteroffer_amount AS challenger_counteroffer_amount,
+        c.exposure_reduction_amount AS challenger_exposure_reduction_amount,
+        c.exposure_reduction_pct AS challenger_exposure_reduction_pct,
+
+        c.approved_payment_to_income_ratio AS challenger_approved_payment_to_income_ratio,
+        c.approved_expected_loss_amount AS challenger_approved_expected_loss_amount,
+        c.approved_el_reduction_amount AS challenger_approved_el_reduction_amount,
+        c.approved_el_reduction_pct AS challenger_approved_el_reduction_pct,
+
+        c.primary_reason_family AS challenger_primary_reason_family,
+        c.primary_reason_code AS challenger_primary_reason_code,
+        c.secondary_reason_code AS challenger_secondary_reason_code,
+        c.tertiary_reason_code AS challenger_tertiary_reason_code,
+        c.triggered_reason_code_list AS challenger_triggered_reason_code_list,
+        c.reason_code_count AS challenger_reason_code_count
+
+    FROM params p
+
+    JOIN credit_decisioning_sim.strategy_decisions_archive b
+        ON b.strategy_set_name = p.baseline_strategy_set_name
+       AND b.strategy_name = p.baseline_strategy_name
+       AND b.strategy_version = p.baseline_strategy_version
+       AND b.module1_scenario_set_name = p.module1_scenario_set_name
+       AND b.module1_scenario_name = p.module1_scenario_name
+       AND b.population_id = p.population_id
+
+    JOIN credit_decisioning_sim.strategy_decisions_archive c
+        ON c.strategy_set_name = p.challenger_strategy_set_name
+       AND c.strategy_name = p.challenger_strategy_name
+       AND c.strategy_version = p.challenger_strategy_version
+       AND c.module1_scenario_set_name = p.module1_scenario_set_name
+       AND c.module1_scenario_name = p.module1_scenario_name
+       AND c.population_id = p.population_id
+       AND c.application_id = b.application_id
+)
+
+SELECT
+    mr.*,
+
+    /***********************************************************************************************
+    Final outcome migration label.
+
+    This label is a diagnostic summary of how the same synthetic applicant moved between strategies.
+    ***********************************************************************************************/
+    CASE
+        WHEN mr.baseline_decision_outcome = mr.challenger_decision_outcome
+            THEN &#39;STABLE_OUTCOME&#39;
+
+        WHEN mr.baseline_decision_outcome = &#39;APPROVE&#39;
+         AND mr.challenger_decision_outcome = &#39;COUNTEROFFER&#39;
+            THEN &#39;APPROVE_TO_COUNTEROFFER_EXPOSURE_REDUCTION&#39;
+
+        WHEN mr.baseline_decision_outcome = &#39;COUNTEROFFER&#39;
+         AND mr.challenger_decision_outcome = &#39;APPROVE&#39;
+            THEN &#39;COUNTEROFFER_TO_APPROVE_ACCESS_EXPANSION&#39;
+
+        WHEN mr.baseline_decision_outcome IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;)
+         AND mr.challenger_decision_outcome IN (&#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;)
+            THEN &#39;OFFER_TO_NO_OFFER_OR_UNRESOLVED_RISK_TIGHTENING&#39;
+
+        WHEN mr.baseline_decision_outcome IN (&#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;)
+         AND mr.challenger_decision_outcome IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;)
+            THEN &#39;NO_OFFER_OR_UNRESOLVED_TO_OFFER_ACCESS_EXPANSION&#39;
+
+        WHEN mr.baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;
+         AND mr.challenger_decision_outcome = &#39;DECLINE&#39;
+            THEN &#39;MANUAL_REVIEW_TO_DECLINE_REVIEW_BURDEN_REDUCTION&#39;
+
+        WHEN mr.baseline_decision_outcome = &#39;DECLINE&#39;
+         AND mr.challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;
+            THEN &#39;DECLINE_TO_MANUAL_REVIEW_REVIEW_EXPANSION&#39;
+
+        ELSE &#39;MIXED_DECISION_MIGRATION&#39;
+    END AS decision_migration_type,
+
+
+    /***********************************************************************************************
+    Numeric deltas.
+
+    COALESCE treats unresolved / no-offer approved values as zero for all-application portfolio
+    impact comparison.
+
+    Requested fields should normally have zero deltas because the matched source population is the
+    same.
+    ***********************************************************************************************/
+    COALESCE(mr.challenger_approved_amount, 0)
+        - COALESCE(mr.baseline_approved_amount, 0)
+        AS delta_approved_amount,
+
+    COALESCE(mr.challenger_approved_expected_loss_amount, 0)
+        - COALESCE(mr.baseline_approved_expected_loss_amount, 0)
+        AS delta_approved_expected_loss_amount,
+
+    COALESCE(mr.challenger_approved_payment_to_income_ratio, 0)
+        - COALESCE(mr.baseline_approved_payment_to_income_ratio, 0)
+        AS delta_approved_payment_to_income_ratio,
+
+    COALESCE(mr.challenger_requested_amount, 0)
+        - COALESCE(mr.baseline_requested_amount, 0)
+        AS delta_requested_amount,
+
+    COALESCE(mr.challenger_requested_expected_loss_amount, 0)
+        - COALESCE(mr.baseline_requested_expected_loss_amount, 0)
+        AS delta_requested_expected_loss_amount
+
+FROM matched_rows mr;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.3A Matched-row table indexes.
+
+Purpose:
+    Improve performance for downstream Section 13 diagnostics.
+
+Boundary:
+    Indexes do not alter row values or comparison results.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE INDEX IF NOT EXISTS idx_tmp_m2_strategy_comparison_matched_app
+    ON tmp_m2_strategy_comparison_matched_rows (application_id);
+
+CREATE INDEX IF NOT EXISTS idx_tmp_m2_strategy_comparison_matched_product_score
+    ON tmp_m2_strategy_comparison_matched_rows (
+        product_type_policy_key,
+        score_band_policy_key
+    );
+
+CREATE INDEX IF NOT EXISTS idx_tmp_m2_strategy_comparison_matched_outcomes
+    ON tmp_m2_strategy_comparison_matched_rows (
+        baseline_decision_outcome,
+        challenger_decision_outcome
+    );
+
+CREATE INDEX IF NOT EXISTS idx_tmp_m2_strategy_comparison_matched_reasons
+    ON tmp_m2_strategy_comparison_matched_rows (
+        baseline_primary_reason_code,
+        challenger_primary_reason_code
+    );
+
+ANALYZE tmp_m2_strategy_comparison_matched_rows;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.3B Matched-row count diagnostic.
+
+Purpose:
+    Show how many application rows were materialized for matched comparison.
+
+Expected when ready:
+    matched_row_count = matched_application_id_count from tmp_m2_strategy_comparison_readiness.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    r.comparison_group_id,
+    r.comparison_set_name,
+    r.readiness_status,
+    r.matched_application_id_count AS readiness_matched_application_id_count,
+    COUNT(m.application_id) AS matched_row_count
+
+FROM tmp_m2_strategy_comparison_readiness r
+
+LEFT JOIN tmp_m2_strategy_comparison_matched_rows m
+    ON TRUE
+
+GROUP BY
+    r.comparison_group_id,
+    r.comparison_set_name,
+    r.readiness_status,
+    r.matched_application_id_count;
+
+
+
+/***************************************************************************************************
+SECTION 13.4 — PORTFOLIO-LEVEL BASELINE / CHALLENGER SUMMARY
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Compare baseline and challenger portfolio outcomes on the same matched applicant population.
+
+    Section 13.4 answers:
+
+        &quot;How did the challenger change high-level simulated outcome mix, offer exposure, approved
+         exposure, approved affordability, and approved Expected Loss relative to baseline?&quot;
+
+SQL PURPOSE:
+    1. Summarize baseline portfolio metrics.
+    2. Summarize challenger portfolio metrics.
+    3. Display baseline and challenger side-by-side as rows.
+    4. Display challenger-minus-baseline deltas as one compact row.
+
+BOUNDARY:
+    These are simulated strategy metrics, not production outcomes.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.4A Baseline and challenger portfolio summary.
+
+Interpretation:
+    This is the high-level matched comparison table.
+
+    Review rates and totals before drilling into migration, segments, reason codes, and source
+    consistency.
+-----------------------------------------------------------------------------------------------*/
+
+WITH side_summary AS (
+    SELECT
+        &#39;BASELINE&#39;::TEXT AS comparison_side,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;APPROVE&#39;) AS approval_count,
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_count,
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_count,
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;DECLINE&#39;) AS decline_count,
+        COUNT(*) FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE) AS offer_count,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        SUM(baseline_requested_amount) AS total_requested_amount,
+        SUM(COALESCE(baseline_approved_amount, 0)) AS total_approved_amount,
+
+        SUM(COALESCE(baseline_approved_amount, 0))
+            / NULLIF(SUM(baseline_requested_amount), 0) AS approved_amount_capture_rate,
+
+        SUM(baseline_requested_expected_loss_amount)
+            AS total_requested_expected_loss_amount,
+
+        SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+            AS total_approved_expected_loss_amount,
+
+        SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(baseline_approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        AVG(baseline_requested_payment_to_income_ratio)
+            AS avg_requested_payment_to_income_ratio,
+
+        AVG(baseline_approved_payment_to_income_ratio)
+            FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows,
+
+        AVG(baseline_estimated_pd)
+            AS avg_synthetic_estimated_pd_proxy_all_apps,
+
+        AVG(baseline_estimated_pd)
+            FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+
+    UNION ALL
+
+    SELECT
+        &#39;CHALLENGER&#39;::TEXT AS comparison_side,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;APPROVE&#39;) AS approval_count,
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_count,
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_count,
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;DECLINE&#39;) AS decline_count,
+        COUNT(*) FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE) AS offer_count,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        SUM(challenger_requested_amount) AS total_requested_amount,
+        SUM(COALESCE(challenger_approved_amount, 0)) AS total_approved_amount,
+
+        SUM(COALESCE(challenger_approved_amount, 0))
+            / NULLIF(SUM(challenger_requested_amount), 0) AS approved_amount_capture_rate,
+
+        SUM(challenger_requested_expected_loss_amount)
+            AS total_requested_expected_loss_amount,
+
+        SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+            AS total_approved_expected_loss_amount,
+
+        SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(challenger_approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        AVG(challenger_requested_payment_to_income_ratio)
+            AS avg_requested_payment_to_income_ratio,
+
+        AVG(challenger_approved_payment_to_income_ratio)
+            FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows,
+
+        AVG(challenger_estimated_pd)
+            AS avg_synthetic_estimated_pd_proxy_all_apps,
+
+        AVG(challenger_estimated_pd)
+            FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+)
+
+SELECT *
+FROM side_summary
+ORDER BY
+    CASE comparison_side
+        WHEN &#39;BASELINE&#39; THEN 1
+        WHEN &#39;CHALLENGER&#39; THEN 2
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.4B Portfolio-level challenger-minus-baseline deltas.
+
+Interpretation:
+    Positive delta_simulated_offer_exposure_rate:
+        challenger expanded simulated positive offer exposure.
+
+    Negative delta_total_approved_expected_loss_amount:
+        challenger reduced approved-exposure Expected Loss.
+
+    Negative delta_avg_synthetic_estimated_pd_proxy_offer_rows:
+        challenger improved the offered-population synthetic risk profile.
+
+Boundary:
+    Deltas are simulated strategy movement, not production performance movement.
+-----------------------------------------------------------------------------------------------*/
+
+WITH side_summary AS (
+    SELECT
+        &#39;BASELINE&#39;::TEXT AS comparison_side,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        SUM(COALESCE(baseline_approved_amount, 0)) AS total_approved_amount,
+        SUM(COALESCE(baseline_approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount,
+
+        SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(baseline_approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        AVG(baseline_approved_payment_to_income_ratio)
+            FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows,
+
+        AVG(baseline_estimated_pd)
+            FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+
+    UNION ALL
+
+    SELECT
+        &#39;CHALLENGER&#39;::TEXT AS comparison_side,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        SUM(COALESCE(challenger_approved_amount, 0)) AS total_approved_amount,
+        SUM(COALESCE(challenger_approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount,
+
+        SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(challenger_approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        AVG(challenger_approved_payment_to_income_ratio)
+            FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows,
+
+        AVG(challenger_estimated_pd)
+            FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+),
+
+pivoted AS (
+    SELECT
+        MAX(applications) FILTER (WHERE comparison_side = &#39;BASELINE&#39;) AS baseline_applications,
+        MAX(applications) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;) AS challenger_applications,
+
+        MAX(approval_rate) FILTER (WHERE comparison_side = &#39;BASELINE&#39;) AS baseline_approval_rate,
+        MAX(approval_rate) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;) AS challenger_approval_rate,
+
+        MAX(counteroffer_rate) FILTER (WHERE comparison_side = &#39;BASELINE&#39;) AS baseline_counteroffer_rate,
+        MAX(counteroffer_rate) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;) AS challenger_counteroffer_rate,
+
+        MAX(manual_review_rate) FILTER (WHERE comparison_side = &#39;BASELINE&#39;) AS baseline_manual_review_rate,
+        MAX(manual_review_rate) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;) AS challenger_manual_review_rate,
+
+        MAX(decline_rate) FILTER (WHERE comparison_side = &#39;BASELINE&#39;) AS baseline_decline_rate,
+        MAX(decline_rate) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;) AS challenger_decline_rate,
+
+        MAX(simulated_offer_exposure_rate) FILTER (WHERE comparison_side = &#39;BASELINE&#39;)
+            AS baseline_simulated_offer_exposure_rate,
+
+        MAX(simulated_offer_exposure_rate) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;)
+            AS challenger_simulated_offer_exposure_rate,
+
+        MAX(total_approved_amount) FILTER (WHERE comparison_side = &#39;BASELINE&#39;) AS baseline_total_approved_amount,
+        MAX(total_approved_amount) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;) AS challenger_total_approved_amount,
+
+        MAX(total_approved_expected_loss_amount) FILTER (WHERE comparison_side = &#39;BASELINE&#39;)
+            AS baseline_total_approved_expected_loss_amount,
+
+        MAX(total_approved_expected_loss_amount) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;)
+            AS challenger_total_approved_expected_loss_amount,
+
+        MAX(approved_expected_loss_rate) FILTER (WHERE comparison_side = &#39;BASELINE&#39;)
+            AS baseline_approved_expected_loss_rate,
+
+        MAX(approved_expected_loss_rate) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;)
+            AS challenger_approved_expected_loss_rate,
+
+        MAX(avg_approved_payment_to_income_ratio_offer_rows) FILTER (WHERE comparison_side = &#39;BASELINE&#39;)
+            AS baseline_avg_approved_payment_to_income_ratio_offer_rows,
+
+        MAX(avg_approved_payment_to_income_ratio_offer_rows) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;)
+            AS challenger_avg_approved_payment_to_income_ratio_offer_rows,
+
+        MAX(avg_synthetic_estimated_pd_proxy_offer_rows) FILTER (WHERE comparison_side = &#39;BASELINE&#39;)
+            AS baseline_avg_synthetic_estimated_pd_proxy_offer_rows,
+
+        MAX(avg_synthetic_estimated_pd_proxy_offer_rows) FILTER (WHERE comparison_side = &#39;CHALLENGER&#39;)
+            AS challenger_avg_synthetic_estimated_pd_proxy_offer_rows
+
+    FROM side_summary
+)
+
+SELECT
+    baseline_applications,
+    challenger_applications,
+
+    baseline_approval_rate,
+    challenger_approval_rate,
+    challenger_approval_rate - baseline_approval_rate AS delta_approval_rate,
+
+    baseline_counteroffer_rate,
+    challenger_counteroffer_rate,
+    challenger_counteroffer_rate - baseline_counteroffer_rate AS delta_counteroffer_rate,
+
+    baseline_manual_review_rate,
+    challenger_manual_review_rate,
+    challenger_manual_review_rate - baseline_manual_review_rate AS delta_manual_review_rate,
+
+    baseline_decline_rate,
+    challenger_decline_rate,
+    challenger_decline_rate - baseline_decline_rate AS delta_decline_rate,
+
+    baseline_simulated_offer_exposure_rate,
+    challenger_simulated_offer_exposure_rate,
+    challenger_simulated_offer_exposure_rate - baseline_simulated_offer_exposure_rate
+        AS delta_simulated_offer_exposure_rate,
+
+    baseline_total_approved_amount,
+    challenger_total_approved_amount,
+    challenger_total_approved_amount - baseline_total_approved_amount
+        AS delta_total_approved_amount,
+
+    baseline_total_approved_expected_loss_amount,
+    challenger_total_approved_expected_loss_amount,
+    challenger_total_approved_expected_loss_amount - baseline_total_approved_expected_loss_amount
+        AS delta_total_approved_expected_loss_amount,
+
+    baseline_approved_expected_loss_rate,
+    challenger_approved_expected_loss_rate,
+    challenger_approved_expected_loss_rate - baseline_approved_expected_loss_rate
+        AS delta_approved_expected_loss_rate,
+
+    baseline_avg_approved_payment_to_income_ratio_offer_rows,
+    challenger_avg_approved_payment_to_income_ratio_offer_rows,
+    challenger_avg_approved_payment_to_income_ratio_offer_rows
+        - baseline_avg_approved_payment_to_income_ratio_offer_rows
+        AS delta_avg_approved_payment_to_income_ratio_offer_rows,
+
+    baseline_avg_synthetic_estimated_pd_proxy_offer_rows,
+    challenger_avg_synthetic_estimated_pd_proxy_offer_rows,
+    challenger_avg_synthetic_estimated_pd_proxy_offer_rows
+        - baseline_avg_synthetic_estimated_pd_proxy_offer_rows
+        AS delta_avg_synthetic_estimated_pd_proxy_offer_rows
+
+FROM pivoted;
+
+
+
+/***************************************************************************************************
+SECTION 13.5 — DECISION OUTCOME MIGRATION MATRIX
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Show how final simulated outcomes moved from baseline to challenger for the same applications.
+
+    Section 13.5 answers:
+
+        &quot;Which applicants stayed in the same outcome, and which moved from one strategy outcome to
+         another?&quot;
+
+SQL PURPOSE:
+    Group matched rows by baseline_decision_outcome, challenger_decision_outcome, and migration type.
+
+****************************************************************************************************/
+
+SELECT
+    baseline_decision_outcome,
+    challenger_decision_outcome,
+    decision_migration_type,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_matched_population,
+
+    AVG(baseline_estimated_pd) AS avg_baseline_synthetic_estimated_pd_proxy,
+    AVG(challenger_estimated_pd) AS avg_challenger_synthetic_estimated_pd_proxy,
+
+    AVG(baseline_requested_payment_to_income_ratio) AS avg_baseline_requested_payment_to_income_ratio,
+    AVG(challenger_requested_payment_to_income_ratio) AS avg_challenger_requested_payment_to_income_ratio,
+
+    AVG(COALESCE(baseline_approved_amount, 0)) AS avg_baseline_approved_amount_all_rows,
+    AVG(COALESCE(challenger_approved_amount, 0)) AS avg_challenger_approved_amount_all_rows,
+
+    SUM(COALESCE(baseline_approved_amount, 0)) AS total_baseline_approved_amount,
+    SUM(COALESCE(challenger_approved_amount, 0)) AS total_challenger_approved_amount,
+
+    SUM(COALESCE(challenger_approved_amount, 0))
+        - SUM(COALESCE(baseline_approved_amount, 0))
+        AS delta_total_approved_amount,
+
+    SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+        AS total_baseline_approved_expected_loss_amount,
+
+    SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+        AS total_challenger_approved_expected_loss_amount,
+
+    SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+        - SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+        AS delta_total_approved_expected_loss_amount
+
+FROM tmp_m2_strategy_comparison_matched_rows
+
+GROUP BY
+    baseline_decision_outcome,
+    challenger_decision_outcome,
+    decision_migration_type
+
+ORDER BY
+    row_count DESC,
+    baseline_decision_outcome,
+    challenger_decision_outcome;
+
+
+
+/***************************************************************************************************
+SECTION 13.6 — MATCHED APPLICANT-LEVEL DELTA SAMPLE
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide row-level examples of how the challenger changed outcomes and economics for individual
+    synthetic applicants.
+
+    Section 13.6 answers:
+
+        &quot;What do the actual matched applicant-level changes look like?&quot;
+
+SQL PURPOSE:
+    Display a limited sample ordered by largest absolute approved-exposure movement and Expected Loss
+    movement.
+
+BOUNDARY:
+    This is a diagnostic sample.
+
+    It should not be treated as the complete comparison result.
+
+****************************************************************************************************/
+
+SELECT
+    application_id,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    baseline_decision_outcome,
+    challenger_decision_outcome,
+    decision_migration_type,
+
+    baseline_primary_reason_code,
+    challenger_primary_reason_code,
+
+    baseline_requested_amount,
+    challenger_requested_amount,
+    delta_requested_amount,
+
+    baseline_approved_amount,
+    challenger_approved_amount,
+    delta_approved_amount,
+
+    baseline_requested_payment_to_income_ratio,
+    challenger_requested_payment_to_income_ratio,
+
+    baseline_approved_payment_to_income_ratio,
+    challenger_approved_payment_to_income_ratio,
+    delta_approved_payment_to_income_ratio,
+
+    baseline_requested_expected_loss_amount,
+    challenger_requested_expected_loss_amount,
+    delta_requested_expected_loss_amount,
+
+    baseline_approved_expected_loss_amount,
+    challenger_approved_expected_loss_amount,
+    delta_approved_expected_loss_amount,
+
+    baseline_estimated_pd,
+    challenger_estimated_pd,
+
+    baseline_total_rule_trigger_count,
+    challenger_total_rule_trigger_count,
+
+    baseline_decision_path,
+    challenger_decision_path
+
+FROM tmp_m2_strategy_comparison_matched_rows
+
+ORDER BY
+    ABS(delta_approved_amount) DESC NULLS LAST,
+    ABS(delta_approved_expected_loss_amount) DESC NULLS LAST,
+    application_id
+
+LIMIT 100;
+
+
+
+/***************************************************************************************************
+SECTION 13.7 — PRODUCT, SCORE-BAND, AND PRODUCT × SCORE COMPARISON DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Show where strategy movement concentrates by product, score band, and product × score segment.
+
+    Section 13.7 answers:
+
+        &quot;Which portfolio segments drove the baseline / challenger differences?&quot;
+
+SQL PURPOSE:
+    1. Compare product-level baseline and challenger metrics.
+    2. Compare score-band-level baseline and challenger metrics.
+    3. Compare product × score-level baseline and challenger metrics.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.7A Product-level comparison.
+
+Interpretation:
+    Product-level movement may reflect product caps, LGD, requested exposure, PTI, counteroffer
+    feasibility, and product-policy settings.
+-----------------------------------------------------------------------------------------------*/
+
+WITH baseline AS (
+    SELECT
+        baseline_product_type_policy_key AS product_type_policy_key,
+
+        COUNT(*) AS baseline_applications,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_approval_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_manual_review_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_decline_rate,
+
+        COUNT(*) FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_simulated_offer_exposure_rate,
+
+        SUM(COALESCE(baseline_approved_amount, 0)) AS baseline_total_approved_amount,
+        SUM(COALESCE(baseline_approved_expected_loss_amount, 0)) AS baseline_total_approved_expected_loss_amount
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+    GROUP BY baseline_product_type_policy_key
+),
+
+challenger AS (
+    SELECT
+        challenger_product_type_policy_key AS product_type_policy_key,
+
+        COUNT(*) AS challenger_applications,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_approval_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_manual_review_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_decline_rate,
+
+        COUNT(*) FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_simulated_offer_exposure_rate,
+
+        SUM(COALESCE(challenger_approved_amount, 0)) AS challenger_total_approved_amount,
+        SUM(COALESCE(challenger_approved_expected_loss_amount, 0)) AS challenger_total_approved_expected_loss_amount
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+    GROUP BY challenger_product_type_policy_key
+)
+
+SELECT
+    COALESCE(b.product_type_policy_key, c.product_type_policy_key)
+        AS product_type_policy_key,
+
+    b.baseline_applications,
+    c.challenger_applications,
+
+    b.baseline_approval_rate,
+    c.challenger_approval_rate,
+    c.challenger_approval_rate - b.baseline_approval_rate AS delta_approval_rate,
+
+    b.baseline_counteroffer_rate,
+    c.challenger_counteroffer_rate,
+    c.challenger_counteroffer_rate - b.baseline_counteroffer_rate AS delta_counteroffer_rate,
+
+    b.baseline_manual_review_rate,
+    c.challenger_manual_review_rate,
+    c.challenger_manual_review_rate - b.baseline_manual_review_rate AS delta_manual_review_rate,
+
+    b.baseline_decline_rate,
+    c.challenger_decline_rate,
+    c.challenger_decline_rate - b.baseline_decline_rate AS delta_decline_rate,
+
+    b.baseline_simulated_offer_exposure_rate,
+    c.challenger_simulated_offer_exposure_rate,
+    c.challenger_simulated_offer_exposure_rate - b.baseline_simulated_offer_exposure_rate
+        AS delta_simulated_offer_exposure_rate,
+
+    b.baseline_total_approved_amount,
+    c.challenger_total_approved_amount,
+    c.challenger_total_approved_amount - b.baseline_total_approved_amount
+        AS delta_total_approved_amount,
+
+    b.baseline_total_approved_expected_loss_amount,
+    c.challenger_total_approved_expected_loss_amount,
+    c.challenger_total_approved_expected_loss_amount - b.baseline_total_approved_expected_loss_amount
+        AS delta_total_approved_expected_loss_amount
+
+FROM baseline b
+
+FULL OUTER JOIN challenger c
+    ON c.product_type_policy_key = b.product_type_policy_key
+
+ORDER BY product_type_policy_key;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.7B Score-band-level comparison.
+
+Interpretation:
+    Score-band movement shows how borrower-quality segments respond to challenger strategy rules.
+-----------------------------------------------------------------------------------------------*/
+
+WITH baseline AS (
+    SELECT
+        baseline_score_band_policy_key AS score_band_policy_key,
+
+        COUNT(*) AS baseline_applications,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_approval_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_manual_review_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_decline_rate,
+
+        COUNT(*) FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_simulated_offer_exposure_rate,
+
+        AVG(baseline_credit_score) AS baseline_avg_credit_score,
+        AVG(baseline_estimated_pd) AS baseline_avg_synthetic_estimated_pd_proxy,
+
+        SUM(COALESCE(baseline_approved_amount, 0)) AS baseline_total_approved_amount,
+        SUM(COALESCE(baseline_approved_expected_loss_amount, 0)) AS baseline_total_approved_expected_loss_amount
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+    GROUP BY baseline_score_band_policy_key
+),
+
+challenger AS (
+    SELECT
+        challenger_score_band_policy_key AS score_band_policy_key,
+
+        COUNT(*) AS challenger_applications,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_approval_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_manual_review_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_decline_rate,
+
+        COUNT(*) FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_simulated_offer_exposure_rate,
+
+        AVG(challenger_credit_score) AS challenger_avg_credit_score,
+        AVG(challenger_estimated_pd) AS challenger_avg_synthetic_estimated_pd_proxy,
+
+        SUM(COALESCE(challenger_approved_amount, 0)) AS challenger_total_approved_amount,
+        SUM(COALESCE(challenger_approved_expected_loss_amount, 0)) AS challenger_total_approved_expected_loss_amount
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+    GROUP BY challenger_score_band_policy_key
+)
+
+SELECT
+    COALESCE(b.score_band_policy_key, c.score_band_policy_key)
+        AS score_band_policy_key,
+
+    b.baseline_applications,
+    c.challenger_applications,
+
+    b.baseline_avg_credit_score,
+    c.challenger_avg_credit_score,
+
+    b.baseline_avg_synthetic_estimated_pd_proxy,
+    c.challenger_avg_synthetic_estimated_pd_proxy,
+
+    b.baseline_approval_rate,
+    c.challenger_approval_rate,
+    c.challenger_approval_rate - b.baseline_approval_rate AS delta_approval_rate,
+
+    b.baseline_counteroffer_rate,
+    c.challenger_counteroffer_rate,
+    c.challenger_counteroffer_rate - b.baseline_counteroffer_rate AS delta_counteroffer_rate,
+
+    b.baseline_manual_review_rate,
+    c.challenger_manual_review_rate,
+    c.challenger_manual_review_rate - b.baseline_manual_review_rate AS delta_manual_review_rate,
+
+    b.baseline_decline_rate,
+    c.challenger_decline_rate,
+    c.challenger_decline_rate - b.baseline_decline_rate AS delta_decline_rate,
+
+    b.baseline_simulated_offer_exposure_rate,
+    c.challenger_simulated_offer_exposure_rate,
+    c.challenger_simulated_offer_exposure_rate - b.baseline_simulated_offer_exposure_rate
+        AS delta_simulated_offer_exposure_rate,
+
+    b.baseline_total_approved_amount,
+    c.challenger_total_approved_amount,
+    c.challenger_total_approved_amount - b.baseline_total_approved_amount
+        AS delta_total_approved_amount,
+
+    b.baseline_total_approved_expected_loss_amount,
+    c.challenger_total_approved_expected_loss_amount,
+    c.challenger_total_approved_expected_loss_amount - b.baseline_total_approved_expected_loss_amount
+        AS delta_total_approved_expected_loss_amount
+
+FROM baseline b
+
+FULL OUTER JOIN challenger c
+    ON c.score_band_policy_key = b.score_band_policy_key
+
+ORDER BY
+    CASE COALESCE(b.score_band_policy_key, c.score_band_policy_key)
+        WHEN &#39;SUPER_PRIME&#39; THEN 1
+        WHEN &#39;PRIME&#39; THEN 2
+        WHEN &#39;NEAR_PRIME&#39; THEN 3
+        WHEN &#39;SUBPRIME&#39; THEN 4
+        WHEN &#39;DEEP_SUBPRIME&#39; THEN 5
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.7C Product × score-band comparison.
+
+Interpretation:
+    This is the most important segment-level comparison grid for explaining where movement is
+    concentrated.
+
+    Portfolio-level deltas can hide product × score concentration.
+-----------------------------------------------------------------------------------------------*/
+
+WITH baseline AS (
+    SELECT
+        baseline_product_type_policy_key AS product_type_policy_key,
+        baseline_score_band_policy_key AS score_band_policy_key,
+
+        COUNT(*) AS baseline_applications,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_approval_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_manual_review_rate,
+
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_decline_rate,
+
+        COUNT(*) FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS baseline_simulated_offer_exposure_rate,
+
+        SUM(COALESCE(baseline_approved_amount, 0)) AS baseline_total_approved_amount,
+        SUM(COALESCE(baseline_approved_expected_loss_amount, 0)) AS baseline_total_approved_expected_loss_amount
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+    GROUP BY
+        baseline_product_type_policy_key,
+        baseline_score_band_policy_key
+),
+
+challenger AS (
+    SELECT
+        challenger_product_type_policy_key AS product_type_policy_key,
+        challenger_score_band_policy_key AS score_band_policy_key,
+
+        COUNT(*) AS challenger_applications,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_approval_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_manual_review_rate,
+
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_decline_rate,
+
+        COUNT(*) FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS challenger_simulated_offer_exposure_rate,
+
+        SUM(COALESCE(challenger_approved_amount, 0)) AS challenger_total_approved_amount,
+        SUM(COALESCE(challenger_approved_expected_loss_amount, 0)) AS challenger_total_approved_expected_loss_amount
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+    GROUP BY
+        challenger_product_type_policy_key,
+        challenger_score_band_policy_key
+)
+
+SELECT
+    COALESCE(b.product_type_policy_key, c.product_type_policy_key)
+        AS product_type_policy_key,
+
+    COALESCE(b.score_band_policy_key, c.score_band_policy_key)
+        AS score_band_policy_key,
+
+    b.baseline_applications,
+    c.challenger_applications,
+
+    b.baseline_approval_rate,
+    c.challenger_approval_rate,
+    c.challenger_approval_rate - b.baseline_approval_rate AS delta_approval_rate,
+
+    b.baseline_counteroffer_rate,
+    c.challenger_counteroffer_rate,
+    c.challenger_counteroffer_rate - b.baseline_counteroffer_rate AS delta_counteroffer_rate,
+
+    b.baseline_manual_review_rate,
+    c.challenger_manual_review_rate,
+    c.challenger_manual_review_rate - b.baseline_manual_review_rate AS delta_manual_review_rate,
+
+    b.baseline_decline_rate,
+    c.challenger_decline_rate,
+    c.challenger_decline_rate - b.baseline_decline_rate AS delta_decline_rate,
+
+    b.baseline_simulated_offer_exposure_rate,
+    c.challenger_simulated_offer_exposure_rate,
+    c.challenger_simulated_offer_exposure_rate - b.baseline_simulated_offer_exposure_rate
+        AS delta_simulated_offer_exposure_rate,
+
+    b.baseline_total_approved_amount,
+    c.challenger_total_approved_amount,
+    c.challenger_total_approved_amount - b.baseline_total_approved_amount
+        AS delta_total_approved_amount,
+
+    b.baseline_total_approved_expected_loss_amount,
+    c.challenger_total_approved_expected_loss_amount,
+    c.challenger_total_approved_expected_loss_amount - b.baseline_total_approved_expected_loss_amount
+        AS delta_total_approved_expected_loss_amount
+
+FROM baseline b
+
+FULL OUTER JOIN challenger c
+    ON c.product_type_policy_key = b.product_type_policy_key
+   AND c.score_band_policy_key = b.score_band_policy_key
+
+ORDER BY
+    product_type_policy_key,
+    CASE score_band_policy_key
+        WHEN &#39;SUPER_PRIME&#39; THEN 1
+        WHEN &#39;PRIME&#39; THEN 2
+        WHEN &#39;NEAR_PRIME&#39; THEN 3
+        WHEN &#39;SUBPRIME&#39; THEN 4
+        WHEN &#39;DEEP_SUBPRIME&#39; THEN 5
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+SECTION 13.8 — REASON-CODE MOVEMENT DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Explain why strategy movement occurred, not only how much movement occurred.
+
+    Section 13.8 answers:
+
+        &quot;Which simulated explanation-code themes increased, decreased, or migrated under the
+         challenger?&quot;
+
+SQL PURPOSE:
+    1. Compare primary reason-code distribution by side.
+    2. Show reason-code migration from baseline to challenger.
+    3. Surface reason-code movement by product.
+
+BOUNDARY:
+    Reason-code movement is internal simulated strategy explainability.
+
+    It is not customer communication or regulatory notice evidence.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.8A Primary reason-code distribution by comparison side.
+-----------------------------------------------------------------------------------------------*/
+
+WITH reason_distribution AS (
+    SELECT
+        &#39;BASELINE&#39;::TEXT AS comparison_side,
+        baseline_primary_reason_family AS primary_reason_family,
+        baseline_primary_reason_code AS primary_reason_code,
+        COUNT(*) AS row_count
+    FROM tmp_m2_strategy_comparison_matched_rows
+    GROUP BY
+        baseline_primary_reason_family,
+        baseline_primary_reason_code
+
+    UNION ALL
+
+    SELECT
+        &#39;CHALLENGER&#39;::TEXT AS comparison_side,
+        challenger_primary_reason_family AS primary_reason_family,
+        challenger_primary_reason_code AS primary_reason_code,
+        COUNT(*) AS row_count
+    FROM tmp_m2_strategy_comparison_matched_rows
+    GROUP BY
+        challenger_primary_reason_family,
+        challenger_primary_reason_code
+)
+
+SELECT
+    comparison_side,
+    primary_reason_family,
+    primary_reason_code,
+    row_count,
+
+    ROUND(
+        100.0 * row_count::NUMERIC
+        / NULLIF(SUM(row_count) OVER (PARTITION BY comparison_side), 0),
+        2
+    ) AS pct_within_comparison_side
+
+FROM reason_distribution
+
+ORDER BY
+    comparison_side,
+    row_count DESC,
+    primary_reason_family,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.8B Primary reason-code migration matrix.
+
+Interpretation:
+    Use this output to understand how explanation themes changed applicant by applicant.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    baseline_primary_reason_family,
+    baseline_primary_reason_code,
+
+    challenger_primary_reason_family,
+    challenger_primary_reason_code,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_matched_population,
+
+    AVG(delta_approved_amount) AS avg_delta_approved_amount,
+    AVG(delta_approved_expected_loss_amount) AS avg_delta_approved_expected_loss_amount
+
+FROM tmp_m2_strategy_comparison_matched_rows
+
+GROUP BY
+    baseline_primary_reason_family,
+    baseline_primary_reason_code,
+    challenger_primary_reason_family,
+    challenger_primary_reason_code
+
+ORDER BY
+    row_count DESC,
+    baseline_primary_reason_family,
+    baseline_primary_reason_code,
+    challenger_primary_reason_family,
+    challenger_primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.8C Product × reason-code movement.
+
+Interpretation:
+    Product concentration in reason-code movement may identify where policy guardrails,
+    affordability adjustments, or risk discipline are most active.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+
+    baseline_primary_reason_family,
+    baseline_primary_reason_code,
+
+    challenger_primary_reason_family,
+    challenger_primary_reason_code,
+
+    COUNT(*) AS row_count,
+
+    AVG(delta_approved_amount) AS avg_delta_approved_amount,
+    AVG(delta_approved_expected_loss_amount) AS avg_delta_approved_expected_loss_amount
+
+FROM tmp_m2_strategy_comparison_matched_rows
+
+GROUP BY
+    product_type_policy_key,
+    baseline_primary_reason_family,
+    baseline_primary_reason_code,
+    challenger_primary_reason_family,
+    challenger_primary_reason_code
+
+ORDER BY
+    product_type_policy_key,
+    row_count DESC,
+    baseline_primary_reason_code,
+    challenger_primary_reason_code;
+
+
+
+/***************************************************************************************************
+SECTION 13.9 — SIMULATED OFFER-EXPOSURE AND ECONOMIC TRANSITION DIAGNOSTICS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Show how simulated offer exposure, approved exposure, affordability, and approved Expected Loss
+    moved under the challenger.
+
+    Section 13.9 answers:
+
+        &quot;Did the challenger change access, exposure capture, affordability, and approved Expected Loss
+         in ways that are visible and explainable?&quot;
+
+SQL PURPOSE:
+    1. Summarize simulated offer-exposure flag transitions.
+    2. Summarize approved exposure deltas by outcome migration type.
+    3. Summarize approved Expected Loss deltas by outcome migration type.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.9A Simulated offer-exposure flag transition.
+
+Interpretation:
+    FALSE → TRUE:
+        access expansion.
+
+    TRUE → FALSE:
+        risk tightening or review / no-offer shift.
+
+    TRUE → TRUE:
+        retained simulated positive offer exposure, possibly with changed approved amount.
+
+Boundary:
+    simulated_offer_exposure_flag is simulated positive offer exposure, not booked exposure.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    baseline_simulated_offer_exposure_flag,
+    challenger_simulated_offer_exposure_flag,
+
+    CASE
+        WHEN baseline_simulated_offer_exposure_flag IS TRUE
+         AND challenger_simulated_offer_exposure_flag IS TRUE
+            THEN &#39;OFFER_EXPOSURE_RETAINED&#39;
+
+        WHEN baseline_simulated_offer_exposure_flag IS FALSE
+         AND challenger_simulated_offer_exposure_flag IS TRUE
+            THEN &#39;OFFER_EXPOSURE_GAINED&#39;
+
+        WHEN baseline_simulated_offer_exposure_flag IS TRUE
+         AND challenger_simulated_offer_exposure_flag IS FALSE
+            THEN &#39;OFFER_EXPOSURE_REMOVED&#39;
+
+        ELSE &#39;NO_OFFER_EXPOSURE_BOTH&#39;
+    END AS offer_exposure_transition_type,
+
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_matched_population,
+
+    SUM(COALESCE(baseline_approved_amount, 0)) AS total_baseline_approved_amount,
+    SUM(COALESCE(challenger_approved_amount, 0)) AS total_challenger_approved_amount,
+
+    SUM(COALESCE(challenger_approved_amount, 0))
+        - SUM(COALESCE(baseline_approved_amount, 0))
+        AS delta_total_approved_amount,
+
+    SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+        AS total_baseline_approved_expected_loss_amount,
+
+    SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+        AS total_challenger_approved_expected_loss_amount,
+
+    SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+        - SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+        AS delta_total_approved_expected_loss_amount
+
+FROM tmp_m2_strategy_comparison_matched_rows
+
+GROUP BY
+    baseline_simulated_offer_exposure_flag,
+    challenger_simulated_offer_exposure_flag
+
+ORDER BY
+    offer_exposure_transition_type;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.9B Approved exposure movement by decision migration type.
+
+Purpose:
+    Connect outcome migration to exposure movement.
+
+Interpretation:
+    Large exposure reduction with retained offer exposure may indicate counteroffer management.
+    Exposure removal may indicate risk discipline or manual-review / decline migration.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_migration_type,
+
+    COUNT(*) AS row_count,
+
+    SUM(COALESCE(baseline_approved_amount, 0)) AS total_baseline_approved_amount,
+    SUM(COALESCE(challenger_approved_amount, 0)) AS total_challenger_approved_amount,
+
+    SUM(COALESCE(challenger_approved_amount, 0))
+        - SUM(COALESCE(baseline_approved_amount, 0))
+        AS delta_total_approved_amount,
+
+    AVG(delta_approved_amount) AS avg_delta_approved_amount,
+
+    AVG(baseline_approved_payment_to_income_ratio)
+        FILTER (WHERE baseline_simulated_offer_exposure_flag IS TRUE)
+        AS avg_baseline_approved_pti_offer_rows,
+
+    AVG(challenger_approved_payment_to_income_ratio)
+        FILTER (WHERE challenger_simulated_offer_exposure_flag IS TRUE)
+        AS avg_challenger_approved_pti_offer_rows
+
+FROM tmp_m2_strategy_comparison_matched_rows
+
+GROUP BY decision_migration_type
+
+ORDER BY
+    ABS(SUM(COALESCE(challenger_approved_amount, 0))
+        - SUM(COALESCE(baseline_approved_amount, 0))) DESC,
+    decision_migration_type;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.9C Approved Expected Loss movement by decision migration type.
+
+Purpose:
+    Connect outcome migration to approved-exposure Expected Loss movement.
+
+Boundary:
+    approved_expected_loss_amount is a synthetic strategy metric, not a production loss forecast.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_migration_type,
+
+    COUNT(*) AS row_count,
+
+    SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+        AS total_baseline_approved_expected_loss_amount,
+
+    SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+        AS total_challenger_approved_expected_loss_amount,
+
+    SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+        - SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+        AS delta_total_approved_expected_loss_amount,
+
+    AVG(delta_approved_expected_loss_amount)
+        AS avg_delta_approved_expected_loss_amount,
+
+    SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+        / NULLIF(SUM(COALESCE(baseline_approved_amount, 0)), 0)
+        AS baseline_approved_expected_loss_rate,
+
+    SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+        / NULLIF(SUM(COALESCE(challenger_approved_amount, 0)), 0)
+        AS challenger_approved_expected_loss_rate
+
+FROM tmp_m2_strategy_comparison_matched_rows
+
+GROUP BY decision_migration_type
+
+ORDER BY
+    ABS(
+        SUM(COALESCE(challenger_approved_expected_loss_amount, 0))
+        - SUM(COALESCE(baseline_approved_expected_loss_amount, 0))
+    ) DESC,
+    decision_migration_type;
+
+
+
+/***************************************************************************************************
+SECTION 13.10 — MATCHED SOURCE-FIELD CONSISTENCY DIAGNOSTIC
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that matched baseline and challenger rows share the same immutable Module 1 source fields.
+
+    Section 13.10 answers:
+
+        &quot;Can the matched comparison be interpreted as downstream Module 2 strategy movement, or do
+         source-field differences require review first?&quot;
+
+SQL PURPOSE:
+    1. Compare immutable source fields using IS DISTINCT FROM.
+    2. Count mismatch types.
+    3. Materialize tmp_m2_strategy_comparison_source_consistency.
+    4. Display the source-consistency diagnostic.
+    5. Display a limited sample of mismatched rows where applicable.
+
+WHY THIS SECTION MATTERS:
+    Matched comparison is only clean when baseline and challenger rows represent the same synthetic
+    applicant under the same Module 1 source conditions.
+
+    If source fields differ, the comparison may reflect:
+        population drift,
+        source-selection error,
+        upstream scenario mismatch,
+        archive slice mismatch,
+        or manual archive corruption.
+
+BOUNDARY:
+    This section is read-only.
+    It does not repair mismatches.
+    It does not mutate archive rows.
+    It does not recalculate decisions.
+    It does not recalculate approved exposure or Expected Loss.
+
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_strategy_comparison_source_consistency
+ON COMMIT PRESERVE ROWS
+AS
+WITH readiness AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_readiness
+    LIMIT 1
+),
+
+field_flags AS (
+    /***********************************************************************************************
+    One row per matched applicant with nullable-safe mismatch flags.
+
+    SQL mechanics:
+        IS DISTINCT FROM treats NULL versus non-NULL as different and NULL versus NULL as equal.
+    ***********************************************************************************************/
+    SELECT
+        application_id,
+
+        (
+            baseline_product_type_policy_key IS DISTINCT FROM challenger_product_type_policy_key
+        ) AS product_type_mismatch_flag,
+
+        (
+            baseline_score_band_policy_key IS DISTINCT FROM challenger_score_band_policy_key
+        ) AS score_band_mismatch_flag,
+
+        (
+            baseline_credit_score IS DISTINCT FROM challenger_credit_score
+        ) AS credit_score_mismatch_flag,
+
+        (
+            baseline_annual_income IS DISTINCT FROM challenger_annual_income
+        ) AS annual_income_mismatch_flag,
+
+        (
+            baseline_requested_amount IS DISTINCT FROM challenger_requested_amount
+        ) AS requested_amount_mismatch_flag,
+
+        (
+            baseline_requested_monthly_payment_proxy IS DISTINCT FROM challenger_requested_monthly_payment_proxy
+        ) AS requested_payment_mismatch_flag,
+
+        (
+            baseline_requested_payment_to_income_ratio IS DISTINCT FROM challenger_requested_payment_to_income_ratio
+        ) AS requested_pti_mismatch_flag,
+
+        (
+            baseline_amount_to_income_ratio IS DISTINCT FROM challenger_amount_to_income_ratio
+        ) AS amount_to_income_mismatch_flag,
+
+        (
+            baseline_estimated_pd IS DISTINCT FROM challenger_estimated_pd
+        ) AS estimated_pd_mismatch_flag,
+
+        (
+            baseline_estimated_lgd IS DISTINCT FROM challenger_estimated_lgd
+        ) AS estimated_lgd_mismatch_flag,
+
+        (
+            baseline_requested_expected_loss_amount IS DISTINCT FROM challenger_requested_expected_loss_amount
+        ) AS requested_expected_loss_mismatch_flag,
+
+        (
+            baseline_module1_scenario_set_name IS DISTINCT FROM challenger_module1_scenario_set_name
+            OR baseline_module1_scenario_name IS DISTINCT FROM challenger_module1_scenario_name
+            OR baseline_population_id IS DISTINCT FROM challenger_population_id
+        ) AS module1_lineage_mismatch_flag
+
+    FROM tmp_m2_strategy_comparison_matched_rows
+),
+
+summary AS (
+    /***********************************************************************************************
+    Aggregate mismatch counts.
+
+    A clean matched strategy comparison should have all mismatch counts equal to zero.
+    ***********************************************************************************************/
+    SELECT
+        COUNT(*) AS matched_application_count,
+
+        COUNT(*) FILTER (
+            WHERE product_type_mismatch_flag
+               OR score_band_mismatch_flag
+               OR credit_score_mismatch_flag
+               OR annual_income_mismatch_flag
+               OR requested_amount_mismatch_flag
+               OR requested_payment_mismatch_flag
+               OR requested_pti_mismatch_flag
+               OR amount_to_income_mismatch_flag
+               OR estimated_pd_mismatch_flag
+               OR estimated_lgd_mismatch_flag
+               OR requested_expected_loss_mismatch_flag
+               OR module1_lineage_mismatch_flag
+        ) AS source_field_mismatch_count,
+
+        COUNT(*) FILTER (WHERE product_type_mismatch_flag)
+            AS product_type_mismatch_count,
+
+        COUNT(*) FILTER (WHERE score_band_mismatch_flag)
+            AS score_band_mismatch_count,
+
+        COUNT(*) FILTER (WHERE credit_score_mismatch_flag)
+            AS credit_score_mismatch_count,
+
+        COUNT(*) FILTER (WHERE annual_income_mismatch_flag)
+            AS annual_income_mismatch_count,
+
+        COUNT(*) FILTER (WHERE requested_amount_mismatch_flag)
+            AS requested_amount_mismatch_count,
+
+        COUNT(*) FILTER (WHERE requested_payment_mismatch_flag)
+            AS requested_payment_mismatch_count,
+
+        COUNT(*) FILTER (WHERE requested_pti_mismatch_flag)
+            AS requested_pti_mismatch_count,
+
+        COUNT(*) FILTER (WHERE amount_to_income_mismatch_flag)
+            AS amount_to_income_mismatch_count,
+
+        COUNT(*) FILTER (WHERE estimated_pd_mismatch_flag)
+            AS estimated_pd_mismatch_count,
+
+        COUNT(*) FILTER (WHERE estimated_lgd_mismatch_flag)
+            AS estimated_lgd_mismatch_count,
+
+        COUNT(*) FILTER (WHERE requested_expected_loss_mismatch_flag)
+            AS requested_expected_loss_mismatch_count,
+
+        COUNT(*) FILTER (WHERE module1_lineage_mismatch_flag)
+            AS module1_lineage_mismatch_count
+
+    FROM field_flags
+)
+
+SELECT
+    r.comparison_group_id,
+    r.comparison_set_name,
+
+    r.baseline_module2_run_id,
+    r.challenger_module2_run_id,
+
+    r.module1_scenario_set_name,
+    r.module1_scenario_name,
+    r.population_id,
+
+    r.readiness_status,
+
+    s.matched_application_count,
+    s.source_field_mismatch_count,
+
+    s.product_type_mismatch_count,
+    s.score_band_mismatch_count,
+    s.credit_score_mismatch_count,
+    s.annual_income_mismatch_count,
+    s.requested_amount_mismatch_count,
+    s.requested_payment_mismatch_count,
+    s.requested_pti_mismatch_count,
+    s.amount_to_income_mismatch_count,
+    s.estimated_pd_mismatch_count,
+    s.estimated_lgd_mismatch_count,
+    s.requested_expected_loss_mismatch_count,
+    s.module1_lineage_mismatch_count,
+
+    CASE
+        WHEN r.readiness_status &lt;&gt; &#39;READY_FOR_MATCHED_COMPARISON&#39;
+            THEN &#39;NOT_APPLICABLE_NOT_READY_FOR_MATCHED_COMPARISON&#39;
+
+        WHEN s.source_field_mismatch_count = 0
+            THEN &#39;SOURCE_FIELDS_MATCH&#39;
+
+        ELSE &#39;SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED&#39;
+    END AS source_consistency_status
+
+FROM readiness r
+CROSS JOIN summary s;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.10A Matched source-field consistency output.
+
+Expected:
+    source_consistency_status = SOURCE_FIELDS_MATCH
+    when readiness_status = READY_FOR_MATCHED_COMPARISON.
+
+Interpretation:
+    Non-zero mismatch counts should be reviewed before interpreting comparison deltas as pure Module
+    2 strategy movement.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    comparison_group_id,
+    comparison_set_name,
+
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    readiness_status,
+
+    matched_application_count,
+    source_field_mismatch_count,
+
+    product_type_mismatch_count,
+    score_band_mismatch_count,
+    credit_score_mismatch_count,
+    annual_income_mismatch_count,
+    requested_amount_mismatch_count,
+    requested_payment_mismatch_count,
+    requested_pti_mismatch_count,
+    amount_to_income_mismatch_count,
+    estimated_pd_mismatch_count,
+    estimated_lgd_mismatch_count,
+    requested_expected_loss_mismatch_count,
+    module1_lineage_mismatch_count,
+
+    source_consistency_status
+
+FROM tmp_m2_strategy_comparison_source_consistency;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+13.10B Source-field mismatch sample.
+
+Purpose:
+    Display up to 50 mismatched rows if source consistency fails.
+
+Expected:
+    zero rows when source_consistency_status = SOURCE_FIELDS_MATCH.
+
+Boundary:
+    This is a diagnostic sample. It does not repair source mismatches.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    application_id,
+
+    baseline_product_type_policy_key,
+    challenger_product_type_policy_key,
+
+    baseline_score_band_policy_key,
+    challenger_score_band_policy_key,
+
+    baseline_credit_score,
+    challenger_credit_score,
+
+    baseline_annual_income,
+    challenger_annual_income,
+
+    baseline_requested_amount,
+    challenger_requested_amount,
+
+    baseline_requested_monthly_payment_proxy,
+    challenger_requested_monthly_payment_proxy,
+
+    baseline_requested_payment_to_income_ratio,
+    challenger_requested_payment_to_income_ratio,
+
+    baseline_amount_to_income_ratio,
+    challenger_amount_to_income_ratio,
+
+    baseline_estimated_pd,
+    challenger_estimated_pd,
+
+    baseline_estimated_lgd,
+    challenger_estimated_lgd,
+
+    baseline_requested_expected_loss_amount,
+    challenger_requested_expected_loss_amount,
+
+    baseline_module1_scenario_set_name,
+    challenger_module1_scenario_set_name,
+
+    baseline_module1_scenario_name,
+    challenger_module1_scenario_name,
+
+    baseline_population_id,
+    challenger_population_id
+
+FROM tmp_m2_strategy_comparison_matched_rows
+
+WHERE baseline_product_type_policy_key IS DISTINCT FROM challenger_product_type_policy_key
+   OR baseline_score_band_policy_key IS DISTINCT FROM challenger_score_band_policy_key
+   OR baseline_credit_score IS DISTINCT FROM challenger_credit_score
+   OR baseline_annual_income IS DISTINCT FROM challenger_annual_income
+   OR baseline_requested_amount IS DISTINCT FROM challenger_requested_amount
+   OR baseline_requested_monthly_payment_proxy IS DISTINCT FROM challenger_requested_monthly_payment_proxy
+   OR baseline_requested_payment_to_income_ratio IS DISTINCT FROM challenger_requested_payment_to_income_ratio
+   OR baseline_amount_to_income_ratio IS DISTINCT FROM challenger_amount_to_income_ratio
+   OR baseline_estimated_pd IS DISTINCT FROM challenger_estimated_pd
+   OR baseline_estimated_lgd IS DISTINCT FROM challenger_estimated_lgd
+   OR baseline_requested_expected_loss_amount IS DISTINCT FROM challenger_requested_expected_loss_amount
+   OR baseline_module1_scenario_set_name IS DISTINCT FROM challenger_module1_scenario_set_name
+   OR baseline_module1_scenario_name IS DISTINCT FROM challenger_module1_scenario_name
+   OR baseline_population_id IS DISTINCT FROM challenger_population_id
+
+ORDER BY application_id
+
+LIMIT 50;
+
+
+
+/***************************************************************************************************
+SECTION 13.11 — COMPACT COMPARISON READINESS RECAP
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide one compact end-of-section status row for downstream QA and evidence interpretation.
+
+    Section 13.11 answers:
+
+        &quot;Can this selected comparison be interpreted as a ready, source-consistent matched comparison?&quot;
+
+SQL PURPOSE:
+    1. Combine comparison readiness with source-field consistency.
+    2. Produce a compact final Section 13 status label.
+
+****************************************************************************************************/
+
+SELECT
+    r.comparison_group_id,
+    r.comparison_set_name,
+
+    r.showcase_id,
+    r.showcase_name,
+
+    r.baseline_module2_run_id,
+    r.challenger_module2_run_id,
+
+    r.module1_scenario_set_name,
+    r.module1_scenario_name,
+    r.population_id,
+
+    r.baseline_strategy_name,
+    r.challenger_strategy_name,
+
+    r.baseline_archived_row_count,
+    r.challenger_archived_row_count,
+    r.matched_application_id_count,
+    r.baseline_only_application_id_count,
+    r.challenger_only_application_id_count,
+
+    r.readiness_status,
+
+    s.source_field_mismatch_count,
+    s.source_consistency_status,
+
+    CASE
+        WHEN r.readiness_status = &#39;READY_FOR_MATCHED_COMPARISON&#39;
+         AND s.source_consistency_status = &#39;SOURCE_FIELDS_MATCH&#39;
+            THEN &#39;SECTION_13_READY_FOR_MATCHED_COMPARISON_INTERPRETATION&#39;
+
+        WHEN r.readiness_status &lt;&gt; &#39;READY_FOR_MATCHED_COMPARISON&#39;
+            THEN &#39;SECTION_13_INVENTORY_ONLY_COMPARISON_NOT_READY&#39;
+
+        WHEN s.source_consistency_status &lt;&gt; &#39;SOURCE_FIELDS_MATCH&#39;
+            THEN &#39;SECTION_13_REVIEW_SOURCE_FIELD_MISMATCH_BEFORE_INTERPRETING_DELTAS&#39;
+
+        ELSE &#39;SECTION_13_REVIEW_COMPARISON_STATUS&#39;
+    END AS section_13_comparison_status,
+
+    r.expected_comparison_storyline,
+    r.primary_metric_focus
+
+FROM tmp_m2_strategy_comparison_readiness r
+
+CROSS JOIN tmp_m2_strategy_comparison_source_consistency s;
+
+
+
+/***************************************************************************************************
+END OF SECTION 13 — ARCHIVE INVENTORY AND MATCHED STRATEGY COMPARISON FRAMEWORK
+
+If execution reaches this point:
+    1. credit_decisioning_sim.strategy_decisions_archive exists.
+    2. credit_decisioning_sim.strategy_comparison_campaign_registry exists.
+    3. Required comparison registry columns exist.
+    4. Exactly one active comparison registry row was selected.
+    5. tmp_m2_strategy_comparison_params exists.
+    6. tmp_m2_strategy_comparison_readiness exists.
+    7. tmp_m2_strategy_comparison_matched_rows exists.
+    8. tmp_m2_strategy_comparison_source_consistency exists.
+    9. Archive inventory diagnostics are available.
+    10. Archive decision-outcome inventory is available.
+    11. Archive grain duplicate diagnostics are available.
+    12. Selected comparison readiness diagnostics are available.
+    13. Matched baseline / challenger applicant rows are available when readiness permits.
+    14. Portfolio-level baseline and challenger summaries are available.
+    15. Portfolio-level challenger-minus-baseline delta summaries are available.
+    16. Decision outcome migration matrix is available.
+    17. Matched applicant-level delta sample is available.
+    18. Product-level strategy movement diagnostics are available.
+    19. Score-band strategy movement diagnostics are available.
+    20. Product × score strategy movement diagnostics are available.
+    21. Reason-code distribution and movement diagnostics are available.
+    22. Simulated offer-exposure transition diagnostics are available.
+    23. Approved exposure movement diagnostics are available.
+    24. Approved Expected Loss movement diagnostics are available.
+    25. Matched source-field consistency diagnostics are available.
+    26. Compact Section 13 readiness recap is available.
+
+Section 13 established:
+    1. Governed comparison selection through the persistent comparison campaign registry.
+    2. Archive inventory visibility.
+    3. Comparison readiness visibility.
+    4. Applicant-level matched comparison helper table.
+    5. Outcome migration diagnostics.
+    6. Segment-level comparison diagnostics.
+    7. Reason-code movement diagnostics.
+    8. Offer-exposure, approved-exposure, and approved Expected Loss transition diagnostics.
+    9. Immutable source-field consistency diagnostics.
+    10. Compatibility outputs needed by Section 14 matched comparison readiness review.
+
+No archive rows have been inserted.
+No archive rows have been deleted.
+No archive rows have been updated.
+No latest-run rows have been modified.
+No decision outcomes have been recalculated.
+No simulated reason codes have been recalculated.
+No approved exposure has been recalculated.
+No requested or approved Expected Loss values have been recalculated.
+No strategy parameters have been modified.
+No product-policy parameters have been modified.
+No full Module 2 QA framework has been created.
+No strategy frontier summary has been created.
+No executive evidence rows have been inserted.
+No BRD or Validation Summary documentation has been drafted.
+
+Next section:
+    Section 14 should validate the completed latest-run output and consume the Section 13 comparison
+    readiness and source-consistency diagnostics where available.
+
+***************************************************************************************************/
+</code></pre>
+</div></article><article id="c038-m01602" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01602 · 2026-05-12T12:11:54.937000-04:00 · active path</p><div class="body"><p>proceed with pass 4 - operational pipeline commentary and compatibility tightening (section 14 - module 1 source selection and lineage normalization)</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

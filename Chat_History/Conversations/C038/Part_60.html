@@ -1,0 +1,1488 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 60</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 60 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_59.html">Previous</a><a href="Part_61.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m01051" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01051 · 2026-05-10T11:27:01.877130-04:00 · active path</p><div class="body"><p>Using your uploaded Section 16.4–16.5 as the base, here is the full copy-paste replacement with the elite commentary / header pass applied. I preserved the evidence-capture logic and strengthened the instructional comments around <strong>why the evidence is captured, how the SQL mechanics work, what to look for after execution, and how to interpret the credit-risk and evidence-layer outputs</strong>. fileciteturn130file0</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 16.4 — CAPTURE CURRENT RUN PARAMETER SNAPSHOT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Persist the exact active Module 2 strategy parameter card, product-policy parameter card, and
+    current-run registry / story metadata that produced the completed strategy output.
+
+    Section 16.4 answers:
+
+        &quot;What exact parameter configuration and campaign registry metadata produced this completed
+         Module 2 strategy run?&quot;
+
+SQL PURPOSE:
+    1. Read the one-row current run key from tmp_m2_current_run_key.
+    2. Read the one-row current run story metadata from tmp_m2_current_run_story_params.
+    3. Snapshot the active Module 2 strategy parameter row as JSONB.
+    4. Snapshot all product-policy parameter rows as an ordered JSONB array.
+    5. Snapshot the active run-story metadata row as JSONB.
+    6. Generate an evidence_snapshot_id for this evidence-capture event.
+    7. Generate a parameter_snapshot_hash for quick parameter payload comparison.
+    8. Insert the parameter snapshot into:
+            credit_decisioning_sim.strategy_run_parameter_snapshot
+
+WHY THIS SECTION EXISTS:
+    The completed latest-run output tells reviewers what happened.
+
+    The parameter snapshot tells reviewers which governed strategy configuration produced that result.
+
+    Without this snapshot, later documentation may preserve outcome metrics but lose the exact
+    thresholds, product caps, counteroffer rules, archive controls, registry IDs, and story labels
+    that were active when the run was captured.
+
+CREDIT RISK INTERPRETATION:
+    Strategy parameters explain the intended risk posture of the run.
+
+    Examples:
+        tighter synthetic estimated-risk thresholds can reduce simulated offer exposure;
+        tighter PTI thresholds can increase counteroffer or manual-review pressure;
+        tighter product approved-Expected-Loss caps can reduce approved exposure;
+        failed_counteroffer_resolution can determine whether infeasible counteroffers remain
+        unresolved or become final no-offer outcomes.
+
+    Product-policy parameters explain product-specific treatment.
+
+    Examples:
+        product caps can drive product-level counteroffer concentration;
+        product minimums can create failed counteroffer feasibility;
+        product approved-Expected-Loss caps can drive product × score risk tightening;
+        rounding increments can affect final approved amount patterns.
+
+REGISTRY PATCH:
+    The parameter snapshot stores formal campaign registry fields explicitly and also stores the full
+    run_story_params_jsonb payload.
+
+    This makes each parameter snapshot traceable to:
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        comparison_group_id,
+        validation_evidence_group_id,
+        readme_storyline_label,
+        linkedin_post_sequence,
+        validation_summary_section_hint,
+        and run_registry_match_status.
+
+WHY JSONB IS USED:
+    The strategy parameter card and product-policy parameter card are temporary execution objects.
+
+    JSONB preserves their complete payload inside the persistent evidence layer without requiring
+    every parameter to become a separate evidence-table column.
+
+    This matters because parameter tables may evolve over time.
+
+    JSONB lets the evidence layer preserve complete configuration detail even when future documentation
+    uses only selected fields.
+
+WHY PRODUCT POLICY SNAPSHOT IS ORDERED:
+    jsonb_agg(... ORDER BY product_type) makes the product-policy snapshot deterministic.
+
+    Deterministic ordering makes review easier because:
+        visual comparison is cleaner,
+        hash comparison is more stable,
+        troubleshooting is less ambiguous,
+        and two identical product-policy payloads are less likely to appear different solely because
+        row order changed.
+
+PARAMETER SNAPSHOT HASH:
+    parameter_snapshot_hash is a compact fingerprint of:
+        active strategy parameters,
+        product-policy parameters,
+        and run-story parameters.
+
+    It helps reviewers quickly identify whether two evidence rows were captured from the same
+    parameter payload.
+
+    It is not a replacement for the full JSONB payload.
+
+    The JSONB fields remain the authoritative parameter evidence.
+
+EVIDENCE SNAPSHOT ID:
+    evidence_snapshot_id includes the current timestamp so repeated evidence captures for the same
+    technical run key receive different snapshot IDs.
+
+    It is audit metadata.
+
+    It is not the run-key grain.
+
+    It should not replace:
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id.
+
+WHAT TO LOOK FOR AFTER THIS SECTION:
+    credit_decisioning_sim.strategy_run_parameter_snapshot should contain exactly one row for the
+    current run key after Section 16.4 executes, because Section 16.2 deleted prior rows for the same
+    run key before this insert.
+
+    The inserted row should include:
+        strategy_params_jsonb,
+        product_policy_params_jsonb,
+        run_story_params_jsonb,
+        parameter_snapshot_hash,
+        module2_run_id,
+        validation_evidence_group_id,
+        and run_registry_match_status.
+
+REVIEW TRIGGERS:
+    strategy_params_jsonb is NULL:
+        active strategy parameter card was not captured.
+
+    product_policy_params_jsonb is NULL:
+        product-policy configuration was not captured.
+
+    run_story_params_jsonb is NULL:
+        registry / story metadata was not captured.
+
+    run_registry_match_status is not RUN_REGISTRY_MATCHED for a formal campaign run:
+        registry linkage should be reviewed before documentation.
+
+MODULE 3 READINESS:
+    This snapshot preserves product policy and strategy settings that may later support:
+        growth analysis,
+        economics design,
+        APR proxy interpretation,
+        product profitability design,
+        exposure strategy review,
+        and portfolio mix analysis.
+
+    Section 16.4 does not calculate Module 3 economics.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CTE:
+        snapshot_payload builds a single reusable evidence payload before the INSERT SELECT.
+
+    to_jsonb:
+        Converts a row into a JSONB object.
+
+    jsonb_agg:
+        Aggregates many product-policy rows into one JSONB array.
+
+    ORDER BY inside jsonb_agg:
+        Stabilizes product-policy snapshot order.
+
+    CROSS JOIN:
+        Combines the one-row current run key with the one active story row.
+
+    MD5:
+        Creates compact fingerprint values.
+
+    COALESCE:
+        Prevents NULL JSONB text from breaking parameter_snapshot_hash creation.
+
+BOUNDARY:
+    Section 16.4 persists parameter evidence only.
+
+    Section 16.4 does not modify active parameters.
+    Section 16.4 does not modify latest-run output.
+    Section 16.4 does not modify archive output.
+    Section 16.4 does not modify campaign registry rows.
+    Section 16.4 does not recalculate decisions.
+    Section 16.4 does not recalculate approved exposure.
+    Section 16.4 does not recalculate approved Expected Loss.
+    Section 16.4 does not reassign simulated reason codes.
+    Section 16.4 does not calculate revenue, earnings, pricing, funding cost, profitability, capital,
+    or risk-adjusted margin.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.4A Insert current run parameter snapshot.
+
+Business purpose:
+    Preserve the exact parameter payload that produced the current run evidence.
+
+SQL logic:
+    1. snapshot_payload reads the current run key.
+    2. snapshot_payload reads the current registry / story metadata.
+    3. snapshot_payload converts the active strategy parameter row to JSONB.
+    4. snapshot_payload converts all product-policy rows to an ordered JSONB array.
+    5. snapshot_payload converts the active story metadata row to JSONB.
+    6. The final SELECT inserts the payload into the persistent parameter snapshot table.
+    7. The final SELECT calculates evidence_snapshot_id and parameter_snapshot_hash.
+
+How to interpret the inserted row:
+    strategy_params_jsonb:
+        full active Module 2 strategy parameter card.
+
+    product_policy_params_jsonb:
+        full product-policy parameter table as an ordered JSONB array.
+
+    run_story_params_jsonb:
+        registry and story metadata used by Section 16 evidence capture.
+
+    parameter_snapshot_hash:
+        compact comparison fingerprint for the parameter payload.
+
+Important:
+    CURRENT_TIMESTAMP is used for capture timing.
+
+    It should not be used as matched comparison grain.
+-----------------------------------------------------------------------------------------------*/
+
+INSERT INTO credit_decisioning_sim.strategy_run_parameter_snapshot (
+    evidence_snapshot_ts,
+    evidence_snapshot_id,
+
+    campaign_registry_required_flag,
+    registry_match_count,
+    run_registry_match_status,
+
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    readme_storyline_label,
+    linkedin_post_sequence,
+    validation_summary_section_hint,
+
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_params_jsonb,
+    product_policy_params_jsonb,
+    run_story_params_jsonb,
+    parameter_snapshot_hash
+)
+WITH snapshot_payload AS (
+    SELECT
+        /*******************************************************************************************
+        Current run key.
+
+        tmp_m2_current_run_key should contain exactly one row because Section 16.0 already enforced
+        single-run-key cardinality.
+
+        This run key is the technical evidence grain.
+
+        It identifies the current Module 2 strategy applied to the current Module 1 scenario and
+        population.
+        *******************************************************************************************/
+        k.*,
+
+        /*******************************************************************************************
+        Current run registry / story metadata.
+
+        tmp_m2_current_run_story_params should contain exactly one active row because Section 16.0
+        already enforced story-row cardinality.
+
+        These fields connect the technical SQL run key to the campaign roadmap, comparison grouping,
+        validation-evidence grouping, README storyline, and LinkedIn evidence sequence.
+        *******************************************************************************************/
+        s.campaign_registry_required_flag,
+        s.registry_match_count,
+        s.run_registry_match_status,
+
+        s.module1_run_id,
+        s.module2_run_id,
+        s.run_sequence_number,
+
+        s.showcase_id,
+        s.showcase_name,
+        s.comparison_group_id,
+        s.validation_evidence_group_id,
+
+        s.readme_storyline_label,
+        s.linkedin_post_sequence,
+        s.validation_summary_section_hint,
+
+        /*******************************************************************************************
+        Active strategy parameter snapshot.
+
+        SQL mechanics:
+            to_jsonb(sp) converts the active strategy parameter row into a JSONB object.
+
+            LIMIT 1 is safe because Section 3 and Section 16.0 are designed to enforce exactly one
+            active strategy parameter row.
+
+        Credit strategy interpretation:
+            This JSONB payload preserves the exact strategy configuration, including:
+                strategy identity,
+                Module 1 source selection,
+                archive controls,
+                campaign registry requirement,
+                synthetic-risk thresholds,
+                PTI thresholds,
+                DTI thresholds,
+                rule controls,
+                decision conventions,
+                and failed-counteroffer resolution.
+        *******************************************************************************************/
+        (
+            SELECT to_jsonb(sp)
+            FROM tmp_module2_strategy_params sp
+            WHERE sp.active_strategy_flag IS TRUE
+            LIMIT 1
+        ) AS strategy_params_jsonb,
+
+        /*******************************************************************************************
+        Product-policy parameter snapshot.
+
+        SQL mechanics:
+            jsonb_agg(to_jsonb(pp) ORDER BY pp.product_type) converts all product-policy rows into
+            a stable ordered JSONB array.
+
+        Credit strategy interpretation:
+            This JSONB payload preserves product-specific controls, including:
+                product PTI thresholds,
+                requested Expected Loss thresholds,
+                approved Expected Loss caps,
+                product maximum approved amounts,
+                product minimum approved amounts,
+                counteroffer minimum percentage,
+                maximum exposure reduction,
+                counteroffer target PTI,
+                and approved amount rounding controls.
+        *******************************************************************************************/
+        (
+            SELECT jsonb_agg(to_jsonb(pp) ORDER BY pp.product_type)
+            FROM tmp_module2_product_policy_params pp
+        ) AS product_policy_params_jsonb,
+
+        /*******************************************************************************************
+        Run-story metadata snapshot.
+
+        SQL mechanics:
+            to_jsonb(rsp) captures the active current-run story helper row.
+
+        Governance interpretation:
+            This JSONB payload preserves:
+                registry match status,
+                campaign run IDs,
+                fallback status if applicable,
+                expected storyline,
+                observed storyline placeholder,
+                validation notes placeholder,
+                README label,
+                LinkedIn sequence,
+                and validation-summary hint.
+        *******************************************************************************************/
+        (
+            SELECT to_jsonb(rsp)
+            FROM tmp_m2_current_run_story_params rsp
+            WHERE rsp.active_story_flag IS TRUE
+            LIMIT 1
+        ) AS run_story_params_jsonb
+
+    FROM tmp_m2_current_run_key k
+
+    /***********************************************************************************************
+    CROSS JOIN is intentional.
+
+    Section 16.0 requires exactly one active story row.
+
+    CROSS JOIN attaches that one story row to the one current run key so the final INSERT has a
+    single parameter snapshot payload.
+    ***********************************************************************************************/
+    CROSS JOIN tmp_m2_current_run_story_params s
+
+    WHERE s.active_story_flag IS TRUE
+)
+
+SELECT
+    CURRENT_TIMESTAMP AS evidence_snapshot_ts,
+
+    /***********************************************************************************************
+    Snapshot event ID.
+
+    SQL mechanics:
+        MD5 hashes the technical run key plus CURRENT_TIMESTAMP.
+
+    Interpretation:
+        This distinguishes separate evidence-capture events for the same run key.
+
+        It is not the evidence grain.
+    ***********************************************************************************************/
+    MD5(
+        strategy_set_name || &#39;|&#39;
+        || strategy_name || &#39;|&#39;
+        || strategy_version || &#39;|&#39;
+        || module1_scenario_set_name || &#39;|&#39;
+        || module1_scenario_name || &#39;|&#39;
+        || population_id || &#39;|&#39;
+        || CURRENT_TIMESTAMP::TEXT
+    ) AS evidence_snapshot_id,
+
+    /***********************************************************************************************
+    Registry / campaign evidence fields.
+
+    These values allow the parameter snapshot to be tied directly to the campaign registry and later
+    documentation artifacts.
+    ***********************************************************************************************/
+    campaign_registry_required_flag,
+    registry_match_count,
+    run_registry_match_status,
+
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    readme_storyline_label,
+    linkedin_post_sequence,
+    validation_summary_section_hint,
+
+    /***********************************************************************************************
+    Technical run identity and Module 1 lineage.
+
+    These fields preserve the SQL evidence grain alongside the registry metadata.
+    ***********************************************************************************************/
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    /***********************************************************************************************
+    Full parameter payloads.
+
+    These JSONB objects are the authoritative parameter snapshot evidence.
+    ***********************************************************************************************/
+    strategy_params_jsonb,
+    product_policy_params_jsonb,
+    run_story_params_jsonb,
+
+    /***********************************************************************************************
+    Parameter payload fingerprint.
+
+    SQL mechanics:
+        COALESCE(..., &#39;&#39;) protects the hash expression if any JSONB payload is unexpectedly NULL.
+
+    Interpretation:
+        This supports quick comparison across evidence rows.
+
+        The full JSONB payload remains the authoritative evidence.
+    ***********************************************************************************************/
+    MD5(
+        COALESCE(strategy_params_jsonb::TEXT, &#39;&#39;)
+        || &#39;|&#39;
+        || COALESCE(product_policy_params_jsonb::TEXT, &#39;&#39;)
+        || &#39;|&#39;
+        || COALESCE(run_story_params_jsonb::TEXT, &#39;&#39;)
+    ) AS parameter_snapshot_hash
+
+FROM snapshot_payload;
+
+
+
+/***************************************************************************************************
+END OF SECTION 16.4 — CURRENT RUN PARAMETER SNAPSHOT
+
+If execution reaches this point:
+    1. tmp_m2_current_run_key exists and contains exactly one run key.
+    2. tmp_m2_campaign_registry_current_run_match was consumed or safely fallback-initialized earlier.
+    3. tmp_m2_current_run_story_params exists and contains exactly one active story row.
+    4. Section 16 confirmed the latest-run output exists and is populated.
+    5. Section 16 confirmed Section 14 validation summary output is available.
+    6. Section 16 confirmed Section 15 frontier executive summary output is available.
+    7. Section 16 confirmed strategy and product-policy parameter tables are available.
+    8. Section 16 confirmed registry matching when campaign_registry_required_flag = TRUE.
+    9. Persistent evidence tables have been created or reused.
+    10. Existing persistent evidence tables have been schema-hardened for registry-linkage fields.
+    11. Prior evidence rows for the current run key have been deleted from evidence tables only.
+    12. Current Section 14 validation evidence detail has been inserted with registry IDs.
+    13. Current strategy / product-policy / story parameter snapshot has been inserted with registry
+        IDs and full JSONB payloads.
+
+No latest-run output rows have been modified.
+No archive rows have been modified.
+No strategy decision outcomes have been recalculated.
+No approved exposure values have been recalculated.
+No approved Expected Loss values have been recalculated.
+No simulated reason codes have been reassigned.
+No campaign registry rows have been modified.
+No Module 3 revenue, earnings, profitability, pricing, funding-cost, capital, or margin logic has been
+built.
+
+Next section:
+    Section 16.5 should persist product × score segment evidence with the same registry fields.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 16.5 — CAPTURE CURRENT RUN SEGMENT EVIDENCE SUMMARY
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Persist product × score-band evidence for the current completed Module 2 strategy run.
+
+    Section 16.5 answers:
+
+        &quot;Which product × score-band segments drove the current run&#39;s access, exposure, approved
+         Expected Loss, affordability, synthetic estimated-risk profile, and simulated reason-code
+         story?&quot;
+
+SQL PURPOSE:
+    1. Read the current latest-run output from credit_decisioning_sim.strategy_decisions.
+    2. Read current registry / story metadata from tmp_m2_current_run_story_params.
+    3. Group current-run evidence by:
+            product_type_policy_key
+            score_band_policy_key
+            product_score_policy_segment
+    4. Calculate segment-level decision counts and rates.
+    5. Calculate segment-level requested amount, approved amount, and approved amount capture rate.
+    6. Calculate segment-level APR proxy and term fields useful for future Module 3 design.
+    7. Calculate segment-level synthetic estimated-risk proxy, LGD, requested Expected Loss,
+       approved Expected Loss, and approved Expected Loss rate.
+    8. Calculate segment-level requested PTI and approved PTI.
+    9. Identify the top primary simulated reason code in each product × score segment.
+    10. Identify the top non-approval simulated reason code in each product × score segment.
+    11. Insert segment evidence into:
+            credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+REGISTRY PATCH:
+    Section 16.5 carries formal campaign registry fields into every segment evidence row:
+
+        campaign_registry_required_flag
+        registry_match_count
+        run_registry_match_status
+        module1_run_id
+        module2_run_id
+        run_sequence_number
+        showcase_id
+        showcase_name
+        comparison_group_id
+        validation_evidence_group_id
+        readme_storyline_label
+        linkedin_post_sequence
+        validation_summary_section_hint
+
+    This allows product × score evidence to be referenced directly in future:
+        Validation Summary,
+        README storyline,
+        LinkedIn evidence sequence,
+        executive review,
+        and comparison campaign documentation.
+
+INPUTS:
+    credit_decisioning_sim.strategy_decisions
+    tmp_m2_current_run_story_params
+
+OUTPUT:
+    credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+TARGET GRAIN:
+    One row per current run key
+    × product_type_policy_key
+    × score_band_policy_key
+    × product_score_policy_segment.
+
+WHY PRODUCT × SCORE SEGMENT EVIDENCE MATTERS:
+    The one-row executive evidence summary is intentionally compact.
+
+    Senior credit strategy review also needs the companion segment layer because strategy movement
+    often concentrates in specific product × score intersections.
+
+    Examples:
+        unsecured / weaker-score segments may drive approved Expected Loss;
+        revolving / weaker-score segments may drive decline concentration;
+        secured / stronger-score segments may drive approved amount;
+        near-prime product segments may drive counteroffer behavior.
+
+    Section 16.5 preserves that segment evidence so the executive narrative is supported by a
+    drill-down layer rather than by a single portfolio average.
+
+CREDIT RISK INTERPRETATION:
+    Product × score evidence connects three core credit strategy dimensions:
+
+        product:
+            exposure structure, payment mechanics, product caps, LGD, counteroffer feasibility,
+            approved amount, and approved Expected Loss.
+
+        score band:
+            borrower-quality segmentation, synthetic estimated-risk profile, decision routing,
+            offer-exposure rate, and policy-stop concentration.
+
+        final strategy outcome:
+            access, counteroffer, manual review, no-offer behavior, approved exposure, and approved
+            Expected Loss.
+
+    This table helps reviewers determine whether the portfolio story is broad-based or concentrated
+    in a few segments.
+
+WHAT TO LOOK FOR AFTER THIS SECTION:
+    credit_decisioning_sim.strategy_run_segment_evidence_summary should contain one row for every
+    product × score segment present in the current latest-run output.
+
+    Segment rows should carry the same:
+        module2_run_id,
+        showcase_id,
+        comparison_group_id,
+        validation_evidence_group_id,
+        and run_registry_match_status
+    as the one-row executive evidence summary that is inserted later.
+
+REVIEW TRIGGERS:
+    A product × score segment with high approved Expected Loss:
+        review product type, score band, approved amount, estimated_pd, estimated_lgd, and reason
+        code.
+
+    A product × score segment with high counteroffer rate:
+        review product caps, requested PTI, approved PTI, approved Expected Loss cap, and
+        counteroffer feasibility.
+
+    A product × score segment with high decline rate:
+        review policy-stop reason codes and whether the strategy posture explains the no-offer
+        concentration.
+
+    A product × score segment with missing top reason code:
+        review Section 10 reason-code assignment and Section 14 reason-code completeness QA.
+
+WHY THIS TABLE IS PERSISTENT:
+    Section 14 QA and Section 15 frontier outputs are temporary.
+
+    Section 16 evidence tables preserve key run results across the full scenario / strategy campaign.
+
+    This avoids manually recovering product × score evidence from many QA grids after each run.
+
+MODULE 3 READINESS:
+    Product × score segment metrics are expected to be highly useful for future Module 3 economics
+    design because revenue, funding cost, utilization, margin, and product profitability assumptions
+    are likely to vary by both product and borrower-quality segment.
+
+    Section 16.5 therefore captures:
+        APR proxy metrics,
+        approved exposure metrics,
+        term metrics,
+        product × score mix,
+        synthetic estimated-risk proxy,
+        LGD,
+        approved Expected Loss,
+        and approved Expected Loss rate.
+
+    Section 16.5 does not calculate:
+        revenue,
+        funding cost,
+        profitability,
+        capital,
+        yield,
+        margin,
+        utilization,
+        lifetime value,
+        or risk-adjusted return.
+
+INTERPRETATION BOUNDARIES:
+    estimated_pd remains the SQL field name and is interpreted as the synthetic estimated-PD proxy.
+
+    requested_expected_loss_amount is requested-exposure Expected Loss from Module 1.
+
+    approved_expected_loss_amount is simulated approved-exposure Expected Loss after Module 2
+    exposure treatment.
+
+    simulated_offer_exposure_flag identifies APPROVE and COUNTEROFFER rows only.
+
+    Reason-code fields are simulated strategy explanation codes only.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CTE story:
+        Selects the one active registry / story metadata row for the current run.
+
+    CTE segment_summary:
+        Aggregates applicant-level latest-run rows to product × score segment grain.
+
+    COUNT(*) FILTER:
+        Calculates outcome-specific counts and rates in one grouped query.
+
+    COALESCE:
+        Converts no-offer or unresolved approved values to zero for all-application impact metrics.
+
+    NULLIF:
+        Protects ratio calculations from divide-by-zero.
+
+    ROW_NUMBER:
+        Ranks reason codes within each segment so the top reason can be selected deterministically.
+
+    LEFT JOIN:
+        Adds reason-code labels without dropping segment rows.
+
+READ-ONLY / PERSISTENCE BOUNDARY:
+    Section 16.5 inserts evidence rows into a persistent evidence table.
+
+    Section 16.5 does not modify:
+        credit_decisioning_sim.strategy_decisions,
+        credit_decisioning_sim.strategy_decisions_archive,
+        strategy parameters,
+        product policy parameters,
+        campaign registry rows,
+        decision outcomes,
+        approved exposure values,
+        approved Expected Loss values,
+        or simulated reason codes.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.5A Insert current run product × score segment evidence.
+
+Business purpose:
+    Preserve the segment-level companion evidence that supports the one-row executive story.
+
+SQL logic:
+    1. story selects the one active registry / story row created in Section 16.0.
+    2. segment_summary aggregates current latest-run rows by product × score segment.
+    3. reason_counts calculates reason-code frequency by segment.
+    4. top_reason selects the dominant overall reason code per segment.
+    5. top_non_approval_reason selects the dominant friction / constraint reason per segment.
+    6. The final SELECT inserts one persistent evidence row per product × score segment.
+
+Interpretation:
+    This table is the drill-down layer that explains which segments drove portfolio-level results.
+
+Expected result:
+    One row should be inserted for each product_type_policy_key × score_band_policy_key ×
+    product_score_policy_segment combination in the latest-run output.
+
+Review trigger:
+    If Section 16.7 later reports a segment evidence row-count mismatch, review this insert and the
+    latest-run product × score segment count.
+-----------------------------------------------------------------------------------------------*/
+
+INSERT INTO credit_decisioning_sim.strategy_run_segment_evidence_summary (
+    evidence_snapshot_ts,
+
+    /***********************************************************************************************
+    Campaign registry / run-story linkage fields.
+
+    These fields connect segment evidence back to the campaign roadmap, comparison group, validation
+    evidence group, README storyline, and LinkedIn sequence.
+    ***********************************************************************************************/
+    campaign_registry_required_flag,
+    registry_match_count,
+    run_registry_match_status,
+
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    readme_storyline_label,
+    linkedin_post_sequence,
+    validation_summary_section_hint,
+
+    /***********************************************************************************************
+    Current run identity.
+    ***********************************************************************************************/
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    /***********************************************************************************************
+    Module 1 scenario / population lineage.
+    ***********************************************************************************************/
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    /***********************************************************************************************
+    Product × score segment identity.
+    ***********************************************************************************************/
+    product_type_policy_key,
+    score_band_policy_key,
+    product_score_policy_segment,
+
+    /***********************************************************************************************
+    Segment population and final decision counts.
+    ***********************************************************************************************/
+    applications,
+
+    approval_count,
+    counteroffer_count,
+    manual_review_count,
+    decline_count,
+    offer_count,
+
+    /***********************************************************************************************
+    Segment final decision rates.
+    ***********************************************************************************************/
+    approval_rate,
+    counteroffer_rate,
+    manual_review_rate,
+    decline_rate,
+    simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    Segment requested and approved exposure metrics.
+    ***********************************************************************************************/
+    total_requested_amount,
+    total_approved_amount,
+    approved_amount_capture_rate,
+
+    avg_requested_amount,
+    avg_approved_amount_all_apps,
+    avg_approved_amount_offer_rows,
+
+    /***********************************************************************************************
+    Segment Module 3 readiness metrics.
+
+    These are APR-proxy and term inputs only.
+
+    They are not revenue, pricing, profitability, yield, funding cost, capital, or margin outputs.
+    ***********************************************************************************************/
+    avg_apr_proxy_all_apps,
+    avg_apr_proxy_offer_rows,
+    requested_amount_weighted_apr_proxy,
+    approved_amount_weighted_apr_proxy,
+
+    avg_loan_term_months_offer_rows,
+    approved_amount_weighted_term_months,
+
+    /***********************************************************************************************
+    Segment synthetic risk, LGD, and Expected Loss metrics.
+    ***********************************************************************************************/
+    avg_synthetic_estimated_pd_proxy_all_apps,
+    avg_synthetic_estimated_pd_proxy_offer_rows,
+    avg_estimated_lgd_offer_rows,
+
+    total_requested_expected_loss_amount,
+    total_approved_expected_loss_amount,
+    approved_expected_loss_rate,
+
+    /***********************************************************************************************
+    Segment affordability metrics.
+    ***********************************************************************************************/
+    avg_requested_payment_to_income_ratio,
+    avg_approved_payment_to_income_ratio_offer_rows,
+
+    /***********************************************************************************************
+    Segment simulated reason-code story fields.
+    ***********************************************************************************************/
+    top_primary_reason_family,
+    top_primary_reason_code,
+    top_primary_reason_population_share,
+
+    top_non_approval_primary_reason_family,
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share
+)
+WITH story AS (
+    /***********************************************************************************************
+    CTE: story
+
+    Purpose:
+        Select the one active current-run registry / story row created in Section 16.0.
+
+    Why this CTE exists:
+        Segment evidence should carry the same campaign IDs as:
+            executive evidence,
+            validation evidence,
+            parameter snapshot evidence,
+            and future Validation Summary evidence.
+
+    Gatekeeper dependency:
+        Section 16.0 validates that exactly one active story row exists.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_story_params
+    WHERE active_story_flag IS TRUE
+    LIMIT 1
+),
+
+segment_summary AS (
+    /***********************************************************************************************
+    CTE: segment_summary
+
+    Purpose:
+        Collapse applicant-level latest-run rows into product × score segment metrics.
+
+    Grain:
+        One row per:
+            current run key,
+            product_type_policy_key,
+            score_band_policy_key,
+            product_score_policy_segment.
+
+    Metric conventions:
+        All-application approved metrics:
+            use COALESCE(approved_amount, 0)
+            use COALESCE(approved_expected_loss_amount, 0)
+
+        Offer-row metrics:
+            use FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+
+        approved_expected_loss_rate:
+            total approved Expected Loss / total approved amount
+
+        approved_amount_capture_rate:
+            total approved amount / total requested amount
+
+    Boundary:
+        This CTE summarizes existing latest-run output only.
+
+        It does not recalculate:
+            decision outcomes,
+            approved exposure,
+            approved PTI,
+            approved Expected Loss,
+            or simulated reason codes.
+    ***********************************************************************************************/
+    SELECT
+        /*******************************************************************************************
+        Run identity carried from the latest-run table.
+        *******************************************************************************************/
+        module2_model_version,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        strategy_run_id,
+        strategy_run_ts,
+
+        /*******************************************************************************************
+        Module 1 lineage.
+
+        These fields identify the upstream synthetic scenario / population.
+        *******************************************************************************************/
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        /*******************************************************************************************
+        Segment identity.
+
+        product_type_policy_key:
+            product structure and product-policy dimension.
+
+        score_band_policy_key:
+            borrower-quality dimension.
+
+        product_score_policy_segment:
+            readable product × score label retained for executive storytelling.
+        *******************************************************************************************/
+        product_type_policy_key,
+        score_band_policy_key,
+        product_score_policy_segment,
+
+        /*******************************************************************************************
+        Segment size.
+
+        applications is the denominator for segment-level rates.
+        *******************************************************************************************/
+        COUNT(*) AS applications,
+
+        /*******************************************************************************************
+        Final decision counts.
+
+        offer_count equals APPROVE + COUNTEROFFER because simulated_offer_exposure_flag is TRUE only
+        for simulated positive offer-exposure outcomes.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;) AS approval_count,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_count,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_count,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;) AS decline_count,
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) AS offer_count,
+
+        /*******************************************************************************************
+        Final decision rates.
+
+        SQL mechanics:
+            FILTER creates each numerator.
+            COUNT(*) creates the segment denominator.
+            NULLIF protects against divide-by-zero.
+
+        Credit strategy interpretation:
+            These rates show how final outcomes differ by product × score segment.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        /*******************************************************************************************
+        Requested and approved exposure metrics.
+
+        total_requested_amount:
+            original requested exposure from Module 1.
+
+        total_approved_amount:
+            final simulated approved exposure after Module 2 strategy treatment.
+
+        approved_amount_capture_rate:
+            how much requested exposure survived final strategy treatment in the segment.
+        *******************************************************************************************/
+        SUM(requested_amount) AS total_requested_amount,
+
+        SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+        SUM(COALESCE(approved_amount, 0))
+            / NULLIF(SUM(requested_amount), 0) AS approved_amount_capture_rate,
+
+        AVG(requested_amount) AS avg_requested_amount,
+
+        AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+
+        AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_amount_offer_rows,
+
+        /*******************************************************************************************
+        APR proxy metrics for future Module 3.
+
+        base_apr_for_payment_calc is preserved as an APR proxy input.
+
+        It is not:
+            a pricing optimization result,
+            a yield estimate,
+            a revenue calculation,
+            or a profitability metric.
+        *******************************************************************************************/
+        AVG(base_apr_for_payment_calc) AS avg_apr_proxy_all_apps,
+
+        AVG(base_apr_for_payment_calc) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_apr_proxy_offer_rows,
+
+        SUM(requested_amount * base_apr_for_payment_calc)
+            / NULLIF(SUM(requested_amount), 0) AS requested_amount_weighted_apr_proxy,
+
+        SUM(COALESCE(approved_amount, 0) * base_apr_for_payment_calc)
+            / NULLIF(SUM(COALESCE(approved_amount, 0)), 0) AS approved_amount_weighted_apr_proxy,
+
+        /*******************************************************************************************
+        Term metrics for future Module 3.
+
+        loan_term_months may be NULL or not meaningful for revolving products.
+
+        The weighted-term metric therefore uses approved amount as the weight and excludes NULL term
+        values from the denominator.
+        *******************************************************************************************/
+        AVG(loan_term_months) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_loan_term_months_offer_rows,
+
+        SUM(COALESCE(approved_amount, 0) * loan_term_months)
+            FILTER (WHERE loan_term_months IS NOT NULL)
+            / NULLIF(
+                SUM(COALESCE(approved_amount, 0)) FILTER (WHERE loan_term_months IS NOT NULL),
+                0
+              )
+            AS approved_amount_weighted_term_months,
+
+        /*******************************************************************************************
+        Synthetic estimated-risk proxy and LGD metrics.
+
+        estimated_pd remains the SQL field name and is interpreted as the synthetic estimated-PD
+        proxy.
+
+        estimated_lgd remains the synthetic LGD approximation from Module 1.
+        *******************************************************************************************/
+        AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy_all_apps,
+
+        AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+        AVG(estimated_lgd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_estimated_lgd_offer_rows,
+
+        /*******************************************************************************************
+        Requested and approved Expected Loss metrics.
+
+        requested_expected_loss_amount:
+            requested-exposure Expected Loss from Module 1.
+
+        approved_expected_loss_amount:
+            approved-exposure Expected Loss after Module 2 final exposure treatment.
+
+        approved_expected_loss_rate:
+            total approved Expected Loss / total approved amount.
+
+        Boundary:
+            approved_expected_loss_rate is a synthetic strategy metric, not a production loss-rate
+            forecast.
+        *******************************************************************************************/
+        SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0)) AS total_approved_expected_loss_amount,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        /*******************************************************************************************
+        Requested versus approved affordability metrics.
+
+        requested_payment_to_income_ratio:
+            original requested-structure PTI.
+
+        approved_payment_to_income_ratio:
+            final approved-exposure PTI proxy for simulated offer rows.
+        *******************************************************************************************/
+        AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+
+        AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY
+        module2_model_version,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        strategy_run_id,
+        strategy_run_ts,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        product_type_policy_key,
+        score_band_policy_key,
+        product_score_policy_segment
+),
+
+reason_counts AS (
+    /***********************************************************************************************
+    CTE: reason_counts
+
+    Purpose:
+        Count simulated primary reason-code distribution within each product × score segment.
+
+    Why this CTE exists:
+        Segment evidence should not only say what happened numerically.
+
+        It should also explain why the segment behaved that way through simulated reason-code
+        evidence.
+
+    Boundary:
+        Reason codes are simulated strategy explanation codes only.
+
+        They are not customer communications, regulatory notices, adverse-action reasons,
+        fair-lending conclusions, or production compliance determinations.
+    ***********************************************************************************************/
+    SELECT
+        product_type_policy_key,
+        score_band_policy_key,
+        product_score_policy_segment,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS reason_row_count
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY
+        product_type_policy_key,
+        score_band_policy_key,
+        product_score_policy_segment,
+        primary_reason_family,
+        primary_reason_code
+),
+
+top_reason AS (
+    /***********************************************************************************************
+    CTE: top_reason
+
+    Purpose:
+        Rank all primary reason codes within each product × score segment and identify the top
+        overall reason.
+
+    SQL mechanics:
+        ROW_NUMBER ranks reason codes by descending reason_row_count.
+
+    Deterministic tie-break:
+        primary_reason_family, then primary_reason_code.
+
+    Interpretation:
+        The top overall reason may be APPROVED_AS_REQUESTED in high-access segments.
+    ***********************************************************************************************/
+    SELECT
+        product_type_policy_key,
+        score_band_policy_key,
+        product_score_policy_segment,
+
+        primary_reason_family,
+        primary_reason_code,
+        reason_row_count,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                product_type_policy_key,
+                score_band_policy_key,
+                product_score_policy_segment
+            ORDER BY
+                reason_row_count DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS reason_rank
+
+    FROM reason_counts
+),
+
+top_non_approval_reason AS (
+    /***********************************************************************************************
+    CTE: top_non_approval_reason
+
+    Purpose:
+        Rank non-approval reason codes within each product × score segment.
+
+    Why separate from top_reason:
+        The top overall reason is often APPROVED_AS_REQUESTED in high-access segments.
+
+        That is technically correct, but it may not explain constraints, tightening, counteroffer
+        pressure, manual-review pressure, or no-offer behavior.
+
+        The top non-approval reason helps explain the primary friction point in the segment.
+    ***********************************************************************************************/
+    SELECT
+        product_type_policy_key,
+        score_band_policy_key,
+        product_score_policy_segment,
+
+        primary_reason_family,
+        primary_reason_code,
+        reason_row_count,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                product_type_policy_key,
+                score_band_policy_key,
+                product_score_policy_segment
+            ORDER BY
+                reason_row_count DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS reason_rank
+
+    FROM reason_counts
+
+    WHERE primary_reason_family &lt;&gt; &#39;APPROVAL&#39;
+)
+
+SELECT
+    CURRENT_TIMESTAMP AS evidence_snapshot_ts,
+
+    /***********************************************************************************************
+    Campaign registry / run story fields.
+
+    These fields come from tmp_m2_current_run_story_params, which Section 16.0 builds from the
+    campaign registry first and fallback labels second.
+    ***********************************************************************************************/
+    story.campaign_registry_required_flag,
+    story.registry_match_count,
+    story.run_registry_match_status,
+
+    story.module1_run_id,
+    story.module2_run_id,
+    story.run_sequence_number,
+
+    story.showcase_id,
+    story.showcase_name,
+    story.comparison_group_id,
+    story.validation_evidence_group_id,
+
+    story.readme_storyline_label,
+    story.linkedin_post_sequence,
+    story.validation_summary_section_hint,
+
+    /***********************************************************************************************
+    Current run identity.
+    ***********************************************************************************************/
+    s.module2_model_version,
+    s.strategy_set_name,
+    s.strategy_name,
+    s.strategy_version,
+    s.strategy_run_id,
+    s.strategy_run_ts,
+
+    /***********************************************************************************************
+    Module 1 lineage.
+    ***********************************************************************************************/
+    s.module1_scenario_set_name,
+    s.module1_scenario_name,
+    s.population_id,
+
+    /***********************************************************************************************
+    Segment identity.
+    ***********************************************************************************************/
+    s.product_type_policy_key,
+    s.score_band_policy_key,
+    s.product_score_policy_segment,
+
+    /***********************************************************************************************
+    Segment counts and rates.
+    ***********************************************************************************************/
+    s.applications,
+
+    s.approval_count,
+    s.counteroffer_count,
+    s.manual_review_count,
+    s.decline_count,
+    s.offer_count,
+
+    s.approval_rate,
+    s.counteroffer_rate,
+    s.manual_review_rate,
+    s.decline_rate,
+    s.simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    Segment exposure metrics.
+    ***********************************************************************************************/
+    s.total_requested_amount,
+    s.total_approved_amount,
+    s.approved_amount_capture_rate,
+
+    s.avg_requested_amount,
+    s.avg_approved_amount_all_apps,
+    s.avg_approved_amount_offer_rows,
+
+    /***********************************************************************************************
+    Segment Module 3 readiness metrics.
+    ***********************************************************************************************/
+    s.avg_apr_proxy_all_apps,
+    s.avg_apr_proxy_offer_rows,
+    s.requested_amount_weighted_apr_proxy,
+    s.approved_amount_weighted_apr_proxy,
+
+    s.avg_loan_term_months_offer_rows,
+    s.approved_amount_weighted_term_months,
+
+    /***********************************************************************************************
+    Segment risk and Expected Loss metrics.
+    ***********************************************************************************************/
+    s.avg_synthetic_estimated_pd_proxy_all_apps,
+    s.avg_synthetic_estimated_pd_proxy_offer_rows,
+    s.avg_estimated_lgd_offer_rows,
+
+    s.total_requested_expected_loss_amount,
+    s.total_approved_expected_loss_amount,
+    s.approved_expected_loss_rate,
+
+    /***********************************************************************************************
+    Segment affordability metrics.
+    ***********************************************************************************************/
+    s.avg_requested_payment_to_income_ratio,
+    s.avg_approved_payment_to_income_ratio_offer_rows,
+
+    /***********************************************************************************************
+    Segment simulated reason-code evidence.
+
+    top_primary_reason_*:
+        dominant overall segment explanation.
+
+    top_non_approval_*:
+        dominant segment friction / constraint explanation, excluding APPROVAL-family reasons.
+    ***********************************************************************************************/
+    tr.primary_reason_family AS top_primary_reason_family,
+    tr.primary_reason_code AS top_primary_reason_code,
+    tr.reason_row_count::NUMERIC
+        / NULLIF(s.applications, 0) AS top_primary_reason_population_share,
+
+    nr.primary_reason_family AS top_non_approval_primary_reason_family,
+    nr.primary_reason_code AS top_non_approval_primary_reason_code,
+    nr.reason_row_count::NUMERIC
+        / NULLIF(s.applications, 0) AS top_non_approval_reason_population_share
+
+FROM segment_summary s
+
+/***************************************************************************************************
+CROSS JOIN story is intentional.
+
+story should contain one active current-run story row.
+
+The CROSS JOIN attaches the same registry and documentation metadata to every product × score segment
+evidence row for the current run.
+***************************************************************************************************/
+CROSS JOIN story
+
+LEFT JOIN top_reason tr
+    ON tr.product_type_policy_key = s.product_type_policy_key
+   AND tr.score_band_policy_key = s.score_band_policy_key
+   AND tr.product_score_policy_segment = s.product_score_policy_segment
+   AND tr.reason_rank = 1
+
+LEFT JOIN top_non_approval_reason nr
+    ON nr.product_type_policy_key = s.product_type_policy_key
+   AND nr.score_band_policy_key = s.score_band_policy_key
+   AND nr.product_score_policy_segment = s.product_score_policy_segment
+   AND nr.reason_rank = 1;
+
+
+
+/***************************************************************************************************
+END OF SECTION 16.5 — CURRENT RUN SEGMENT EVIDENCE SUMMARY
+
+If execution reaches this point:
+    1. Current product × score segment evidence has been inserted.
+    2. Every inserted segment row carries the current run key.
+    3. Every inserted segment row carries campaign registry / story fields.
+    4. Segment-level final decision counts have been captured.
+    5. Segment-level final decision rates have been captured.
+    6. Segment-level simulated offer-exposure rates have been captured.
+    7. Segment-level requested exposure and approved exposure metrics have been captured.
+    8. Segment-level approved amount capture rates have been captured.
+    9. Segment-level APR proxy metrics have been captured for future Module 3 design.
+    10. Segment-level term metrics have been captured for future Module 3 design.
+    11. Segment-level synthetic estimated-PD proxy metrics have been captured.
+    12. Segment-level LGD metrics have been captured.
+    13. Segment-level requested Expected Loss and approved Expected Loss metrics have been captured.
+    14. Segment-level approved Expected Loss rates have been captured.
+    15. Segment-level requested PTI and approved PTI metrics have been captured.
+    16. Segment-level top primary reason-code evidence has been captured.
+    17. Segment-level top non-approval reason-code evidence has been captured.
+
+No latest-run output rows have been modified.
+No archive rows have been modified.
+No strategy parameter rows have been modified.
+No product policy parameter rows have been modified.
+No campaign registry rows have been modified.
+No decision outcomes have been recalculated.
+No approved exposure values have been recalculated.
+No approved Expected Loss values have been recalculated.
+No simulated reason codes have been reassigned.
+No Module 3 revenue, earnings, pricing, funding-cost, profitability, capital, or risk-adjusted margin
+logic has been built.
+
+Next section:
+    Section 16.6 should persist the one-row executive evidence summary for the current run.
+
+***************************************************************************************************/
+</code></pre>
+</div></article><article id="c038-m01053" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01053 · 2026-05-10T11:32:36.290000-04:00 · active path</p><div class="body"><p>please don&#39;t give me a download and keep this elite level! let&#39;s do one more pass for commentary. Please note that besides the headers we want instructional commentary that details how the sql logic is working. the commentary/headers are supposed to do 3 main things: 1) Advise on the who/what/why/how to run and interpret the code and parameters; 2) teach the credit risk concepts and nuts and bolts; 3) teach how the sql logic is working. folks going through this code should not only understand how to use/interpret but also should learn about credit risk analytics and SQL. this is the elite level we are striving for. besides header comments, we expect in line comments explaining the sql logic and line by line process. here is the section 16.6-16.7 again. if suggested changes, return the full copy paste of those sections in one copy paste block.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(165).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

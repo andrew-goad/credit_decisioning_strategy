@@ -1,0 +1,2472 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 58</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 58 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_57.html">Previous</a><a href="Part_59.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m01032" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01032 · 2026-05-10T10:53:11.778801-04:00 · active path</p><div class="body"><p>Using your latest uploaded Section 16.0–16.3 as the base, here is the full copy-paste replacement with the commentary raised further around run interpretation, SQL mechanics, registry fallback behavior, evidence-table grain, and persistent-evidence governance. fileciteturn125file0</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 16.0 — CURRENT RUN KEY, REGISTRY STORY METADATA, AND EVIDENCE CAPTURE GATEKEEPER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Identify the current latest-run Module 2 strategy slice and confirm that evidence capture can be
+    performed safely.
+
+    Section 16.0 answers:
+
+        &quot;Which completed strategy run is being captured, what campaign registry IDs identify it,
+         and are the upstream validation, frontier, strategy-parameter, product-policy, and story
+         helper objects available?&quot;
+
+SQL PURPOSE:
+    1. Create tmp_m2_current_run_key from credit_decisioning_sim.strategy_decisions.
+    2. Confirm or create a safe temporary campaign-registry match helper.
+    3. Create tmp_m2_current_run_story_params using campaign registry values first.
+    4. Use fallback story metadata only where registry fallback is allowed.
+    5. Validate that credit_decisioning_sim.strategy_decisions exists and is populated.
+    6. Validate that the latest-run table resolves to exactly one run key.
+    7. Validate that tmp_m2_validation_status_summary exists.
+    8. Validate that tmp_m2_strategy_frontier_executive_summary exists.
+    9. Validate that tmp_module2_strategy_params exists.
+    10. Validate that tmp_module2_product_policy_params exists.
+    11. Validate that exactly one active story-parameter row exists.
+    12. Validate registry match status when campaign_registry_required_flag = TRUE.
+
+WHEN TO RUN THIS SECTION:
+    Run Section 16.0 after:
+        Section 14 has produced tmp_m2_validation_status_summary.
+        Section 15 has produced tmp_m2_strategy_frontier_executive_summary.
+        Section 11 has produced credit_decisioning_sim.strategy_decisions.
+        Section 3 has preferably produced tmp_m2_campaign_registry_current_run_match.
+
+    Section 16.0 can create a temporary fallback registry helper for ad hoc evidence refreshes, but
+    formal campaign evidence should be registry matched.
+
+WHAT TO LOOK FOR AFTER THIS SECTION:
+    tmp_m2_current_run_key:
+        should contain exactly one row.
+
+    tmp_m2_current_run_story_params:
+        should contain exactly one active row.
+
+    run_registry_match_status:
+        should be RUN_REGISTRY_MATCHED for formal campaign runs where
+        campaign_registry_required_flag = TRUE.
+
+    registry_match_count:
+        should equal 1 for formal campaign runs.
+
+REVIEW TRIGGERS:
+    tmp_m2_current_run_key has zero rows:
+        latest-run output is missing or empty.
+
+    tmp_m2_current_run_key has more than one row:
+        latest-run output is mixing strategies, scenarios, or populations.
+
+    run_registry_match_status is not RUN_REGISTRY_MATCHED when registry is required:
+        the code output cannot yet be tied cleanly to the formal campaign roadmap.
+
+    tmp_m2_validation_status_summary is missing:
+        Section 14 has not been run in the current session.
+
+    tmp_m2_strategy_frontier_executive_summary is missing:
+        Section 15 has not been run in the current session.
+
+TEMPORARY OUTPUTS:
+    tmp_m2_current_run_key
+    tmp_m2_current_run_story_params
+
+CURRENT RUN KEY GRAIN:
+    One row representing the current completed latest-run strategy slice:
+
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+WHY CURRENT RUN KEY MUST HAVE EXACTLY ONE ROW:
+    Section 16 evidence tables are run-level evidence outputs.
+
+    A mixed latest-run table containing multiple strategies, multiple scenarios, or multiple
+    populations would make evidence capture ambiguous.
+
+    Section 16 therefore fails fast if tmp_m2_current_run_key does not contain exactly one row.
+
+WHY CAMPAIGN REGISTRY METADATA IS PRIMARY:
+    Formal campaign evidence should tie SQL output to stable run-roadmap IDs.
+
+    Registry IDs make the later Validation Summary easier to trace because they connect:
+        technical run key,
+        module1_run_id,
+        module2_run_id,
+        showcase_id,
+        comparison_group_id,
+        validation_evidence_group_id,
+        README storyline label,
+        LinkedIn post sequence,
+        and validation-summary section hint.
+
+WHY FALLBACK STORY LABELS STILL EXIST:
+    Formal campaign registry metadata may not be available during ad hoc development.
+
+    Fallback labels allow evidence capture to proceed only when the strategy parameter allows registry
+    fallback.
+
+    For formal campaign documentation, registry-matched evidence is preferred.
+
+DEPENDENCY BOUNDARY:
+    Section 16 depends on Section 14 and Section 15 outputs.
+
+    Section 16 does not rebuild those outputs.
+
+    If tmp_m2_validation_status_summary or tmp_m2_strategy_frontier_executive_summary is missing,
+    Section 16 fails clearly rather than capturing incomplete evidence.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    DROP TABLE IF EXISTS:
+        Removes stale temporary helpers without failing if they are absent.
+
+    CREATE TEMP TABLE ... AS:
+        Materializes a current-session helper table from a SELECT statement.
+
+    SELECT DISTINCT:
+        Collapses applicant-grain latest-run rows into a distinct run-key surface.
+
+    TO_REGCLASS:
+        Checks whether an object exists before dependent evidence logic uses it.
+
+    ALTER TABLE ... ADD COLUMN IF NOT EXISTS:
+        Hardens temporary helper schemas across iterative script versions.
+
+    COALESCE:
+        Applies registry-first / fallback-second metadata logic.
+
+    CROSS JOIN:
+        Safely attaches one-row current-run and story metadata to many validation rows later.
+
+    RAISE EXCEPTION:
+        Stops persistent evidence capture when required dependencies or registry conditions are not
+        satisfied.
+
+READ-ONLY / PERSISTENCE BOUNDARY:
+    Section 16.0 creates temporary helper objects only.
+
+    It does not insert persistent evidence rows.
+    It does not delete persistent evidence rows.
+    It does not update persistent evidence rows.
+    It does not modify credit_decisioning_sim.strategy_decisions.
+    It does not modify credit_decisioning_sim.strategy_decisions_archive.
+    It does not recalculate decisions.
+    It does not recalculate approved exposure.
+    It does not recalculate approved Expected Loss.
+    It does not reassign simulated reason codes.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0A Reset current-run evidence helper objects.
+
+Business purpose:
+    Remove prior current-run helper objects so Section 16 captures the current latest-run output
+    rather than a stale helper table from an earlier session.
+
+SQL purpose:
+    Drop only temporary Section 16 helper objects.
+
+SQL mechanics:
+    DROP TABLE IF EXISTS is safe for reruns because it does not raise an error when the temporary
+    helper object is absent.
+
+Important:
+    This section does not drop tmp_m2_campaign_registry_current_run_match.
+
+    That helper is created in Section 3 and is the preferred registry source for evidence IDs.
+
+    If the helper is missing, Section 16.0C creates a safe fallback helper so ad hoc development can
+    still proceed when registry fallback is allowed.
+
+Boundary:
+    This does not delete persistent evidence rows.
+
+    Evidence replacement is handled later by Section 16.2 using the current run key.
+
+What to look for:
+    No result grid is expected.
+
+    Successful execution simply clears the two current-run helper objects so they can be rebuilt from
+    the current latest-run output.
+-----------------------------------------------------------------------------------------------*/
+
+DROP TABLE IF EXISTS tmp_m2_current_run_key;
+DROP TABLE IF EXISTS tmp_m2_current_run_story_params;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0B Materialize the current latest-run key.
+
+Business purpose:
+    Convert the current latest-run output into a one-row run key that all Section 16 evidence inserts
+    can join against.
+
+SQL purpose:
+    Pull distinct strategy, Module 1 lineage, archive-control, source, and timestamp fields from the
+    latest-run output.
+
+Credit risk / governance interpretation:
+    This run key is the evidence grain.
+
+    It says:
+        &quot;This evidence belongs to this Module 2 strategy applied to this Module 1 scenario and
+         population.&quot;
+
+    It does not identify individual applicants.
+
+Inline SQL logic:
+    SELECT DISTINCT is used because credit_decisioning_sim.strategy_decisions is applicant-grain.
+
+    Every applicant row should carry the same strategy identity and Module 1 scenario lineage.
+
+    If more than one distinct run key exists, the gatekeeper below fails because evidence capture
+    would be ambiguous.
+
+What to look for:
+    This table should contain exactly one row after creation.
+
+Review trigger:
+    More than one row means the latest-run table is mixing technical run keys.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TEMP TABLE tmp_m2_current_run_key
+ON COMMIT PRESERVE ROWS
+AS
+SELECT DISTINCT
+    /***********************************************************************************************
+    Module 2 strategy identity.
+
+    These fields identify the downstream strategy being captured.
+
+    strategy_run_id and strategy_run_ts support audit traceability but do not replace the technical
+    evidence grain.
+    ***********************************************************************************************/
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    /***********************************************************************************************
+    Archive and final-resolution controls.
+
+    These fields explain how the run was persisted and how failed preliminary counteroffers were
+    resolved.
+
+    They are captured because they affect interpretation of the completed strategy run.
+    ***********************************************************************************************/
+    archive_run_flag,
+    strategy_archive_reset_mode,
+    failed_counteroffer_resolution,
+
+    /***********************************************************************************************
+    Module 1 source mode.
+
+    These fields document whether Module 2 consumed latest-run Module 1 output or an archived Module
+    1 scenario slice.
+
+    ARCHIVE source is preferred for formal campaign comparison because it preserves the upstream
+    scenario slice.
+    ***********************************************************************************************/
+    module1_input_source,
+    module1_source_table_name,
+
+    /***********************************************************************************************
+    Module 1 lineage.
+
+    These fields identify the upstream synthetic population and scenario environment.
+
+    They must remain separate from Module 2 strategy identity.
+    ***********************************************************************************************/
+    module1_model_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    anchor_date,
+
+    /***********************************************************************************************
+    Latest-run materialization timestamp.
+
+    Audit metadata only.
+
+    This is not a strategy-comparison key.
+    This is not an archive replacement key.
+    This is not a business outcome.
+    ***********************************************************************************************/
+    latest_output_created_ts
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0C Ensure current-run campaign registry helper is available.
+
+Business purpose:
+    Make Section 16 robust whether it is run immediately after Section 3 or during ad hoc evidence
+    refresh work.
+
+SQL purpose:
+    If tmp_m2_campaign_registry_current_run_match does not exist, create a temporary fallback helper
+    with the registry fields Section 16 expects.
+
+    If the helper exists but lacks newer registry fields, add those fields.
+
+    If the helper has no rows, insert one fallback status row scoped to the current run key.
+
+Formal campaign behavior:
+    If campaign_registry_required_flag = TRUE, the gatekeeper below still requires:
+
+        run_registry_match_status = &#39;RUN_REGISTRY_MATCHED&#39;
+
+    Therefore this fallback helper does not hide missing formal registry mapping.
+
+Ad hoc behavior:
+    If campaign_registry_required_flag = FALSE, fallback metadata is allowed and evidence capture can
+    proceed with explicit fallback status.
+
+SQL mechanics:
+    TO_REGCLASS checks whether the temporary helper exists.
+
+    CREATE TEMP TABLE creates the helper only when absent.
+
+    ALTER TABLE ADD COLUMN IF NOT EXISTS makes the helper compatible with the current Section 16
+    evidence insert logic even if an older Section 3 created a narrower helper.
+
+    The fallback INSERT is guarded by IF NOT EXISTS so a real Section 3 registry match is preserved.
+
+What to look for:
+    In formal campaign execution, this helper should already have a registry-matched row from
+    Section 3.
+
+    In ad hoc execution, this block may create a fallback row with
+    RUN_REGISTRY_NOT_FOUND_FALLBACK_ALLOWED.
+
+Review trigger:
+    RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW means campaign_registry_required_flag is TRUE but the run
+    did not match the registry. Section 16.0E will stop evidence capture.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+BEGIN
+    /***********************************************************************************************
+    Create a safe fallback registry helper only when Section 3 did not create one in the current
+    session.
+
+    The table shape mirrors the fields Section 16 consumes.
+
+    Important:
+        This is not the persistent registry table.
+        This is a temporary helper used only for current-run evidence capture.
+    ***********************************************************************************************/
+    IF COALESCE(
+        TO_REGCLASS(&#39;pg_temp.tmp_m2_campaign_registry_current_run_match&#39;),
+        TO_REGCLASS(&#39;tmp_m2_campaign_registry_current_run_match&#39;)
+    ) IS NULL THEN
+
+        CREATE TEMP TABLE tmp_m2_campaign_registry_current_run_match (
+            campaign_registry_required_flag         BOOLEAN,
+
+            module1_scenario_set_name              TEXT,
+            module1_scenario_name                  TEXT,
+            population_id                          TEXT,
+
+            strategy_set_name                      TEXT,
+            strategy_name                          TEXT,
+            strategy_version                       TEXT,
+
+            registry_match_count                   BIGINT,
+            run_registry_match_status              TEXT,
+
+            module1_run_id                         TEXT,
+            module2_run_id                         TEXT,
+            run_sequence_number                    INTEGER,
+
+            showcase_id                            TEXT,
+            showcase_name                          TEXT,
+            comparison_group_id                    TEXT,
+            validation_evidence_group_id           TEXT,
+
+            module1_parameter_family_changed        TEXT,
+            module1_parameter_change_summary        TEXT,
+
+            module2_strategy_family_changed         TEXT,
+            module2_parameter_change_summary        TEXT,
+
+            expected_storyline                     TEXT,
+            validation_summary_section_hint         TEXT,
+            readme_storyline_label                 TEXT,
+            linkedin_post_sequence                 INTEGER
+        ) ON COMMIT PRESERVE ROWS;
+    END IF;
+
+
+    /***********************************************************************************************
+    Schema hardening for the temporary registry helper.
+
+    SQL mechanics:
+        ADD COLUMN IF NOT EXISTS makes this block safe to run even when the helper already has the
+        column.
+
+    Why this matters:
+        CREATE TABLE IF NOT EXISTS and temp-helper reuse can leave older helper shapes in place.
+        These ALTER statements prevent later INSERT / SELECT references from failing because a
+        registry-story field is absent.
+    ***********************************************************************************************/
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS module1_scenario_set_name TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS module1_scenario_name TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS population_id TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS strategy_set_name TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS strategy_name TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS strategy_version TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS showcase_name TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS module1_parameter_family_changed TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS module1_parameter_change_summary TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS module2_strategy_family_changed TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS module2_parameter_change_summary TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS expected_storyline TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+
+    ALTER TABLE tmp_m2_campaign_registry_current_run_match
+        ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+
+
+    /***********************************************************************************************
+    Insert a fallback row only if the helper is empty.
+
+    This preserves Section 3 output when it exists.
+
+    SQL mechanics:
+        IF NOT EXISTS prevents the fallback row from duplicating or overwriting a real registry match.
+
+        CROSS JOIN attaches the one active strategy parameter row to the one current run key.
+
+    Interpretation:
+        registry_match_count = 0 is intentionally explicit.
+
+        The fallback status remains visible in evidence rows so reviewers know whether the run was
+        registry-matched or fallback-labeled.
+    ***********************************************************************************************/
+    IF NOT EXISTS (
+        SELECT 1
+        FROM tmp_m2_campaign_registry_current_run_match
+    ) THEN
+        INSERT INTO tmp_m2_campaign_registry_current_run_match (
+            campaign_registry_required_flag,
+
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+
+            registry_match_count,
+            run_registry_match_status
+        )
+        SELECT
+            COALESCE(p.campaign_registry_required_flag, FALSE),
+
+            k.module1_scenario_set_name,
+            k.module1_scenario_name,
+            k.population_id,
+
+            k.strategy_set_name,
+            k.strategy_name,
+            k.strategy_version,
+
+            0::BIGINT AS registry_match_count,
+
+            CASE
+                WHEN COALESCE(p.campaign_registry_required_flag, FALSE) IS TRUE
+                    THEN &#39;RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW&#39;
+                ELSE &#39;RUN_REGISTRY_NOT_FOUND_FALLBACK_ALLOWED&#39;
+            END AS run_registry_match_status
+
+        FROM tmp_m2_current_run_key k
+
+        CROSS JOIN (
+            SELECT
+                campaign_registry_required_flag
+            FROM tmp_module2_strategy_params
+            WHERE active_strategy_flag IS TRUE
+            LIMIT 1
+        ) p
+
+        LIMIT 1;
+    END IF;
+END $$;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0D Build temporary current-run story metadata.
+
+Business purpose:
+    Attach human-readable campaign / story labels to the technical run key.
+
+Patch behavior:
+    Registry fields from tmp_m2_campaign_registry_current_run_match are now the primary source.
+
+    Fallback labels are used only where registry fields are NULL.
+
+SQL purpose:
+    Derive run IDs, showcase labels, parameter-family labels, expected storylines, documentation
+    labels, validation evidence IDs, and registry match status.
+
+Why this is still temporary:
+    The purpose is evidence capture support.
+
+    It does not modify the archive.
+    It does not modify strategy decisions.
+    It does not change strategy thresholds.
+
+Design note:
+    Formal campaign runs should show:
+
+        run_registry_match_status = &#39;RUN_REGISTRY_MATCHED&#39;
+
+    Ad hoc runs may show fallback status only when the active strategy allows registry fallback.
+
+SQL mechanics:
+    k CTE:
+        loads the one current run key.
+
+    reg CTE:
+        loads the current registry-match helper row.
+
+    fallback_labels CTE:
+        derives readable fallback labels using CASE expressions.
+
+    Final SELECT:
+        uses COALESCE to prefer registry metadata first and fallback labels second.
+
+What to look for:
+    active_story_flag should be TRUE.
+
+    campaign_registry_required_flag should match the active strategy parameter.
+
+    run_registry_match_status should be RUN_REGISTRY_MATCHED for formal runs.
+
+Review trigger:
+    Missing module2_run_id or validation_evidence_group_id on a formal run indicates the campaign
+    registry linkage should be reviewed before documentation.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TEMP TABLE tmp_m2_current_run_story_params
+ON COMMIT PRESERVE ROWS
+AS
+WITH k AS (
+    /***********************************************************************************************
+    k:
+        Current run key.
+
+    SQL mechanics:
+        LIMIT 1 is safe because Section 16.0E validates that tmp_m2_current_run_key has exactly one
+        row before persistent evidence rows are inserted.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_current_run_key
+    LIMIT 1
+),
+
+reg AS (
+    /***********************************************************************************************
+    reg:
+        Registry-match helper.
+
+    Interpretation:
+        Prefer real Section 3 registry values when they exist.
+
+        If Section 3 did not provide the helper, Section 16.0C creates a fallback row.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_campaign_registry_current_run_match
+    LIMIT 1
+),
+
+fallback_labels AS (
+    SELECT
+        /*******************************************************************************************
+        Fallback showcase label.
+
+        Used only if registry showcase_name is unavailable.
+        *******************************************************************************************/
+        CASE
+            WHEN k.module1_scenario_name IN (
+                    &#39;BASELINE_V2&#39;,
+                    &#39;CREDIT_BOX_BASELINE_REFERENCE&#39;,
+                    &#39;PRODUCT_MIX_BASELINE_REFERENCE&#39;,
+                    &#39;EXPOSURE_BASELINE_REFERENCE&#39;,
+                    &#39;LGD_BASELINE_REFERENCE&#39;
+                 )
+                THEN &#39;BASELINE_REFERENCE&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%RATE%&#39;
+                THEN &#39;RATE_SENSITIVITY_SHOWCASE&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%SCORE%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%PRIME%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%CREDIT_STRESS%&#39;
+                THEN &#39;CREDIT_BOX_SHOWCASE&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%MIX%&#39;
+                THEN &#39;PORTFOLIO_MIX_SHOWCASE&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%BALANCE%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%EXPOSURE%&#39;
+                THEN &#39;EXPOSURE_INTENSITY_SHOWCASE&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%LGD%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%SEVERITY%&#39;
+                THEN &#39;SEVERITY_SENSITIVITY_SHOWCASE&#39;
+
+            ELSE &#39;UNCLASSIFIED_SHOWCASE&#39;
+        END AS fallback_showcase_name,
+
+
+        /*******************************************************************************************
+        Fallback Module 1 parameter family.
+
+        Used only if registry module1_parameter_family_changed is unavailable.
+        *******************************************************************************************/
+        CASE
+            WHEN k.module1_scenario_name ILIKE &#39;%RATE_UP%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%RATE_DOWN%&#39;
+                THEN &#39;RATE_ENVIRONMENT&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%SCORE%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%PRIME%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%CREDIT_STRESS%&#39;
+                THEN &#39;SCORE_MIX&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%PRODUCT%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%UNSECURED%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%REVOLVING%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%SECURED%&#39;
+                THEN &#39;PRODUCT_MIX&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%BALANCE%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%EXPOSURE%&#39;
+                THEN &#39;EXPOSURE_INTENSITY&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%LGD%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%SEVERITY%&#39;
+                THEN &#39;LGD_SEVERITY&#39;
+
+            ELSE &#39;BASELINE_OR_UNCLASSIFIED&#39;
+        END AS fallback_module1_parameter_family_changed,
+
+
+        /*******************************************************************************************
+        Fallback Module 1 parameter summary.
+
+        Used only if registry module1_parameter_change_summary is unavailable.
+        *******************************************************************************************/
+        CASE
+            WHEN k.module1_scenario_name = &#39;BASELINE_V2&#39;
+                THEN &#39;Module 1 baseline scenario using accepted V2.0 defaults.&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%RATE_UP%&#39;
+                THEN &#39;Module 1 rate-up sensitivity scenario.&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%RATE_DOWN%&#39;
+                THEN &#39;Module 1 rate-down sensitivity scenario.&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%PRIME%&#39;
+                THEN &#39;Module 1 score-mix scenario emphasizing prime or near-prime composition.&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%UNSECURED%&#39;
+                THEN &#39;Module 1 product-mix or severity scenario emphasizing unsecured exposure.&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%REVOLVING%&#39;
+                THEN &#39;Module 1 product-mix scenario emphasizing revolving exposure.&#39;
+
+            WHEN k.module1_scenario_name ILIKE &#39;%SEVERITY%&#39;
+              OR k.module1_scenario_name ILIKE &#39;%LGD%&#39;
+                THEN &#39;Module 1 LGD / severity sensitivity scenario.&#39;
+
+            ELSE &#39;Module 1 scenario parameter change summary not manually specified.&#39;
+        END AS fallback_module1_parameter_change_summary,
+
+
+        /*******************************************************************************************
+        Fallback Module 2 strategy family.
+
+        Used only if registry module2_strategy_family_changed is unavailable.
+        *******************************************************************************************/
+        CASE
+            WHEN k.strategy_name = &#39;BASELINE_STRATEGY&#39;
+                THEN &#39;BASELINE&#39;
+
+            WHEN k.strategy_name = &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;
+                THEN &#39;RISK_TIGHTENING&#39;
+
+            WHEN k.strategy_name = &#39;GROWTH_ORIENTED_STRATEGY&#39;
+                THEN &#39;GROWTH&#39;
+
+            WHEN k.strategy_name = &#39;TIGHTER_AFFORDABILITY_STRATEGY&#39;
+                THEN &#39;AFFORDABILITY_TIGHTENING&#39;
+
+            WHEN k.strategy_name = &#39;COUNTEROFFER_FIRST_EXPOSURE_STRATEGY&#39;
+                THEN &#39;COUNTEROFFER_MANAGEMENT&#39;
+
+            WHEN k.strategy_name = &#39;PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY&#39;
+                THEN &#39;PRODUCT_GUARDRAILS&#39;
+
+            WHEN k.strategy_name = &#39;MANUAL_REVIEW_REDUCTION_STRATEGY&#39;
+                THEN &#39;OPERATIONS_REVIEW_REDUCTION&#39;
+
+            ELSE &#39;UNCLASSIFIED_STRATEGY&#39;
+        END AS fallback_module2_strategy_family_changed,
+
+
+        /*******************************************************************************************
+        Fallback Module 2 parameter summary.
+
+        Used only if registry module2_parameter_change_summary is unavailable.
+        *******************************************************************************************/
+        CASE
+            WHEN k.strategy_name = &#39;BASELINE_STRATEGY&#39;
+                THEN &#39;Module 2 baseline strategy using accepted V1.0 defaults.&#39;
+
+            WHEN k.strategy_name = &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;
+                THEN &#39;Module 2 strategy tightens synthetic estimated-PD proxy tolerance thresholds.&#39;
+
+            WHEN k.strategy_name = &#39;GROWTH_ORIENTED_STRATEGY&#39;
+                THEN &#39;Module 2 strategy loosens selected synthetic-risk, PTI, and DTI tolerances for growth-oriented comparison.&#39;
+
+            WHEN k.strategy_name = &#39;TIGHTER_AFFORDABILITY_STRATEGY&#39;
+                THEN &#39;Module 2 strategy tightens PTI thresholds and counteroffer target PTI.&#39;
+
+            WHEN k.strategy_name = &#39;COUNTEROFFER_FIRST_EXPOSURE_STRATEGY&#39;
+                THEN &#39;Module 2 strategy emphasizes reduced-exposure treatment through tighter approved amount, approved EL, and PTI constraints.&#39;
+
+            WHEN k.strategy_name = &#39;PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY&#39;
+                THEN &#39;Module 2 strategy applies tighter guardrails to selected unsecured / revolving products.&#39;
+
+            WHEN k.strategy_name = &#39;MANUAL_REVIEW_REDUCTION_STRATEGY&#39;
+                THEN &#39;Module 2 strategy resolves failed counteroffers to final no-offer outcomes to reduce unresolved manual review.&#39;
+
+            ELSE &#39;Module 2 strategy parameter change summary not manually specified.&#39;
+        END AS fallback_module2_parameter_change_summary,
+
+
+        /*******************************************************************************************
+        Fallback expected storyline.
+
+        Used only if registry expected_storyline is unavailable.
+        *******************************************************************************************/
+        CASE
+            WHEN k.strategy_name = &#39;BASELINE_STRATEGY&#39;
+                THEN &#39;Establish reference strategy behavior for this Module 1 scenario.&#39;
+
+            WHEN k.strategy_name = &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;
+                THEN &#39;Demonstrate risk-discipline tradeoff: lower simulated offer exposure and approved Expected Loss, with higher decline rate.&#39;
+
+            WHEN k.strategy_name = &#39;GROWTH_ORIENTED_STRATEGY&#39;
+                THEN &#39;Demonstrate growth tradeoff: higher simulated offer exposure and approved amount, with measurable risk impact.&#39;
+
+            WHEN k.strategy_name = &#39;COUNTEROFFER_FIRST_EXPOSURE_STRATEGY&#39;
+                THEN &#39;Demonstrate exposure-management tradeoff through reduced approved amount, improved PTI, and lower approved Expected Loss.&#39;
+
+            ELSE &#39;Expected storyline not manually specified.&#39;
+        END AS fallback_expected_storyline
+
+    FROM k
+)
+
+SELECT
+    /***********************************************************************************************
+    One active story row is expected.
+
+    The Section 16 gatekeeper validates this cardinality.
+    ***********************************************************************************************/
+    TRUE AS active_story_flag,
+
+
+    /***********************************************************************************************
+    Registry governance status.
+
+    These fields make evidence rows clear about whether they are registry-matched or fallback-based.
+    ***********************************************************************************************/
+    COALESCE(reg.campaign_registry_required_flag, FALSE) AS campaign_registry_required_flag,
+    COALESCE(reg.registry_match_count, 0) AS registry_match_count,
+    COALESCE(reg.run_registry_match_status, &#39;RUN_REGISTRY_NOT_AVAILABLE_SECTION3_NOT_RUN&#39;)
+        AS run_registry_match_status,
+
+
+    /***********************************************************************************************
+    Campaign run IDs.
+
+    Registry values are preferred.
+
+    Fallback values are readable but should not be used as final campaign evidence IDs when formal
+    registry matching is required.
+    ***********************************************************************************************/
+    COALESCE(reg.module1_run_id, k.module1_scenario_name) AS module1_run_id,
+
+    COALESCE(
+        reg.module2_run_id,
+        k.module1_scenario_name || &#39;__&#39; || k.strategy_name
+    ) AS module2_run_id,
+
+    reg.run_sequence_number,
+
+
+    /***********************************************************************************************
+    Showcase and comparison identifiers.
+
+    These fields support README, LinkedIn, comparison, and Validation Summary linkage.
+    ***********************************************************************************************/
+    reg.showcase_id,
+    COALESCE(reg.showcase_name, f.fallback_showcase_name) AS showcase_name,
+    reg.comparison_group_id,
+    reg.validation_evidence_group_id,
+
+    reg.readme_storyline_label,
+    reg.linkedin_post_sequence,
+    reg.validation_summary_section_hint,
+
+
+    /***********************************************************************************************
+    Module 1 scenario story fields.
+
+    Registry values are preferred because they align to the formal campaign roadmap.
+    ***********************************************************************************************/
+    COALESCE(
+        reg.module1_parameter_family_changed,
+        f.fallback_module1_parameter_family_changed
+    ) AS module1_parameter_family_changed,
+
+    COALESCE(
+        reg.module1_parameter_change_summary,
+        f.fallback_module1_parameter_change_summary
+    ) AS module1_parameter_change_summary,
+
+
+    /***********************************************************************************************
+    Module 2 strategy story fields.
+
+    Registry values are preferred because they align to the formal campaign roadmap.
+    ***********************************************************************************************/
+    COALESCE(
+        reg.module2_strategy_family_changed,
+        f.fallback_module2_strategy_family_changed
+    ) AS module2_strategy_family_changed,
+
+    COALESCE(
+        reg.module2_parameter_change_summary,
+        f.fallback_module2_parameter_change_summary
+    ) AS module2_parameter_change_summary,
+
+
+    /***********************************************************************************************
+    Expected storyline.
+
+    Registry value is preferred.
+    Fallback value remains available for development runs.
+    ***********************************************************************************************/
+    COALESCE(reg.expected_storyline, f.fallback_expected_storyline) AS expected_storyline,
+
+
+    /***********************************************************************************************
+    Reviewer-populated narrative fields.
+
+    These intentionally start NULL.
+
+    observed_storyline may be filled from Section 15 frontier interpretation in Section 16.6.
+    validation_notes may be manually populated later after QA review.
+    ***********************************************************************************************/
+    NULL::TEXT AS observed_storyline,
+    NULL::TEXT AS validation_notes
+
+FROM k
+LEFT JOIN reg
+    ON TRUE
+CROSS JOIN fallback_labels f
+LIMIT 1;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0E Evidence capture fail-fast gatekeeper.
+
+Business purpose:
+    Prevent incomplete or ambiguous evidence capture.
+
+Why fail fast:
+    Evidence capture is persistent.
+
+    It is better to stop than to create evidence rows with:
+        no latest-run output,
+        multiple run keys,
+        missing validation summary,
+        missing frontier summary,
+        missing parameter tables,
+        ambiguous story metadata,
+        or missing required campaign registry mapping.
+
+SQL logic:
+    This block validates object existence, row counts, run-key cardinality, dependency availability,
+    story-row cardinality, and registry match requirements before Section 16 creates or replaces
+    persistent evidence rows.
+
+What to look for:
+    Successful execution produces no result grid.
+
+    It either completes silently or raises a clear exception.
+
+Review triggers:
+    Any exception in this block means evidence capture should not proceed until the missing dependency
+    or ambiguous scope issue is resolved.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+DECLARE
+    v_latest_table_exists BOOLEAN;
+    v_latest_row_count BIGINT;
+    v_current_key_count BIGINT;
+    v_validation_summary_exists BOOLEAN;
+    v_frontier_summary_exists BOOLEAN;
+    v_strategy_params_exists BOOLEAN;
+    v_product_policy_params_exists BOOLEAN;
+    v_story_param_count BIGINT;
+
+    v_campaign_registry_required_flag BOOLEAN;
+    v_run_registry_match_status TEXT;
+    v_registry_match_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run output table must exist.
+
+    Section 16 captures evidence from the completed latest-run output created in Section 11.
+    -------------------------------------------------------------------------------------------*/
+    SELECT TO_REGCLASS(&#39;credit_decisioning_sim.strategy_decisions&#39;) IS NOT NULL
+    INTO v_latest_table_exists;
+
+    IF v_latest_table_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: credit_decisioning_sim.strategy_decisions does not exist.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run output must contain rows.
+
+    Evidence capture from an empty latest-run output would create misleading documentation artifacts.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_latest_row_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+    IF v_latest_row_count &lt;= 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: latest-run strategy_decisions table contains zero rows.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: current run key must resolve to exactly one strategy / scenario / population slice.
+
+    If this count is greater than one, the latest-run table is mixed and Section 16 cannot safely
+    create one evidence record.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_current_key_count
+    FROM tmp_m2_current_run_key;
+
+    IF v_current_key_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: expected exactly one current latest-run strategy / Module 1 scenario / population key, found %.&#39;,
+            v_current_key_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 14 validation summary must exist.
+
+    Section 16 does not rebuild validation evidence. It persists Section 14 output.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS(&#39;pg_temp.tmp_m2_validation_status_summary&#39;),
+        TO_REGCLASS(&#39;tmp_m2_validation_status_summary&#39;)
+    ) IS NOT NULL
+    INTO v_validation_summary_exists;
+
+    IF v_validation_summary_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: tmp_m2_validation_status_summary is required before evidence capture.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 15 frontier executive summary must exist.
+
+    Section 16 later uses frontier fields for executive story capture. Failing here prevents partial
+    evidence capture without frontier context.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS(&#39;pg_temp.tmp_m2_strategy_frontier_executive_summary&#39;),
+        TO_REGCLASS(&#39;tmp_m2_strategy_frontier_executive_summary&#39;)
+    ) IS NOT NULL
+    INTO v_frontier_summary_exists;
+
+    IF v_frontier_summary_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: tmp_m2_strategy_frontier_executive_summary is required before evidence capture.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: active strategy parameter card must exist.
+
+    Section 16 snapshots the parameter card so future documentation can trace evidence back to the
+    exact strategy configuration.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS(&#39;pg_temp.tmp_module2_strategy_params&#39;),
+        TO_REGCLASS(&#39;tmp_module2_strategy_params&#39;)
+    ) IS NOT NULL
+    INTO v_strategy_params_exists;
+
+    IF v_strategy_params_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: tmp_module2_strategy_params is required for parameter snapshot capture.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product-policy parameter card must exist.
+
+    Product-policy parameters are critical for explaining approved exposure, counteroffer feasibility,
+    approved Expected Loss, and product × score segment evidence.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS(&#39;pg_temp.tmp_module2_product_policy_params&#39;),
+        TO_REGCLASS(&#39;tmp_module2_product_policy_params&#39;)
+    ) IS NOT NULL
+    INTO v_product_policy_params_exists;
+
+    IF v_product_policy_params_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: tmp_module2_product_policy_params is required for product-policy parameter snapshot capture.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exactly one active story-parameter row.
+
+    The story helper should produce one and only one evidence-story row for the current run key.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_story_param_count
+    FROM tmp_m2_current_run_story_params
+    WHERE active_story_flag IS TRUE;
+
+    IF v_story_param_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: expected exactly one active story-parameter row, found %.&#39;,
+            v_story_param_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: registry match status when formal campaign registry is required.
+
+    Formal campaign evidence should not silently fall back to generated labels.
+
+    If campaign_registry_required_flag = TRUE, Section 16 requires:
+        run_registry_match_status = RUN_REGISTRY_MATCHED
+        registry_match_count = 1
+
+    This protects the connection from code output to validation-summary IDs.
+    -------------------------------------------------------------------------------------------*/
+    SELECT
+        COALESCE(campaign_registry_required_flag, FALSE),
+        COALESCE(registry_match_count, 0),
+        COALESCE(run_registry_match_status, &#39;&lt;NULL&gt;&#39;)
+    INTO
+        v_campaign_registry_required_flag,
+        v_registry_match_count,
+        v_run_registry_match_status
+    FROM tmp_m2_current_run_story_params
+    WHERE active_story_flag IS TRUE
+    LIMIT 1;
+
+    IF v_campaign_registry_required_flag IS TRUE
+       AND (
+            v_run_registry_match_status &lt;&gt; &#39;RUN_REGISTRY_MATCHED&#39;
+            OR v_registry_match_count &lt;&gt; 1
+       ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 16 failure: formal campaign registry is required, but current run is not registry-matched. Status: %, match count: %.&#39;,
+            v_run_registry_match_status,
+            v_registry_match_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 16.1 — CREATE PERSISTENT EVIDENCE TABLES
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Create persistent tables that preserve run-level executive evidence, validation evidence,
+    parameter snapshots, and product × score segment evidence.
+
+    Section 16.1 answers:
+
+        &quot;Where will the project store durable evidence for this completed strategy run?&quot;
+
+SQL PURPOSE:
+    1. Create credit_decisioning_sim.strategy_run_evidence_summary if it does not exist.
+    2. Create credit_decisioning_sim.strategy_run_validation_evidence if it does not exist.
+    3. Create credit_decisioning_sim.strategy_run_parameter_snapshot if it does not exist.
+    4. Create credit_decisioning_sim.strategy_run_segment_evidence_summary if it does not exist.
+    5. Add campaign registry ID columns to existing evidence tables when needed.
+    6. Create practical evidence-table indexes.
+
+PERSISTENT TABLE PURPOSES:
+    strategy_run_evidence_summary:
+        One row per completed strategy / Module 1 scenario / population run.
+        Stores executive story, outcome metrics, exposure metrics, risk metrics, validation counts,
+        frontier classification, reason-code story fields, run registry fields, comparison IDs, and
+        Module 3 readiness flags.
+
+    strategy_run_validation_evidence:
+        One row per completed run × validation test.
+        Stores Section 14 validation status details plus run registry identifiers.
+
+    strategy_run_parameter_snapshot:
+        One row per completed run.
+        Stores JSONB snapshots of active strategy parameters, product policy parameters, and run-story
+        metadata plus run registry identifiers.
+
+    strategy_run_segment_evidence_summary:
+        One row per completed run × product_type_policy_key × score_band_policy_key.
+        Stores segment evidence for product × score storytelling and future strategy analysis plus
+        run registry identifiers.
+
+GRAIN:
+    Main executive evidence:
+        one row per Module 1 scenario × Module 2 strategy version
+
+    Validation evidence:
+        one row per run × validation test
+
+    Parameter snapshot:
+        one row per run
+
+    Segment evidence:
+        one row per run × product_type_policy_key × score_band_policy_key
+
+WHAT TO LOOK FOR AFTER THIS SECTION:
+    The four persistent evidence tables should exist.
+
+    Existing evidence tables from prior development versions should receive the registry-linkage
+    columns through ALTER TABLE ADD COLUMN IF NOT EXISTS.
+
+    Indexes should be created or reused.
+
+REVIEW TRIGGERS:
+    If later INSERT statements fail because a column is missing, the schema-hardening block should be
+    checked first.
+
+    If unique index creation fails, existing duplicate evidence rows may exist and should be reviewed
+    before evidence capture proceeds.
+
+WHY CREATE TABLE IF NOT EXISTS IS USED:
+    Evidence tables should persist across the campaign.
+
+    They should not be dropped during ordinary reruns.
+
+SCHEMA EVOLUTION NOTE:
+    CREATE TABLE IF NOT EXISTS does not alter existing table schemas.
+
+    This patched section therefore also includes ALTER TABLE ADD COLUMN IF NOT EXISTS statements to
+    add registry-linkage fields to evidence tables that may already exist from a prior Section 16
+    version.
+
+BOUNDARY:
+    This section creates and hardens evidence tables only.
+
+    It does not insert evidence rows yet.
+    It does not modify latest-run output.
+    It does not modify archive output.
+    It does not calculate strategy metrics.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CREATE TABLE IF NOT EXISTS:
+        Creates persistent evidence tables on first run and reuses them on later runs.
+
+    ALTER TABLE ADD COLUMN IF NOT EXISTS:
+        Adds new registry fields to older evidence tables without destroying existing rows.
+
+    CREATE INDEX IF NOT EXISTS:
+        Adds lookup and uniqueness support for evidence retrieval and replacement.
+
+    UNIQUE INDEX:
+        Enforces one evidence row per run key where the evidence table is intended to be one-row-per-run.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1A Create one-row executive evidence summary table.
+
+Business purpose:
+    Store the executive story and primary run-level metrics for each completed run.
+
+Column grouping:
+    Columns are intentionally grouped by evidence identity, registry metadata, story metadata,
+    strategy identity, Module 1 lineage, outcome metrics, exposure metrics, growth-readiness fields,
+    risk / Expected Loss metrics, reason-code fields, frontier fields, validation summary fields,
+    segment driver fields, and Module 3 readiness fields.
+
+What to look for:
+    This table should have one row per completed strategy / Module 1 scenario / population key after
+    Section 16.6.
+
+Interpretation:
+    This is the main executive evidence register.
+
+    It is not the row-level applicant output.
+    It is not the archive.
+    It is not a production reporting mart.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_run_evidence_summary (
+    /***********************************************************************************************
+    Evidence snapshot identity.
+
+    evidence_snapshot_id is generated at capture time.
+    It supports traceability but is not the run-key grain.
+    ***********************************************************************************************/
+    evidence_snapshot_ts TIMESTAMP,
+    evidence_snapshot_id TEXT,
+
+    /***********************************************************************************************
+    Campaign registry and story metadata.
+
+    These fields link SQL evidence to the run roadmap, README / LinkedIn storyline, and Validation
+    Summary structure.
+    ***********************************************************************************************/
+    campaign_registry_required_flag BOOLEAN,
+    registry_match_count BIGINT,
+    run_registry_match_status TEXT,
+
+    module1_run_id TEXT,
+    module2_run_id TEXT,
+    run_sequence_number INTEGER,
+
+    showcase_id TEXT,
+    showcase_name TEXT,
+    comparison_group_id TEXT,
+    validation_evidence_group_id TEXT,
+
+    readme_storyline_label TEXT,
+    linkedin_post_sequence INTEGER,
+    validation_summary_section_hint TEXT,
+
+    module1_parameter_family_changed TEXT,
+    module1_parameter_change_summary TEXT,
+    module2_strategy_family_changed TEXT,
+    module2_parameter_change_summary TEXT,
+    expected_storyline TEXT,
+    observed_storyline TEXT,
+    validation_notes TEXT,
+
+    /***********************************************************************************************
+    Module 2 strategy identity.
+    ***********************************************************************************************/
+    module2_model_version TEXT,
+    strategy_set_name TEXT,
+    strategy_name TEXT,
+    strategy_version TEXT,
+    strategy_run_id TEXT,
+    strategy_run_ts TIMESTAMP,
+
+    /***********************************************************************************************
+    Output / archive timestamp metadata.
+
+    These fields support traceability only.
+    They are not comparison keys and not business outcomes.
+    ***********************************************************************************************/
+    latest_output_created_ts TIMESTAMP,
+    archive_inserted_ts TIMESTAMP,
+
+    /***********************************************************************************************
+    Archive controls and final-resolution setting.
+    ***********************************************************************************************/
+    archive_run_flag BOOLEAN,
+    strategy_archive_reset_mode TEXT,
+    failed_counteroffer_resolution TEXT,
+
+    /***********************************************************************************************
+    Module 1 source mode and lineage.
+    ***********************************************************************************************/
+    module1_input_source TEXT,
+    module1_source_table_name TEXT,
+
+    module1_model_version TEXT,
+    module1_scenario_set_name TEXT,
+    module1_scenario_name TEXT,
+    population_id TEXT,
+    anchor_date DATE,
+
+    /***********************************************************************************************
+    Structural run counts.
+
+    duplicate_application_count should be zero for accepted evidence.
+    ***********************************************************************************************/
+    applications BIGINT,
+    distinct_application_id_count BIGINT,
+    duplicate_application_count BIGINT,
+
+    /***********************************************************************************************
+    Final decision outcome counts.
+    ***********************************************************************************************/
+    approval_count BIGINT,
+    counteroffer_count BIGINT,
+    manual_review_count BIGINT,
+    decline_count BIGINT,
+    offer_count BIGINT,
+
+    /***********************************************************************************************
+    Final decision outcome rates.
+
+    simulated_offer_exposure_rate = APPROVE + COUNTEROFFER share.
+    ***********************************************************************************************/
+    approval_rate NUMERIC,
+    counteroffer_rate NUMERIC,
+    manual_review_rate NUMERIC,
+    decline_rate NUMERIC,
+    simulated_offer_exposure_rate NUMERIC,
+    approval_share_of_offers NUMERIC,
+    counteroffer_share_of_offers NUMERIC,
+
+    /***********************************************************************************************
+    Requested and approved exposure metrics.
+    ***********************************************************************************************/
+    total_requested_amount NUMERIC,
+    total_approved_amount NUMERIC,
+    approved_amount_capture_rate NUMERIC,
+
+    avg_requested_amount NUMERIC,
+    avg_approved_amount_all_apps NUMERIC,
+    avg_approved_amount_offer_rows NUMERIC,
+
+    total_exposure_reduction_amount NUMERIC,
+
+    /***********************************************************************************************
+    Counteroffer, manual-review, and decline exposure context.
+    ***********************************************************************************************/
+    counteroffer_requested_amount NUMERIC,
+    counteroffer_approved_amount NUMERIC,
+    counteroffer_exposure_reduction_amount NUMERIC,
+    counteroffer_exposure_reduction_pct_avg NUMERIC,
+
+    manual_review_requested_amount NUMERIC,
+    manual_review_requested_expected_loss_amount NUMERIC,
+    decline_requested_amount NUMERIC,
+    decline_requested_expected_loss_amount NUMERIC,
+
+    /***********************************************************************************************
+    Requested and approved affordability metrics.
+    ***********************************************************************************************/
+    avg_requested_payment_to_income_ratio NUMERIC,
+    avg_approved_payment_to_income_ratio_offer_rows NUMERIC,
+
+    /***********************************************************************************************
+    Module 3 growth-readiness APR proxy metrics.
+
+    These fields preserve inputs useful for future economics design.
+
+    They are not revenue or profitability metrics.
+    ***********************************************************************************************/
+    avg_apr_proxy_all_apps NUMERIC,
+    avg_apr_proxy_offer_rows NUMERIC,
+    requested_amount_weighted_apr_proxy NUMERIC,
+    approved_amount_weighted_apr_proxy NUMERIC,
+    requested_amount_x_apr_proxy_sum NUMERIC,
+    approved_amount_x_apr_proxy_sum NUMERIC,
+
+    /***********************************************************************************************
+    Module 3 growth-readiness term metrics.
+
+    loan_term_months may be unavailable or not meaningful for some product types.
+    term_missing_or_revolving_count preserves that context.
+    ***********************************************************************************************/
+    avg_loan_term_months_offer_rows NUMERIC,
+    approved_amount_weighted_term_months NUMERIC,
+    term_missing_or_revolving_count BIGINT,
+
+    /***********************************************************************************************
+    Product mix / exposure composition metrics for future economics interpretation.
+    ***********************************************************************************************/
+    secured_approved_amount_share NUMERIC,
+    unsecured_approved_amount_share NUMERIC,
+    revolving_approved_amount_share NUMERIC,
+    installment_approved_amount_share NUMERIC,
+    mortgage_approved_amount_share NUMERIC,
+
+    product_approved_amount_mix_jsonb JSONB,
+    product_approved_expected_loss_mix_jsonb JSONB,
+    product_offer_rate_jsonb JSONB,
+
+    /***********************************************************************************************
+    Synthetic estimated-risk and LGD metrics.
+
+    estimated_pd remains the SQL field name and is interpreted as synthetic estimated-PD proxy.
+    ***********************************************************************************************/
+    avg_synthetic_estimated_pd_proxy_all_apps NUMERIC,
+    avg_synthetic_estimated_pd_proxy_offer_rows NUMERIC,
+    avg_synthetic_estimated_pd_proxy_declined_rows NUMERIC,
+
+    avg_estimated_lgd_all_apps NUMERIC,
+    avg_estimated_lgd_offer_rows NUMERIC,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss metrics.
+    ***********************************************************************************************/
+    total_requested_expected_loss_amount NUMERIC,
+    total_approved_expected_loss_amount NUMERIC,
+    avg_requested_expected_loss_amount NUMERIC,
+    avg_approved_expected_loss_all_apps NUMERIC,
+    avg_approved_expected_loss_offer_rows NUMERIC,
+
+    requested_expected_loss_rate NUMERIC,
+    approved_expected_loss_rate NUMERIC,
+    approved_amount_per_approved_expected_loss_dollar NUMERIC,
+
+    /***********************************************************************************************
+    Simulated reason-code story fields.
+    ***********************************************************************************************/
+    top_primary_reason_family TEXT,
+    top_primary_reason_code TEXT,
+    top_primary_reason_population_share NUMERIC,
+
+    top_non_approval_primary_reason_family TEXT,
+    top_non_approval_primary_reason_code TEXT,
+    top_non_approval_reason_population_share NUMERIC,
+
+    top_policy_stop_primary_reason_family TEXT,
+    top_policy_stop_primary_reason_code TEXT,
+    top_policy_stop_reason_population_share NUMERIC,
+
+    /***********************************************************************************************
+    Reason-code movement versus baseline.
+
+    These fields are populated from Section 15 when baseline-relative frontier evidence exists.
+    ***********************************************************************************************/
+    top_reason_code_delta_driver_family TEXT,
+    top_reason_code_delta_driver_code TEXT,
+    top_reason_code_delta_driver_baseline_share NUMERIC,
+    top_reason_code_delta_driver_strategy_share NUMERIC,
+    top_reason_code_delta_population_share NUMERIC,
+
+    /***********************************************************************************************
+    Outcome-family reason-code highlights.
+    ***********************************************************************************************/
+    top_counteroffer_reason_code TEXT,
+    top_manual_review_reason_code TEXT,
+    top_decline_reason_code TEXT,
+
+    /***********************************************************************************************
+    Strategy frontier classification fields from Section 15.
+    ***********************************************************************************************/
+    frontier_position_type TEXT,
+    executive_frontier_quadrant TEXT,
+    frontier_interpretation_note TEXT,
+
+    /***********************************************************************************************
+    Validation summary rollup fields from Section 14.
+    ***********************************************************************************************/
+    validation_pass_count BIGINT,
+    validation_review_count BIGINT,
+    validation_not_applicable_count BIGINT,
+    validation_review_items TEXT,
+    validation_status_summary_jsonb JSONB,
+
+    /***********************************************************************************************
+    Product-level driver fields.
+    ***********************************************************************************************/
+    top_approved_amount_product TEXT,
+    top_approved_amount_product_share NUMERIC,
+    top_approved_expected_loss_product TEXT,
+    top_approved_expected_loss_product_share NUMERIC,
+    top_counteroffer_product TEXT,
+    top_decline_product TEXT,
+    highest_offer_rate_product TEXT,
+    lowest_offer_rate_product TEXT,
+
+    /***********************************************************************************************
+    Score-band driver fields.
+    ***********************************************************************************************/
+    top_approved_amount_score_band TEXT,
+    top_approved_expected_loss_score_band TEXT,
+    top_counteroffer_score_band TEXT,
+    top_decline_score_band TEXT,
+    highest_offer_rate_score_band TEXT,
+    lowest_offer_rate_score_band TEXT,
+    highest_approved_el_rate_score_band TEXT,
+
+    /***********************************************************************************************
+    Product × score segment driver fields.
+    ***********************************************************************************************/
+    top_approved_amount_product_score_segment TEXT,
+    top_approved_el_product_score_segment TEXT,
+    top_counteroffer_product_score_segment TEXT,
+    top_decline_product_score_segment TEXT,
+    highest_approved_el_rate_product_score_segment TEXT,
+
+    /***********************************************************************************************
+    Baseline-relative segment movement fields.
+    ***********************************************************************************************/
+    largest_delta_approved_amount_product TEXT,
+    largest_delta_approved_el_product TEXT,
+    largest_delta_offer_rate_score_band TEXT,
+    largest_delta_decline_rate_score_band TEXT,
+    largest_delta_approved_el_product_score_segment TEXT,
+
+    /***********************************************************************************************
+    Module 3 readiness fields.
+
+    These fields explicitly signal readiness for future economics modeling while preserving the
+    boundary that Module 2 does not calculate profitability.
+    ***********************************************************************************************/
+    module3_growth_inputs_available_flag BOOLEAN,
+    module3_growth_input_gap_note TEXT,
+    module3_revenue_model_required_flag BOOLEAN,
+    module3_boundary_note TEXT
+);
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1B Create validation evidence detail table.
+
+Business purpose:
+    Persist each Section 14 validation summary row for the current run.
+
+Why this matters:
+    The Validation Summary should be traceable to individual SQL evidence rows, not only to a single
+    aggregate PASS / REVIEW count.
+
+Patch behavior:
+    Registry fields are stored with each validation row so later validation artifacts can reference
+    module2_run_id, validation_evidence_group_id, comparison_group_id, and showcase_id directly.
+
+Grain:
+    one row per current run key × validation_area × validation_test_name.
+
+Interpretation:
+    REVIEW rows are not automatic failures. They are documentation-review prompts.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_run_validation_evidence (
+    evidence_snapshot_ts TIMESTAMP,
+
+    campaign_registry_required_flag BOOLEAN,
+    registry_match_count BIGINT,
+    run_registry_match_status TEXT,
+
+    module1_run_id TEXT,
+    module2_run_id TEXT,
+    run_sequence_number INTEGER,
+
+    showcase_id TEXT,
+    showcase_name TEXT,
+    comparison_group_id TEXT,
+    validation_evidence_group_id TEXT,
+
+    readme_storyline_label TEXT,
+    linkedin_post_sequence INTEGER,
+    validation_summary_section_hint TEXT,
+
+    module2_model_version TEXT,
+    strategy_set_name TEXT,
+    strategy_name TEXT,
+    strategy_version TEXT,
+    strategy_run_id TEXT,
+    strategy_run_ts TIMESTAMP,
+
+    module1_scenario_set_name TEXT,
+    module1_scenario_name TEXT,
+    population_id TEXT,
+
+    validation_area TEXT,
+    validation_test_name TEXT,
+    validation_category TEXT,
+    validation_status TEXT,
+    observed_value TEXT,
+    expected_behavior TEXT,
+    interpretation TEXT
+);
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1C Create parameter snapshot table.
+
+Business purpose:
+    Persist the exact active parameter configuration that produced the current strategy evidence.
+
+Why JSONB:
+    Strategy and product-policy parameter tables are temporary and can change across runs.
+
+    JSONB preserves the full parameter payload without requiring one evidence column per parameter.
+
+parameter_snapshot_hash:
+    Provides a compact fingerprint of the strategy, product-policy, and story payload.
+
+Patch behavior:
+    Registry fields are stored with the parameter snapshot so the exact parameter payload can be tied
+    to module2_run_id, showcase_id, comparison_group_id, and validation_evidence_group_id.
+
+Grain:
+    one row per current run key.
+
+Interpretation:
+    This is the &quot;what settings produced this evidence?&quot; table.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_run_parameter_snapshot (
+    evidence_snapshot_ts TIMESTAMP,
+    evidence_snapshot_id TEXT,
+
+    campaign_registry_required_flag BOOLEAN,
+    registry_match_count BIGINT,
+    run_registry_match_status TEXT,
+
+    module1_run_id TEXT,
+    module2_run_id TEXT,
+    run_sequence_number INTEGER,
+
+    showcase_id TEXT,
+    showcase_name TEXT,
+    comparison_group_id TEXT,
+    validation_evidence_group_id TEXT,
+
+    readme_storyline_label TEXT,
+    linkedin_post_sequence INTEGER,
+    validation_summary_section_hint TEXT,
+
+    module2_model_version TEXT,
+    strategy_set_name TEXT,
+    strategy_name TEXT,
+    strategy_version TEXT,
+    strategy_run_id TEXT,
+    strategy_run_ts TIMESTAMP,
+
+    module1_scenario_set_name TEXT,
+    module1_scenario_name TEXT,
+    population_id TEXT,
+
+    strategy_params_jsonb JSONB,
+    product_policy_params_jsonb JSONB,
+    run_story_params_jsonb JSONB,
+    parameter_snapshot_hash TEXT
+);
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1D Create product × score segment evidence table.
+
+Business purpose:
+    Persist segment-level evidence so the executive story can identify which product × score
+    intersections drove access, approved exposure, approved Expected Loss, counteroffer behavior, and
+    no-offer behavior.
+
+GRAIN:
+    one row per current run key
+    × product_type_policy_key
+    × score_band_policy_key
+
+Patch behavior:
+    Registry fields are included so segment-level evidence can be tied directly to campaign run IDs,
+    showcase IDs, comparison IDs, and validation evidence groups.
+
+Boundary:
+    This is segment evidence, not a new scoring model and not production segmentation.
+
+Interpretation:
+    This table is the product × score companion layer for the executive evidence summary. It gives
+    reviewers the drill-down needed to explain why one portfolio-level metric moved.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_run_segment_evidence_summary (
+    evidence_snapshot_ts TIMESTAMP,
+
+    campaign_registry_required_flag BOOLEAN,
+    registry_match_count BIGINT,
+    run_registry_match_status TEXT,
+
+    module1_run_id TEXT,
+    module2_run_id TEXT,
+    run_sequence_number INTEGER,
+
+    showcase_id TEXT,
+    showcase_name TEXT,
+    comparison_group_id TEXT,
+    validation_evidence_group_id TEXT,
+
+    readme_storyline_label TEXT,
+    linkedin_post_sequence INTEGER,
+    validation_summary_section_hint TEXT,
+
+    module2_model_version TEXT,
+    strategy_set_name TEXT,
+    strategy_name TEXT,
+    strategy_version TEXT,
+    strategy_run_id TEXT,
+    strategy_run_ts TIMESTAMP,
+
+    module1_scenario_set_name TEXT,
+    module1_scenario_name TEXT,
+    population_id TEXT,
+
+    product_type_policy_key TEXT,
+    score_band_policy_key TEXT,
+    product_score_policy_segment TEXT,
+
+    applications BIGINT,
+
+    approval_count BIGINT,
+    counteroffer_count BIGINT,
+    manual_review_count BIGINT,
+    decline_count BIGINT,
+    offer_count BIGINT,
+
+    approval_rate NUMERIC,
+    counteroffer_rate NUMERIC,
+    manual_review_rate NUMERIC,
+    decline_rate NUMERIC,
+    simulated_offer_exposure_rate NUMERIC,
+
+    total_requested_amount NUMERIC,
+    total_approved_amount NUMERIC,
+    approved_amount_capture_rate NUMERIC,
+
+    avg_requested_amount NUMERIC,
+    avg_approved_amount_all_apps NUMERIC,
+    avg_approved_amount_offer_rows NUMERIC,
+
+    avg_apr_proxy_all_apps NUMERIC,
+    avg_apr_proxy_offer_rows,
+    requested_amount_weighted_apr_proxy NUMERIC,
+    approved_amount_weighted_apr_proxy NUMERIC,
+
+    avg_loan_term_months_offer_rows NUMERIC,
+    approved_amount_weighted_term_months NUMERIC,
+
+    avg_synthetic_estimated_pd_proxy_all_apps NUMERIC,
+    avg_synthetic_estimated_pd_proxy_offer_rows NUMERIC,
+    avg_estimated_lgd_offer_rows NUMERIC,
+
+    total_requested_expected_loss_amount NUMERIC,
+    total_approved_expected_loss_amount NUMERIC,
+    approved_expected_loss_rate NUMERIC,
+
+    avg_requested_payment_to_income_ratio NUMERIC,
+    avg_approved_payment_to_income_ratio_offer_rows NUMERIC,
+
+    top_primary_reason_family TEXT,
+    top_primary_reason_code TEXT,
+    top_primary_reason_population_share NUMERIC,
+
+    top_non_approval_primary_reason_family TEXT,
+    top_non_approval_primary_reason_code TEXT,
+    top_non_approval_reason_population_share NUMERIC
+);
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1E Evidence table schema hardening for registry-linkage patch.
+
+Business purpose:
+    Add registry-linkage columns to evidence tables that may already exist from a prior version of
+    Section 16.
+
+Why this is necessary:
+    CREATE TABLE IF NOT EXISTS does not modify an existing table.
+
+    Without these ALTER TABLE statements, an older evidence table could exist without the new
+    run-ID columns, causing later INSERT statements to fail.
+
+SQL mechanics:
+    Each ALTER TABLE statement is idempotent because ADD COLUMN IF NOT EXISTS only adds the column
+    when the target table does not already have it.
+
+Boundary:
+    These statements add columns only when needed.
+
+    They do not delete rows.
+    They do not update rows.
+    They do not alter strategy outputs.
+-----------------------------------------------------------------------------------------------*/
+
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_evidence_summary
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_validation_evidence
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_parameter_snapshot
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+
+
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS campaign_registry_required_flag BOOLEAN;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS registry_match_count BIGINT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS run_registry_match_status TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS module1_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS module2_run_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS run_sequence_number INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS showcase_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS showcase_name TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS comparison_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS validation_evidence_group_id TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS readme_storyline_label TEXT;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS linkedin_post_sequence INTEGER;
+ALTER TABLE credit_decisioning_sim.strategy_run_segment_evidence_summary
+    ADD COLUMN IF NOT EXISTS validation_summary_section_hint TEXT;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1F Create persistent evidence indexes.
+
+Business purpose:
+    Enforce one current evidence row per run key where appropriate and support fast lookup by run key.
+
+Index interpretation:
+    strategy_run_evidence_summary:
+        unique at the primary evidence run grain.
+
+    strategy_run_validation_evidence:
+        non-unique because each run has multiple validation tests.
+
+    strategy_run_parameter_snapshot:
+        unique at the primary evidence run grain.
+
+    strategy_run_segment_evidence_summary:
+        unique at run key × product × score segment.
+
+SQL mechanics:
+    CREATE INDEX IF NOT EXISTS creates the index only when it does not already exist.
+
+    UNIQUE INDEX protects the expected grain for evidence tables that should have one row per key.
+
+Review trigger:
+    A failure while creating a unique index means duplicates already exist at the intended evidence
+    grain and should be investigated before formal evidence capture.
+
+Boundary:
+    Indexes support evidence-table integrity and performance.
+    They do not change strategy outputs.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_run_evidence_summary_key
+ON credit_decisioning_sim.strategy_run_evidence_summary (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_run_validation_evidence_key
+ON credit_decisioning_sim.strategy_run_validation_evidence (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_run_parameter_snapshot_key
+ON credit_decisioning_sim.strategy_run_parameter_snapshot (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_run_segment_evidence_key
+ON credit_decisioning_sim.strategy_run_segment_evidence_summary (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    product_type_policy_key,
+    score_band_policy_key
+);
+
+
+
+/***************************************************************************************************
+SECTION 16.2 — REPLACE CURRENT RUN EVIDENCE ROWS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Maintain one current evidence record per strategy / Module 1 scenario / population key.
+
+    Section 16.2 answers:
+
+        &quot;Before inserting evidence for the current run, should prior evidence for this same run key
+         be cleared so the evidence layer reflects the current accepted run?&quot;
+
+SQL PURPOSE:
+    Delete prior evidence rows for the current run key from:
+        credit_decisioning_sim.strategy_run_evidence_summary
+        credit_decisioning_sim.strategy_run_validation_evidence
+        credit_decisioning_sim.strategy_run_parameter_snapshot
+        credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+WHY DELETE / INSERT IS USED:
+    Strategy slices may be rerun under STRATEGY_SCENARIO_ONLY archive reset behavior.
+
+    Evidence rows should reflect the current accepted version of that strategy slice, not accumulate
+    duplicates or stale records for the same practical evidence grain.
+
+DELETE SCOPE:
+    Deletes are restricted to the current run key:
+
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+WHAT TO LOOK FOR:
+    These DELETE statements return row counts in many SQL clients.
+
+    Deleted row counts may be zero on first capture for a run key.
+
+    Deleted row counts may be positive when refreshing evidence after rerunning the same strategy /
+    scenario / population key.
+
+REVIEW TRIGGERS:
+    Unexpectedly high deleted row counts may indicate duplicate evidence rows existed before the
+    replacement pass.
+
+    This section removes current-key evidence only; it should not delete evidence from other runs.
+
+BOUNDARY:
+    Section 16.2 deletes only evidence rows.
+
+    It does not delete latest-run rows.
+    It does not delete archive rows.
+    It does not delete campaign registry rows.
+    It does not delete strategy parameter rows.
+    It does not delete product policy parameter rows.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    DELETE ... USING:
+        PostgreSQL pattern for deleting from one table while joining to a helper table.
+
+    Current-run key join:
+        Restricts deletion to the exact strategy / scenario / population evidence grain.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.2A Replace one-row executive evidence for current run key.
+
+Business purpose:
+    Remove any prior executive evidence row for the same strategy / scenario / population slice.
+
+SQL logic:
+    USING tmp_m2_current_run_key limits the delete to the current completed latest-run key.
+
+Expected behavior:
+    Zero rows deleted on first evidence capture.
+    One row deleted when refreshing an existing evidence summary for the same current run key.
+-----------------------------------------------------------------------------------------------*/
+
+DELETE FROM credit_decisioning_sim.strategy_run_evidence_summary e
+USING tmp_m2_current_run_key k
+WHERE e.strategy_set_name = k.strategy_set_name
+  AND e.strategy_name = k.strategy_name
+  AND e.strategy_version = k.strategy_version
+  AND e.module1_scenario_set_name = k.module1_scenario_set_name
+  AND e.module1_scenario_name = k.module1_scenario_name
+  AND e.population_id = k.population_id;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.2B Replace validation evidence detail for current run key.
+
+Business purpose:
+    Remove prior validation evidence rows so the current Section 14 validation status summary can be
+    captured cleanly.
+
+SQL logic:
+    This table is one-to-many by validation test, so multiple rows may be deleted for the current run.
+
+Expected behavior:
+    Zero rows deleted on first capture.
+    Multiple rows deleted when refreshing validation evidence for an already-captured run key.
+-----------------------------------------------------------------------------------------------*/
+
+DELETE FROM credit_decisioning_sim.strategy_run_validation_evidence e
+USING tmp_m2_current_run_key k
+WHERE e.strategy_set_name = k.strategy_set_name
+  AND e.strategy_name = k.strategy_name
+  AND e.strategy_version = k.strategy_version
+  AND e.module1_scenario_set_name = k.module1_scenario_set_name
+  AND e.module1_scenario_name = k.module1_scenario_name
+  AND e.population_id = k.population_id;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.2C Replace parameter snapshot for current run key.
+
+Business purpose:
+    Remove prior parameter snapshot so the evidence layer stores the current active strategy /
+    product-policy configuration for the rerun.
+
+SQL logic:
+    This table should contain one parameter snapshot per run key.
+
+Expected behavior:
+    Zero rows deleted on first capture.
+    One row deleted when refreshing a parameter snapshot for an already-captured run key.
+-----------------------------------------------------------------------------------------------*/
+
+DELETE FROM credit_decisioning_sim.strategy_run_parameter_snapshot e
+USING tmp_m2_current_run_key k
+WHERE e.strategy_set_name = k.strategy_set_name
+  AND e.strategy_name = k.strategy_name
+  AND e.strategy_version = k.strategy_version
+  AND e.module1_scenario_set_name = k.module1_scenario_set_name
+  AND e.module1_scenario_name = k.module1_scenario_name
+  AND e.population_id = k.population_id;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.2D Replace product × score segment evidence for current run key.
+
+Business purpose:
+    Remove prior segment evidence so the next Section 16 segment insert captures the current accepted
+    product × score result profile.
+
+SQL logic:
+    This table is one-to-many by product × score segment, so multiple rows may be deleted.
+
+Expected behavior:
+    Zero rows deleted on first capture.
+    One or more rows deleted when refreshing product × score segment evidence for an already-captured
+    run key.
+-----------------------------------------------------------------------------------------------*/
+
+DELETE FROM credit_decisioning_sim.strategy_run_segment_evidence_summary e
+USING tmp_m2_current_run_key k
+WHERE e.strategy_set_name = k.strategy_set_name
+  AND e.strategy_name = k.strategy_name
+  AND e.strategy_version = k.strategy_version
+  AND e.module1_scenario_set_name = k.module1_scenario_set_name
+  AND e.module1_scenario_name = k.module1_scenario_name
+  AND e.population_id = k.population_id;
+
+
+
+/***************************************************************************************************
+SECTION 16.3 — CAPTURE CURRENT RUN VALIDATION EVIDENCE DETAIL
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Persist the Section 14 validation status summary for the current run.
+
+    Section 16.3 answers:
+
+        &quot;Which validation checks passed, which require review, and which were not applicable for this
+         completed strategy run?&quot;
+
+SQL PURPOSE:
+    Insert one row per Section 14 validation status summary row into:
+
+        credit_decisioning_sim.strategy_run_validation_evidence
+
+SOURCE:
+    tmp_m2_validation_status_summary
+
+TARGET:
+    credit_decisioning_sim.strategy_run_validation_evidence
+
+EVIDENCE GRAIN:
+    One row per:
+        current run key
+        × validation_area
+        × validation_test_name
+
+REGISTRY PATCH:
+    Each validation evidence row now carries the campaign registry IDs from:
+
+        tmp_m2_current_run_story_params
+
+    This allows validation evidence to be referenced directly by:
+        module1_run_id
+        module2_run_id
+        showcase_id
+        comparison_group_id
+        validation_evidence_group_id
+        readme_storyline_label
+        linkedin_post_sequence
+        validation_summary_section_hint
+
+VALIDATION STATUS INTERPRETATION:
+    PASS:
+        The diagnostic expectation was satisfied.
+
+    REVIEW:
+        The pattern should be interpreted before documentation.
+        REVIEW is not automatically a fail-fast defect.
+
+    NOT_APPLICABLE:
+        The test depends on comparison conditions or population conditions not available for the
+        current run context.
+
+WHAT TO LOOK FOR AFTER THIS SECTION:
+    credit_decisioning_sim.strategy_run_validation_evidence should contain one row per
+    tmp_m2_validation_status_summary row for the current run key.
+
+    REVIEW rows should be interpreted before documentation.
+
+    NOT_APPLICABLE rows should be explained when comparison, archive, or population conditions were
+    not available.
+
+WHY CROSS JOIN IS USED:
+    tmp_m2_current_run_key contains exactly one row after the Section 16.0 gatekeeper.
+
+    tmp_m2_current_run_story_params contains exactly one active row after the Section 16.0 gatekeeper.
+
+    CROSS JOIN attaches the current run identity and registry story identity to every validation
+    status row.
+
+SQL MECHANICS:
+    CURRENT_TIMESTAMP:
+        Records when evidence was captured.
+
+    CROSS JOIN:
+        Multiplies one current-run row × one story row × many validation rows.
+
+    WHERE s.active_story_flag IS TRUE:
+        Ensures only the active story metadata row is attached.
+
+    ::TEXT casts:
+        Stabilize storage for observed_value, expected_behavior, and interpretation.
+
+BOUNDARY:
+    Section 16.3 persists validation evidence only.
+
+    It does not recalculate validation.
+    It does not modify the latest-run output.
+    It does not modify archive rows.
+    It does not modify validation statuses.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.3A Insert Section 14 validation status rows for the current run.
+
+Business purpose:
+    Preserve the Section 14 validation evidence spine in a persistent table.
+
+SQL logic:
+    The single current run key and single story metadata row are cross joined to all validation summary
+    rows.
+
+    observed_value, expected_behavior, and interpretation are cast to TEXT so evidence storage is
+    stable even if upstream temporary output types vary.
+
+Interpretation:
+    This table is the detailed validation-evidence register.
+
+    It is intentionally one-to-many per run key because each completed run has multiple validation
+    tests.
+
+Review trigger:
+    If this insert captures zero rows, Section 14 likely did not populate
+    tmp_m2_validation_status_summary.
+-----------------------------------------------------------------------------------------------*/
+
+INSERT INTO credit_decisioning_sim.strategy_run_validation_evidence (
+    evidence_snapshot_ts,
+
+    campaign_registry_required_flag,
+    registry_match_count,
+    run_registry_match_status,
+
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    readme_storyline_label,
+    linkedin_post_sequence,
+    validation_summary_section_hint,
+
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    validation_area,
+    validation_test_name,
+    validation_category,
+    validation_status,
+    observed_value,
+    expected_behavior,
+    interpretation
+)
+SELECT
+    CURRENT_TIMESTAMP AS evidence_snapshot_ts,
+
+    /***********************************************************************************************
+    Campaign registry / run story fields.
+
+    These fields let validation evidence rows be tied directly to the formal run roadmap and future
+    Validation Summary structure.
+    ***********************************************************************************************/
+    s.campaign_registry_required_flag,
+    s.registry_match_count,
+    s.run_registry_match_status,
+
+    s.module1_run_id,
+    s.module2_run_id,
+    s.run_sequence_number,
+
+    s.showcase_id,
+    s.showcase_name,
+    s.comparison_group_id,
+    s.validation_evidence_group_id,
+
+    s.readme_storyline_label,
+    s.linkedin_post_sequence,
+    s.validation_summary_section_hint,
+
+    /***********************************************************************************************
+    Current run identity.
+
+    These fields preserve the technical SQL evidence grain.
+    ***********************************************************************************************/
+    k.module2_model_version,
+    k.strategy_set_name,
+    k.strategy_name,
+    k.strategy_version,
+    k.strategy_run_id,
+    k.strategy_run_ts,
+
+    /***********************************************************************************************
+    Module 1 scenario / population lineage.
+
+    These fields preserve the upstream scenario context for the validation evidence row.
+    ***********************************************************************************************/
+    k.module1_scenario_set_name,
+    k.module1_scenario_name,
+    k.population_id,
+
+    /***********************************************************************************************
+    Section 14 validation evidence fields.
+
+    observed_value, expected_behavior, and interpretation are explicitly cast to TEXT so future
+    changes in temporary-summary expression types do not destabilize evidence insert behavior.
+    ***********************************************************************************************/
+    v.validation_area,
+    v.validation_test_name,
+    v.validation_category,
+    v.validation_status,
+    v.observed_value::TEXT,
+    v.expected_behavior::TEXT,
+    v.interpretation::TEXT
+
+FROM tmp_m2_current_run_key k
+CROSS JOIN tmp_m2_current_run_story_params s
+CROSS JOIN tmp_m2_validation_status_summary v
+
+WHERE s.active_story_flag IS TRUE;
+</code></pre>
+</div></article><article id="c038-m01033" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01033 · 2026-05-10T10:59:26.394000-04:00 · active path</p><div class="body"><p>please don&#39;t give me a download and keep this elite level! let&#39;s do one more pass for commentary. Please note that besides the headers we want instructional commentary that details how the sql logic is working. the commentary/headers are supposed to do 3 main things: 1) Advise on the who/what/why/how to run and interpret the code and parameters; 2) teach the credit risk concepts and nuts and bolts; 3) teach how the sql logic is working. folks going through this code should not only understand how to use/interpret but also should learn about credit risk analytics and SQL. this is the elite level we are striving for. besides header comments, we expect in line comments explaining the sql logic and line by line process. here is the section 16.4-16.6 again. if suggested changes, return the full copy paste of those sections in one copy paste block.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(163).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

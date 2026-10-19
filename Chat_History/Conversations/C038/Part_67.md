@@ -1,0 +1,2324 @@
+# Module 2 Decision Simulator Build
+
+## Part 67
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_66.md) · [Next](Part_68.md)
+
+<a id="c038-m01331"></a>
+
+### C038-M01331
+
+**ChatGPT** · 2026-05-11T15:59:31.819996-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01331 -->
+## Review of Queries 16–20
+
+**Overall status:**
+
+```text
+STRUCTURAL / ARCHIVE / EVIDENCE ACCEPTANCE: PASS
+STRATEGY EFFECT DIRECTIONALITY: PASS
+PARAMETER SNAPSHOT GOVERNANCE: REVIEW REQUIRED
+REASON: PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY captured UPL product_decline_min_requested_el = 85,000 instead of intended 8,500.
+```
+
+Queries 16–18 and 20 are broadly strong. Query 19 found one important issue that the old Query 20 acceptance rollup did **not** test for: exact product-policy parameter adherence. Section 16.4 intentionally snapshots the full strategy and product-policy parameter payloads as JSONB, so Query 19 is the right place to catch this kind of issue. fileciteturn184file8
+
+### Query 16 — Product guardrail strategy product-level effect check
+
+**Pass directionally.**
+
+The product guardrail strategy changed only the intended products:
+
+```text
+UNSECURED_PERSONAL_LOAN
+REVOLVING_LINE
+```
+
+For unaffected products:
+
+```text
+MORTGAGE
+HELOC
+AUTO_LOAN
+```
+
+all product-level deltas were exactly zero across matched guardrail scenarios. That is excellent isolation.
+
+For affected products, the strategy reduced approved amount and approved Expected Loss:
+
+| Product | Avg offer-rate delta | Avg approval-rate delta | Avg counteroffer-rate delta | Avg approved amount delta | Avg approved EL delta |
+|---|---:|---:|---:|---:|---:|
+| `REVOLVING_LINE` | -1.73 pp | -4.32 pp | +2.59 pp | -$20.39M | -$1.29M |
+| `UNSECURED_PERSONAL_LOAN` | -2.38 pp | -4.29 pp | +1.92 pp | -$23.30M | -$1.21M |
+
+This supports the intended product-guardrail story: targeted tightening in unsecured / revolving products, not broad portfolio disruption.
+
+### Query 17 — Counteroffer-first strategy effect check
+
+**Pass.**
+
+The counteroffer-first strategy behaved cleanly in all three relevant contexts:
+
+| Scenario | Counteroffer-rate delta | Exposure-reduction delta | Avg approved PTI delta | Avg approved EL delta |
+|---|---:|---:|---:|---:|
+| `BASELINE_V2` | +3.82 pp | +$283.42M | -1.32 pp | -$364.38 |
+| `NEAR_PRIME_EXPANSION_MIX` | +3.10 pp | +$297.92M | -1.36 pp | -$408.18 |
+| `HIGH_BALANCE_APPETITE` | +3.15 pp | +$329.09M | -1.33 pp | -$340.52 |
+
+This is exactly the intended counteroffer-first behavior: more reduced-exposure treatment, larger total exposure reduction, lower approved PTI, and lower approved Expected Loss per final counteroffer. This aligns with the staged Section 8 / Section 9 design where preliminary counteroffers must pass exposure feasibility before becoming final counteroffers. fileciteturn184file25turn184file24
+
+### Query 18 — Parameter snapshot profile audit
+
+**Pass.**
+
+Query 18 shows:
+
+```text
+36 parameter snapshot rows
+36 unique parameter_snapshot_hash values
+strategy_params_captured_flag = TRUE for all rows
+product_policy_params_captured_flag = TRUE for all rows
+run_story_params_captured_flag = TRUE for all rows
+source scenario set/name/population mismatches = 0
+```
+
+The failed-counteroffer resolution profile is also correct:
+
+```text
+MANUAL_REVIEW = 35 runs
+DECLINE = 1 run
+```
+
+The one `DECLINE` run is:
+
+```text
+M2-07 / MANUAL_REVIEW_REDUCTION_STRATEGY / BASELINE_V2
+```
+
+That is exactly the intended strategy behavior.
+
+### Query 19 — Product policy snapshot extraction for guardrail runs
+
+**Review required.**
+
+This query found a real parameter issue:
+
+```text
+UNSECURED_PERSONAL_LOAN product_decline_min_requested_el = 85000.00
+```
+
+The intended canonical value we established was:
+
+```text
+UNSECURED_PERSONAL_LOAN product_decline_min_requested_el = 8500.00
+```
+
+This affected all five product-guardrail runs:
+
+```text
+M2-06
+M2-23
+M2-26
+M2-34
+M2-36
+```
+
+This does **not** invalidate the full campaign structurally. Query 16 still shows the product guardrail strategy produced targeted tightening in UPL and revolving. But it does mean the UPL requested-Expected-Loss severe-decline threshold was not tightened as intended. It was effectively made much looser than baseline for that one parameter.
+
+My recommendation:
+
+```text
+If final canonical campaign evidence must reflect the intended product guardrail policy:
+    Correct UPL product_decline_min_requested_el from 85000 to 8500.
+    Rerun M2-06, M2-23, M2-26, M2-34, and M2-36.
+    Rerun Section 15 frontier refresh.
+    Rerun Section 17 acceptance.
+
+If you decide 85000 was intentional:
+    Update the product-guardrail policy documentation and expected-value audit accordingly.
+```
+
+I would rerun the five product-guardrail runs. The whole point of Section 16.4 parameter snapshots is to catch exactly this kind of parameter drift before final documentation. fileciteturn184file8
+
+### Query 20 — Campaign acceptance rollup
+
+**Pass structurally, but the acceptance query should be enhanced.**
+
+The existing Query 20 shows:
+
+```text
+active_campaign_registry_rows = 36
+active_comparison_registry_rows = 17
+archived_strategy_scenario_slices = 36
+total_archived_rows = 1,800,000
+archive_slices_not_50000_rows = 0
+archive_slices_with_duplicate_application_ids = 0
+duplicate_archive_grain_count = 0
+executive_evidence_rows = 36
+parameter_snapshot_rows = 36
+critical_convention_violation_count = 0
+module2_campaign_acceptance_status = MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+```
+
+That is a valid structural acceptance result. But it did not test whether the captured product-policy snapshots matched the intended canonical campaign policy. The Section 17 version below fixes that.
+
+---
+
+# Copy-paste Section 17
+
+```sql
+/***************************************************************************************************
+SECTION 17 — POST-CAMPAIGN ACCEPTANCE, PARAMETER SNAPSHOT AUDIT, AND STRATEGY EFFECT REVIEW
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide the final post-campaign acceptance and strategy-effect review layer after all planned
+    Module 2 campaign runs have been completed, archived, validated, compared, and captured into
+    persistent evidence tables.
+
+    Section 17 answers:
+
+        "Is the completed 36-run Module 2 campaign structurally complete, evidence-complete,
+         convention-clean, parameter-traceable, and analytically ready for final interpretation?"
+
+WHY THIS SECTION EXISTS:
+    Sections 1 through 16 are run-execution, archive, comparison, validation, frontier, and evidence
+    capture layers.
+
+    Section 17 is the final post-campaign control tower.
+
+    It does not run new strategy logic.
+
+    It reviews the completed campaign from persistent objects:
+        credit_decisioning_sim.strategy_decisions_archive
+        credit_decisioning_sim.strategy_run_campaign_registry
+        credit_decisioning_sim.strategy_comparison_campaign_registry
+        credit_decisioning_sim.strategy_run_evidence_summary
+        credit_decisioning_sim.strategy_run_validation_evidence
+        credit_decisioning_sim.strategy_run_parameter_snapshot
+        credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+WHAT SECTION 17 REVIEWS:
+    1. Product-specific guardrail strategy effects by product.
+    2. Counteroffer-first strategy effects.
+    3. Parameter snapshot completeness and source-lineage consistency.
+    4. Product guardrail policy snapshot values against intended canonical values.
+    5. Final campaign acceptance rollup.
+
+WHY THIS SECTION USES PERSISTENT TABLES:
+    The latest-run table is replaceable and contains only the most recent run.
+
+    The archive and evidence tables preserve completed campaign history.
+
+    Section 17 therefore reads persistent campaign evidence rather than temporary staging outputs.
+
+CRITICAL GOVERNANCE ENHANCEMENT:
+    Section 17.4 explicitly tests captured product-policy values against intended canonical values.
+
+    This catches a class of issue that structural archive and convention checks do not catch:
+
+        "The SQL ran cleanly, the archive is complete, and the conventions held,
+         but a product-policy parameter was populated with the wrong value."
+
+    That distinction matters because a simulation can be technically valid while representing a
+    different strategy than intended.
+
+CREDIT RISK CONCEPTS TAUGHT IN THIS SECTION:
+    Product guardrails:
+        Product-specific tightening should concentrate in selected products rather than changing
+        unaffected products.
+
+    Counteroffer-first treatment:
+        A counteroffer strategy should increase reduced-exposure treatment, reduce approved exposure
+        pressure, and reduce approved PTI / approved Expected Loss profile where feasible.
+
+    Parameter snapshots:
+        Strategy results are interpretable only when the active parameter card and product-policy card
+        are preserved and auditable.
+
+    Campaign acceptance:
+        A final campaign should reconcile across archive grain, registry linkage, evidence capture,
+        output conventions, comparison readiness, and intended parameter values.
+
+INTERPRETATION BOUNDARIES:
+    This section validates campaign evidence quality and strategy-effect directionality.
+
+    It does not declare production approval.
+    It does not validate real applicant treatment.
+    It does not calculate revenue, profit, funding cost, capital, pricing, margin, or Module 3
+    economics.
+    It does not replace the future written Validation Summary.
+
+READ-ONLY BOUNDARY:
+    Section 17 does not insert rows.
+    Section 17 does not delete rows.
+    Section 17 does not update rows.
+    Section 17 does not modify the archive.
+    Section 17 does not modify evidence tables.
+    Section 17 does not modify campaign registry tables.
+    Section 17 does not recalculate decisions.
+    Section 17 does not recalculate approved exposure.
+    Section 17 does not recalculate approved Expected Loss.
+    Section 17 does not reassign simulated reason codes.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CTE:
+        Breaks campaign acceptance into readable, named layers.
+
+    JOIN:
+        Aligns baseline and challenger strategy slices by the same Module 1 scenario / population.
+
+    LEFT JOIN:
+        Allows audit queries to surface missing evidence rather than hiding it.
+
+    CROSS JOIN LATERAL:
+        Expands JSONB product-policy arrays into one row per captured product policy.
+
+    IS DISTINCT FROM:
+        Performs NULL-safe parameter comparisons.
+
+    COUNT(*) FILTER:
+        Counts specific pass / review / violation conditions in one aggregate query.
+
+    CASE:
+        Converts diagnostics into readable acceptance statuses.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 17.1 — PRODUCT GUARDRAIL STRATEGY EFFECT CHECK
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY affects the intended products and leaves
+    unaffected products unchanged.
+
+    Intended affected products:
+        UNSECURED_PERSONAL_LOAN
+        REVOLVING_LINE
+
+    Intended unaffected products:
+        MORTGAGE
+        HELOC
+        AUTO_LOAN
+
+SQL PURPOSE:
+    1. Summarize product-level outcomes from the full Module 2 archive.
+    2. Pair BASELINE_STRATEGY and PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY within the same Module 1
+       scenario / population.
+    3. Calculate product-level deltas.
+    4. Assign a product_guardrail_effect_status.
+
+WHAT TO LOOK FOR:
+    For UNSECURED_PERSONAL_LOAN and REVOLVING_LINE:
+        approved amount should generally decline;
+        approved Expected Loss should generally decline;
+        approval rate should generally decline;
+        counteroffer rate may rise.
+
+    For MORTGAGE, HELOC, and AUTO_LOAN:
+        deltas should be zero or near zero because product guardrails are not intended to alter those
+        product-policy rows.
+
+INTERPRETATION:
+    This query tests product-level strategy effect.
+
+    It does not test whether the product-policy parameter values were populated correctly.
+    Exact product-policy value testing happens in Section 17.4.
+
+***************************************************************************************************/
+
+WITH registry_map AS (
+    /***********************************************************************************************
+    CTE: registry_map
+
+    Purpose:
+        Bring run IDs into the product-level strategy-effect diagnostic.
+
+    Why this matters:
+        Archive keys are technically precise, but run IDs are easier to review in campaign outputs.
+    ***********************************************************************************************/
+    SELECT
+        module1_run_id,
+        module2_run_id,
+        run_sequence_number,
+        showcase_id,
+        showcase_name,
+        comparison_group_id,
+        validation_evidence_group_id,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+
+    WHERE registry_active_flag IS TRUE
+),
+
+product_level_metrics AS (
+    /***********************************************************************************************
+    CTE: product_level_metrics
+
+    Purpose:
+        Collapse the archived applicant-level output to product-level strategy metrics.
+
+    Grain:
+        one row per strategy × Module 1 scenario × product.
+
+    Metric conventions:
+        simulated_offer_exposure_rate:
+            APPROVE + COUNTEROFFER / applications.
+
+        approved_expected_loss_rate:
+            total approved Expected Loss / total approved amount.
+
+        COALESCE on approved amount and approved Expected Loss:
+            treats MANUAL_REVIEW as unresolved and DECLINE as zero-exposure for portfolio impact.
+    ***********************************************************************************************/
+    SELECT
+        ar.strategy_set_name,
+        ar.strategy_name,
+        ar.strategy_version,
+        ar.module1_scenario_set_name,
+        ar.module1_scenario_name,
+        ar.population_id,
+        ar.product_type_policy_key,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE ar.simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        COUNT(*) FILTER (WHERE ar.decision_outcome = 'APPROVE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE ar.decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE ar.decision_outcome = 'DECLINE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        SUM(COALESCE(ar.approved_amount, 0)) AS total_approved_amount,
+
+        SUM(COALESCE(ar.approved_expected_loss_amount, 0))
+            AS total_approved_expected_loss_amount,
+
+        SUM(COALESCE(ar.approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(ar.approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        AVG(ar.approved_payment_to_income_ratio) FILTER (
+            WHERE ar.simulated_offer_exposure_flag IS TRUE
+        ) AS avg_approved_pti_offer_rows,
+
+        AVG(ar.estimated_pd) FILTER (
+            WHERE ar.simulated_offer_exposure_flag IS TRUE
+        ) AS avg_synthetic_estimated_pd_proxy_offer_rows
+
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+
+    WHERE ar.strategy_name IN (
+        'BASELINE_STRATEGY',
+        'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+    )
+
+    GROUP BY
+        ar.strategy_set_name,
+        ar.strategy_name,
+        ar.strategy_version,
+        ar.module1_scenario_set_name,
+        ar.module1_scenario_name,
+        ar.population_id,
+        ar.product_type_policy_key
+),
+
+paired_product_deltas AS (
+    /***********************************************************************************************
+    CTE: paired_product_deltas
+
+    Purpose:
+        Pair baseline and product-guardrail rows by the same scenario / product.
+
+    Why same scenario:
+        This isolates the downstream Module 2 product guardrail strategy effect from upstream
+        Module 1 scenario effects.
+
+    SQL mechanics:
+        The baseline alias b and challenger alias g are joined by:
+            strategy set,
+            strategy version,
+            Module 1 scenario set,
+            Module 1 scenario name,
+            population,
+            product type.
+    ***********************************************************************************************/
+    SELECT
+        rb.module2_run_id AS baseline_module2_run_id,
+        rg.module2_run_id AS guardrail_module2_run_id,
+
+        b.module1_scenario_set_name,
+        b.module1_scenario_name,
+        b.population_id,
+        b.product_type_policy_key,
+
+        b.applications AS baseline_applications,
+        g.applications AS guardrail_applications,
+
+        b.simulated_offer_exposure_rate AS baseline_simulated_offer_exposure_rate,
+        g.simulated_offer_exposure_rate AS guardrail_simulated_offer_exposure_rate,
+        g.simulated_offer_exposure_rate - b.simulated_offer_exposure_rate
+            AS delta_simulated_offer_exposure_rate,
+
+        b.approval_rate AS baseline_approval_rate,
+        g.approval_rate AS guardrail_approval_rate,
+        g.approval_rate - b.approval_rate AS delta_approval_rate,
+
+        b.counteroffer_rate AS baseline_counteroffer_rate,
+        g.counteroffer_rate AS guardrail_counteroffer_rate,
+        g.counteroffer_rate - b.counteroffer_rate AS delta_counteroffer_rate,
+
+        b.decline_rate AS baseline_decline_rate,
+        g.decline_rate AS guardrail_decline_rate,
+        g.decline_rate - b.decline_rate AS delta_decline_rate,
+
+        b.total_approved_amount AS baseline_total_approved_amount,
+        g.total_approved_amount AS guardrail_total_approved_amount,
+        g.total_approved_amount - b.total_approved_amount AS delta_total_approved_amount,
+
+        b.total_approved_expected_loss_amount AS baseline_total_approved_expected_loss_amount,
+        g.total_approved_expected_loss_amount AS guardrail_total_approved_expected_loss_amount,
+        g.total_approved_expected_loss_amount - b.total_approved_expected_loss_amount
+            AS delta_total_approved_expected_loss_amount,
+
+        b.approved_expected_loss_rate AS baseline_approved_expected_loss_rate,
+        g.approved_expected_loss_rate AS guardrail_approved_expected_loss_rate,
+        g.approved_expected_loss_rate - b.approved_expected_loss_rate
+            AS delta_approved_expected_loss_rate,
+
+        b.avg_approved_pti_offer_rows AS baseline_avg_approved_pti_offer_rows,
+        g.avg_approved_pti_offer_rows AS guardrail_avg_approved_pti_offer_rows,
+        g.avg_approved_pti_offer_rows - b.avg_approved_pti_offer_rows
+            AS delta_avg_approved_pti_offer_rows,
+
+        b.avg_synthetic_estimated_pd_proxy_offer_rows AS baseline_avg_synthetic_estimated_pd_proxy_offer_rows,
+        g.avg_synthetic_estimated_pd_proxy_offer_rows AS guardrail_avg_synthetic_estimated_pd_proxy_offer_rows,
+        g.avg_synthetic_estimated_pd_proxy_offer_rows - b.avg_synthetic_estimated_pd_proxy_offer_rows
+            AS delta_avg_synthetic_estimated_pd_proxy_offer_rows
+
+    FROM product_level_metrics b
+
+    JOIN product_level_metrics g
+        ON g.strategy_set_name = b.strategy_set_name
+       AND g.strategy_version = b.strategy_version
+       AND g.module1_scenario_set_name = b.module1_scenario_set_name
+       AND g.module1_scenario_name = b.module1_scenario_name
+       AND g.population_id = b.population_id
+       AND g.product_type_policy_key = b.product_type_policy_key
+       AND g.strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+
+    LEFT JOIN registry_map rb
+        ON rb.strategy_set_name = b.strategy_set_name
+       AND rb.strategy_name = b.strategy_name
+       AND rb.strategy_version = b.strategy_version
+       AND rb.module1_scenario_set_name = b.module1_scenario_set_name
+       AND rb.module1_scenario_name = b.module1_scenario_name
+       AND rb.population_id = b.population_id
+
+    LEFT JOIN registry_map rg
+        ON rg.strategy_set_name = g.strategy_set_name
+       AND rg.strategy_name = g.strategy_name
+       AND rg.strategy_version = g.strategy_version
+       AND rg.module1_scenario_set_name = g.module1_scenario_set_name
+       AND rg.module1_scenario_name = g.module1_scenario_name
+       AND rg.population_id = g.population_id
+
+    WHERE b.strategy_name = 'BASELINE_STRATEGY'
+)
+
+SELECT
+    baseline_module2_run_id,
+    guardrail_module2_run_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    product_type_policy_key,
+
+    baseline_applications,
+    guardrail_applications,
+
+    delta_simulated_offer_exposure_rate,
+    delta_approval_rate,
+    delta_counteroffer_rate,
+    delta_decline_rate,
+
+    delta_total_approved_amount,
+    delta_total_approved_expected_loss_amount,
+    delta_approved_expected_loss_rate,
+    delta_avg_approved_pti_offer_rows,
+    delta_avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    /***********************************************************************************************
+    Product guardrail effect status.
+
+    Affected products should generally move down in approved amount and approved Expected Loss.
+
+    Unaffected products should have no movement because their product-policy rows were not changed.
+    ***********************************************************************************************/
+    CASE
+        WHEN product_type_policy_key IN ('UNSECURED_PERSONAL_LOAN', 'REVOLVING_LINE')
+         AND delta_total_approved_amount < 0
+         AND delta_total_approved_expected_loss_amount < 0
+            THEN 'TARGET_PRODUCT_GUARDRAIL_EFFECT_OBSERVED'
+
+        WHEN product_type_policy_key NOT IN ('UNSECURED_PERSONAL_LOAN', 'REVOLVING_LINE')
+         AND ABS(delta_simulated_offer_exposure_rate) < 0.0000001
+         AND ABS(delta_approval_rate) < 0.0000001
+         AND ABS(delta_counteroffer_rate) < 0.0000001
+         AND ABS(delta_decline_rate) < 0.0000001
+         AND ABS(delta_total_approved_amount) < 0.01
+         AND ABS(delta_total_approved_expected_loss_amount) < 0.01
+            THEN 'UNAFFECTED_PRODUCT_REMAINED_STABLE'
+
+        ELSE 'PRODUCT_GUARDRAIL_EFFECT_REVIEW_REQUIRED'
+    END AS product_guardrail_effect_status
+
+FROM paired_product_deltas
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    product_type_policy_key;
+
+
+
+/***************************************************************************************************
+SECTION 17.2 — COUNTEROFFER-FIRST STRATEGY EFFECT CHECK
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that COUNTEROFFER_FIRST_EXPOSURE_STRATEGY behaves like a reduced-exposure treatment
+    strategy.
+
+SQL PURPOSE:
+    1. Summarize counteroffer behavior from the archive.
+    2. Pair baseline and counteroffer-first strategies within the same Module 1 scenario / population.
+    3. Calculate deltas for counteroffer count, counteroffer rate, feasibility pass rate, exposure
+       reduction, approved PTI, and approved Expected Loss.
+    4. Assign a counteroffer_strategy_effect_status.
+
+WHAT TO LOOK FOR:
+    Counteroffer-first should generally:
+        increase final counteroffer rate;
+        increase total counteroffer exposure reduction;
+        reduce approved PTI for final counteroffers;
+        reduce approved Expected Loss for final counteroffers.
+
+***************************************************************************************************/
+
+WITH registry_map AS (
+    SELECT
+        module2_run_id,
+        run_sequence_number,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+counteroffer_metrics AS (
+    /***********************************************************************************************
+    CTE: counteroffer_metrics
+
+    Purpose:
+        Summarize counteroffer behavior by archived strategy / scenario slice.
+
+    Important:
+        preliminary_counteroffer_count is not the same as final counteroffer count.
+
+        Preliminary counteroffers were routed for feasibility testing.
+        Final counteroffers passed feasibility and resolved to final COUNTEROFFER.
+    ***********************************************************************************************/
+    SELECT
+        ar.strategy_set_name,
+        ar.strategy_name,
+        ar.strategy_version,
+        ar.module1_scenario_set_name,
+        ar.module1_scenario_name,
+        ar.population_id,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE ar.decision_outcome = 'COUNTEROFFER') AS counteroffer_count,
+
+        COUNT(*) FILTER (WHERE ar.decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (
+            WHERE ar.preliminary_decision_outcome = 'COUNTEROFFER'
+        ) AS preliminary_counteroffer_count,
+
+        COUNT(*) FILTER (
+            WHERE ar.preliminary_decision_outcome = 'COUNTEROFFER'
+              AND ar.counteroffer_feasibility_pass_flag IS TRUE
+        ) AS feasible_counteroffer_count,
+
+        COUNT(*) FILTER (
+            WHERE ar.preliminary_decision_outcome = 'COUNTEROFFER'
+              AND ar.counteroffer_feasibility_pass_flag IS FALSE
+        ) AS failed_counteroffer_count,
+
+        COUNT(*) FILTER (
+            WHERE ar.preliminary_decision_outcome = 'COUNTEROFFER'
+              AND ar.counteroffer_feasibility_pass_flag IS TRUE
+        )::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (WHERE ar.preliminary_decision_outcome = 'COUNTEROFFER'),
+            0
+        ) AS counteroffer_feasibility_pass_rate,
+
+        AVG(ar.exposure_reduction_pct) FILTER (
+            WHERE ar.decision_outcome = 'COUNTEROFFER'
+        ) AS avg_exposure_reduction_pct_for_final_counteroffers,
+
+        SUM(ar.exposure_reduction_amount) FILTER (
+            WHERE ar.decision_outcome = 'COUNTEROFFER'
+        ) AS total_counteroffer_exposure_reduction_amount,
+
+        AVG(ar.approved_payment_to_income_ratio) FILTER (
+            WHERE ar.decision_outcome = 'COUNTEROFFER'
+        ) AS avg_approved_pti_for_final_counteroffers,
+
+        AVG(ar.approved_expected_loss_amount) FILTER (
+            WHERE ar.decision_outcome = 'COUNTEROFFER'
+        ) AS avg_approved_el_for_final_counteroffers
+
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+
+    WHERE ar.strategy_name IN (
+        'BASELINE_STRATEGY',
+        'COUNTEROFFER_FIRST_EXPOSURE_STRATEGY'
+    )
+
+    GROUP BY
+        ar.strategy_set_name,
+        ar.strategy_name,
+        ar.strategy_version,
+        ar.module1_scenario_set_name,
+        ar.module1_scenario_name,
+        ar.population_id
+),
+
+paired_counteroffer_deltas AS (
+    SELECT
+        rb.module2_run_id AS baseline_module2_run_id,
+        rc.module2_run_id AS counteroffer_first_module2_run_id,
+
+        b.module1_scenario_set_name,
+        b.module1_scenario_name,
+        b.population_id,
+
+        b.applications AS baseline_applications,
+        c.applications AS counteroffer_first_applications,
+
+        b.counteroffer_count AS baseline_counteroffer_count,
+        c.counteroffer_count AS counteroffer_first_counteroffer_count,
+        c.counteroffer_count - b.counteroffer_count AS delta_counteroffer_count,
+
+        b.counteroffer_rate AS baseline_counteroffer_rate,
+        c.counteroffer_rate AS counteroffer_first_counteroffer_rate,
+        c.counteroffer_rate - b.counteroffer_rate AS delta_counteroffer_rate,
+
+        b.preliminary_counteroffer_count AS baseline_preliminary_counteroffer_count,
+        c.preliminary_counteroffer_count AS counteroffer_first_preliminary_counteroffer_count,
+        c.preliminary_counteroffer_count - b.preliminary_counteroffer_count
+            AS delta_preliminary_counteroffer_count,
+
+        b.feasible_counteroffer_count AS baseline_feasible_counteroffer_count,
+        c.feasible_counteroffer_count AS counteroffer_first_feasible_counteroffer_count,
+        c.feasible_counteroffer_count - b.feasible_counteroffer_count
+            AS delta_feasible_counteroffer_count,
+
+        b.failed_counteroffer_count AS baseline_failed_counteroffer_count,
+        c.failed_counteroffer_count AS counteroffer_first_failed_counteroffer_count,
+        c.failed_counteroffer_count - b.failed_counteroffer_count
+            AS delta_failed_counteroffer_count,
+
+        b.counteroffer_feasibility_pass_rate AS baseline_counteroffer_feasibility_pass_rate,
+        c.counteroffer_feasibility_pass_rate AS counteroffer_first_counteroffer_feasibility_pass_rate,
+        c.counteroffer_feasibility_pass_rate - b.counteroffer_feasibility_pass_rate
+            AS delta_counteroffer_feasibility_pass_rate,
+
+        b.avg_exposure_reduction_pct_for_final_counteroffers
+            AS baseline_avg_exposure_reduction_pct_for_final_counteroffers,
+
+        c.avg_exposure_reduction_pct_for_final_counteroffers
+            AS counteroffer_first_avg_exposure_reduction_pct_for_final_counteroffers,
+
+        c.avg_exposure_reduction_pct_for_final_counteroffers
+            - b.avg_exposure_reduction_pct_for_final_counteroffers
+            AS delta_avg_exposure_reduction_pct_for_final_counteroffers,
+
+        b.total_counteroffer_exposure_reduction_amount
+            AS baseline_total_counteroffer_exposure_reduction_amount,
+
+        c.total_counteroffer_exposure_reduction_amount
+            AS counteroffer_first_total_counteroffer_exposure_reduction_amount,
+
+        c.total_counteroffer_exposure_reduction_amount
+            - b.total_counteroffer_exposure_reduction_amount
+            AS delta_total_counteroffer_exposure_reduction_amount,
+
+        b.avg_approved_pti_for_final_counteroffers
+            AS baseline_avg_approved_pti_for_final_counteroffers,
+
+        c.avg_approved_pti_for_final_counteroffers
+            AS counteroffer_first_avg_approved_pti_for_final_counteroffers,
+
+        c.avg_approved_pti_for_final_counteroffers
+            - b.avg_approved_pti_for_final_counteroffers
+            AS delta_avg_approved_pti_for_final_counteroffers,
+
+        b.avg_approved_el_for_final_counteroffers
+            AS baseline_avg_approved_el_for_final_counteroffers,
+
+        c.avg_approved_el_for_final_counteroffers
+            AS counteroffer_first_avg_approved_el_for_final_counteroffers,
+
+        c.avg_approved_el_for_final_counteroffers
+            - b.avg_approved_el_for_final_counteroffers
+            AS delta_avg_approved_el_for_final_counteroffers
+
+    FROM counteroffer_metrics b
+
+    JOIN counteroffer_metrics c
+        ON c.strategy_set_name = b.strategy_set_name
+       AND c.strategy_version = b.strategy_version
+       AND c.module1_scenario_set_name = b.module1_scenario_set_name
+       AND c.module1_scenario_name = b.module1_scenario_name
+       AND c.population_id = b.population_id
+       AND c.strategy_name = 'COUNTEROFFER_FIRST_EXPOSURE_STRATEGY'
+
+    LEFT JOIN registry_map rb
+        ON rb.strategy_set_name = b.strategy_set_name
+       AND rb.strategy_name = b.strategy_name
+       AND rb.strategy_version = b.strategy_version
+       AND rb.module1_scenario_set_name = b.module1_scenario_set_name
+       AND rb.module1_scenario_name = b.module1_scenario_name
+       AND rb.population_id = b.population_id
+
+    LEFT JOIN registry_map rc
+        ON rc.strategy_set_name = c.strategy_set_name
+       AND rc.strategy_name = c.strategy_name
+       AND rc.strategy_version = c.strategy_version
+       AND rc.module1_scenario_set_name = c.module1_scenario_set_name
+       AND rc.module1_scenario_name = c.module1_scenario_name
+       AND rc.population_id = c.population_id
+
+    WHERE b.strategy_name = 'BASELINE_STRATEGY'
+)
+
+SELECT
+    baseline_module2_run_id,
+    counteroffer_first_module2_run_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    delta_counteroffer_count,
+    delta_counteroffer_rate,
+    delta_preliminary_counteroffer_count,
+    delta_feasible_counteroffer_count,
+    delta_failed_counteroffer_count,
+    delta_counteroffer_feasibility_pass_rate,
+    delta_avg_exposure_reduction_pct_for_final_counteroffers,
+    delta_total_counteroffer_exposure_reduction_amount,
+    delta_avg_approved_pti_for_final_counteroffers,
+    delta_avg_approved_el_for_final_counteroffers,
+
+    CASE
+        WHEN delta_counteroffer_rate > 0
+         AND delta_total_counteroffer_exposure_reduction_amount > 0
+         AND delta_avg_approved_pti_for_final_counteroffers < 0
+         AND delta_avg_approved_el_for_final_counteroffers < 0
+            THEN 'COUNTEROFFER_FIRST_EFFECT_OBSERVED'
+
+        ELSE 'COUNTEROFFER_FIRST_EFFECT_REVIEW_REQUIRED'
+    END AS counteroffer_strategy_effect_status
+
+FROM paired_counteroffer_deltas
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name;
+
+
+
+/***************************************************************************************************
+SECTION 17.3 — PARAMETER SNAPSHOT PROFILE AUDIT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that every campaign run has a complete parameter snapshot and that the captured strategy
+    source fields align to the run-level evidence fields.
+
+SQL PURPOSE:
+    1. Read persistent parameter snapshots.
+    2. Confirm strategy JSONB, product-policy JSONB, and run-story JSONB payloads are present.
+    3. Confirm source Module 1 scenario set / scenario name / population captured in strategy JSONB
+       reconcile to the evidence row fields.
+    4. Confirm failed_counteroffer_resolution is visible for audit.
+
+WHY THIS MATTERS:
+    A campaign result is not fully interpretable unless the parameter payload that produced it is
+    preserved.
+
+    Section 16.4 captures that payload; Section 17.3 audits it.
+
+***************************************************************************************************/
+
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_name,
+    strategy_version,
+
+    parameter_snapshot_hash,
+
+    strategy_params_jsonb IS NOT NULL AS strategy_params_captured_flag,
+    product_policy_params_jsonb IS NOT NULL AS product_policy_params_captured_flag,
+    run_story_params_jsonb IS NOT NULL AS run_story_params_captured_flag,
+
+    strategy_params_jsonb ->> 'strategy_run_id' AS captured_strategy_run_id,
+    strategy_params_jsonb ->> 'module1_input_source' AS captured_module1_input_source,
+    strategy_params_jsonb ->> 'source_module1_scenario_set_name' AS captured_source_module1_scenario_set_name,
+    strategy_params_jsonb ->> 'source_module1_scenario_name' AS captured_source_module1_scenario_name,
+    strategy_params_jsonb ->> 'source_population_id' AS captured_source_population_id,
+    strategy_params_jsonb ->> 'failed_counteroffer_resolution' AS captured_failed_counteroffer_resolution,
+
+    CASE
+        WHEN strategy_params_jsonb IS NULL
+          OR product_policy_params_jsonb IS NULL
+          OR run_story_params_jsonb IS NULL
+            THEN 'PARAMETER_PAYLOAD_REVIEW_REQUIRED'
+
+        WHEN module1_scenario_set_name IS DISTINCT FROM strategy_params_jsonb ->> 'source_module1_scenario_set_name'
+          OR module1_scenario_name IS DISTINCT FROM strategy_params_jsonb ->> 'source_module1_scenario_name'
+          OR population_id IS DISTINCT FROM strategy_params_jsonb ->> 'source_population_id'
+            THEN 'PARAMETER_SOURCE_LINEAGE_REVIEW_REQUIRED'
+
+        ELSE 'PARAMETER_SNAPSHOT_READY'
+    END AS parameter_snapshot_status
+
+FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+
+ORDER BY run_sequence_number;
+
+
+
+/***************************************************************************************************
+SECTION 17.4 — PRODUCT GUARDRAIL POLICY SNAPSHOT EXACT-VALUE AUDIT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY runs captured the intended canonical product
+    guardrail values for:
+
+        UNSECURED_PERSONAL_LOAN
+        REVOLVING_LINE
+
+WHY THIS SECTION WAS ADDED:
+    Structural campaign acceptance can pass even when one product-policy parameter was populated
+    with the wrong value.
+
+    Product-policy snapshot audit closes that gap.
+
+EXPECTED PRODUCT GUARDRAIL VALUES:
+    UNSECURED_PERSONAL_LOAN:
+        product_approve_max_pti = 0.130000
+        product_review_max_pti = 0.220000
+        product_decline_min_pti = 0.320000
+        counteroffer_target_pti = 0.110000
+        product_approve_max_requested_el = 2500.00
+        product_review_max_requested_el = 5000.00
+        product_decline_min_requested_el = 8500.00
+        product_approved_el_cap = 2000.00
+        product_min_approved_amount = 1000.00
+        product_max_approved_amount = 27500.00
+        product_min_counteroffer_pct = 0.500000
+        product_max_exposure_reduction_pct = 0.500000
+
+    REVOLVING_LINE:
+        product_approve_max_pti = 0.100000
+        product_review_max_pti = 0.180000
+        product_decline_min_pti = 0.280000
+        counteroffer_target_pti = 0.080000
+        product_approve_max_requested_el = 1500.00
+        product_review_max_requested_el = 3200.00
+        product_decline_min_requested_el = 6500.00
+        product_approved_el_cap = 1400.00
+        product_min_approved_amount = 1000.00
+        product_max_approved_amount = 16000.00
+        product_min_counteroffer_pct = 0.500000
+        product_max_exposure_reduction_pct = 0.500000
+
+INTERPRETATION:
+    PRODUCT_GUARDRAIL_POLICY_VALUES_MATCH:
+        The captured parameter snapshot matches intended values.
+
+    PRODUCT_GUARDRAIL_POLICY_VALUE_REVIEW_REQUIRED:
+        At least one captured parameter differs from the intended value.
+
+    A mismatch should be resolved before final campaign documentation.
+
+***************************************************************************************************/
+
+WITH product_guardrail_runs AS (
+    /***********************************************************************************************
+    CTE: product_guardrail_runs
+
+    Purpose:
+        Identify completed product-guardrail strategy runs with parameter snapshots.
+    ***********************************************************************************************/
+    SELECT
+        module2_run_id,
+        run_sequence_number,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        strategy_name,
+        product_policy_params_jsonb
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+    WHERE strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+),
+
+expected_product_guardrail_policy AS (
+    /***********************************************************************************************
+    CTE: expected_product_guardrail_policy
+
+    Purpose:
+        Store the intended canonical product-guardrail values inside the audit query.
+
+    SQL mechanics:
+        VALUES creates a small inline expected-value table.
+    ***********************************************************************************************/
+    SELECT *
+    FROM (
+        VALUES
+            (
+                'UNSECURED_PERSONAL_LOAN'::TEXT,
+                0.130000::NUMERIC,
+                0.220000::NUMERIC,
+                0.320000::NUMERIC,
+                0.110000::NUMERIC,
+                2500.00::NUMERIC,
+                5000.00::NUMERIC,
+                8500.00::NUMERIC,
+                2000.00::NUMERIC,
+                1000.00::NUMERIC,
+                27500.00::NUMERIC,
+                0.500000::NUMERIC,
+                0.500000::NUMERIC
+            ),
+            (
+                'REVOLVING_LINE'::TEXT,
+                0.100000::NUMERIC,
+                0.180000::NUMERIC,
+                0.280000::NUMERIC,
+                0.080000::NUMERIC,
+                1500.00::NUMERIC,
+                3200.00::NUMERIC,
+                6500.00::NUMERIC,
+                1400.00::NUMERIC,
+                1000.00::NUMERIC,
+                16000.00::NUMERIC,
+                0.500000::NUMERIC,
+                0.500000::NUMERIC
+            )
+    ) AS v(
+        product_type,
+        expected_product_approve_max_pti,
+        expected_product_review_max_pti,
+        expected_product_decline_min_pti,
+        expected_counteroffer_target_pti,
+        expected_product_approve_max_requested_el,
+        expected_product_review_max_requested_el,
+        expected_product_decline_min_requested_el,
+        expected_product_approved_el_cap,
+        expected_product_min_approved_amount,
+        expected_product_max_approved_amount,
+        expected_product_min_counteroffer_pct,
+        expected_product_max_exposure_reduction_pct
+    )
+),
+
+expected_run_product_rows AS (
+    /***********************************************************************************************
+    CTE: expected_run_product_rows
+
+    Purpose:
+        Create one expected product-policy row per product-guardrail run × targeted product.
+
+    Expected count:
+        5 product-guardrail runs × 2 products = 10 rows.
+    ***********************************************************************************************/
+    SELECT
+        r.module2_run_id,
+        r.run_sequence_number,
+        r.module1_scenario_set_name,
+        r.module1_scenario_name,
+        r.population_id,
+        r.strategy_name,
+        e.*
+    FROM product_guardrail_runs r
+    CROSS JOIN expected_product_guardrail_policy e
+),
+
+actual_product_guardrail_policy AS (
+    /***********************************************************************************************
+    CTE: actual_product_guardrail_policy
+
+    Purpose:
+        Expand the captured product_policy_params_jsonb array into product-level rows.
+
+    SQL mechanics:
+        CROSS JOIN LATERAL jsonb_array_elements(...) turns each JSONB product-policy array into
+        row-level JSONB objects.
+
+        The ->> operator extracts text from JSONB.
+        The casts convert extracted text into NUMERIC for exact value comparison.
+    ***********************************************************************************************/
+    SELECT
+        r.module2_run_id,
+        r.run_sequence_number,
+        r.module1_scenario_set_name,
+        r.module1_scenario_name,
+        r.population_id,
+        r.strategy_name,
+
+        pp.product_policy_row ->> 'product_type' AS product_type,
+
+        (pp.product_policy_row ->> 'product_approve_max_pti')::NUMERIC
+            AS actual_product_approve_max_pti,
+
+        (pp.product_policy_row ->> 'product_review_max_pti')::NUMERIC
+            AS actual_product_review_max_pti,
+
+        (pp.product_policy_row ->> 'product_decline_min_pti')::NUMERIC
+            AS actual_product_decline_min_pti,
+
+        (pp.product_policy_row ->> 'counteroffer_target_pti')::NUMERIC
+            AS actual_counteroffer_target_pti,
+
+        (pp.product_policy_row ->> 'product_approve_max_requested_el')::NUMERIC
+            AS actual_product_approve_max_requested_el,
+
+        (pp.product_policy_row ->> 'product_review_max_requested_el')::NUMERIC
+            AS actual_product_review_max_requested_el,
+
+        (pp.product_policy_row ->> 'product_decline_min_requested_el')::NUMERIC
+            AS actual_product_decline_min_requested_el,
+
+        (pp.product_policy_row ->> 'product_approved_el_cap')::NUMERIC
+            AS actual_product_approved_el_cap,
+
+        (pp.product_policy_row ->> 'product_min_approved_amount')::NUMERIC
+            AS actual_product_min_approved_amount,
+
+        (pp.product_policy_row ->> 'product_max_approved_amount')::NUMERIC
+            AS actual_product_max_approved_amount,
+
+        (pp.product_policy_row ->> 'product_min_counteroffer_pct')::NUMERIC
+            AS actual_product_min_counteroffer_pct,
+
+        (pp.product_policy_row ->> 'product_max_exposure_reduction_pct')::NUMERIC
+            AS actual_product_max_exposure_reduction_pct
+
+    FROM product_guardrail_runs r
+
+    CROSS JOIN LATERAL jsonb_array_elements(r.product_policy_params_jsonb)
+        AS pp(product_policy_row)
+
+    WHERE pp.product_policy_row ->> 'product_type' IN (
+        'UNSECURED_PERSONAL_LOAN',
+        'REVOLVING_LINE'
+    )
+),
+
+policy_comparison AS (
+    SELECT
+        e.module2_run_id,
+        e.run_sequence_number,
+        e.module1_scenario_set_name,
+        e.module1_scenario_name,
+        e.population_id,
+        e.strategy_name,
+        e.product_type,
+
+        a.actual_product_approve_max_pti,
+        e.expected_product_approve_max_pti,
+
+        a.actual_product_review_max_pti,
+        e.expected_product_review_max_pti,
+
+        a.actual_product_decline_min_pti,
+        e.expected_product_decline_min_pti,
+
+        a.actual_counteroffer_target_pti,
+        e.expected_counteroffer_target_pti,
+
+        a.actual_product_approve_max_requested_el,
+        e.expected_product_approve_max_requested_el,
+
+        a.actual_product_review_max_requested_el,
+        e.expected_product_review_max_requested_el,
+
+        a.actual_product_decline_min_requested_el,
+        e.expected_product_decline_min_requested_el,
+
+        a.actual_product_approved_el_cap,
+        e.expected_product_approved_el_cap,
+
+        a.actual_product_min_approved_amount,
+        e.expected_product_min_approved_amount,
+
+        a.actual_product_max_approved_amount,
+        e.expected_product_max_approved_amount,
+
+        a.actual_product_min_counteroffer_pct,
+        e.expected_product_min_counteroffer_pct,
+
+        a.actual_product_max_exposure_reduction_pct,
+        e.expected_product_max_exposure_reduction_pct,
+
+        /*******************************************************************************************
+        Mismatch count across all audited product-policy fields.
+        *******************************************************************************************/
+        (
+            CASE WHEN a.product_type IS NULL THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_approve_max_pti IS DISTINCT FROM e.expected_product_approve_max_pti THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_review_max_pti IS DISTINCT FROM e.expected_product_review_max_pti THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_decline_min_pti IS DISTINCT FROM e.expected_product_decline_min_pti THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_counteroffer_target_pti IS DISTINCT FROM e.expected_counteroffer_target_pti THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_approve_max_requested_el IS DISTINCT FROM e.expected_product_approve_max_requested_el THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_review_max_requested_el IS DISTINCT FROM e.expected_product_review_max_requested_el THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_decline_min_requested_el IS DISTINCT FROM e.expected_product_decline_min_requested_el THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_approved_el_cap IS DISTINCT FROM e.expected_product_approved_el_cap THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_min_approved_amount IS DISTINCT FROM e.expected_product_min_approved_amount THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_max_approved_amount IS DISTINCT FROM e.expected_product_max_approved_amount THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_min_counteroffer_pct IS DISTINCT FROM e.expected_product_min_counteroffer_pct THEN 1 ELSE 0 END
+          + CASE WHEN a.actual_product_max_exposure_reduction_pct IS DISTINCT FROM e.expected_product_max_exposure_reduction_pct THEN 1 ELSE 0 END
+        ) AS product_policy_field_mismatch_count
+
+    FROM expected_run_product_rows e
+
+    LEFT JOIN actual_product_guardrail_policy a
+        ON a.module2_run_id = e.module2_run_id
+       AND a.product_type = e.product_type
+)
+
+SELECT
+    module2_run_id,
+    run_sequence_number,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_name,
+    product_type,
+
+    actual_product_approve_max_pti,
+    expected_product_approve_max_pti,
+
+    actual_product_review_max_pti,
+    expected_product_review_max_pti,
+
+    actual_product_decline_min_pti,
+    expected_product_decline_min_pti,
+
+    actual_counteroffer_target_pti,
+    expected_counteroffer_target_pti,
+
+    actual_product_approve_max_requested_el,
+    expected_product_approve_max_requested_el,
+
+    actual_product_review_max_requested_el,
+    expected_product_review_max_requested_el,
+
+    actual_product_decline_min_requested_el,
+    expected_product_decline_min_requested_el,
+
+    actual_product_approved_el_cap,
+    expected_product_approved_el_cap,
+
+    actual_product_min_approved_amount,
+    expected_product_min_approved_amount,
+
+    actual_product_max_approved_amount,
+    expected_product_max_approved_amount,
+
+    actual_product_min_counteroffer_pct,
+    expected_product_min_counteroffer_pct,
+
+    actual_product_max_exposure_reduction_pct,
+    expected_product_max_exposure_reduction_pct,
+
+    product_policy_field_mismatch_count,
+
+    CASE
+        WHEN product_policy_field_mismatch_count = 0
+            THEN 'PRODUCT_GUARDRAIL_POLICY_VALUES_MATCH'
+        ELSE 'PRODUCT_GUARDRAIL_POLICY_VALUE_REVIEW_REQUIRED'
+    END AS product_guardrail_policy_value_status
+
+FROM policy_comparison
+
+ORDER BY
+    run_sequence_number,
+    product_type;
+
+
+
+/***************************************************************************************************
+SECTION 17.5 — FINAL MODULE 2 CAMPAIGN ACCEPTANCE ROLLUP
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Produce the final one-row campaign acceptance status after archive, registry, evidence,
+    convention, and parameter-snapshot checks.
+
+SQL PURPOSE:
+    1. Confirm active campaign registry row count.
+    2. Confirm active comparison registry row count.
+    3. Confirm archive inventory and archive grain.
+    4. Confirm executive evidence and parameter snapshot row counts.
+    5. Confirm critical final-output convention integrity.
+    6. Confirm product-guardrail policy snapshots match intended canonical values.
+    7. Return final campaign acceptance status.
+
+IMPORTANT ENHANCEMENT:
+    This acceptance rollup includes product_guardrail_policy_mismatch_rows.
+
+    If this value is greater than zero, structural acceptance may still be clean, but final campaign
+    interpretation should pause until the parameter mismatch is resolved or intentionally documented.
+
+***************************************************************************************************/
+
+WITH archive_inventory AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        COUNT(*) AS archived_rows,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+archive_grain_duplicates AS (
+    SELECT COUNT(*) AS duplicate_archive_grain_count
+    FROM (
+        SELECT
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+            application_id,
+            COUNT(*) AS row_count
+        FROM credit_decisioning_sim.strategy_decisions_archive
+        GROUP BY
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+            application_id
+        HAVING COUNT(*) > 1
+    ) d
+),
+
+registry_runs AS (
+    SELECT COUNT(*) AS active_campaign_registry_rows
+    FROM credit_decisioning_sim.strategy_run_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+comparison_registry AS (
+    SELECT COUNT(*) AS active_comparison_registry_rows
+    FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+    WHERE registry_active_flag IS TRUE
+),
+
+executive_evidence AS (
+    SELECT COUNT(*) AS executive_evidence_rows
+    FROM credit_decisioning_sim.strategy_run_evidence_summary
+),
+
+parameter_evidence AS (
+    SELECT COUNT(*) AS parameter_snapshot_rows
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+),
+
+convention_violations AS (
+    /***********************************************************************************************
+    CTE: convention_violations
+
+    Purpose:
+        Recheck critical output conventions across the entire archive.
+
+    This is the full-campaign version of the Section 14 final-output convention concept.
+    ***********************************************************************************************/
+    SELECT
+        COUNT(*) FILTER (
+            WHERE (
+                COALESCE(approval_flag::INT, 0)
+                + COALESCE(counteroffer_flag::INT, 0)
+                + COALESCE(manual_review_flag::INT, 0)
+                + COALESCE(decline_flag::INT, 0)
+            ) <> 1
+        )
+        +
+        COUNT(*) FILTER (
+            WHERE simulated_offer_exposure_flag
+                  IS DISTINCT FROM (decision_outcome IN ('APPROVE', 'COUNTEROFFER'))
+        )
+        +
+        COUNT(*) FILTER (
+            WHERE primary_reason_code IS NULL
+               OR primary_reason_family IS NULL
+               OR triggered_reason_code_list IS NULL
+               OR reason_code_count IS NULL
+               OR reason_code_count < 1
+        ) AS critical_convention_violation_count
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+),
+
+product_guardrail_runs AS (
+    SELECT
+        module2_run_id,
+        product_policy_params_jsonb
+    FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+    WHERE strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+),
+
+expected_product_guardrail_policy AS (
+    SELECT *
+    FROM (
+        VALUES
+            ('UNSECURED_PERSONAL_LOAN'::TEXT, 0.130000::NUMERIC, 0.220000::NUMERIC, 0.320000::NUMERIC, 0.110000::NUMERIC, 2500.00::NUMERIC, 5000.00::NUMERIC, 8500.00::NUMERIC, 2000.00::NUMERIC, 1000.00::NUMERIC, 27500.00::NUMERIC, 0.500000::NUMERIC, 0.500000::NUMERIC),
+            ('REVOLVING_LINE'::TEXT, 0.100000::NUMERIC, 0.180000::NUMERIC, 0.280000::NUMERIC, 0.080000::NUMERIC, 1500.00::NUMERIC, 3200.00::NUMERIC, 6500.00::NUMERIC, 1400.00::NUMERIC, 1000.00::NUMERIC, 16000.00::NUMERIC, 0.500000::NUMERIC, 0.500000::NUMERIC)
+    ) AS v(
+        product_type,
+        expected_product_approve_max_pti,
+        expected_product_review_max_pti,
+        expected_product_decline_min_pti,
+        expected_counteroffer_target_pti,
+        expected_product_approve_max_requested_el,
+        expected_product_review_max_requested_el,
+        expected_product_decline_min_requested_el,
+        expected_product_approved_el_cap,
+        expected_product_min_approved_amount,
+        expected_product_max_approved_amount,
+        expected_product_min_counteroffer_pct,
+        expected_product_max_exposure_reduction_pct
+    )
+),
+
+expected_run_product_rows AS (
+    SELECT
+        r.module2_run_id,
+        e.*
+    FROM product_guardrail_runs r
+    CROSS JOIN expected_product_guardrail_policy e
+),
+
+actual_product_guardrail_policy AS (
+    SELECT
+        r.module2_run_id,
+        pp.product_policy_row ->> 'product_type' AS product_type,
+
+        (pp.product_policy_row ->> 'product_approve_max_pti')::NUMERIC AS actual_product_approve_max_pti,
+        (pp.product_policy_row ->> 'product_review_max_pti')::NUMERIC AS actual_product_review_max_pti,
+        (pp.product_policy_row ->> 'product_decline_min_pti')::NUMERIC AS actual_product_decline_min_pti,
+        (pp.product_policy_row ->> 'counteroffer_target_pti')::NUMERIC AS actual_counteroffer_target_pti,
+        (pp.product_policy_row ->> 'product_approve_max_requested_el')::NUMERIC AS actual_product_approve_max_requested_el,
+        (pp.product_policy_row ->> 'product_review_max_requested_el')::NUMERIC AS actual_product_review_max_requested_el,
+        (pp.product_policy_row ->> 'product_decline_min_requested_el')::NUMERIC AS actual_product_decline_min_requested_el,
+        (pp.product_policy_row ->> 'product_approved_el_cap')::NUMERIC AS actual_product_approved_el_cap,
+        (pp.product_policy_row ->> 'product_min_approved_amount')::NUMERIC AS actual_product_min_approved_amount,
+        (pp.product_policy_row ->> 'product_max_approved_amount')::NUMERIC AS actual_product_max_approved_amount,
+        (pp.product_policy_row ->> 'product_min_counteroffer_pct')::NUMERIC AS actual_product_min_counteroffer_pct,
+        (pp.product_policy_row ->> 'product_max_exposure_reduction_pct')::NUMERIC AS actual_product_max_exposure_reduction_pct
+
+    FROM product_guardrail_runs r
+
+    CROSS JOIN LATERAL jsonb_array_elements(r.product_policy_params_jsonb)
+        AS pp(product_policy_row)
+
+    WHERE pp.product_policy_row ->> 'product_type' IN (
+        'UNSECURED_PERSONAL_LOAN',
+        'REVOLVING_LINE'
+    )
+),
+
+product_guardrail_policy_audit AS (
+    SELECT
+        COUNT(*) AS expected_product_guardrail_policy_rows,
+
+        COUNT(*) FILTER (
+            WHERE a.product_type IS NULL
+        ) AS missing_product_guardrail_policy_rows,
+
+        COUNT(*) FILTER (
+            WHERE a.product_type IS NOT NULL
+              AND (
+                    a.actual_product_approve_max_pti IS DISTINCT FROM e.expected_product_approve_max_pti
+                 OR a.actual_product_review_max_pti IS DISTINCT FROM e.expected_product_review_max_pti
+                 OR a.actual_product_decline_min_pti IS DISTINCT FROM e.expected_product_decline_min_pti
+                 OR a.actual_counteroffer_target_pti IS DISTINCT FROM e.expected_counteroffer_target_pti
+                 OR a.actual_product_approve_max_requested_el IS DISTINCT FROM e.expected_product_approve_max_requested_el
+                 OR a.actual_product_review_max_requested_el IS DISTINCT FROM e.expected_product_review_max_requested_el
+                 OR a.actual_product_decline_min_requested_el IS DISTINCT FROM e.expected_product_decline_min_requested_el
+                 OR a.actual_product_approved_el_cap IS DISTINCT FROM e.expected_product_approved_el_cap
+                 OR a.actual_product_min_approved_amount IS DISTINCT FROM e.expected_product_min_approved_amount
+                 OR a.actual_product_max_approved_amount IS DISTINCT FROM e.expected_product_max_approved_amount
+                 OR a.actual_product_min_counteroffer_pct IS DISTINCT FROM e.expected_product_min_counteroffer_pct
+                 OR a.actual_product_max_exposure_reduction_pct IS DISTINCT FROM e.expected_product_max_exposure_reduction_pct
+              )
+        ) AS product_guardrail_policy_mismatch_rows
+
+    FROM expected_run_product_rows e
+
+    LEFT JOIN actual_product_guardrail_policy a
+        ON a.module2_run_id = e.module2_run_id
+       AND a.product_type = e.product_type
+)
+
+SELECT
+    rr.active_campaign_registry_rows,
+    cr.active_comparison_registry_rows,
+
+    (SELECT COUNT(*) FROM archive_inventory) AS archived_strategy_scenario_slices,
+    (SELECT SUM(archived_rows) FROM archive_inventory) AS total_archived_rows,
+    (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows <> 50000) AS archive_slices_not_50000_rows,
+    (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows <> distinct_application_id_count)
+        AS archive_slices_with_duplicate_application_ids,
+
+    agd.duplicate_archive_grain_count,
+
+    ee.executive_evidence_rows,
+    pe.parameter_snapshot_rows,
+
+    cv.critical_convention_violation_count,
+
+    pga.expected_product_guardrail_policy_rows,
+    pga.missing_product_guardrail_policy_rows,
+    pga.product_guardrail_policy_mismatch_rows,
+
+    CASE
+        WHEN rr.active_campaign_registry_rows = 36
+         AND cr.active_comparison_registry_rows = 17
+         AND (SELECT COUNT(*) FROM archive_inventory) = 36
+         AND (SELECT SUM(archived_rows) FROM archive_inventory) = 1800000
+         AND (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows <> 50000) = 0
+         AND (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows <> distinct_application_id_count) = 0
+         AND agd.duplicate_archive_grain_count = 0
+         AND ee.executive_evidence_rows = 36
+         AND pe.parameter_snapshot_rows = 36
+         AND cv.critical_convention_violation_count = 0
+         AND pga.expected_product_guardrail_policy_rows = 10
+         AND pga.missing_product_guardrail_policy_rows = 0
+         AND pga.product_guardrail_policy_mismatch_rows = 0
+            THEN 'MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS'
+
+        WHEN rr.active_campaign_registry_rows = 36
+         AND cr.active_comparison_registry_rows = 17
+         AND (SELECT COUNT(*) FROM archive_inventory) = 36
+         AND (SELECT SUM(archived_rows) FROM archive_inventory) = 1800000
+         AND (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows <> 50000) = 0
+         AND (SELECT COUNT(*) FROM archive_inventory WHERE archived_rows <> distinct_application_id_count) = 0
+         AND agd.duplicate_archive_grain_count = 0
+         AND ee.executive_evidence_rows = 36
+         AND pe.parameter_snapshot_rows = 36
+         AND cv.critical_convention_violation_count = 0
+         AND (
+                pga.missing_product_guardrail_policy_rows > 0
+             OR pga.product_guardrail_policy_mismatch_rows > 0
+             OR pga.expected_product_guardrail_policy_rows <> 10
+         )
+            THEN 'STRUCTURAL_ACCEPTANCE_PASS_BUT_PRODUCT_GUARDRAIL_POLICY_REVIEW_REQUIRED'
+
+        ELSE 'REVIEW_MODULE_2_CAMPAIGN_RESULTS_BEFORE_ANALYSIS'
+    END AS module2_campaign_acceptance_status
+
+FROM registry_runs rr
+CROSS JOIN comparison_registry cr
+CROSS JOIN archive_grain_duplicates agd
+CROSS JOIN executive_evidence ee
+CROSS JOIN parameter_evidence pe
+CROSS JOIN convention_violations cv
+CROSS JOIN product_guardrail_policy_audit pga;
+
+
+
+/***************************************************************************************************
+END OF SECTION 17 — POST-CAMPAIGN ACCEPTANCE, PARAMETER SNAPSHOT AUDIT, AND STRATEGY EFFECT REVIEW
+
+If execution reaches this point:
+    1. Product guardrail strategy effects have been reviewed by product.
+    2. Counteroffer-first strategy effects have been reviewed.
+    3. Parameter snapshot completeness has been reviewed.
+    4. Product guardrail policy snapshots have been compared to intended canonical values.
+    5. Final campaign acceptance has been summarized in one status row.
+
+Interpretation of final acceptance:
+    MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS:
+        Archive, registry, evidence, convention, and audited product-policy checks are clean.
+
+    STRUCTURAL_ACCEPTANCE_PASS_BUT_PRODUCT_GUARDRAIL_POLICY_REVIEW_REQUIRED:
+        Archive, registry, evidence, and convention checks are clean, but at least one product
+        guardrail product-policy value does not match intended canonical values.
+
+    REVIEW_MODULE_2_CAMPAIGN_RESULTS_BEFORE_ANALYSIS:
+        One or more structural, archive, evidence, convention, or parameter checks require review.
+
+No archive rows were modified.
+No evidence rows were modified.
+No strategy outputs were recalculated.
+No approved exposure values were recalculated.
+No approved Expected Loss values were recalculated.
+No simulated reason codes were reassigned.
+No Module 3 economics were calculated.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M01331 -->
+
+
+---
+
+<a id="c038-m01333"></a>
+
+### C038-M01333
+
+**Andrew** · 2026-05-11T20:24:27.891000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01333 -->
+ok, i finished the re-runs for PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY and then re-ran section 15. should i run that section 17 now to re-check our campaign queries?
+<!-- END_MESSAGE C038-M01333 -->
+
+
+---
+
+<a id="c038-m01334"></a>
+
+### C038-M01334
+
+**ChatGPT** · 2026-05-11T20:26:47.584688-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01334 -->
+Yes. Run **Section 17 now**. That is the right next audit after you corrected and reran the `PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY` runs and then reran Section 15.
+
+Recommended order:
+
+```text
+1. Rerun Section 15. 
+   You already did this.
+
+2. Refresh the Section 15-derived frontier fields into strategy_run_evidence_summary again
+   if you want Query 14 to reflect the newest post-rerun frontier state.
+
+3. Run Section 17.
+
+4. If Section 17 passes, rerun the final query pack that changed:
+   Query 14
+   Query 15
+   Query 16
+   Query 19 or Section 17.4
+   Query 20 or Section 17.5
+```
+
+Section 15 is archive-backed and creates temporary frontier outputs; it does **not** automatically rewrite the persistent executive evidence table unless you run the refresh/update step we used earlier. Section 16 captures parameter snapshots and executive evidence per current run, while Section 17 audits the completed campaign from the persistent archive and evidence tables. fileciteturn184file12 fileciteturn184file8
+
+## What Section 17 should now prove
+
+For the rerun to be fully clean, Section 17 should show:
+
+```text
+Section 17.1:
+    Product guardrail effects are observed for:
+        UNSECURED_PERSONAL_LOAN
+        REVOLVING_LINE
+
+    Unaffected products remain stable:
+        MORTGAGE
+        HELOC
+        AUTO_LOAN
+
+Section 17.2:
+    COUNTEROFFER_FIRST_EFFECT_OBSERVED for all counteroffer-first comparisons.
+
+Section 17.3:
+    PARAMETER_SNAPSHOT_READY for all 36 runs.
+
+Section 17.4:
+    10 expected product-guardrail product-policy rows.
+    0 missing product-guardrail product-policy rows.
+    0 product-guardrail product-policy mismatch rows.
+    Every audited row = PRODUCT_GUARDRAIL_POLICY_VALUES_MATCH.
+
+Section 17.5:
+    module2_campaign_acceptance_status =
+        MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+```
+
+The key fix is Section 17.4. It should confirm that the captured `PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY` snapshots now show:
+
+```text
+UNSECURED_PERSONAL_LOAN product_decline_min_requested_el = 8500.00
+```
+
+not:
+
+```text
+85000.00
+```
+
+## If Section 17 still fails
+
+If Section 17.4 still shows a mismatch, then one of two things happened:
+
+```text
+1. The Section 2.4 product-policy row still has the wrong value in the canonical SQL.
+2. The product-guardrail strategy reruns did not rerun through Section 16, so the archive may be fixed but the parameter_snapshot table is still stale.
+```
+
+If that happens, fix the product-policy value, rerun the affected product-guardrail runs through Section 16, rerun Section 15, refresh Query 14 frontier evidence if needed, and rerun Section 17.
+
+## Do you need to rerun Queries 1–13?
+
+Not all of them.
+
+The reruns changed five strategy slices and their evidence rows, so these should still be structurally unchanged but can be spot-checked:
+
+```text
+Query 1: same counts, newer archive timestamps for rerun slices.
+Query 4: should still reconcile 36 registry runs to archive.
+Query 7/8: should still show complete evidence coverage.
+Query 9: should still show zero convention violations.
+Query 12/13: should still show all comparisons ready and source fields matching.
+```
+
+For final review, the most useful rerun set is:
+
+```text
+Query 14 — Executive evidence campaign summary
+Query 15 — Baseline × challenger delta summary
+Query 16 — Product guardrail strategy effect check
+Section 17.4 — Product guardrail policy exact-value audit
+Section 17.5 — Final campaign acceptance rollup
+```
+
+Section 17.5 is now the stronger replacement for the old Query 20 because it includes the exact product-policy snapshot audit that caught the original issue.
+<!-- END_MESSAGE C038-M01334 -->
+
+
+---
+
+<a id="c038-m01336"></a>
+
+### C038-M01336
+
+**Andrew** · 2026-05-11T20:27:42.420000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01336 -->
+remind me how to do this again - Refresh the Section 15-derived frontier fields into strategy_run_evidence_summary again
+   if you want Query 14 to reflect the newest post-rerun frontier state.
+<!-- END_MESSAGE C038-M01336 -->
+
+
+---
+
+<a id="c038-m01338"></a>
+
+### C038-M01338
+
+**ChatGPT** · 2026-05-11T20:29:39.275959-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01338 -->
+Yes. Since you already reran **Section 15**, use the fresh temporary table:
+
+```sql
+tmp_m2_strategy_frontier_executive_summary
+```
+
+to update the Section 15-derived fields in:
+
+```sql
+credit_decisioning_sim.strategy_run_evidence_summary
+```
+
+Do **not** rerun Section 1 for this. Section 1 drops the replaceable latest-run table, and the code guidance explicitly says not to run Section 1 when the goal is only to refresh Section 15 frontier outputs or evidence from already-materialized results. fileciteturn184file51
+
+Section 15 is archive-backed and produces `tmp_m2_strategy_frontier_executive_summary`; Section 16.6 then uses those frontier fields when inserting the executive evidence row. This refresh manually updates those same persisted executive evidence fields after a post-campaign Section 15 rerun. fileciteturn184file12 fileciteturn184file5
+
+## Step 1 — Confirm fresh Section 15 output exists and is complete
+
+Run this first.
+
+```sql
+/***************************************************************************************************
+STEP 1 — CONFIRM FRESH SECTION 15 FRONTIER OUTPUT IS COMPLETE
+
+Purpose:
+    Confirm that the fresh post-rerun Section 15 temporary frontier table exists and has one row per
+    completed campaign run.
+
+Expected:
+    frontier_rows = 36
+    distinct_frontier_keys = 36
+    no_baseline_reference_rows = 0
+***************************************************************************************************/
+
+SELECT
+    COUNT(*) AS frontier_rows,
+
+    COUNT(DISTINCT (
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    )) AS distinct_frontier_keys,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = 'NO_BASELINE_REFERENCE_AVAILABLE'
+    ) AS no_baseline_reference_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type IS NULL
+           OR executive_frontier_quadrant IS NULL
+           OR frontier_interpretation_note IS NULL
+    ) AS frontier_required_field_gap_rows
+
+FROM tmp_m2_strategy_frontier_executive_summary;
+```
+
+Expected:
+
+```text
+frontier_rows                    = 36
+distinct_frontier_keys           = 36
+no_baseline_reference_rows       = 0
+frontier_required_field_gap_rows = 0
+```
+
+If this does not pass, stop and rerun Section 15 before updating evidence.
+
+---
+
+## Step 2 — Preview what would change
+
+This shows the current persisted executive evidence values versus the fresh Section 15 values.
+
+```sql
+/***************************************************************************************************
+STEP 2 — PREVIEW SECTION 15 FRONTIER FIELD REFRESH
+
+Purpose:
+    Preview the current persisted executive evidence fields against the fresh post-campaign Section 15
+    frontier fields.
+
+Expected:
+    36 matched rows.
+
+Review:
+    Pay special attention to the rerun PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY rows:
+        M2-06
+        M2-23
+        M2-26
+        M2-34
+        M2-36
+***************************************************************************************************/
+
+SELECT
+    e.run_sequence_number,
+    e.module2_run_id,
+
+    e.module1_scenario_set_name,
+    e.module1_scenario_name,
+    e.population_id,
+    e.strategy_name,
+    e.strategy_version,
+
+    e.frontier_position_type AS old_frontier_position_type,
+    f.frontier_position_type AS new_frontier_position_type,
+
+    e.executive_frontier_quadrant AS old_executive_frontier_quadrant,
+    f.executive_frontier_quadrant AS new_executive_frontier_quadrant,
+
+    e.frontier_interpretation_note AS old_frontier_interpretation_note,
+    f.frontier_interpretation_note AS new_frontier_interpretation_note,
+
+    e.top_reason_code_delta_driver_code AS old_top_reason_code_delta_driver_code,
+    f.top_reason_code_delta_driver_code AS new_top_reason_code_delta_driver_code,
+
+    e.top_reason_code_delta_population_share AS old_top_reason_code_delta_population_share,
+    f.top_reason_code_delta_population_share AS new_top_reason_code_delta_population_share
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary e
+
+JOIN tmp_m2_strategy_frontier_executive_summary f
+    ON f.strategy_set_name = e.strategy_set_name
+   AND f.strategy_name = e.strategy_name
+   AND f.strategy_version = e.strategy_version
+   AND f.module1_scenario_set_name = e.module1_scenario_set_name
+   AND f.module1_scenario_name = e.module1_scenario_name
+   AND f.population_id = e.population_id
+
+ORDER BY e.run_sequence_number;
+```
+
+---
+
+## Step 3 — Optional but recommended backup
+
+```sql
+/***************************************************************************************************
+STEP 3 — OPTIONAL BACKUP BEFORE FRONTIER REFRESH
+
+Purpose:
+    Preserve the current executive evidence table before updating Section 15-derived frontier fields.
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_run_evidence_summary_backup_pre_frontier_refresh;
+
+CREATE TABLE credit_decisioning_sim.strategy_run_evidence_summary_backup_pre_frontier_refresh AS
+SELECT *
+FROM credit_decisioning_sim.strategy_run_evidence_summary;
+```
+
+---
+
+## Step 4 — Refresh all Section 15-derived fields
+
+This updates all 36 matching executive evidence rows, not just rows that previously had stale labels. Since you reran product guardrail strategies, this is the cleaner choice.
+
+```sql
+/***************************************************************************************************
+STEP 4 — REFRESH SECTION 15-DERIVED FRONTIER FIELDS IN EXECUTIVE EVIDENCE SUMMARY
+
+Purpose:
+    Refresh persisted executive evidence frontier fields using the fresh post-rerun Section 15
+    archive-backed frontier output.
+
+Updates:
+    frontier_position_type
+    executive_frontier_quadrant
+    frontier_interpretation_note
+    top_reason_code_delta_driver_family
+    top_reason_code_delta_driver_code
+    top_reason_code_delta_driver_baseline_share
+    top_reason_code_delta_driver_strategy_share
+    top_reason_code_delta_population_share
+    observed_storyline, only when it appears auto-derived / stale
+
+Does not update:
+    archive rows
+    latest-run rows
+    validation evidence rows
+    parameter snapshots
+    product × score segment evidence rows
+    decision outcomes
+    approved exposure
+    approved Expected Loss
+    simulated reason codes
+***************************************************************************************************/
+
+BEGIN;
+
+WITH refreshed_frontier AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        frontier_position_type,
+        executive_frontier_quadrant,
+        frontier_interpretation_note,
+
+        top_reason_code_delta_driver_family,
+        top_reason_code_delta_driver_code,
+        top_reason_code_delta_driver_baseline_share,
+        top_reason_code_delta_driver_strategy_share,
+        top_reason_code_delta_population_share
+
+    FROM tmp_m2_strategy_frontier_executive_summary
+),
+
+updated_rows AS (
+    UPDATE credit_decisioning_sim.strategy_run_evidence_summary e
+    SET
+        frontier_position_type = f.frontier_position_type,
+        executive_frontier_quadrant = f.executive_frontier_quadrant,
+        frontier_interpretation_note = f.frontier_interpretation_note,
+
+        top_reason_code_delta_driver_family = f.top_reason_code_delta_driver_family,
+        top_reason_code_delta_driver_code = f.top_reason_code_delta_driver_code,
+        top_reason_code_delta_driver_baseline_share = f.top_reason_code_delta_driver_baseline_share,
+        top_reason_code_delta_driver_strategy_share = f.top_reason_code_delta_driver_strategy_share,
+        top_reason_code_delta_population_share = f.top_reason_code_delta_population_share,
+
+        observed_storyline =
+            CASE
+                WHEN e.observed_storyline IS NULL
+                  OR e.observed_storyline = e.frontier_interpretation_note
+                  OR e.observed_storyline ILIKE '%No baseline strategy slice exists%'
+                  OR e.observed_storyline ILIKE '%No baseline reference%'
+                    THEN f.frontier_interpretation_note
+                ELSE e.observed_storyline
+            END
+
+    FROM refreshed_frontier f
+
+    WHERE e.strategy_set_name = f.strategy_set_name
+      AND e.strategy_name = f.strategy_name
+      AND e.strategy_version = f.strategy_version
+      AND e.module1_scenario_set_name = f.module1_scenario_set_name
+      AND e.module1_scenario_name = f.module1_scenario_name
+      AND e.population_id = f.population_id
+
+    RETURNING
+        e.run_sequence_number,
+        e.module1_run_id,
+        e.module2_run_id,
+        e.module1_scenario_set_name,
+        e.module1_scenario_name,
+        e.population_id,
+        e.strategy_name,
+        e.strategy_version,
+        e.frontier_position_type,
+        e.executive_frontier_quadrant,
+        e.frontier_interpretation_note,
+        e.top_reason_code_delta_driver_code,
+        e.top_reason_code_delta_population_share
+)
+
+SELECT *
+FROM updated_rows
+ORDER BY run_sequence_number;
+```
+
+Review the returned rows. You should see 36 rows updated.
+
+---
+
+## Step 5 — Verify before commit
+
+```sql
+/***************************************************************************************************
+STEP 5 — VERIFY FRONTIER REFRESH BEFORE COMMIT
+
+Expected:
+    executive_evidence_rows = 36
+    no_baseline_reference_rows = 0
+    missing_frontier_field_rows = 0
+***************************************************************************************************/
+
+SELECT
+    COUNT(*) AS executive_evidence_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type = 'NO_BASELINE_REFERENCE_AVAILABLE'
+    ) AS no_baseline_reference_rows,
+
+    COUNT(*) FILTER (
+        WHERE frontier_position_type IS NULL
+           OR executive_frontier_quadrant IS NULL
+           OR frontier_interpretation_note IS NULL
+    ) AS missing_frontier_field_rows
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary;
+```
+
+Expected:
+
+```text
+executive_evidence_rows       = 36
+no_baseline_reference_rows    = 0
+missing_frontier_field_rows   = 0
+```
+
+Then commit:
+
+```sql
+COMMIT;
+```
+
+If anything looks wrong:
+
+```sql
+ROLLBACK;
+```
+
+---
+
+## Step 6 — Confirm the rerun product guardrail rows specifically
+
+```sql
+/***************************************************************************************************
+STEP 6 — CONFIRM REFRESHED PRODUCT GUARDRAIL FRONTIER ROWS
+
+Purpose:
+    Verify the rerun PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY rows now carry fresh frontier labels and
+    reason-code delta drivers.
+***************************************************************************************************/
+
+SELECT
+    run_sequence_number,
+    module1_run_id,
+    module2_run_id,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_name,
+    strategy_version,
+
+    frontier_position_type,
+    executive_frontier_quadrant,
+    frontier_interpretation_note,
+
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_population_share,
+    observed_storyline
+
+FROM credit_decisioning_sim.strategy_run_evidence_summary
+
+WHERE strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+
+ORDER BY run_sequence_number;
+```
+
+---
+
+## Step 7 — Now run Section 17
+
+After the refresh is committed, run **Section 17**. The most important result is Section 17.5:
+
+```text
+module2_campaign_acceptance_status =
+MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+```
+
+Also confirm Section 17.4 now shows:
+
+```text
+product_guardrail_policy_value_status =
+PRODUCT_GUARDRAIL_POLICY_VALUES_MATCH
+```
+
+for all audited product guardrail rows.
+<!-- END_MESSAGE C038-M01338 -->
+
+
+---
+
+<a id="c038-m01339"></a>
+
+### C038-M01339
+
+**Andrew** · 2026-05-11T21:05:00.327000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01339 -->
+i just ran section 17 and was expecting the 20 queries we had earlier, but I see only 5 queries were output.  why is that?  what changed when you coded section 17?  what is preferable?
+<!-- END_MESSAGE C038-M01339 -->
+
+
+---
+
+<a id="c038-m01342"></a>
+
+### C038-M01342
+
+**ChatGPT** · 2026-05-11T21:07:10.322370-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01342 -->
+According to a document from 2026-05-11, the earlier campaign QA pack had **20 standalone queries**, including Query 19 for product-policy snapshot extraction and Query 20 for the campaign acceptance rollup. fileciteturn185file10 The **Section 17** I coded was **not a full 20-query reproduction**. It was a **condensed post-campaign acceptance section** built from the highest-value late-stage checks, especially the ones relevant after the product-guardrail reruns.
+
+## Why you only saw 5 outputs
+
+You saw 5 result sets because Section 17 was coded as **five subsections**, each ending in one result-producing `SELECT`:
+
+```text
+17.1 Product guardrail strategy effect check
+17.2 Counteroffer-first strategy effect check
+17.3 Parameter snapshot profile audit
+17.4 Product guardrail policy exact-value audit
+17.5 Final Module 2 campaign acceptance rollup
+```
+
+CTEs inside those subsections do not create separate result tabs. Your SQL client only shows result tabs for final result-producing statements. So five final `SELECT` statements means five output grids.
+
+## What changed when I coded Section 17
+
+I interpreted your request in context: you had just asked me to review **Queries 16–20**, and we found the product-guardrail parameter issue in Query 19. So I turned the **late-stage audit layer** into Section 17, not the full 1–20 campaign query pack.
+
+The mapping was:
+
+| Earlier query | What happened in Section 17 |
+|---:|---|
+| Query 16 | Became **17.1**, product-guardrail strategy effect check |
+| Query 17 | Became **17.2**, counteroffer-first strategy effect check |
+| Query 18 | Became **17.3**, parameter snapshot profile audit |
+| Query 19 | Became **17.4**, upgraded from extraction-only to exact expected-vs-actual product-policy audit |
+| Query 20 | Became **17.5**, upgraded acceptance rollup with product-guardrail policy mismatch detection |
+
+The biggest intentional change was that **17.4 is stronger than old Query 19**. Old Query 19 extracted product-policy values for review. Section 17.4 compares the captured JSONB product-policy values against the intended canonical values and produces a match/review status.
+
+The other intentional change was that **17.5 is stronger than old Query 20**. Old Query 20 checked structural acceptance. New 17.5 adds product-guardrail policy mismatch rows to the final acceptance status, which is exactly how we caught the earlier issue.
+
+## What Section 17 does not include
+
+Section 17 does **not** re-output the earlier detailed campaign pack:
+
+```text
+Query 1  Archive campaign inventory
+Query 2  Archive slice detail
+Query 3  Archive duplicate grain check
+Query 4  Campaign registry-to-archive reconciliation
+Query 5  Registry rows missing archive detail
+Query 6  Archive rows without active registry
+Query 7  Evidence-table coverage
+Query 8  Evidence detail by run
+Query 9  Full-archive convention checks
+Query 10 Validation summary by run
+Query 11 Validation review concentration
+Query 12 Comparison registry readiness
+Query 13 Matched source-field consistency
+Query 14 Executive evidence campaign summary
+Query 15 Baseline/challenger delta summary
+```
+
+I did fold parts of those earlier checks into 17.5, but not as detailed result grids. For example, 17.5 checks archive slice count, total archived rows, duplicate archive grain count, evidence row counts, convention violations, and parameter-policy mismatches. It does **not** display the full detail tables from Queries 1–15.
+
+## What is preferable?
+
+For the **canonical SQL file**, I prefer the current structure:
+
+```text
+Section 17 = compact post-campaign acceptance control tower
+```
+
+That is better for routine reruns because it is short, focused, and catches the most important final acceptance issues. Section 16 already exists to preserve executive story, validation evidence, parameter snapshots, and segment evidence across the campaign, rather than forcing users to manually reconstruct evidence from many grids. fileciteturn185file2 Section 17 should therefore be the final control-tower check, not a 20-tab export package.
+
+For the **final documentation / evidence package**, I prefer keeping the 20-query pack as a separate:
+
+```text
+Section 18 — Full Campaign QA Export Pack
+```
+
+or:
+
+```text
+Appendix SQL — Full Campaign Evidence Export Queries
+```
+
+That gives you both:
+
+```text
+Section 17:
+    Fast final acceptance and parameter-governance check.
+
+Section 18 / Appendix:
+    Full 20-query export pack for README, Validation Summary, and final evidence review.
+```
+
+That is the cleanest design. Section 17 is for “Did the campaign pass final acceptance?” Section 18 / Appendix is for “Give me every detailed table I may want to export, screenshot, or cite.”
+
+## Practical recommendation now
+
+After your product-guardrail reruns, run Section 17 and confirm:
+
+```text
+17.4:
+    all rows = PRODUCT_GUARDRAIL_POLICY_VALUES_MATCH
+
+17.5:
+    module2_campaign_acceptance_status =
+        MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+```
+
+Then re-export these detailed outputs for final evidence:
+
+```text
+Query 14 — Executive evidence campaign summary
+Query 15 — Baseline/challenger delta summary
+Section 17.1 — Product guardrail effect check
+Section 17.2 — Counteroffer-first effect check
+Section 17.4 — Product guardrail exact-value audit
+Section 17.5 — Final campaign acceptance rollup
+```
+
+You do not need all 20 every time. For the final package, though, it is reasonable to keep the full 20-query pack as an appendix/export section.
+<!-- END_MESSAGE C038-M01342 -->
+
+
+---
+
+<a id="c038-m01343"></a>
+
+### C038-M01343
+
+**Andrew** · 2026-05-11T21:11:19.576000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M01343 -->
+I'd prefer one section 17.  I also don't want to duplicate.  If 16-20 are represented already in 17.1-17.5, please just add the queries that are not represented in the current section 17.  Add them upfront and make 17.1-17.5 the ending (with updated numberings).  please re-provide an elite, updated section 17.
+<!-- END_MESSAGE C038-M01343 -->
+
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_66.md) · [Next](Part_68.md)

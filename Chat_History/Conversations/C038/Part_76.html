@@ -1,0 +1,2763 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 76</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 76 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_75.html">Previous</a><a href="Part_77.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m01541" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M01541 · 2026-05-12T09:48:50.573614-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-12, Section 6 is the <strong>Rule Flag Construction Layer</strong>, and downstream Section 7 expects <code>tmp_m2_stage_3_rule_flags</code> plus route-driving fields such as <code>hard_policy_stop_flag</code>, <code>synthetic_risk_decline_trigger_flag</code>, <code>dti_decline_trigger_flag</code>, <code>counteroffer_candidate_flag</code>, <code>manual_review_candidate_flag</code>, <code>clean_approval_candidate_flag</code>, <code>requested_pti_decline_trigger_flag</code>, <code>requested_el_decline_trigger_flag</code>, <code>requested_exposure_extreme_flag</code>, and <code>exposure_policy_stop_candidate_flag</code>. fileciteturn228file17 fileciteturn228file5</p>
+<p>One compatibility tightening is included below: Section 6 now treats Section 5’s <code>LOW_REQUESTED_EXPOSURE</code> and <code>WITHIN_PRODUCT_APPROVAL_CAP</code> tiers as within product limits, instead of relying on the older <code>WITHIN_PRODUCT_LIMITS</code> label.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 6 — RULE FLAG CONSTRUCTION LAYER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Convert Section 5 diagnostic segments into deterministic, auditable simulated rule-trigger flags.
+
+    Section 6 answers:
+
+        &quot;Which simulated policy, risk, affordability, exposure, Expected Loss, counteroffer,
+         manual-review, and supplemental review conditions are triggered for this synthetic
+         applicant?&quot;
+
+    Section 6 does not answer:
+
+        &quot;What is the final simulated strategy outcome?&quot;
+
+    Section 6 is the trigger-evidence layer.
+
+    It does not decide the applicant. It identifies the signals that later routing, exposure
+    treatment, final decision resolution, and simulated reason-code assignment will use.
+
+SQL PURPOSE:
+    1. Confirm required Section 6 dependencies exist.
+    2. Read from tmp_m2_stage_2_strategy_segments.
+    3. Preserve all prior source, lineage, Module 2 strategy metadata, threshold, product-policy, and
+       segmentation fields.
+    4. Create transparent non-final rule-trigger flags across:
+            hard simulated policy stops,
+            synthetic estimated-risk bands,
+            requested affordability,
+            DTI capacity,
+            requested Expected Loss,
+            requested exposure,
+            counteroffer candidates,
+            manual-review candidates,
+            supplemental behavioral review signals,
+            clean approval candidate diagnostics.
+    5. Create numeric trigger-count fields.
+    6. Create true banding-family coverage diagnostics for synthetic estimated-risk and DTI.
+    7. Validate flag completeness, count-field integrity, banding-family coverage, candidate-rule
+       consistency, and no premature final outcome / reason-code / approved-exposure output creation.
+    8. Provide local rule-flag diagnostics before Section 7 preliminary routing.
+
+WHO SHOULD REVIEW THIS SECTION:
+    Credit strategy reviewers:
+        Confirm that the trigger families represent intuitive strategy signals before they are
+        prioritized into preliminary routes.
+
+    Model governance / validation reviewers:
+        Confirm that Section 6 remains a non-final trigger layer and does not prematurely assign
+        decisions, approved exposure, or simulated reason codes.
+
+    SQL reviewers:
+        Confirm that each trigger family is built through readable CTEs, that true banding families
+        are locally validated, and that broader trigger families are intentionally allowed to overlap.
+
+    Portfolio / executive reviewers:
+        Use Section 6 diagnostics to understand what kinds of strategy pressure exist in the selected
+        population before final outcomes are interpreted.
+
+WHEN TO RUN THIS SECTION:
+    Run Section 6 after:
+
+        Section 5 — Derived Strategy Segmentation Layer
+
+    Section 6 should be run before:
+
+        Section 7 — Preliminary Decision Routing Layer
+
+    Section 6 depends on:
+
+        tmp_m2_stage_2_strategy_segments
+
+HOW TO INTERPRET THIS SECTION:
+    Passing Section 6 means:
+        row count is preserved from Section 5;
+        application_id remains unique;
+        rule-trigger flags are complete;
+        count fields are valid;
+        synthetic estimated-risk banding covers every row exactly once;
+        DTI banding covers every row exactly once;
+        product counteroffer and manual-review permissions are respected;
+        and no final decision, reason-code, or approved-exposure fields were created early.
+
+    Passing Section 6 does not mean:
+        a final decision has been assigned;
+        a preliminary route has been assigned;
+        a counteroffer is feasible;
+        approved exposure exists;
+        approved PTI exists;
+        approved Expected Loss exists;
+        reason codes are complete;
+        archive persistence worked;
+        or full validation has passed.
+
+RELATIONSHIP TO SECTION 5:
+    Section 5 describes the applicant.
+
+    Section 6 turns those diagnostic descriptions into rule-trigger evidence.
+
+    Example:
+        Section 5 may describe a row as:
+            ELEVATED_SYNTHETIC_RISK
+            HIGH_REQUESTED_PTI
+            ABOVE_PRODUCT_APPROVAL_CAP
+
+        Section 6 converts those descriptions and thresholds into:
+            synthetic_risk_counteroffer_band_flag
+            requested_pti_counteroffer_candidate_flag
+            requested_exposure_above_product_cap_flag
+            exposure_counteroffer_candidate_flag
+            counteroffer_candidate_flag
+
+    Section 6 does not decide which of those signals wins.
+
+RELATIONSHIP TO SECTION 7:
+    Section 7 consumes the overlapping trigger evidence from Section 6 and creates one preliminary
+    route.
+
+    Section 6 intentionally allows multiple trigger families to be TRUE on the same row.
+
+    Section 7 applies route priority.
+
+RELATIONSHIP TO SECTION 8:
+    Section 8 calculates approved exposure treatment and counteroffer feasibility.
+
+    Section 6 only identifies whether a row is a counteroffer candidate.
+
+    A counteroffer candidate is not automatically a feasible counteroffer.
+
+RELATIONSHIP TO SECTION 9:
+    Section 9 resolves final decision_outcome after preliminary routing and exposure-treatment
+    feasibility.
+
+    Section 6 does not create final decision_outcome.
+
+RELATIONSHIP TO SECTION 10:
+    Section 10 assigns simulated strategy explanation codes after final decision resolution.
+
+    Section 6 does not assign reason codes.
+
+WHY RULE FLAGS ARE SEPARATED FROM FINAL DECISION HIERARCHY:
+    Multiple simulated policy conditions can validly coexist on the same synthetic applicant.
+
+    A row may simultaneously show:
+        requested PTI pressure,
+        requested Expected Loss pressure,
+        exposure pressure,
+        mixed-signal diagnostics,
+        borderline diagnostics,
+        supplemental review signals,
+        and counteroffer candidacy.
+
+    Section 6 preserves overlapping triggers.
+
+    Section 7 prioritizes those overlapping triggers into one preliminary route.
+
+    Section 8 evaluates approved exposure and counteroffer feasibility.
+
+    Section 9 resolves final decision_outcome after exposure treatment and counteroffer feasibility.
+
+WHY HARD SIMULATED POLICY STOP FLAGS ARE NOT FINAL DECLINES YET:
+    Section 6 identifies severe simulated policy-stop trigger conditions.
+
+    Final outcome assignment remains downstream because Module 2 is intentionally staged:
+        trigger identification,
+        preliminary routing,
+        exposure treatment,
+        final decision resolution,
+        reason-code assignment.
+
+    This makes it easier to audit where each final outcome came from.
+
+WHY TRUE BANDING FAMILIES ARE CHECKED:
+    Some rule families are true bands.
+
+    Synthetic estimated-risk band:
+        exactly one of clean approval band, counteroffer band, review band, or decline trigger should
+        be TRUE for every row.
+
+    DTI band:
+        exactly one of clean, review, or decline trigger should be TRUE for every row.
+
+    These band families are locally validated because gaps or overlaps indicate threshold coverage
+    defects.
+
+WHY BROADER TRIGGER FAMILIES ARE NOT MADE MUTUALLY EXCLUSIVE:
+    Requested affordability, requested Expected Loss, exposure, mixed-signal diagnostics,
+    supplemental review signals, counteroffer candidacy, and manual-review candidacy may overlap by
+    design.
+
+    Section 6 is a trigger layer, not a final decision hierarchy.
+
+    Do not use Section 6 to erase valid overlapping strategy signals.
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the finalized Module 1 SQL field.
+
+    In Module 2, estimated_pd is interpreted as the synthetic estimated-PD proxy.
+
+    Section 6 does not recalculate estimated_pd.
+    Section 6 does not create a calibrated default model.
+    Section 6 does not create a post-decision risk model.
+
+REQUESTED PTI BOUNDARY:
+    Requested PTI flags use requested_payment_to_income_ratio from the original Module 1 requested
+    structure.
+
+    Approved PTI does not exist yet.
+
+    approved_payment_to_income_ratio is calculated later only after exposure treatment.
+
+DTI BOUNDARY:
+    DTI remains an existing-obligation capacity signal.
+
+    It is not directly counteroffer-adjustable in Module 2 V1.0 because a counteroffer changes
+    simulated requested-exposure treatment, not the applicant&#39;s existing obligations.
+
+REQUESTED EXPECTED LOSS BOUNDARY:
+    Requested Expected Loss flags use requested_expected_loss_amount.
+
+    requested_expected_loss_amount is the Module 2 alias for Module 1 requested-exposure Expected
+    Loss.
+
+    approved_expected_loss_amount does not exist yet.
+
+REQUESTED EXPOSURE BOUNDARY:
+    Requested exposure flags use requested_amount and requested_exposure_tier.
+
+    approved_amount does not exist yet.
+
+COUNTEROFFER CANDIDATE BOUNDARY:
+    Section 6 identifies counteroffer candidates only.
+
+    A counteroffer candidate is not necessarily a feasible counteroffer.
+
+    Section 6 does not calculate:
+        approved_amount,
+        counteroffer_amount,
+        approved monthly payment proxy,
+        approved PTI,
+        approved Expected Loss,
+        counteroffer feasibility.
+
+MANUAL REVIEW CANDIDATE BOUNDARY:
+    Section 6 identifies manual-review candidates only.
+
+    It does not assign MANUAL_REVIEW as final decision_outcome.
+
+    Manual review remains unresolved until final decision resolution.
+
+CLEAN APPROVAL CANDIDATE BOUNDARY:
+    clean_approval_candidate_flag is diagnostic only.
+
+    It identifies rows that appear clean across major trigger families.
+
+    It does not assign APPROVE.
+    It does not create approved exposure.
+    It does not create simulated offer exposure.
+
+SUPPLEMENTAL BEHAVIORAL REVIEW FLAG BOUNDARY:
+    high_utilization_review_trigger_flag and low_score_review_trigger_flag are simulated strategy
+    diagnostics.
+
+    They are not production underwriting rules.
+    They are not final outcomes.
+    They are not reason codes.
+
+REASON-CODE BOUNDARY:
+    Section 6 does not assign:
+        primary_reason_code,
+        secondary_reason_code,
+        tertiary_reason_code,
+        triggered_reason_code_list,
+        reason_priority_rank,
+        primary_reason_family.
+
+    Reason-code assignment occurs after final decision resolution.
+
+FINAL OUTCOME BOUNDARY:
+    Section 6 does not assign:
+        decision_outcome,
+        decision_path,
+        approval_flag,
+        decline_flag,
+        manual_review_flag,
+        counteroffer_flag,
+        simulated_offer_exposure_flag.
+
+APPROVED-EXPOSURE BOUNDARY:
+    Section 6 does not calculate:
+        approved_amount,
+        counteroffer_amount,
+        approved_monthly_payment_proxy,
+        approved_payment_to_income_ratio,
+        approved_expected_loss_amount.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CREATE TEMP TABLE ... AS:
+        Materializes the rule-trigger layer as a session-scoped staging table.
+
+    ON COMMIT PRESERVE ROWS:
+        Keeps the staging table available across transaction boundaries in the active session.
+
+    CTE chain:
+        Breaks rule construction into readable steps:
+            hard_policy_stop_flags
+            hard_policy_stop_counted
+            synthetic_risk_flags
+            synthetic_risk_counted
+            affordability_flags
+            affordability_counted
+            dti_flags
+            dti_counted
+            requested_el_flags
+            requested_el_counted
+            exposure_flags
+            exposure_counted
+            counteroffer_candidate_flags
+            counteroffer_candidate_counted
+            supplemental_behavior_flags
+            supplemental_behavior_counted
+            manual_review_candidate_flags
+            manual_review_candidate_counted
+            clean_approval_diagnostic
+            final_rule_flags
+
+    Boolean expressions:
+        Convert strategy conditions into TRUE / FALSE trigger fields.
+
+    ::INT:
+        Converts TRUE / FALSE flags into 1 / 0 so trigger-count fields can be calculated.
+
+    CASE is intentionally not used for final outcome assignment here:
+        Section 6 is not the final decision hierarchy.
+
+    COUNT(*) and COUNT(DISTINCT application_id):
+        Validate row preservation and grain.
+
+    pg_attribute:
+        Inspects physical table columns to confirm downstream-only fields were not created too early.
+
+GOVERNANCE ROLE:
+    Section 6 turns diagnostic profile fields into transparent trigger evidence.
+
+    It gives downstream routing and reason-code sections a clear foundation while preserving all
+    overlapping trigger signals for QA and auditability.
+
+TESTING RELEVANCE:
+    Section 6 local diagnostics help reviewers confirm that trigger families behave as expected before
+    preliminary routing converts them into one route per application.
+
+DOWNSTREAM DEPENDENCY:
+    Section 7 consumes tmp_m2_stage_3_rule_flags.
+
+    Section 7 should not read directly from Section 5 because Section 6 creates the required trigger
+    evidence used for preliminary routing.
+
+COMMON MISUSE TO AVOID:
+    Do not interpret hard_policy_stop_flag as a final decline.
+    Do not interpret counteroffer_candidate_flag as a feasible counteroffer.
+    Do not interpret manual_review_candidate_flag as final manual review.
+    Do not interpret clean_approval_candidate_flag as final approval.
+    Do not interpret requested_pti_decline_trigger_flag as approved affordability failure.
+    Do not interpret requested_el_decline_trigger_flag as approved Expected Loss failure.
+    Do not expect broad trigger families to be mutually exclusive.
+    Do not use Section 6 as the final decision output.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 6.0 — SECTION 6 DEPENDENCY PREFLIGHT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that Section 5 segmentation output exists and is populated before rule-trigger
+    construction begins.
+
+    Section 6.0 answers:
+
+        &quot;Can Section 6 safely build rule-trigger flags from the Section 5 segmentation layer?&quot;
+
+SQL PURPOSE:
+    1. Confirm tmp_m2_stage_2_strategy_segments exists.
+    2. Confirm tmp_m2_stage_2_strategy_segments contains rows.
+    3. Confirm application_id is unique before trigger fields are added.
+    4. Confirm core Section 5 segmentation fields needed by Section 6 exist conceptually.
+    5. Fail clearly if Section 5 has not been run.
+
+BOUNDARY:
+    Section 6.0 does not create rule flags.
+    Section 6.0 does not assign preliminary routes.
+    Section 6.0 does not assign final outcomes.
+    Section 6.0 does not calculate approved exposure.
+    Section 6.0 does not assign reason codes.
+    Section 6.0 does not modify persistent tables.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage2_exists BOOLEAN;
+    v_stage2_row_count BIGINT;
+    v_stage2_distinct_application_count BIGINT;
+    v_stage2_required_gap_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Dependency check: Section 5 segmentation stage must exist.
+
+    SQL mechanics:
+        TO_REGCLASS checks whether the temporary object exists.
+
+    Business interpretation:
+        Section 6 must consume the Section 5 segmentation layer, not the raw Section 4 source stage.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS(&#39;pg_temp.tmp_m2_stage_2_strategy_segments&#39;),
+        TO_REGCLASS(&#39;tmp_m2_stage_2_strategy_segments&#39;)
+    ) IS NOT NULL
+    INTO v_stage2_exists;
+
+    IF v_stage2_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: tmp_m2_stage_2_strategy_segments is required. Run Section 5 before Section 6.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 5 segmentation stage must contain rows.
+
+    Business interpretation:
+        Trigger construction over an empty applicant population is not useful and usually indicates
+        an upstream source or segmentation issue.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage2_row_count
+    FROM tmp_m2_stage_2_strategy_segments;
+
+    IF v_stage2_row_count &lt;= 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: tmp_m2_stage_2_strategy_segments contains zero rows.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id must be unique before rule flags are added.
+
+    Section 6 should add trigger fields only.
+
+    It should not repair upstream row-grain problems.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage2_distinct_application_count
+    FROM tmp_m2_stage_2_strategy_segments;
+
+    IF v_stage2_distinct_application_count &lt;&gt; v_stage2_row_count THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: tmp_m2_stage_2_strategy_segments is not unique at application_id. Rows=%, distinct application_id=%.&#39;,
+            v_stage2_row_count,
+            v_stage2_distinct_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: core Section 5 fields required by Section 6 must be populated.
+
+    Business interpretation:
+        Section 6 depends on Section 5 diagnostic segmentation and threshold enrichment.
+
+        Missing values here mean the trigger layer would be partially undefined.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage2_required_gap_count
+    FROM tmp_m2_stage_2_strategy_segments
+    WHERE strategy_risk_tier IS NULL
+       OR requested_pti_bucket IS NULL
+       OR dti_bucket IS NULL
+       OR requested_exposure_tier IS NULL
+       OR requested_expected_loss_tier IS NULL
+       OR product_type_policy_key IS NULL
+       OR score_band_policy_key IS NULL
+       OR product_score_policy_segment IS NULL
+       OR mixed_signal_profile_type IS NULL
+       OR mixed_signal_condition_count IS NULL
+       OR borderline_profile_flag IS NULL
+
+       OR bankruptcy_policy_stop_enabled IS NULL
+       OR major_derogatory_policy_stop_enabled IS NULL
+       OR severe_delinquency_policy_stop_enabled IS NULL
+       OR severe_delinquency_count_threshold IS NULL
+       OR high_utilization_review_enabled IS NULL
+       OR high_utilization_review_threshold IS NULL
+       OR low_score_review_enabled IS NULL
+       OR low_score_review_threshold IS NULL
+
+       OR approve_max_estimated_pd_proxy IS NULL
+       OR counteroffer_max_estimated_pd_proxy IS NULL
+       OR review_max_estimated_pd_proxy IS NULL
+       OR decline_min_estimated_pd_proxy IS NULL
+
+       OR product_approve_max_pti IS NULL
+       OR product_review_max_pti IS NULL
+       OR product_decline_min_pti IS NULL
+
+       OR approve_max_dti IS NULL
+       OR review_max_dti IS NULL
+       OR decline_min_dti IS NULL
+
+       OR product_approve_max_requested_el IS NULL
+       OR product_review_max_requested_el IS NULL
+       OR product_decline_min_requested_el IS NULL
+
+       OR product_min_approved_amount IS NULL
+       OR product_max_approved_amount IS NULL
+       OR counteroffer_allowed_flag IS NULL
+       OR manual_review_allowed_flag IS NULL;
+
+    IF v_stage2_required_gap_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % Section 5 row(s) are missing required segmentation, threshold, or product-policy fields.&#39;,
+            v_stage2_required_gap_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 6.1 — CLEAN RESET OF SECTION 6 STAGING OBJECT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Drop the Section 6 rule-flag stage before rebuilding it.
+
+SQL PURPOSE:
+    Remove only the temporary Section 6 staging table.
+
+WHY THIS MATTERS:
+    A partial rerun should not allow stale rule-trigger rows to remain available to Section 7.
+
+    Section 7 assumes tmp_m2_stage_3_rule_flags reflects the current:
+        Section 5 segmentation output,
+        active strategy parameter state already carried forward,
+        product policy thresholds already carried forward,
+        and Section 6 trigger definitions.
+
+SQL MECHANICS:
+    DROP TABLE IF EXISTS makes the reset rerunnable.
+
+    If the table does not exist, PostgreSQL does not error.
+
+BOUNDARY:
+    This drop affects only the temporary Section 6 staging object.
+
+    It does not modify Module 1 outputs.
+    It does not modify Module 2 latest-run output.
+    It does not modify Module 2 archive output.
+    It does not modify evidence tables.
+    It does not modify registry tables.
+
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_stage_3_rule_flags;
+
+
+
+/***************************************************************************************************
+SECTION 6.2 — CREATE RULE FLAG STAGING TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_m2_stage_3_rule_flags
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+INPUT:
+    tmp_m2_stage_2_strategy_segments
+
+OUTPUT:
+    All Section 5 fields plus non-final rule trigger flags and trigger count fields.
+
+FIELDS CREATED:
+    Hard simulated policy stop fields:
+        bankruptcy_policy_stop_flag
+        major_derogatory_policy_stop_flag
+        severe_delinquency_policy_stop_flag
+        hard_policy_stop_flag
+        hard_policy_stop_count
+
+    Synthetic estimated-risk fields:
+        synthetic_risk_clean_approval_band_flag
+        synthetic_risk_counteroffer_band_flag
+        synthetic_risk_review_band_flag
+        synthetic_risk_decline_trigger_flag
+        synthetic_risk_trigger_count
+        synthetic_risk_band_flag_count
+
+    Requested PTI affordability fields:
+        requested_pti_clean_band_flag
+        requested_pti_counteroffer_candidate_flag
+        requested_pti_review_trigger_flag
+        requested_pti_decline_trigger_flag
+        affordability_trigger_count
+
+    DTI fields:
+        dti_clean_band_flag
+        dti_review_trigger_flag
+        dti_decline_trigger_flag
+        dti_trigger_count
+        dti_band_flag_count
+
+    Requested Expected Loss fields:
+        requested_el_clean_band_flag
+        requested_el_counteroffer_candidate_flag
+        requested_el_review_trigger_flag
+        requested_el_decline_trigger_flag
+        requested_el_trigger_count
+
+    Requested exposure fields:
+        requested_exposure_below_product_minimum_flag
+        requested_exposure_within_product_limit_flag
+        requested_exposure_above_product_cap_flag
+        requested_exposure_extreme_flag
+        exposure_counteroffer_candidate_flag
+        exposure_policy_stop_candidate_flag
+        exposure_trigger_count
+
+    Counteroffer candidate fields:
+        counteroffer_allowed_by_product_flag
+        counteroffer_risk_band_eligible_flag
+        counteroffer_affordability_candidate_flag
+        counteroffer_exposure_candidate_flag
+        counteroffer_expected_loss_candidate_flag
+        counteroffer_candidate_trigger_count
+        counteroffer_candidate_flag
+
+    Supplemental behavior review fields:
+        high_utilization_review_trigger_flag
+        low_score_review_trigger_flag
+        supplemental_behavioral_review_trigger_flag
+        supplemental_behavioral_review_trigger_count
+
+    Manual-review candidate fields:
+        manual_review_allowed_by_product_flag
+        manual_review_risk_trigger_flag
+        manual_review_affordability_trigger_flag
+        manual_review_dti_trigger_flag
+        manual_review_expected_loss_trigger_flag
+        manual_review_mixed_signal_trigger_flag
+        manual_review_borderline_trigger_flag
+        manual_review_candidate_trigger_count
+        manual_review_candidate_flag
+
+    Clean approval diagnostic:
+        clean_approval_candidate_flag
+
+    Total diagnostic count:
+        total_rule_trigger_count
+
+SQL DESIGN:
+    This section uses a CTE chain so rule construction is readable and auditable.
+
+    The chain is:
+        hard_policy_stop_flags
+        hard_policy_stop_counted
+        synthetic_risk_flags
+        synthetic_risk_counted
+        affordability_flags
+        affordability_counted
+        dti_flags
+        dti_counted
+        requested_el_flags
+        requested_el_counted
+        exposure_flags
+        exposure_counted
+        counteroffer_candidate_flags
+        counteroffer_candidate_counted
+        supplemental_behavior_flags
+        supplemental_behavior_counted
+        manual_review_candidate_flags
+        manual_review_candidate_counted
+        clean_approval_diagnostic
+        final_rule_flags
+
+WHY SELECT * IS ACCEPTABLE HERE:
+    This is a temporary staging layer, not a permanent output table.
+
+    Section 6 intentionally preserves all prior fields plus rule-trigger evidence for Section 7
+    preliminary routing and Section 10 reason-code assignment.
+
+    Permanent output selection is handled later with an explicit field list in Section 11.
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_stage_3_rule_flags
+ON COMMIT PRESERVE ROWS
+AS
+WITH hard_policy_stop_flags AS (
+    /***********************************************************************************************
+    CTE: hard_policy_stop_flags
+
+    Purpose:
+        Create individual hard simulated policy-stop flags.
+
+    Credit risk interpretation:
+        These represent severe simulated policy-stop signals such as bankruptcy, major derogatory
+        history, and severe recent delinquency.
+
+    Boundary:
+        These are trigger flags only.
+
+        They do not assign final DECLINE.
+        They are not production underwriting rules.
+        They are not real applicant treatment.
+    ***********************************************************************************************/
+    SELECT
+        s.*,
+
+        (
+            s.bankruptcy_policy_stop_enabled IS TRUE
+            AND s.bankruptcy_flag IS TRUE
+        ) AS bankruptcy_policy_stop_flag,
+
+        (
+            s.major_derogatory_policy_stop_enabled IS TRUE
+            AND s.major_derogatory_flag IS TRUE
+        ) AS major_derogatory_policy_stop_flag,
+
+        (
+            s.severe_delinquency_policy_stop_enabled IS TRUE
+            AND s.delinquency_count_12m &gt;= s.severe_delinquency_count_threshold
+        ) AS severe_delinquency_policy_stop_flag
+
+    FROM tmp_m2_stage_2_strategy_segments s
+),
+
+hard_policy_stop_counted AS (
+    /***********************************************************************************************
+    CTE: hard_policy_stop_counted
+
+    Purpose:
+        Combine hard simulated policy-stop flags and count how many are active.
+
+    SQL mechanics:
+        Boolean OR creates the composite hard_policy_stop_flag.
+
+        Boolean::INT converts TRUE / FALSE to 1 / 0 for the count.
+
+    Interpretation:
+        hard_policy_stop_count is diagnostic.
+
+        It is not a reason-code count and not a final decision rank.
+    ***********************************************************************************************/
+    SELECT
+        hps.*,
+
+        (
+            hps.bankruptcy_policy_stop_flag
+            OR hps.major_derogatory_policy_stop_flag
+            OR hps.severe_delinquency_policy_stop_flag
+        ) AS hard_policy_stop_flag,
+
+        (
+            hps.bankruptcy_policy_stop_flag::INT
+            + hps.major_derogatory_policy_stop_flag::INT
+            + hps.severe_delinquency_policy_stop_flag::INT
+        ) AS hard_policy_stop_count
+
+    FROM hard_policy_stop_flags hps
+),
+
+synthetic_risk_flags AS (
+    /***********************************************************************************************
+    CTE: synthetic_risk_flags
+
+    Purpose:
+        Build the true synthetic estimated-risk band family.
+
+    Credit risk interpretation:
+        estimated_pd remains the Module 1 SQL field and is interpreted as the synthetic estimated-PD
+        proxy.
+
+        This CTE places each row into one synthetic estimated-risk band based on governed strategy
+        thresholds.
+
+    SQL mechanics:
+        The four Boolean conditions are designed to cover all rows exactly once when thresholds are
+        valid.
+
+    Equality convention:
+        Clean approval band:
+            estimated_pd &lt;= approve_max_estimated_pd_proxy
+
+        Counteroffer band:
+            estimated_pd &gt; approve_max_estimated_pd_proxy
+            AND estimated_pd &lt;= counteroffer_max_estimated_pd_proxy
+
+        Review band:
+            estimated_pd &gt; counteroffer_max_estimated_pd_proxy
+            AND estimated_pd &lt; decline_min_estimated_pd_proxy
+
+        Decline trigger:
+            estimated_pd &gt;= decline_min_estimated_pd_proxy
+
+    Boundary:
+        The decline trigger is still not final decision_outcome.
+    ***********************************************************************************************/
+    SELECT
+        hpsc.*,
+
+        (
+            hpsc.estimated_pd &lt;= hpsc.approve_max_estimated_pd_proxy
+        ) AS synthetic_risk_clean_approval_band_flag,
+
+        (
+            hpsc.estimated_pd &gt; hpsc.approve_max_estimated_pd_proxy
+            AND hpsc.estimated_pd &lt;= hpsc.counteroffer_max_estimated_pd_proxy
+        ) AS synthetic_risk_counteroffer_band_flag,
+
+        (
+            hpsc.estimated_pd &gt; hpsc.counteroffer_max_estimated_pd_proxy
+            AND hpsc.estimated_pd &lt; hpsc.decline_min_estimated_pd_proxy
+        ) AS synthetic_risk_review_band_flag,
+
+        (
+            hpsc.estimated_pd &gt;= hpsc.decline_min_estimated_pd_proxy
+        ) AS synthetic_risk_decline_trigger_flag
+
+    FROM hard_policy_stop_counted hpsc
+),
+
+synthetic_risk_counted AS (
+    /***********************************************************************************************
+    CTE: synthetic_risk_counted
+
+    Purpose:
+        Count synthetic estimated-risk pressure triggers.
+
+    SQL mechanics:
+        This count excludes the clean approval band because clean band membership is not a trigger.
+
+    Interpretation:
+        synthetic_risk_trigger_count counts whether the row sits in a counteroffer, review, or
+        decline synthetic-risk zone.
+    ***********************************************************************************************/
+    SELECT
+        srf.*,
+
+        (
+            srf.synthetic_risk_counteroffer_band_flag::INT
+            + srf.synthetic_risk_review_band_flag::INT
+            + srf.synthetic_risk_decline_trigger_flag::INT
+        ) AS synthetic_risk_trigger_count
+
+    FROM synthetic_risk_flags srf
+),
+
+affordability_flags AS (
+    /***********************************************************************************************
+    CTE: affordability_flags
+
+    Purpose:
+        Create requested PTI affordability flags.
+
+    Credit risk interpretation:
+        PTI means payment-to-income ratio.
+
+        These flags evaluate requested_payment_to_income_ratio from the original requested structure.
+
+        Approved PTI does not exist yet.
+
+    SQL mechanics:
+        requested_pti_counteroffer_candidate_flag intentionally uses:
+            requested_payment_to_income_ratio &gt; product_approve_max_pti
+
+        That means it can overlap with review or decline requested-PTI triggers.
+
+        This overlap is intentional because Section 6 preserves trigger evidence rather than forcing
+        route hierarchy.
+    ***********************************************************************************************/
+    SELECT
+        src.*,
+
+        (
+            src.requested_payment_to_income_ratio &lt;= src.product_approve_max_pti
+        ) AS requested_pti_clean_band_flag,
+
+        (
+            src.requested_payment_to_income_ratio &gt; src.product_approve_max_pti
+        ) AS requested_pti_counteroffer_candidate_flag,
+
+        (
+            src.requested_payment_to_income_ratio &gt; src.product_approve_max_pti
+            AND src.requested_payment_to_income_ratio &lt; src.product_decline_min_pti
+        ) AS requested_pti_review_trigger_flag,
+
+        (
+            src.requested_payment_to_income_ratio &gt;= src.product_decline_min_pti
+        ) AS requested_pti_decline_trigger_flag
+
+    FROM synthetic_risk_counted src
+),
+
+affordability_counted AS (
+    /***********************************************************************************************
+    CTE: affordability_counted
+
+    Purpose:
+        Count requested PTI affordability trigger pressure.
+
+    SQL mechanics:
+        Counteroffer, review, and decline requested-PTI flags may overlap diagnostically.
+
+        Section 7 and later stages determine route priority.
+    ***********************************************************************************************/
+    SELECT
+        af.*,
+
+        (
+            af.requested_pti_counteroffer_candidate_flag::INT
+            + af.requested_pti_review_trigger_flag::INT
+            + af.requested_pti_decline_trigger_flag::INT
+        ) AS affordability_trigger_count
+
+    FROM affordability_flags af
+),
+
+dti_flags AS (
+    /***********************************************************************************************
+    CTE: dti_flags
+
+    Purpose:
+        Build the true DTI capacity band family.
+
+    Credit risk interpretation:
+        DTI is an existing-obligation capacity signal.
+
+        It is not directly counteroffer-adjustable in Module 2 V1.0.
+
+    SQL mechanics:
+        The three flags are designed to cover each row exactly once:
+            clean,
+            review,
+            decline.
+
+    Boundary:
+        DTI decline trigger is not final decision_outcome in Section 6.
+    ***********************************************************************************************/
+    SELECT
+        ac.*,
+
+        (
+            ac.debt_to_income_ratio &lt;= ac.approve_max_dti
+        ) AS dti_clean_band_flag,
+
+        (
+            ac.debt_to_income_ratio &gt; ac.approve_max_dti
+            AND ac.debt_to_income_ratio &lt; ac.decline_min_dti
+        ) AS dti_review_trigger_flag,
+
+        (
+            ac.debt_to_income_ratio &gt;= ac.decline_min_dti
+        ) AS dti_decline_trigger_flag
+
+    FROM affordability_counted ac
+),
+
+dti_counted AS (
+    /***********************************************************************************************
+    CTE: dti_counted
+
+    Purpose:
+        Count DTI trigger pressure.
+
+    SQL mechanics:
+        This count excludes the clean DTI band because it is not a trigger condition.
+    ***********************************************************************************************/
+    SELECT
+        df.*,
+
+        (
+            df.dti_review_trigger_flag::INT
+            + df.dti_decline_trigger_flag::INT
+        ) AS dti_trigger_count
+
+    FROM dti_flags df
+),
+
+requested_el_flags AS (
+    /***********************************************************************************************
+    CTE: requested_el_flags
+
+    Purpose:
+        Create requested Expected Loss trigger flags.
+
+    Credit risk interpretation:
+        requested_expected_loss_amount is requested-exposure Expected Loss from Module 1.
+
+        approved_expected_loss_amount does not exist yet.
+
+    SQL mechanics:
+        requested_el_counteroffer_candidate_flag intentionally uses:
+            requested_expected_loss_amount &gt; product_approve_max_requested_el
+
+        That means it can overlap with requested Expected Loss review or decline triggers.
+
+        This overlap is intentional because Section 6 preserves trigger evidence rather than forcing
+        route hierarchy.
+    ***********************************************************************************************/
+    SELECT
+        dc.*,
+
+        (
+            dc.requested_expected_loss_amount &lt;= dc.product_approve_max_requested_el
+        ) AS requested_el_clean_band_flag,
+
+        (
+            dc.requested_expected_loss_amount &gt; dc.product_approve_max_requested_el
+        ) AS requested_el_counteroffer_candidate_flag,
+
+        (
+            dc.requested_expected_loss_amount &gt; dc.product_approve_max_requested_el
+            AND dc.requested_expected_loss_amount &lt; dc.product_decline_min_requested_el
+        ) AS requested_el_review_trigger_flag,
+
+        (
+            dc.requested_expected_loss_amount &gt;= dc.product_decline_min_requested_el
+        ) AS requested_el_decline_trigger_flag
+
+    FROM dti_counted dc
+),
+
+requested_el_counted AS (
+    /***********************************************************************************************
+    CTE: requested_el_counted
+
+    Purpose:
+        Count requested Expected Loss trigger pressure.
+
+    SQL mechanics:
+        Counteroffer, review, and decline requested-Expected-Loss flags may overlap diagnostically.
+
+        Section 7 and later stages determine route priority.
+    ***********************************************************************************************/
+    SELECT
+        ref.*,
+
+        (
+            ref.requested_el_counteroffer_candidate_flag::INT
+            + ref.requested_el_review_trigger_flag::INT
+            + ref.requested_el_decline_trigger_flag::INT
+        ) AS requested_el_trigger_count
+
+    FROM requested_el_flags ref
+),
+
+exposure_flags AS (
+    /***********************************************************************************************
+    CTE: exposure_flags
+
+    Purpose:
+        Create requested exposure trigger flags from the Section 5 requested_exposure_tier.
+
+    Credit risk interpretation:
+        requested_amount is original requested exposure.
+
+        approved_amount does not exist yet.
+
+        Above-cap requested exposure may be counteroffer-eligible.
+
+        Below-minimum and extreme requested exposure are policy-stop candidates that downstream
+        routing may convert into preliminary no-offer or unresolved-review paths.
+
+    Compatibility tightening:
+        Section 5 now produces:
+            LOW_REQUESTED_EXPOSURE
+            WITHIN_PRODUCT_APPROVAL_CAP
+
+        Both are treated as within product limits for the clean-approval diagnostic.
+
+        This replaces older commentary / logic that referred to WITHIN_PRODUCT_LIMITS.
+
+    Boundary:
+        Section 6 does not calculate counteroffer amount or approved amount.
+    ***********************************************************************************************/
+    SELECT
+        rec.*,
+
+        (
+            rec.requested_exposure_tier = &#39;BELOW_PRODUCT_MINIMUM&#39;
+        ) AS requested_exposure_below_product_minimum_flag,
+
+        (
+            rec.requested_exposure_tier IN (
+                &#39;LOW_REQUESTED_EXPOSURE&#39;,
+                &#39;WITHIN_PRODUCT_APPROVAL_CAP&#39;,
+                &#39;WITHIN_PRODUCT_LIMITS&#39;
+            )
+        ) AS requested_exposure_within_product_limit_flag,
+
+        (
+            rec.requested_exposure_tier = &#39;ABOVE_PRODUCT_APPROVAL_CAP&#39;
+        ) AS requested_exposure_above_product_cap_flag,
+
+        (
+            rec.requested_exposure_tier = &#39;EXTREME_REQUESTED_EXPOSURE&#39;
+        ) AS requested_exposure_extreme_flag,
+
+        (
+            rec.requested_exposure_tier = &#39;ABOVE_PRODUCT_APPROVAL_CAP&#39;
+        ) AS exposure_counteroffer_candidate_flag,
+
+        (
+            rec.requested_exposure_tier IN (
+                &#39;BELOW_PRODUCT_MINIMUM&#39;,
+                &#39;EXTREME_REQUESTED_EXPOSURE&#39;
+            )
+        ) AS exposure_policy_stop_candidate_flag
+
+    FROM requested_el_counted rec
+),
+
+exposure_counted AS (
+    /***********************************************************************************************
+    CTE: exposure_counted
+
+    Purpose:
+        Count requested exposure trigger pressure.
+
+    SQL mechanics:
+        This is a diagnostic count and may double-count policy-stop candidate categories because it is
+        meant to expose trigger pressure, not assign a final route.
+
+    Interpretation:
+        exposure_trigger_count is not a final route priority.
+    ***********************************************************************************************/
+    SELECT
+        ef.*,
+
+        (
+            ef.requested_exposure_below_product_minimum_flag::INT
+            + ef.requested_exposure_above_product_cap_flag::INT
+            + ef.requested_exposure_extreme_flag::INT
+            + ef.exposure_policy_stop_candidate_flag::INT
+        ) AS exposure_trigger_count
+
+    FROM exposure_flags ef
+),
+
+counteroffer_candidate_flags AS (
+    /***********************************************************************************************
+    CTE: counteroffer_candidate_flags
+
+    Purpose:
+        Create individual counteroffer-candidate dimensions.
+
+    Credit risk interpretation:
+        A counteroffer candidate is a row that may need reduced-exposure feasibility testing.
+
+        It is not a feasible counteroffer yet.
+
+    Candidate dimensions:
+        synthetic-risk counteroffer band,
+        requested PTI pressure,
+        requested exposure above product cap,
+        requested Expected Loss pressure.
+
+    Product policy boundary:
+        counteroffer_allowed_by_product_flag must be TRUE for composite counteroffer_candidate_flag
+        to be TRUE.
+
+    Severe trigger boundary:
+        Hard policy stops, synthetic-risk decline, DTI decline, below-minimum exposure, and extreme
+        exposure prevent composite counteroffer candidacy.
+
+        Requested PTI and requested Expected Loss decline triggers may still be considered
+        counteroffer candidates because reduced exposure may lower payment burden and approved
+        exposure Expected Loss.
+    ***********************************************************************************************/
+    SELECT
+        ec.*,
+
+        ec.counteroffer_allowed_flag AS counteroffer_allowed_by_product_flag,
+
+        ec.synthetic_risk_counteroffer_band_flag AS counteroffer_risk_band_eligible_flag,
+
+        ec.requested_pti_counteroffer_candidate_flag AS counteroffer_affordability_candidate_flag,
+
+        ec.exposure_counteroffer_candidate_flag AS counteroffer_exposure_candidate_flag,
+
+        ec.requested_el_counteroffer_candidate_flag AS counteroffer_expected_loss_candidate_flag
+
+    FROM exposure_counted ec
+),
+
+counteroffer_candidate_counted AS (
+    /***********************************************************************************************
+    CTE: counteroffer_candidate_counted
+
+    Purpose:
+        Count counteroffer-candidate dimensions and create the composite counteroffer candidate flag.
+
+    SQL mechanics:
+        counteroffer_candidate_trigger_count counts how many counteroffer-candidate dimensions are
+        active.
+
+        counteroffer_candidate_flag requires:
+            product allows counteroffer;
+            no higher-severity non-counterofferable condition is active;
+            at least one counteroffer-candidate dimension is active.
+
+    Boundary:
+        This does not calculate counteroffer feasibility.
+    ***********************************************************************************************/
+    SELECT
+        ccf.*,
+
+        (
+            ccf.counteroffer_risk_band_eligible_flag::INT
+            + ccf.counteroffer_affordability_candidate_flag::INT
+            + ccf.counteroffer_exposure_candidate_flag::INT
+            + ccf.counteroffer_expected_loss_candidate_flag::INT
+        ) AS counteroffer_candidate_trigger_count,
+
+        (
+            ccf.counteroffer_allowed_by_product_flag IS TRUE
+            AND ccf.hard_policy_stop_flag IS FALSE
+            AND ccf.synthetic_risk_decline_trigger_flag IS FALSE
+            AND ccf.dti_decline_trigger_flag IS FALSE
+            AND ccf.exposure_policy_stop_candidate_flag IS FALSE
+            AND (
+                ccf.counteroffer_risk_band_eligible_flag
+                OR ccf.counteroffer_affordability_candidate_flag
+                OR ccf.counteroffer_exposure_candidate_flag
+                OR ccf.counteroffer_expected_loss_candidate_flag
+            )
+        ) AS counteroffer_candidate_flag
+
+    FROM counteroffer_candidate_flags ccf
+),
+
+supplemental_behavior_flags AS (
+    /***********************************************************************************************
+    CTE: supplemental_behavior_flags
+
+    Purpose:
+        Create supplemental behavioral review trigger flags.
+
+    Credit risk interpretation:
+        Utilization and low score may indicate additional review pressure even when the row is not
+        directly declined or counteroffered by core policy thresholds.
+
+    Boundary:
+        These are simulated strategy diagnostics.
+
+        They are not production underwriting rules.
+        They do not assign final manual review.
+        They do not assign reason codes in Section 6.
+    ***********************************************************************************************/
+    SELECT
+        ccc.*,
+
+        (
+            ccc.high_utilization_review_enabled IS TRUE
+            AND ccc.utilization_rate &gt;= ccc.high_utilization_review_threshold
+        ) AS high_utilization_review_trigger_flag,
+
+        (
+            ccc.low_score_review_enabled IS TRUE
+            AND ccc.credit_score &lt;= ccc.low_score_review_threshold
+        ) AS low_score_review_trigger_flag
+
+    FROM counteroffer_candidate_counted ccc
+),
+
+supplemental_behavior_counted AS (
+    /***********************************************************************************************
+    CTE: supplemental_behavior_counted
+
+    Purpose:
+        Combine and count supplemental behavioral review triggers.
+    ***********************************************************************************************/
+    SELECT
+        sbf.*,
+
+        (
+            sbf.high_utilization_review_trigger_flag
+            OR sbf.low_score_review_trigger_flag
+        ) AS supplemental_behavioral_review_trigger_flag,
+
+        (
+            sbf.high_utilization_review_trigger_flag::INT
+            + sbf.low_score_review_trigger_flag::INT
+        ) AS supplemental_behavioral_review_trigger_count
+
+    FROM supplemental_behavior_flags sbf
+),
+
+manual_review_candidate_flags AS (
+    /***********************************************************************************************
+    CTE: manual_review_candidate_flags
+
+    Purpose:
+        Create individual manual-review candidate dimensions.
+
+    Credit risk interpretation:
+        Manual review is a simulated unresolved route.
+
+        Manual-review candidate dimensions include:
+            synthetic-risk review band,
+            requested PTI review trigger,
+            DTI review trigger,
+            requested Expected Loss review trigger,
+            mixed-signal profile,
+            borderline profile,
+            supplemental behavioral review trigger.
+
+    Boundary:
+        This does not assign MANUAL_REVIEW as final decision_outcome.
+    ***********************************************************************************************/
+    SELECT
+        sbc.*,
+
+        sbc.manual_review_allowed_flag AS manual_review_allowed_by_product_flag,
+
+        sbc.synthetic_risk_review_band_flag AS manual_review_risk_trigger_flag,
+
+        sbc.requested_pti_review_trigger_flag AS manual_review_affordability_trigger_flag,
+
+        sbc.dti_review_trigger_flag AS manual_review_dti_trigger_flag,
+
+        sbc.requested_el_review_trigger_flag AS manual_review_expected_loss_trigger_flag,
+
+        (
+            sbc.mixed_signal_profile_type &lt;&gt; &#39;NO_MIXED_SIGNAL_PROFILE&#39;
+        ) AS manual_review_mixed_signal_trigger_flag,
+
+        sbc.borderline_profile_flag AS manual_review_borderline_trigger_flag
+
+    FROM supplemental_behavior_counted sbc
+),
+
+manual_review_candidate_counted AS (
+    /***********************************************************************************************
+    CTE: manual_review_candidate_counted
+
+    Purpose:
+        Count manual-review candidate dimensions and create the composite manual review candidate
+        flag.
+
+    SQL mechanics:
+        manual_review_candidate_trigger_count counts how many review-oriented dimensions are active.
+
+        manual_review_candidate_flag requires:
+            product allows manual review,
+            no higher-severity hard policy stop is active,
+            no final-decline-style synthetic-risk or DTI decline trigger is active,
+            no counteroffer candidate flag is active,
+            and at least one review-oriented dimension is active.
+
+    Boundary:
+        This does not assign final manual review.
+    ***********************************************************************************************/
+    SELECT
+        mrcf.*,
+
+        (
+            mrcf.manual_review_risk_trigger_flag::INT
+            + mrcf.manual_review_affordability_trigger_flag::INT
+            + mrcf.manual_review_dti_trigger_flag::INT
+            + mrcf.manual_review_expected_loss_trigger_flag::INT
+            + mrcf.manual_review_mixed_signal_trigger_flag::INT
+            + mrcf.manual_review_borderline_trigger_flag::INT
+            + mrcf.supplemental_behavioral_review_trigger_flag::INT
+        ) AS manual_review_candidate_trigger_count,
+
+        (
+            mrcf.manual_review_allowed_by_product_flag IS TRUE
+            AND mrcf.hard_policy_stop_flag IS FALSE
+            AND mrcf.synthetic_risk_decline_trigger_flag IS FALSE
+            AND mrcf.dti_decline_trigger_flag IS FALSE
+            AND mrcf.counteroffer_candidate_flag IS FALSE
+            AND (
+                mrcf.manual_review_risk_trigger_flag
+                OR mrcf.manual_review_affordability_trigger_flag
+                OR mrcf.manual_review_dti_trigger_flag
+                OR mrcf.manual_review_expected_loss_trigger_flag
+                OR mrcf.manual_review_mixed_signal_trigger_flag
+                OR mrcf.manual_review_borderline_trigger_flag
+                OR mrcf.supplemental_behavioral_review_trigger_flag
+            )
+        ) AS manual_review_candidate_flag
+
+    FROM manual_review_candidate_flags mrcf
+),
+
+clean_approval_diagnostic AS (
+    /***********************************************************************************************
+    CTE: clean_approval_diagnostic
+
+    Purpose:
+        Create clean_approval_candidate_flag.
+
+    Credit risk interpretation:
+        This flag identifies rows that appear clean across major trigger families.
+
+    SQL mechanics:
+        The row must be clean across:
+            hard policy stops,
+            synthetic-risk band,
+            requested PTI,
+            DTI,
+            requested Expected Loss,
+            requested exposure,
+            severe triggers,
+            counteroffer candidacy,
+            manual-review candidacy.
+
+    Boundary:
+        This flag is diagnostic only.
+
+        It does not assign APPROVE.
+        It does not calculate approved exposure.
+        It does not create simulated offer exposure.
+    ***********************************************************************************************/
+    SELECT
+        mrcc.*,
+
+        (
+            mrcc.hard_policy_stop_flag IS FALSE
+            AND mrcc.synthetic_risk_clean_approval_band_flag IS TRUE
+            AND mrcc.requested_pti_clean_band_flag IS TRUE
+            AND mrcc.dti_clean_band_flag IS TRUE
+            AND mrcc.requested_el_clean_band_flag IS TRUE
+            AND mrcc.requested_exposure_within_product_limit_flag IS TRUE
+            AND mrcc.synthetic_risk_decline_trigger_flag IS FALSE
+            AND mrcc.requested_pti_decline_trigger_flag IS FALSE
+            AND mrcc.dti_decline_trigger_flag IS FALSE
+            AND mrcc.requested_el_decline_trigger_flag IS FALSE
+            AND mrcc.requested_exposure_extreme_flag IS FALSE
+            AND mrcc.exposure_policy_stop_candidate_flag IS FALSE
+            AND mrcc.counteroffer_candidate_flag IS FALSE
+            AND mrcc.manual_review_candidate_flag IS FALSE
+        ) AS clean_approval_candidate_flag
+
+    FROM manual_review_candidate_counted mrcc
+),
+
+final_rule_flags AS (
+    /***********************************************************************************************
+    CTE: final_rule_flags
+
+    Purpose:
+        Add true banding-family coverage diagnostics and total trigger count.
+
+    SQL mechanics:
+        synthetic_risk_band_flag_count and dti_band_flag_count validate families where exactly one
+        band should be active.
+
+        total_rule_trigger_count sums major trigger-count fields for diagnostic intensity.
+
+    Boundary:
+        total_rule_trigger_count is not a decision priority rank and not a reason-code count.
+    ***********************************************************************************************/
+    SELECT
+        cad.*,
+
+        (
+            cad.synthetic_risk_clean_approval_band_flag::INT
+            + cad.synthetic_risk_counteroffer_band_flag::INT
+            + cad.synthetic_risk_review_band_flag::INT
+            + cad.synthetic_risk_decline_trigger_flag::INT
+        ) AS synthetic_risk_band_flag_count,
+
+        (
+            cad.dti_clean_band_flag::INT
+            + cad.dti_review_trigger_flag::INT
+            + cad.dti_decline_trigger_flag::INT
+        ) AS dti_band_flag_count,
+
+        (
+            cad.hard_policy_stop_count
+            + cad.synthetic_risk_trigger_count
+            + cad.affordability_trigger_count
+            + cad.dti_trigger_count
+            + cad.requested_el_trigger_count
+            + cad.exposure_trigger_count
+            + cad.counteroffer_candidate_trigger_count
+            + cad.manual_review_candidate_trigger_count
+            + cad.supplemental_behavioral_review_trigger_count
+        ) AS total_rule_trigger_count
+
+    FROM clean_approval_diagnostic cad
+)
+
+SELECT *
+FROM final_rule_flags;
+
+
+
+/***************************************************************************************************
+SECTION 6.3 — LOCAL FAIL-FAST CHECKS FOR RULE FLAGS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that Section 6 produced complete, non-final rule-trigger evidence before Section 7
+    preliminary routing begins.
+
+    Section 6.3 answers:
+
+        &quot;Did Section 6 preserve applicant grain and create coherent rule-trigger flags without
+         prematurely creating decisions, reason codes, or approved-exposure fields?&quot;
+
+SQL PURPOSE:
+    1. Confirm row count is unchanged from tmp_m2_stage_2_strategy_segments.
+    2. Confirm application_id remains unique.
+    3. Confirm required rule flags are non-null.
+    4. Confirm rule count fields are non-null.
+    5. Confirm rule count fields are non-negative.
+    6. Confirm synthetic estimated-risk band coverage equals one per row.
+    7. Confirm DTI band coverage equals one per row.
+    8. Confirm clean_approval_candidate_flag does not coexist with material trigger families.
+    9. Confirm counteroffer_candidate_flag does not violate product counteroffer permission.
+    10. Confirm manual_review_candidate_flag does not violate product manual-review permission.
+    11. Confirm key decline-trigger equality conventions.
+    12. Confirm final decision, reason-code, and approved-exposure fields were not created.
+
+LOCAL GATEKEEPER BOUNDARY:
+    These are Section 6 staging gatekeepers only.
+
+    They are not:
+        final decision validation,
+        reason-code validation,
+        approved-exposure validation,
+        archive validation,
+        matched strategy comparison,
+        strategy frontier review,
+        full Module 2 QA,
+        or Validation Summary evidence by themselves.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage2_count BIGINT;
+    v_stage3_count BIGINT;
+    v_stage3_distinct_application_count BIGINT;
+    v_duplicate_application_count BIGINT;
+
+    v_null_flag_count BIGINT;
+    v_null_count_field_count BIGINT;
+    v_negative_count_field_count BIGINT;
+    v_synthetic_risk_band_coverage_violation_count BIGINT;
+    v_dti_band_coverage_violation_count BIGINT;
+    v_clean_conflict_count BIGINT;
+    v_counteroffer_permission_violation_count BIGINT;
+    v_manual_review_permission_violation_count BIGINT;
+    v_decline_equality_violation_count BIGINT;
+    v_forbidden_column_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 5 row count.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage2_count
+    FROM tmp_m2_stage_2_strategy_segments;
+
+    IF v_stage2_count &lt;= 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: tmp_m2_stage_2_strategy_segments contains zero rows.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 6 row count must match Section 5.
+
+    Section 6 should add trigger fields only.
+
+    It should not filter or duplicate applications.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage3_count
+    FROM tmp_m2_stage_3_rule_flags;
+
+    IF v_stage3_count &lt;&gt; v_stage2_count THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: row count changed from Section 5 to Section 6. Stage 2 rows: %, Stage 3 rows: %.&#39;,
+            v_stage2_count,
+            v_stage3_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id must remain unique.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage3_distinct_application_count
+    FROM tmp_m2_stage_3_rule_flags;
+
+    IF v_stage3_distinct_application_count &lt;&gt; v_stage3_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_count
+        FROM (
+            SELECT application_id
+            FROM tmp_m2_stage_3_rule_flags
+            GROUP BY application_id
+            HAVING COUNT(*) &gt; 1
+        ) d;
+
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: rule-flag stage contains duplicate application_id values. Stage 3 rows: %, distinct application_id: %, duplicate groups: %.&#39;,
+            v_stage3_count,
+            v_stage3_distinct_application_count,
+            v_duplicate_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required Boolean rule flags must be non-null.
+
+    Business interpretation:
+        Section 7 depends on these trigger fields to build preliminary routes.
+
+        NULL flags would make route interpretation ambiguous.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_null_flag_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE bankruptcy_policy_stop_flag IS NULL
+       OR major_derogatory_policy_stop_flag IS NULL
+       OR severe_delinquency_policy_stop_flag IS NULL
+       OR hard_policy_stop_flag IS NULL
+
+       OR synthetic_risk_clean_approval_band_flag IS NULL
+       OR synthetic_risk_counteroffer_band_flag IS NULL
+       OR synthetic_risk_review_band_flag IS NULL
+       OR synthetic_risk_decline_trigger_flag IS NULL
+
+       OR requested_pti_clean_band_flag IS NULL
+       OR requested_pti_counteroffer_candidate_flag IS NULL
+       OR requested_pti_review_trigger_flag IS NULL
+       OR requested_pti_decline_trigger_flag IS NULL
+
+       OR dti_clean_band_flag IS NULL
+       OR dti_review_trigger_flag IS NULL
+       OR dti_decline_trigger_flag IS NULL
+
+       OR requested_el_clean_band_flag IS NULL
+       OR requested_el_counteroffer_candidate_flag IS NULL
+       OR requested_el_review_trigger_flag IS NULL
+       OR requested_el_decline_trigger_flag IS NULL
+
+       OR requested_exposure_below_product_minimum_flag IS NULL
+       OR requested_exposure_within_product_limit_flag IS NULL
+       OR requested_exposure_above_product_cap_flag IS NULL
+       OR requested_exposure_extreme_flag IS NULL
+       OR exposure_counteroffer_candidate_flag IS NULL
+       OR exposure_policy_stop_candidate_flag IS NULL
+
+       OR counteroffer_allowed_by_product_flag IS NULL
+       OR counteroffer_risk_band_eligible_flag IS NULL
+       OR counteroffer_affordability_candidate_flag IS NULL
+       OR counteroffer_exposure_candidate_flag IS NULL
+       OR counteroffer_expected_loss_candidate_flag IS NULL
+       OR counteroffer_candidate_flag IS NULL
+
+       OR high_utilization_review_trigger_flag IS NULL
+       OR low_score_review_trigger_flag IS NULL
+       OR supplemental_behavioral_review_trigger_flag IS NULL
+
+       OR manual_review_allowed_by_product_flag IS NULL
+       OR manual_review_risk_trigger_flag IS NULL
+       OR manual_review_affordability_trigger_flag IS NULL
+       OR manual_review_dti_trigger_flag IS NULL
+       OR manual_review_expected_loss_trigger_flag IS NULL
+       OR manual_review_mixed_signal_trigger_flag IS NULL
+       OR manual_review_borderline_trigger_flag IS NULL
+       OR manual_review_candidate_flag IS NULL
+
+       OR clean_approval_candidate_flag IS NULL;
+
+    IF v_null_flag_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) have null rule-trigger flag fields.&#39;,
+            v_null_flag_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: rule count fields must be non-null.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_null_count_field_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE hard_policy_stop_count IS NULL
+       OR synthetic_risk_trigger_count IS NULL
+       OR affordability_trigger_count IS NULL
+       OR dti_trigger_count IS NULL
+       OR requested_el_trigger_count IS NULL
+       OR exposure_trigger_count IS NULL
+       OR counteroffer_candidate_trigger_count IS NULL
+       OR manual_review_candidate_trigger_count IS NULL
+       OR supplemental_behavioral_review_trigger_count IS NULL
+       OR synthetic_risk_band_flag_count IS NULL
+       OR dti_band_flag_count IS NULL
+       OR total_rule_trigger_count IS NULL;
+
+    IF v_null_count_field_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) have null rule-trigger count fields.&#39;,
+            v_null_count_field_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: rule count fields must be non-negative.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_negative_count_field_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE hard_policy_stop_count &lt; 0
+       OR synthetic_risk_trigger_count &lt; 0
+       OR affordability_trigger_count &lt; 0
+       OR dti_trigger_count &lt; 0
+       OR requested_el_trigger_count &lt; 0
+       OR exposure_trigger_count &lt; 0
+       OR counteroffer_candidate_trigger_count &lt; 0
+       OR manual_review_candidate_trigger_count &lt; 0
+       OR supplemental_behavioral_review_trigger_count &lt; 0
+       OR synthetic_risk_band_flag_count &lt; 0
+       OR dti_band_flag_count &lt; 0
+       OR total_rule_trigger_count &lt; 0;
+
+    IF v_negative_count_field_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) have negative rule-trigger count fields.&#39;,
+            v_negative_count_field_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: synthetic estimated-risk band coverage.
+
+    The synthetic estimated-risk flags form a true banding family.
+
+    Every row must occupy exactly one synthetic estimated-risk band.
+
+    This does not prevent synthetic-risk triggers from overlapping with affordability, exposure, DTI,
+    hard simulated policy stop, counteroffer, or manual-review candidate triggers.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_synthetic_risk_band_coverage_violation_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE synthetic_risk_band_flag_count &lt;&gt; 1;
+
+    IF v_synthetic_risk_band_coverage_violation_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) do not occupy exactly one synthetic estimated-risk band.&#39;,
+            v_synthetic_risk_band_coverage_violation_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: DTI band coverage.
+
+    DTI is also a true capacity banding family.
+
+    Every row must occupy exactly one DTI band.
+
+    This does not prevent DTI pressure from coexisting with requested PTI pressure, requested Expected
+    Loss pressure, exposure pressure, mixed-signal diagnostics, or other trigger families.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_dti_band_coverage_violation_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE dti_band_flag_count &lt;&gt; 1;
+
+    IF v_dti_band_coverage_violation_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) do not occupy exactly one DTI capacity band.&#39;,
+            v_dti_band_coverage_violation_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: clean approval candidate flag cannot coexist with material trigger families.
+
+    Business interpretation:
+        clean_approval_candidate_flag is a diagnostic indicator of rows that appear clean across
+        major trigger families.
+
+        It should not coexist with material decline, counteroffer, or manual-review triggers.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_clean_conflict_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE clean_approval_candidate_flag IS TRUE
+      AND (
+            hard_policy_stop_flag IS TRUE
+         OR synthetic_risk_decline_trigger_flag IS TRUE
+         OR requested_pti_decline_trigger_flag IS TRUE
+         OR dti_decline_trigger_flag IS TRUE
+         OR requested_el_decline_trigger_flag IS TRUE
+         OR requested_exposure_extreme_flag IS TRUE
+         OR exposure_policy_stop_candidate_flag IS TRUE
+         OR counteroffer_candidate_flag IS TRUE
+         OR manual_review_candidate_flag IS TRUE
+      );
+
+    IF v_clean_conflict_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) have clean_approval_candidate_flag conflicting with material triggers.&#39;,
+            v_clean_conflict_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: counteroffer candidate must respect product counteroffer permission.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_counteroffer_permission_violation_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE counteroffer_candidate_flag IS TRUE
+      AND counteroffer_allowed_by_product_flag IS DISTINCT FROM TRUE;
+
+    IF v_counteroffer_permission_violation_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) have counteroffer_candidate_flag = TRUE where product counteroffer is not allowed.&#39;,
+            v_counteroffer_permission_violation_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: manual review candidate must respect product manual-review permission.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_manual_review_permission_violation_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE manual_review_candidate_flag IS TRUE
+      AND manual_review_allowed_by_product_flag IS DISTINCT FROM TRUE;
+
+    IF v_manual_review_permission_violation_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) have manual_review_candidate_flag = TRUE where product manual review is not allowed.&#39;,
+            v_manual_review_permission_violation_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: key decline-trigger equality conventions.
+
+    Business purpose:
+        Confirm boundary behavior is explicit and stable.
+
+    Equality convention:
+        synthetic-risk decline:
+            estimated_pd &gt;= decline_min_estimated_pd_proxy
+
+        requested PTI decline:
+            requested_payment_to_income_ratio &gt;= product_decline_min_pti
+
+        DTI decline:
+            debt_to_income_ratio &gt;= decline_min_dti
+
+        requested Expected Loss decline:
+            requested_expected_loss_amount &gt;= product_decline_min_requested_el
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_decline_equality_violation_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE (
+            estimated_pd &gt;= decline_min_estimated_pd_proxy
+            AND synthetic_risk_decline_trigger_flag IS DISTINCT FROM TRUE
+          )
+       OR (
+            requested_payment_to_income_ratio &gt;= product_decline_min_pti
+            AND requested_pti_decline_trigger_flag IS DISTINCT FROM TRUE
+          )
+       OR (
+            debt_to_income_ratio &gt;= decline_min_dti
+            AND dti_decline_trigger_flag IS DISTINCT FROM TRUE
+          )
+       OR (
+            requested_expected_loss_amount &gt;= product_decline_min_requested_el
+            AND requested_el_decline_trigger_flag IS DISTINCT FROM TRUE
+          );
+
+    IF v_decline_equality_violation_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: % row(s) violate decline-trigger equality conventions.&#39;,
+            v_decline_equality_violation_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 6 must not create decision, reason-code, or approved-exposure fields.
+
+    This protects the staged architecture boundary.
+
+    SQL mechanics:
+        pg_attribute inspects the physical columns of the temp table.
+
+        If any downstream-only field exists, Section 6 fails.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_forbidden_column_count
+    FROM pg_attribute
+    WHERE attrelid = &#39;tmp_m2_stage_3_rule_flags&#39;::REGCLASS
+      AND attnum &gt; 0
+      AND NOT attisdropped
+      AND attname IN (
+            &#39;preliminary_decision_outcome&#39;,
+            &#39;preliminary_decision_path&#39;,
+            &#39;preliminary_decision_priority_rank&#39;,
+            &#39;preliminary_route_reason_family&#39;,
+            &#39;preliminary_decline_flag&#39;,
+            &#39;preliminary_counteroffer_flag&#39;,
+            &#39;preliminary_manual_review_flag&#39;,
+            &#39;preliminary_approve_flag&#39;,
+            &#39;requires_counteroffer_feasibility_flag&#39;,
+            &#39;requires_approved_exposure_calculation_flag&#39;,
+
+            &#39;decision_outcome&#39;,
+            &#39;decision_path&#39;,
+            &#39;approval_flag&#39;,
+            &#39;decline_flag&#39;,
+            &#39;manual_review_flag&#39;,
+            &#39;counteroffer_flag&#39;,
+            &#39;simulated_offer_exposure_flag&#39;,
+
+            &#39;primary_reason_code&#39;,
+            &#39;secondary_reason_code&#39;,
+            &#39;tertiary_reason_code&#39;,
+            &#39;triggered_reason_code_list&#39;,
+            &#39;reason_priority_rank&#39;,
+            &#39;primary_reason_family&#39;,
+            &#39;reason_code_count&#39;,
+
+            &#39;approved_amount&#39;,
+            &#39;counteroffer_amount&#39;,
+            &#39;approved_monthly_payment_proxy&#39;,
+            &#39;approved_payment_to_income_ratio&#39;,
+            &#39;approved_expected_loss_amount&#39;
+      );
+
+    IF v_forbidden_column_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 6 failure: forbidden preliminary-route, final-decision, reason-code, or approved-exposure field(s) were created in rule-flag stage.&#39;;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 6.4 — LOCAL RULE-FLAG SANITY CHECKS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide lightweight diagnostics for Section 6 rule-trigger output.
+
+    Section 6.4 answers:
+
+        &quot;What kinds of trigger pressure did Section 6 identify, and does that trigger evidence look
+         ready for Section 7 preliminary routing?&quot;
+
+SQL PURPOSE:
+    Display review outputs for:
+        row count,
+        Module 1 lineage,
+        Module 2 strategy identity,
+        hard simulated policy stops,
+        synthetic estimated-risk bands,
+        requested PTI pressure,
+        DTI pressure,
+        requested Expected Loss pressure,
+        requested exposure pressure,
+        counteroffer candidacy,
+        manual-review candidacy,
+        supplemental behavioral review,
+        clean approval candidacy,
+        product-level trigger patterns,
+        score-band trigger patterns,
+        mixed-signal trigger patterns,
+        borderline trigger patterns,
+        and one compact readiness summary.
+
+INTERPRETATION:
+    These are staging diagnostics only.
+
+    They should not be interpreted as:
+        final strategy validation,
+        final decision distribution,
+        approved-exposure validation,
+        reason-code coverage,
+        archive comparison,
+        strategy frontier evidence,
+        or Validation Summary acceptance.
+
+SQL TEACHING POINT:
+    These queries use GROUP BY and COUNT(*) FILTER to summarize diagnostic trigger categories.
+
+    They are not mutating queries.
+
+    They do not alter rule-trigger results.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.1 Row count and distinct application_id count.
+
+Expected:
+    stage3_row_count = distinct_application_id_count.
+
+Interpretation:
+    Confirms the rule-trigger layer is still one row per application.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    COUNT(*) AS stage3_row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+FROM tmp_m2_stage_3_rule_flags;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.2 Module 1 lineage and Module 2 strategy identity.
+
+Purpose:
+    Confirm that Section 6 preserved the selected source and active strategy identity.
+
+Expected:
+    one row.
+
+Interpretation:
+    Module 1 fields identify the upstream synthetic scenario / population.
+    Module 2 fields identify the downstream strategy applied to that population.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+
+    COUNT(*) AS row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.3 Count by hard_policy_stop_flag.
+
+Purpose:
+    Review how many rows triggered any hard simulated policy stop.
+
+Boundary:
+    This is not final DECLINE.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    hard_policy_stop_flag,
+    COUNT(*) AS row_count,
+    AVG(hard_policy_stop_count) AS avg_hard_policy_stop_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY hard_policy_stop_flag
+ORDER BY hard_policy_stop_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.4 Hard simulated policy stop detail.
+
+Purpose:
+    Review which hard simulated policy-stop dimensions are active.
+
+Interpretation:
+    Multiple stop dimensions can coexist.
+
+    These are still trigger diagnostics, not final outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    bankruptcy_policy_stop_flag,
+    major_derogatory_policy_stop_flag,
+    severe_delinquency_policy_stop_flag,
+    hard_policy_stop_flag,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    bankruptcy_policy_stop_flag,
+    major_derogatory_policy_stop_flag,
+    severe_delinquency_policy_stop_flag,
+    hard_policy_stop_flag
+ORDER BY
+    hard_policy_stop_flag DESC,
+    bankruptcy_policy_stop_flag DESC,
+    major_derogatory_policy_stop_flag DESC,
+    severe_delinquency_policy_stop_flag DESC;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.5 Synthetic estimated-risk band distribution.
+
+Purpose:
+    Review the true synthetic estimated-risk band family.
+
+Expected:
+    Each row should occupy exactly one band.
+
+Interpretation:
+    estimated_pd is interpreted as the synthetic estimated-PD proxy.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    synthetic_risk_clean_approval_band_flag,
+    synthetic_risk_counteroffer_band_flag,
+    synthetic_risk_review_band_flag,
+    synthetic_risk_decline_trigger_flag,
+    COUNT(*) AS row_count,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    MIN(estimated_pd) AS min_synthetic_estimated_pd_proxy,
+    MAX(estimated_pd) AS max_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    synthetic_risk_clean_approval_band_flag,
+    synthetic_risk_counteroffer_band_flag,
+    synthetic_risk_review_band_flag,
+    synthetic_risk_decline_trigger_flag
+ORDER BY
+    synthetic_risk_decline_trigger_flag,
+    synthetic_risk_review_band_flag,
+    synthetic_risk_counteroffer_band_flag,
+    synthetic_risk_clean_approval_band_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.6 Count by requested_pti_decline_trigger_flag.
+
+Purpose:
+    Review severe requested-structure affordability pressure.
+
+Boundary:
+    This is requested PTI, not approved PTI.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_pti_decline_trigger_flag,
+    COUNT(*) AS row_count,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY requested_pti_decline_trigger_flag
+ORDER BY requested_pti_decline_trigger_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.7 Count by dti_decline_trigger_flag.
+
+Purpose:
+    Review severe existing-obligation capacity pressure.
+
+Boundary:
+    DTI is not directly counteroffer-adjustable in Module 2 V1.0.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    dti_decline_trigger_flag,
+    COUNT(*) AS row_count,
+    AVG(debt_to_income_ratio) AS avg_debt_to_income_ratio
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY dti_decline_trigger_flag
+ORDER BY dti_decline_trigger_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.8 Count by requested_el_decline_trigger_flag.
+
+Purpose:
+    Review severe requested-exposure Expected Loss pressure.
+
+Boundary:
+    This is requested Expected Loss, not approved Expected Loss.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_el_decline_trigger_flag,
+    COUNT(*) AS row_count,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY requested_el_decline_trigger_flag
+ORDER BY requested_el_decline_trigger_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.9 Count by requested_exposure_above_product_cap_flag.
+
+Purpose:
+    Review rows requesting exposure above product approval caps.
+
+Interpretation:
+    Above-cap exposure may become counteroffer-eligible later if product policy allows and
+    feasibility passes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_exposure_above_product_cap_flag,
+    COUNT(*) AS row_count,
+    AVG(requested_amount) AS avg_requested_amount
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY requested_exposure_above_product_cap_flag
+ORDER BY requested_exposure_above_product_cap_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.10 Count by requested_exposure_extreme_flag.
+
+Purpose:
+    Review extreme requested exposure pressure.
+
+Boundary:
+    This is a trigger diagnostic, not final decline.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_exposure_extreme_flag,
+    COUNT(*) AS row_count,
+    AVG(requested_amount) AS avg_requested_amount
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY requested_exposure_extreme_flag
+ORDER BY requested_exposure_extreme_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.11 Count by exposure_counteroffer_candidate_flag.
+
+Purpose:
+    Review requested-exposure-driven counteroffer candidacy.
+
+Interpretation:
+    This flag identifies exposure pressure that may require reduced-exposure testing.
+
+    It does not prove counteroffer feasibility.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    exposure_counteroffer_candidate_flag,
+    COUNT(*) AS row_count,
+    AVG(requested_amount) AS avg_requested_amount
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY exposure_counteroffer_candidate_flag
+ORDER BY exposure_counteroffer_candidate_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.12 Count by counteroffer_candidate_flag.
+
+Purpose:
+    Review composite counteroffer candidacy.
+
+Boundary:
+    counteroffer_candidate_flag does not mean final COUNTEROFFER.
+
+    Section 8 must test feasibility.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_candidate_flag,
+    COUNT(*) AS row_count,
+    AVG(counteroffer_candidate_trigger_count) AS avg_counteroffer_candidate_trigger_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY counteroffer_candidate_flag
+ORDER BY counteroffer_candidate_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.13 Count by manual_review_candidate_flag.
+
+Purpose:
+    Review composite manual-review candidacy.
+
+Boundary:
+    manual_review_candidate_flag does not mean final MANUAL_REVIEW.
+
+    Section 7 and Section 9 determine route and final outcome.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    manual_review_candidate_flag,
+    COUNT(*) AS row_count,
+    AVG(manual_review_candidate_trigger_count) AS avg_manual_review_candidate_trigger_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY manual_review_candidate_flag
+ORDER BY manual_review_candidate_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.14 Count by high_utilization_review_trigger_flag.
+
+Purpose:
+    Review supplemental utilization-driven review pressure.
+
+Boundary:
+    This is a simulated strategy diagnostic, not a production underwriting rule.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    high_utilization_review_trigger_flag,
+    COUNT(*) AS row_count,
+    AVG(utilization_rate) AS avg_utilization_rate
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY high_utilization_review_trigger_flag
+ORDER BY high_utilization_review_trigger_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.15 Count by low_score_review_trigger_flag.
+
+Purpose:
+    Review supplemental low-score review pressure.
+
+Boundary:
+    This is a simulated strategy diagnostic, not a production underwriting rule.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    low_score_review_trigger_flag,
+    COUNT(*) AS row_count,
+    AVG(credit_score) AS avg_credit_score
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY low_score_review_trigger_flag
+ORDER BY low_score_review_trigger_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.16 Count by clean_approval_candidate_flag.
+
+Purpose:
+    Review rows that appear clean across major trigger families.
+
+Boundary:
+    This is diagnostic only.
+
+    It does not assign final APPROVE.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    clean_approval_candidate_flag,
+    COUNT(*) AS row_count,
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY clean_approval_candidate_flag
+ORDER BY clean_approval_candidate_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.17 Product × hard_policy_stop_flag summary.
+
+Purpose:
+    Show whether hard simulated policy stops concentrate by product.
+
+Interpretation:
+    Product concentration may reflect source mix or product-specific borrower profile.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    hard_policy_stop_flag,
+    COUNT(*) AS row_count,
+    AVG(hard_policy_stop_count) AS avg_hard_policy_stop_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    product_type_policy_key,
+    hard_policy_stop_flag
+ORDER BY
+    product_type_policy_key,
+    hard_policy_stop_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.18 Product × counteroffer_candidate_flag summary.
+
+Purpose:
+    Show whether counteroffer candidacy concentrates by product.
+
+Interpretation:
+    Product concentration may reflect requested exposure, PTI, requested Expected Loss, or product cap
+    behavior.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    counteroffer_candidate_flag,
+    COUNT(*) AS row_count,
+    AVG(counteroffer_candidate_trigger_count) AS avg_counteroffer_candidate_trigger_count,
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    product_type_policy_key,
+    counteroffer_candidate_flag
+ORDER BY
+    product_type_policy_key,
+    counteroffer_candidate_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.19 Score band × synthetic risk trigger summary.
+
+Purpose:
+    Review whether score-band segmentation and synthetic estimated-risk triggers align directionally.
+
+Interpretation:
+    Score band and estimated_pd are different fields, but they should generally align directionally.
+
+    Perfect separation is not required because realistic overlap is expected.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+
+    synthetic_risk_clean_approval_band_flag,
+    synthetic_risk_counteroffer_band_flag,
+    synthetic_risk_review_band_flag,
+    synthetic_risk_decline_trigger_flag,
+
+    COUNT(*) AS row_count,
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    score_band_policy_key,
+    synthetic_risk_clean_approval_band_flag,
+    synthetic_risk_counteroffer_band_flag,
+    synthetic_risk_review_band_flag,
+    synthetic_risk_decline_trigger_flag
+ORDER BY
+    CASE score_band_policy_key
+        WHEN &#39;SUPER_PRIME&#39; THEN 1
+        WHEN &#39;PRIME&#39; THEN 2
+        WHEN &#39;NEAR_PRIME&#39; THEN 3
+        WHEN &#39;SUBPRIME&#39; THEN 4
+        WHEN &#39;DEEP_SUBPRIME&#39; THEN 5
+        ELSE 99
+    END,
+    synthetic_risk_decline_trigger_flag,
+    synthetic_risk_review_band_flag,
+    synthetic_risk_counteroffer_band_flag,
+    synthetic_risk_clean_approval_band_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.20 Requested PTI bucket × affordability trigger summary.
+
+Purpose:
+    Review requested affordability trigger behavior by Section 5 requested PTI bucket.
+
+Boundary:
+    Requested PTI is not approved PTI.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_pti_bucket,
+
+    requested_pti_clean_band_flag,
+    requested_pti_counteroffer_candidate_flag,
+    requested_pti_review_trigger_flag,
+    requested_pti_decline_trigger_flag,
+
+    COUNT(*) AS row_count,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    requested_pti_bucket,
+    requested_pti_clean_band_flag,
+    requested_pti_counteroffer_candidate_flag,
+    requested_pti_review_trigger_flag,
+    requested_pti_decline_trigger_flag
+ORDER BY
+    CASE requested_pti_bucket
+        WHEN &#39;LOW_REQUESTED_PTI&#39; THEN 1
+        WHEN &#39;MODERATE_REQUESTED_PTI&#39; THEN 2
+        WHEN &#39;ELEVATED_REQUESTED_PTI&#39; THEN 3
+        WHEN &#39;HIGH_REQUESTED_PTI&#39; THEN 4
+        WHEN &#39;SEVERE_REQUESTED_PTI&#39; THEN 5
+        ELSE 99
+    END,
+    requested_pti_decline_trigger_flag,
+    requested_pti_review_trigger_flag,
+    requested_pti_counteroffer_candidate_flag,
+    requested_pti_clean_band_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.21 Mixed-signal profile × manual review candidate summary.
+
+Purpose:
+    Show how mixed-signal diagnostics interact with manual-review candidacy.
+
+Interpretation:
+    Mixed signals are intentionally diagnostic.
+
+    They should remain visible rather than being hidden in one final route too early.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    mixed_signal_profile_type,
+    manual_review_candidate_flag,
+    COUNT(*) AS row_count,
+    AVG(mixed_signal_condition_count) AS avg_mixed_signal_condition_count,
+    AVG(manual_review_candidate_trigger_count) AS avg_manual_review_candidate_trigger_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    mixed_signal_profile_type,
+    manual_review_candidate_flag
+ORDER BY
+    mixed_signal_profile_type,
+    manual_review_candidate_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.22 Borderline profile × manual review candidate summary.
+
+Purpose:
+    Show how threshold-adjacent profiles interact with manual-review candidacy.
+
+Boundary:
+    Borderline profile status is diagnostic only.
+
+    It is not automatic manual review.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    borderline_profile_flag,
+    manual_review_candidate_flag,
+    COUNT(*) AS row_count,
+    AVG(manual_review_candidate_trigger_count) AS avg_manual_review_candidate_trigger_count
+FROM tmp_m2_stage_3_rule_flags
+GROUP BY
+    borderline_profile_flag,
+    manual_review_candidate_flag
+ORDER BY
+    borderline_profile_flag,
+    manual_review_candidate_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+6.4.23 Section 6 readiness summary.
+
+Purpose:
+    Provide one compact readiness row for the rule-flag construction stage.
+
+Expected:
+    section_6_rule_flag_status = SECTION_6_RULE_FLAGS_READY_FOR_PRELIMINARY_ROUTING
+
+Interpretation:
+    This confirms only that Section 6 is ready for Section 7.
+
+    It does not validate final strategy outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+WITH rule_flag_summary AS (
+    SELECT
+        COUNT(*) AS stage3_row_count,
+        COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+        COUNT(*) FILTER (
+            WHERE hard_policy_stop_flag IS NULL
+               OR synthetic_risk_decline_trigger_flag IS NULL
+               OR dti_decline_trigger_flag IS NULL
+               OR counteroffer_candidate_flag IS NULL
+               OR manual_review_candidate_flag IS NULL
+               OR clean_approval_candidate_flag IS NULL
+               OR requested_pti_decline_trigger_flag IS NULL
+               OR requested_el_decline_trigger_flag IS NULL
+               OR requested_exposure_extreme_flag IS NULL
+               OR exposure_policy_stop_candidate_flag IS NULL
+        ) AS required_trigger_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE synthetic_risk_band_flag_count &lt;&gt; 1
+        ) AS synthetic_risk_band_coverage_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE dti_band_flag_count &lt;&gt; 1
+        ) AS dti_band_coverage_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE counteroffer_candidate_flag IS TRUE
+              AND counteroffer_allowed_by_product_flag IS DISTINCT FROM TRUE
+        ) AS counteroffer_permission_violation_rows,
+
+        COUNT(*) FILTER (
+            WHERE manual_review_candidate_flag IS TRUE
+              AND manual_review_allowed_by_product_flag IS DISTINCT FROM TRUE
+        ) AS manual_review_permission_violation_rows,
+
+        COUNT(*) FILTER (
+            WHERE clean_approval_candidate_flag IS TRUE
+        ) AS clean_approval_candidate_rows,
+
+        COUNT(*) FILTER (
+            WHERE counteroffer_candidate_flag IS TRUE
+        ) AS counteroffer_candidate_rows,
+
+        COUNT(*) FILTER (
+            WHERE manual_review_candidate_flag IS TRUE
+        ) AS manual_review_candidate_rows,
+
+        COUNT(*) FILTER (
+            WHERE hard_policy_stop_flag IS TRUE
+        ) AS hard_policy_stop_rows,
+
+        AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count
+
+    FROM tmp_m2_stage_3_rule_flags
+)
+
+SELECT
+    stage3_row_count,
+    distinct_application_id_count,
+
+    required_trigger_gap_rows,
+    synthetic_risk_band_coverage_gap_rows,
+    dti_band_coverage_gap_rows,
+    counteroffer_permission_violation_rows,
+    manual_review_permission_violation_rows,
+
+    clean_approval_candidate_rows,
+    counteroffer_candidate_rows,
+    manual_review_candidate_rows,
+    hard_policy_stop_rows,
+
+    avg_total_rule_trigger_count,
+
+    CASE
+        WHEN stage3_row_count &gt; 0
+         AND stage3_row_count = distinct_application_id_count
+         AND required_trigger_gap_rows = 0
+         AND synthetic_risk_band_coverage_gap_rows = 0
+         AND dti_band_coverage_gap_rows = 0
+         AND counteroffer_permission_violation_rows = 0
+         AND manual_review_permission_violation_rows = 0
+            THEN &#39;SECTION_6_RULE_FLAGS_READY_FOR_PRELIMINARY_ROUTING&#39;
+        ELSE &#39;REVIEW_SECTION_6_RULE_FLAGS_BEFORE_PRELIMINARY_ROUTING&#39;
+    END AS section_6_rule_flag_status
+
+FROM rule_flag_summary;
+
+
+
+/***************************************************************************************************
+END OF SECTION 6 — RULE FLAG CONSTRUCTION LAYER
+
+If execution reaches this point:
+    1. Section 6 dependency preflight passed.
+    2. tmp_m2_stage_3_rule_flags exists.
+    3. Row count is unchanged from tmp_m2_stage_2_strategy_segments.
+    4. application_id remains unique.
+    5. Hard simulated policy stop flags are populated.
+    6. Synthetic estimated-risk flags are populated.
+    7. Exactly one synthetic estimated-risk band is active per row.
+    8. Requested PTI flags are populated.
+    9. DTI flags are populated.
+    10. Exactly one DTI band is active per row.
+    11. Requested Expected Loss flags are populated.
+    12. Requested exposure flags are populated.
+    13. Counteroffer candidate flags are populated.
+    14. Manual review candidate flags are populated.
+    15. Supplemental behavioral review flags are populated.
+    16. clean_approval_candidate_flag is populated as a diagnostic.
+    17. Rule count fields are populated, numeric, non-null, and non-negative.
+    18. Candidate flags respect product counteroffer and manual-review permissions.
+    19. Key decline-trigger equality conventions were checked.
+    20. No broader cross-family mutual-exclusivity rule has been imposed.
+    21. Section 6 local rule-flag diagnostics are available for review.
+
+Section 6 established:
+    1. The non-final rule-trigger evidence layer.
+    2. Hard simulated policy-stop trigger evidence.
+    3. Synthetic estimated-risk trigger evidence.
+    4. Requested affordability trigger evidence.
+    5. DTI capacity trigger evidence.
+    6. Requested Expected Loss trigger evidence.
+    7. Requested exposure trigger evidence.
+    8. Counteroffer candidate evidence.
+    9. Manual-review candidate evidence.
+    10. Supplemental behavioral review evidence.
+    11. Clean-approval candidate diagnostics.
+    12. Trigger-count and band-coverage diagnostics.
+
+No preliminary decision route has been created.
+No final decision_outcome has been created.
+No final decision_path has been created.
+No final approval / decline / manual review / counteroffer flags have been created.
+No simulated_offer_exposure_flag has been created.
+No simulated reason codes have been assigned.
+No approved_amount has been calculated.
+No counteroffer_amount has been calculated.
+No approved payment proxy has been calculated.
+No approved payment-to-income ratio has been calculated.
+No approved Expected Loss has been calculated.
+No latest-run strategy decision output has been created.
+No strategy archive rows have been inserted.
+No evidence rows have been inserted.
+No matched comparison has been performed.
+No strategy frontier has been calculated.
+No full QA framework has been built.
+
+Next section:
+    Section 7 should consume tmp_m2_stage_3_rule_flags and convert overlapping rule-trigger evidence
+    into one preliminary strategy route per application.
+
+***************************************************************************************************/
+</code></pre>
+</div></article><article id="c038-m01542" class="message user"><div class="role">Andrew</div><p class="meta">C038-M01542 · 2026-05-12T10:14:19.815000-04:00 · active path</p><div class="body"><p>proceed with pass 4 - operational pipeline commentary and compatibility tightening (section 7 - module 1 source selection and lineage normalization)</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

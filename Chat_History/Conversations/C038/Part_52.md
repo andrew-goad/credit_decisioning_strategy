@@ -1,0 +1,2168 @@
+# Module 2 Decision Simulator Build
+
+## Part 52
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_51.md) · [Next](Part_53.md)
+
+<a id="c038-m00990"></a>
+
+### C038-M00990
+
+**ChatGPT** · 2026-05-10T09:24:53.629702-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00990 -->
+Below is the full copy-paste replacement for **Section 14.7 through Section 14.10**, with the commentary upgraded to the instructional standard: each query now explains **what it tests, what to look for, what should trigger review, how the SQL works, and how the output supports validation / executive storytelling**. I preserved the existing diagnostic logic and expanded the comments around it. fileciteturn108file0
+
+```sql
+/***************************************************************************************************
+SECTION 14.7 — SYNTHETIC RISK ORDERING QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that synthetic estimated-risk segmentation flows coherently into final simulated
+    Module 2 strategy outcomes.
+
+    Section 14.7 answers:
+
+        "Does the strategy generally offer more favorable outcomes to lower synthetic-risk tiers
+         and route higher synthetic-risk tiers toward counteroffer, manual review, or decline in a
+         directionally coherent way?"
+
+SQL PURPOSE:
+    1. Summarize final decision outcomes by strategy_risk_tier.
+    2. Calculate approval, counteroffer, manual-review, decline, and simulated offer-exposure rates
+       by synthetic risk tier.
+    3. Compare requested PTI, requested Expected Loss, and approved Expected Loss by risk tier and
+       final outcome.
+    4. Provide a compact synthetic-risk-tier summary.
+    5. Compare average synthetic estimated-risk proxy between simulated offer rows and declined rows.
+    6. Produce a directional synthetic-risk-ordering status.
+
+CREDIT RISK CONCEPT:
+    In credit strategy analytics, estimated risk should generally influence access, exposure, review,
+    and no-offer behavior.
+
+    Lower synthetic estimated-risk tiers should generally show:
+        stronger approval rates,
+        stronger simulated offer-exposure rates,
+        lower decline rates,
+        lower manual-review rates,
+        and lower average approved Expected Loss pressure.
+
+    Higher synthetic estimated-risk tiers should generally show:
+        lower clean approval rates,
+        lower simulated offer-exposure rates,
+        higher manual-review rates,
+        higher decline rates,
+        or more counteroffer behavior when reduced exposure can satisfy affordability and approved
+        Expected Loss constraints.
+
+WHY PERFECT MONOTONICITY IS NOT REQUIRED:
+    This is a synthetic credit strategy simulator, not a one-variable deterministic score cutoff.
+
+    Product mix, requested exposure, DTI, requested PTI, behavioral signals, product guardrails,
+    requested Expected Loss, and counteroffer feasibility can create realistic overlap.
+
+    The validation expectation is broad directional coherence, not rigid sorting where every weaker
+    tier must have worse outcomes in every metric.
+
+WHAT TO LOOK FOR:
+    A healthy result usually shows:
+        lower average estimated_pd in lower synthetic-risk tiers;
+        higher approval / offer-exposure rates in lower synthetic-risk tiers;
+        higher review / decline pressure in higher synthetic-risk tiers;
+        understandable counteroffer behavior in elevated risk tiers where reduced exposure can
+        preserve access while controlling approved Expected Loss.
+
+REVIEW TRIGGERS:
+    Review is warranted if:
+        higher synthetic-risk tiers show materially higher clean approval rates than lower tiers;
+        offer-exposure rows have a higher average estimated_pd than declined rows;
+        severe synthetic-risk rows receive high positive offer exposure without a clear reason-code
+        or product / affordability explanation;
+        approved Expected Loss concentrates unexpectedly in high-risk tiers;
+        risk-tier behavior conflicts with the intended strategy posture.
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the finalized Module 1 SQL field name.
+
+    In Section 14.7, estimated_pd is interpreted only as the synthetic estimated-PD proxy.
+
+    This QA block reviews directional ordering and strategy sensitivity.
+
+    It does not:
+        validate a calibrated default model,
+        calculate rank-order performance statistics,
+        produce production model validation evidence,
+        or recalibrate risk.
+
+REQUESTED VS APPROVED EXPECTED LOSS:
+    requested_expected_loss_amount:
+        requested-exposure Expected Loss carried from Module 1.
+
+    approved_expected_loss_amount:
+        approved-exposure Expected Loss after Module 2 final exposure treatment.
+
+    Section 14.7 compares their behavior across synthetic risk tiers but does not recalculate either
+    field.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CTE:
+        Breaks a diagnostic into readable intermediate summaries.
+
+    COUNT(*) FILTER:
+        Calculates outcome-specific counts and rates without removing other rows from the group.
+
+    NULLIF:
+        Prevents divide-by-zero in rate calculations.
+
+    COALESCE:
+        Converts unresolved / no-offer approved Expected Loss to zero when calculating all-application
+        portfolio-impact metrics.
+
+    CASE in ORDER BY:
+        Forces risk tiers to appear in business order rather than alphabetical order.
+
+    CASE in SELECT:
+        Converts diagnostic comparisons into readable status labels.
+
+DOCUMENTATION USE:
+    Section 14.7 is one of the strongest evidence blocks for explaining whether the strategy respects
+    synthetic risk ordering while preserving realistic overlap.
+
+READ-ONLY BOUNDARY:
+    Section 14.7 does not modify latest-run rows.
+    Section 14.7 does not modify archive rows.
+    Section 14.7 does not recalculate estimated_pd.
+    Section 14.7 does not recalculate approved exposure.
+    Section 14.7 does not recalculate requested or approved Expected Loss.
+    Section 14.7 does not reassign decision outcomes or simulated reason codes.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.7A Synthetic risk tier × final decision outcome.
+
+Business purpose:
+    Review how strategy_risk_tier maps into final simulated strategy outcomes.
+
+Credit risk interpretation:
+    This is the main risk-tier outcome distribution diagnostic.
+
+    It helps reviewers see whether the strategy behaves more favorably for lower synthetic-risk tiers
+    and more conservatively for higher synthetic-risk tiers.
+
+What to look for:
+    Lower synthetic-risk tiers should generally have higher approval and simulated offer-exposure
+    rates.
+
+    Higher synthetic-risk tiers should generally have more counteroffer, manual review, or decline
+    behavior.
+
+    Elevated risk tiers may still show counteroffers when reduced exposure satisfies the strategy's
+    affordability and approved Expected Loss controls.
+
+Review triggers:
+    Severe or high synthetic-risk tiers with unexpectedly high approval rates should be reviewed.
+
+    Low synthetic-risk tiers with unexpectedly high decline rates should be reviewed for product,
+    requested PTI, DTI, hard policy stop, exposure, or requested Expected Loss drivers.
+
+SQL mechanics:
+    risk_summary:
+        Creates one row per strategy_risk_tier with overall tier-level decision rates.
+
+    risk_outcome:
+        Creates one row per strategy_risk_tier × decision_outcome with outcome-level averages.
+
+    Final SELECT:
+        Joins outcome-level metrics to tier-level rates so each outcome row carries context for the
+        whole tier.
+
+    pct_within_risk_tier:
+        Shows how much of each risk tier falls into each final outcome.
+
+Documentation use:
+    This query is useful for validation narrative because it shows both risk-tier outcome composition
+    and the economic profile of each outcome within the tier.
+-----------------------------------------------------------------------------------------------*/
+
+WITH risk_summary AS (
+    SELECT
+        /*******************************************************************************************
+        strategy_risk_tier is a diagnostic risk segment created upstream.
+
+        It is not a final decision.
+        It is used here to test directional strategy sensitivity.
+        *******************************************************************************************/
+        strategy_risk_tier,
+
+        /*******************************************************************************************
+        Count all applications in the synthetic risk tier.
+
+        This becomes the denominator for risk-tier decision rates.
+        *******************************************************************************************/
+        COUNT(*) AS applications,
+
+        /*******************************************************************************************
+        Approval rate by synthetic risk tier.
+
+        SQL mechanics:
+            FILTER counts only APPROVE rows within the tier.
+            COUNT(*) remains the full tier denominator.
+            NULLIF prevents division by zero.
+
+        Interpretation:
+            Should generally be stronger in lower synthetic-risk tiers.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        /*******************************************************************************************
+        Counteroffer rate by synthetic risk tier.
+
+        Interpretation:
+            May increase in moderate / elevated tiers if exposure reduction can preserve access while
+            controlling approved PTI and approved Expected Loss.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        /*******************************************************************************************
+        Manual-review rate by synthetic risk tier.
+
+        Interpretation:
+            Higher values indicate unresolved strategy cases or borderline / mixed-signal behavior.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        /*******************************************************************************************
+        Decline rate by synthetic risk tier.
+
+        Interpretation:
+            Should generally increase in higher synthetic-risk tiers under risk-sensitive strategies.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        /*******************************************************************************************
+        Simulated offer-exposure rate.
+
+        TRUE for APPROVE and COUNTEROFFER.
+
+        This is the access / positive simulated offer-exposure metric, not booked or funded exposure.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY strategy_risk_tier
+),
+
+risk_outcome AS (
+    SELECT
+        /*******************************************************************************************
+        Create the more granular risk-tier × final-outcome diagnostic view.
+        *******************************************************************************************/
+        strategy_risk_tier,
+        decision_outcome,
+
+        COUNT(*) AS row_count,
+
+        /*******************************************************************************************
+        Average synthetic estimated-PD proxy for this risk-tier × outcome combination.
+
+        This helps reviewers check whether the risk tier and final outcome are directionally aligned.
+        *******************************************************************************************/
+        AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+
+        /*******************************************************************************************
+        Requested PTI, requested Expected Loss, and approved Expected Loss context.
+
+        requested_* values describe the original requested structure.
+        approved_* values describe final strategy output after exposure treatment.
+        *******************************************************************************************/
+        AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+        AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+
+        /*******************************************************************************************
+        All-application approved Expected Loss.
+
+        COALESCE treats unresolved / no-offer rows as zero for portfolio-impact review.
+        *******************************************************************************************/
+        AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY
+        strategy_risk_tier,
+        decision_outcome
+)
+
+SELECT
+    o.strategy_risk_tier,
+    o.decision_outcome,
+    o.row_count,
+
+    /***********************************************************************************************
+    Percent of this synthetic risk tier represented by the final outcome.
+
+    Denominator:
+        all applications in the same strategy_risk_tier.
+    ***********************************************************************************************/
+    ROUND(
+        100.0 * o.row_count::NUMERIC / NULLIF(s.applications, 0),
+        2
+    ) AS pct_within_risk_tier,
+
+    o.avg_synthetic_estimated_pd_proxy,
+    o.avg_requested_payment_to_income_ratio,
+    o.avg_requested_expected_loss_amount,
+    o.avg_approved_expected_loss_all_apps,
+
+    /***********************************************************************************************
+    Tier-level rates repeated for review convenience.
+
+    These values are the same for each outcome row inside the same risk tier.
+    ***********************************************************************************************/
+    s.approval_rate,
+    s.counteroffer_rate,
+    s.manual_review_rate,
+    s.decline_rate,
+    s.simulated_offer_exposure_rate
+
+FROM risk_outcome o
+
+JOIN risk_summary s
+    ON s.strategy_risk_tier = o.strategy_risk_tier
+
+ORDER BY
+    /***********************************************************************************************
+    Business-readable synthetic-risk ordering.
+
+    Without this CASE expression, PostgreSQL would sort the text labels alphabetically.
+    ***********************************************************************************************/
+    CASE o.strategy_risk_tier
+        WHEN 'LOW_SYNTHETIC_RISK' THEN 1
+        WHEN 'MODERATE_SYNTHETIC_RISK' THEN 2
+        WHEN 'ELEVATED_SYNTHETIC_RISK' THEN 3
+        WHEN 'HIGH_SYNTHETIC_RISK' THEN 4
+        WHEN 'SEVERE_SYNTHETIC_RISK' THEN 5
+        ELSE 99
+    END,
+
+    CASE o.decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.7B Compact synthetic risk tier summary.
+
+Business purpose:
+    Provide one row per synthetic risk tier for fast directional risk-ordering review.
+
+Credit risk interpretation:
+    This is the compact "risk-tier control card."
+
+    It shows whether synthetic estimated-risk tiers are ordered as intended and how access, exposure,
+    and approved Expected Loss change by risk tier.
+
+What to look for:
+    avg_synthetic_estimated_pd_proxy should generally increase as risk tiers move from LOW to SEVERE.
+
+    simulated_offer_exposure_rate should generally decline as risk tiers become more severe.
+
+    decline_rate and manual_review_rate should generally rise in higher-risk tiers, depending on
+    strategy posture.
+
+    total_approved_expected_loss_amount should be interpreted with both population size and approved
+    amount in mind.
+
+Review triggers:
+    A severe-risk tier with high approval or offer-exposure rate should be explained.
+
+    A low-risk tier with high decline rate should be connected to hard policy stops, product mix,
+    requested PTI, DTI, exposure, or requested Expected Loss.
+
+SQL mechanics:
+    GROUP BY strategy_risk_tier creates one row per tier.
+
+    MIN and MAX estimated_pd show whether tier boundaries appear plausible.
+
+    COUNT(*) FILTER divided by COUNT(*) creates tier-level decision rates.
+
+    SUM(COALESCE(..., 0)) calculates all-application approved exposure and approved Expected Loss.
+
+Documentation use:
+    Strong candidate for Validation Summary evidence because it is compact and easy to interpret.
+
+Boundary:
+    This is directional risk-ordering QA, not calibrated model performance testing.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_risk_tier,
+
+    /***********************************************************************************************
+    Risk-tier population size.
+    ***********************************************************************************************/
+    COUNT(*) AS applications,
+
+    /***********************************************************************************************
+    Synthetic estimated-PD proxy distribution inside the tier.
+
+    MIN / AVG / MAX help reviewers see whether tiering is coherent and whether the tier contains an
+    unexpectedly wide or narrow range.
+    ***********************************************************************************************/
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    MIN(estimated_pd) AS min_synthetic_estimated_pd_proxy,
+    MAX(estimated_pd) AS max_synthetic_estimated_pd_proxy,
+
+    /***********************************************************************************************
+    Final decision rates.
+
+    These rates are calculated within the risk tier.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS approval_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    /***********************************************************************************************
+    Simulated positive offer-exposure rate.
+
+    This combines APPROVE and COUNTEROFFER.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    /***********************************************************************************************
+    All-application approved exposure and approved Expected Loss by risk tier.
+
+    COALESCE converts manual-review NULLs and no-offer zeros into a portfolio-impact measure across
+    all applications in the tier.
+    ***********************************************************************************************/
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        AS total_approved_expected_loss_amount
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY strategy_risk_tier
+
+ORDER BY
+    CASE strategy_risk_tier
+        WHEN 'LOW_SYNTHETIC_RISK' THEN 1
+        WHEN 'MODERATE_SYNTHETIC_RISK' THEN 2
+        WHEN 'ELEVATED_SYNTHETIC_RISK' THEN 3
+        WHEN 'HIGH_SYNTHETIC_RISK' THEN 4
+        WHEN 'SEVERE_SYNTHETIC_RISK' THEN 5
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.7C Offered versus declined synthetic estimated-risk comparison.
+
+Business purpose:
+    Provide a compact directional check comparing the risk profile of simulated positive
+    offer-exposure rows against final declined rows.
+
+Credit risk interpretation:
+    A risk-sensitive strategy should generally show lower average synthetic estimated-PD proxy among
+    offered rows than among declined rows.
+
+    Offered rows include:
+        APPROVE,
+        COUNTEROFFER.
+
+    Declined rows are final simulated no-offer rows.
+
+What to look for:
+    avg_synthetic_estimated_pd_proxy_offer_rows should generally be less than or equal to
+    avg_synthetic_estimated_pd_proxy_decline_rows.
+
+Review triggers:
+    SYNTHETIC_RISK_ORDERING_REVIEW_REQUIRED does not automatically invalidate the strategy.
+
+    It means reviewers should inspect product mix, affordability, exposure, DTI, hard policy stops,
+    requested Expected Loss, and reason-code distribution before documenting the result.
+
+Status logic:
+    SYNTHETIC_RISK_ORDERING_DIRECTIONALLY_ALIGNED:
+        Average synthetic estimated-risk proxy among offered rows is less than or equal to the
+        average among declined rows.
+
+    SYNTHETIC_RISK_ORDERING_REVIEW_REQUIRED:
+        Offered rows have a higher average synthetic estimated-risk proxy than declined rows.
+
+    NOT_APPLICABLE_INSUFFICIENT_OFFER_OR_DECLINE_ROWS:
+        Comparison cannot be evaluated because one side has zero rows.
+
+SQL mechanics:
+    FILTER calculates counts and averages for offer rows, decline rows, and manual-review rows in one
+    population-level query.
+
+    CASE converts the comparison into an interpretation label.
+
+Boundary:
+    This is a broad directional check, not calibrated model validation.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    Population counts for the directional comparison.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS simulated_offer_exposure_rows,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS decline_rows,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS manual_review_rows,
+
+    /***********************************************************************************************
+    Average synthetic estimated-PD proxy by final treatment family.
+    ***********************************************************************************************/
+    AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+        AS avg_synthetic_estimated_pd_proxy_decline_rows,
+
+    AVG(estimated_pd) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+        AS avg_synthetic_estimated_pd_proxy_manual_review_rows,
+
+    /***********************************************************************************************
+    Directional synthetic-risk ordering status.
+
+    This is a diagnostic label, not a hard fail condition.
+    ***********************************************************************************************/
+    CASE
+        WHEN COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) = 0
+          OR COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE') = 0
+            THEN 'NOT_APPLICABLE_INSUFFICIENT_OFFER_OR_DECLINE_ROWS'
+
+        WHEN AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+           <= AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+            THEN 'SYNTHETIC_RISK_ORDERING_DIRECTIONALLY_ALIGNED'
+
+        ELSE 'SYNTHETIC_RISK_ORDERING_REVIEW_REQUIRED'
+    END AS synthetic_risk_ordering_status
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/***************************************************************************************************
+SECTION 14.8 — REQUESTED PTI / AFFORDABILITY SENSITIVITY QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that requested-structure affordability pressure affects simulated Module 2 strategy
+    outcomes in a directionally coherent way.
+
+    Section 14.8 answers:
+
+        "Does higher requested PTI generally reduce clean approval likelihood and increase
+         counteroffer, manual review, or decline behavior?"
+
+SQL PURPOSE:
+    1. Summarize final decision outcomes by requested_pti_bucket.
+    2. Calculate approval, counteroffer, manual-review, decline, and simulated offer-exposure rates by
+       requested PTI bucket.
+    3. Compare requested PTI, approved PTI, synthetic estimated-risk proxy, requested Expected Loss,
+       and approved Expected Loss by requested PTI bucket and outcome.
+    4. Produce a directional requested PTI sensitivity status.
+    5. Review whether final COUNTEROFFER rows improved approved PTI relative to requested PTI.
+
+CREDIT RISK CONCEPT:
+    PTI measures the payment burden of the requested structure relative to income.
+
+    Higher requested PTI indicates more affordability pressure.
+
+    In strategy simulation, higher requested PTI should generally:
+        reduce clean approval likelihood,
+        increase counteroffer behavior where reduced exposure can improve affordability,
+        increase manual-review routing for unresolved affordability pressure,
+        or increase decline behavior when affordability pressure is severe.
+
+REQUESTED VS APPROVED PTI:
+    requested_payment_to_income_ratio:
+        Comes from the Module 1 requested structure.
+
+    approved_payment_to_income_ratio:
+        Module 2 post-exposure-treatment affordability proxy.
+
+    approved_payment_to_income_ratio exists only where final outcome convention supports it.
+
+    Manual-review rows remain unresolved and should not have approved PTI populated.
+
+WHY THIS SECTION USES REQUESTED PTI BUCKETS:
+    Strategy routing starts from the original requested structure.
+
+    Counteroffer and approved exposure treatment may later improve affordability for feasible final
+    COUNTEROFFER rows.
+
+    Therefore requested_pti_bucket is the correct input-side affordability lens for Section 14.8.
+
+WHAT TO LOOK FOR:
+    Lower requested PTI buckets should generally show higher approval / simulated offer-exposure
+    rates.
+
+    Higher requested PTI buckets should generally show more counteroffer, manual review, or decline
+    behavior.
+
+    Final COUNTEROFFER rows should generally show approved PTI below requested PTI.
+
+REVIEW TRIGGERS:
+    High / severe requested PTI buckets with very high clean approval rates should be reviewed.
+
+    Counteroffers without PTI improvement should be reviewed.
+
+    A severe requested PTI bucket with little counteroffer or review / decline behavior should be
+    explained through product, income, exposure, score, DTI, and reason-code patterns.
+
+BOUNDARY:
+    This section reviews affordability sensitivity.
+
+    It does not recalculate requested PTI.
+    It does not recalculate approved PTI.
+    It does not calculate contractual amortization.
+    It does not perform production affordability underwriting.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CTE:
+        Separates bucket-level rates from bucket × outcome-level averages.
+
+    FILTER:
+        Calculates decision-specific rates and offer-row averages.
+
+    NULLIF:
+        Prevents divide-by-zero in rate calculations.
+
+    CASE:
+        Converts directional affordability comparison into a readable status label.
+
+DOCUMENTATION USE:
+    Section 14.8 supports validation narrative around affordability discipline and counteroffer
+    treatment.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.8A Requested PTI bucket × final decision outcome.
+
+Business purpose:
+    Review how requested-structure affordability pressure flows into final simulated outcomes.
+
+Credit risk interpretation:
+    This query connects requested PTI pressure to approval, counteroffer, review, decline, approved
+    PTI, synthetic risk, requested Expected Loss, and approved Expected Loss.
+
+What to look for:
+    Lower requested PTI buckets should generally have higher approval / simulated offer-exposure
+    rates.
+
+    Higher requested PTI buckets should generally show more counteroffer, manual review, or decline
+    behavior.
+
+Review triggers:
+    Exceptions should be explainable through product structure, credit quality, DTI, exposure, and
+    reason codes.
+
+SQL mechanics:
+    pti_summary:
+        creates one row per requested PTI bucket with decision rates.
+
+    pti_outcome:
+        creates one row per requested PTI bucket × final outcome with affordability and risk
+        averages.
+
+    Final SELECT:
+        joins bucket-level rates onto outcome-level rows.
+
+    pct_within_requested_pti_bucket:
+        shows how much of each requested PTI bucket falls into each final outcome.
+
+Documentation use:
+    This output supports the story that affordability is not only measured but actively influences
+    simulated strategy outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+WITH pti_summary AS (
+    SELECT
+        requested_pti_bucket,
+
+        /*******************************************************************************************
+        Count applications in each requested PTI bucket.
+        *******************************************************************************************/
+        COUNT(*) AS applications,
+
+        /*******************************************************************************************
+        Decision rates by requested PTI bucket.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY requested_pti_bucket
+),
+
+pti_outcome AS (
+    SELECT
+        requested_pti_bucket,
+        decision_outcome,
+
+        /*******************************************************************************************
+        Count rows in each requested PTI bucket × final outcome combination.
+        *******************************************************************************************/
+        COUNT(*) AS row_count,
+
+        /*******************************************************************************************
+        Requested affordability pressure.
+
+        This describes the original requested structure before Module 2 exposure treatment.
+        *******************************************************************************************/
+        AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+
+        /*******************************************************************************************
+        Offer-row approved PTI.
+
+        This is populated for simulated positive offer-exposure rows.
+
+        FILTER prevents unresolved / no-offer rows from being mixed into offer-row PTI.
+        *******************************************************************************************/
+        AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_pti_offer_rows,
+
+        /*******************************************************************************************
+        Risk and Expected Loss context.
+
+        estimated_pd remains the synthetic estimated-PD proxy.
+        *******************************************************************************************/
+        AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+        AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+        AVG(COALESCE(approved_expected_loss_amount, 0)) AS avg_approved_expected_loss_all_apps
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY
+        requested_pti_bucket,
+        decision_outcome
+)
+
+SELECT
+    o.requested_pti_bucket,
+    o.decision_outcome,
+    o.row_count,
+
+    /***********************************************************************************************
+    Percent of the requested PTI bucket represented by this final outcome.
+    ***********************************************************************************************/
+    ROUND(
+        100.0 * o.row_count::NUMERIC / NULLIF(s.applications, 0),
+        2
+    ) AS pct_within_requested_pti_bucket,
+
+    o.avg_requested_payment_to_income_ratio,
+    o.avg_approved_pti_offer_rows,
+    o.avg_synthetic_estimated_pd_proxy,
+    o.avg_requested_expected_loss_amount,
+    o.avg_approved_expected_loss_all_apps,
+
+    /***********************************************************************************************
+    Bucket-level rates repeated for review convenience.
+    ***********************************************************************************************/
+    s.approval_rate,
+    s.counteroffer_rate,
+    s.manual_review_rate,
+    s.decline_rate,
+    s.simulated_offer_exposure_rate
+
+FROM pti_outcome o
+
+JOIN pti_summary s
+    ON s.requested_pti_bucket = o.requested_pti_bucket
+
+ORDER BY
+    CASE o.requested_pti_bucket
+        WHEN 'LOW_REQUESTED_PTI' THEN 1
+        WHEN 'MODERATE_REQUESTED_PTI' THEN 2
+        WHEN 'ELEVATED_REQUESTED_PTI' THEN 3
+        WHEN 'HIGH_REQUESTED_PTI' THEN 4
+        WHEN 'SEVERE_REQUESTED_PTI' THEN 5
+        ELSE 99
+    END,
+    CASE o.decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.8B Requested PTI affordability sensitivity status check.
+
+Business purpose:
+    Compare approval rates in lower requested PTI buckets versus higher requested PTI buckets.
+
+Credit risk interpretation:
+    This is a compact directional affordability test.
+
+    If high / severe requested PTI rows approve at a higher rate than low / moderate requested PTI
+    rows, the result may still be explainable, but it deserves review.
+
+What to look for:
+    high_or_severe_requested_pti_approval_rate should generally be less than or equal to
+    low_or_moderate_requested_pti_approval_rate.
+
+Review triggers:
+    REQUESTED_PTI_AFFORDABILITY_SENSITIVITY_REVIEW_REQUIRED means the strategy may still be valid,
+    but the result should be explained through:
+        product mix,
+        score mix,
+        income mix,
+        DTI,
+        requested exposure,
+        counteroffer feasibility,
+        and reason-code patterns.
+
+Status logic:
+    REQUESTED_PTI_AFFORDABILITY_SENSITIVITY_DIRECTIONALLY_ALIGNED:
+        High / severe requested PTI approval rate is less than or equal to low / moderate requested
+        PTI approval rate.
+
+    REQUESTED_PTI_AFFORDABILITY_SENSITIVITY_REVIEW_REQUIRED:
+        High / severe requested PTI approval rate exceeds low / moderate requested PTI approval rate.
+
+    NOT_APPLICABLE_INSUFFICIENT_PTI_BUCKET_DENSITY:
+        One side of the comparison has no rows.
+
+SQL mechanics:
+    The CTE calculates counts and approval rates for two grouped PTI families:
+        LOW / MODERATE,
+        HIGH / SEVERE.
+
+    The final SELECT labels the result using a CASE expression.
+
+Documentation use:
+    This is useful as a compact validation status input because it produces an explicit status label.
+-----------------------------------------------------------------------------------------------*/
+
+WITH affordability_rates AS (
+    SELECT
+        /*******************************************************************************************
+        Low / moderate requested PTI population.
+        *******************************************************************************************/
+        COUNT(*) FILTER (
+            WHERE requested_pti_bucket IN ('LOW_REQUESTED_PTI', 'MODERATE_REQUESTED_PTI')
+        ) AS low_or_moderate_requested_pti_rows,
+
+        /*******************************************************************************************
+        High / severe requested PTI population.
+        *******************************************************************************************/
+        COUNT(*) FILTER (
+            WHERE requested_pti_bucket IN ('HIGH_REQUESTED_PTI', 'SEVERE_REQUESTED_PTI')
+        ) AS high_or_severe_requested_pti_rows,
+
+        /*******************************************************************************************
+        Low / moderate approval rate.
+        *******************************************************************************************/
+        COUNT(*) FILTER (
+            WHERE requested_pti_bucket IN ('LOW_REQUESTED_PTI', 'MODERATE_REQUESTED_PTI')
+              AND decision_outcome = 'APPROVE'
+        )::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (
+                WHERE requested_pti_bucket IN ('LOW_REQUESTED_PTI', 'MODERATE_REQUESTED_PTI')
+            ),
+            0
+        ) AS low_or_moderate_requested_pti_approval_rate,
+
+        /*******************************************************************************************
+        High / severe approval rate.
+        *******************************************************************************************/
+        COUNT(*) FILTER (
+            WHERE requested_pti_bucket IN ('HIGH_REQUESTED_PTI', 'SEVERE_REQUESTED_PTI')
+              AND decision_outcome = 'APPROVE'
+        )::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (
+                WHERE requested_pti_bucket IN ('HIGH_REQUESTED_PTI', 'SEVERE_REQUESTED_PTI')
+            ),
+            0
+        ) AS high_or_severe_requested_pti_approval_rate
+
+    FROM credit_decisioning_sim.strategy_decisions
+)
+
+SELECT
+    low_or_moderate_requested_pti_rows,
+    high_or_severe_requested_pti_rows,
+    low_or_moderate_requested_pti_approval_rate,
+    high_or_severe_requested_pti_approval_rate,
+
+    /***********************************************************************************************
+    Diagnostic status.
+
+    REVIEW is not a failure. It means the affordability pattern should be interpreted before it is
+    used in documentation.
+    ***********************************************************************************************/
+    CASE
+        WHEN low_or_moderate_requested_pti_rows = 0
+          OR high_or_severe_requested_pti_rows = 0
+            THEN 'NOT_APPLICABLE_INSUFFICIENT_PTI_BUCKET_DENSITY'
+
+        WHEN high_or_severe_requested_pti_approval_rate
+          <= low_or_moderate_requested_pti_approval_rate
+            THEN 'REQUESTED_PTI_AFFORDABILITY_SENSITIVITY_DIRECTIONALLY_ALIGNED'
+
+        ELSE 'REQUESTED_PTI_AFFORDABILITY_SENSITIVITY_REVIEW_REQUIRED'
+    END AS requested_pti_affordability_sensitivity_status
+
+FROM affordability_rates;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.8C Counteroffer PTI improvement diagnostic.
+
+Business purpose:
+    Confirm that final COUNTEROFFER rows generally improve affordability by reducing approved PTI
+    below requested PTI.
+
+Credit risk interpretation:
+    Counteroffer is not merely a label.
+
+    It should reflect reduced approved exposure that improves affordability and helps satisfy product
+    target PTI where feasible.
+
+Expected interpretation:
+    Final COUNTEROFFER rows should generally show:
+        approved_payment_to_income_ratio < requested_payment_to_income_ratio.
+
+What to look for:
+    avg_pti_reduction_counteroffer_rows should generally be positive.
+
+    counteroffer_rows_without_pti_improvement should ordinarily be zero.
+
+Review triggers:
+    Counteroffer rows without PTI improvement require review because they may indicate:
+        exposure-treatment logic did not reduce payment enough,
+        requested PTI was already low,
+        approved PTI is NULL or improperly populated,
+        or a counteroffer was assigned without the intended affordability effect.
+
+SQL mechanics:
+    FILTER limits each metric to final COUNTEROFFER rows.
+
+    The reduction calculation subtracts approved PTI from requested PTI.
+
+Boundary:
+    approved_payment_to_income_ratio is a strategy-simulation affordability proxy.
+
+    It is not a contractual payment quote or production amortization result.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    Count final counteroffer rows.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER') AS counteroffer_rows,
+
+    /***********************************************************************************************
+    Requested and approved PTI among final counteroffers.
+    ***********************************************************************************************/
+    AVG(requested_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_requested_pti_counteroffer_rows,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_pti_counteroffer_rows,
+
+    /***********************************************************************************************
+    Average PTI reduction.
+
+    Positive value means approved PTI is lower than requested PTI.
+    ***********************************************************************************************/
+    AVG(
+        requested_payment_to_income_ratio - approved_payment_to_income_ratio
+    ) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_pti_reduction_counteroffer_rows,
+
+    /***********************************************************************************************
+    Count final counteroffer rows where approved PTI is not lower than requested PTI.
+
+    Expected:
+        zero or explainably small.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND approved_payment_to_income_ratio >= requested_payment_to_income_ratio
+    ) AS counteroffer_rows_without_pti_improvement
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/***************************************************************************************************
+SECTION 14.9 — DTI CAPACITY QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that DTI capacity pressure affects simulated strategy routing in a directionally coherent
+    way.
+
+    Section 14.9 answers:
+
+        "Does higher existing-obligation capacity pressure generally reduce approval likelihood and
+         increase review or decline outcomes?"
+
+SQL PURPOSE:
+    1. Summarize final decision outcomes by dti_bucket.
+    2. Calculate approval, counteroffer, manual-review, decline, and simulated offer-exposure rates
+       by DTI bucket.
+    3. Compare DTI, synthetic estimated-risk proxy, requested PTI, and requested Expected Loss by DTI
+       bucket and final outcome.
+    4. Review severe DTI decline-trigger routing.
+    5. Produce a directional DTI capacity sensitivity status.
+
+CREDIT RISK CONCEPT:
+    DTI reflects existing-obligation capacity.
+
+    It is different from requested PTI.
+
+    requested PTI asks:
+        "How heavy is the requested product payment relative to income?"
+
+    DTI asks:
+        "How much existing debt obligation does the applicant already carry relative to income?"
+
+    Both can affect strategy outcomes, but they are not the same risk signal.
+
+BUSINESS INTERPRETATION:
+    Higher DTI should generally:
+        reduce clean approval likelihood,
+        increase manual review,
+        increase decline routing,
+        or interact with counteroffer / affordability treatment where appropriate.
+
+DTI BOUNDARY:
+    DTI reflects existing-obligation capacity.
+
+    In Module 2 V1.0, DTI is not directly fixed by counteroffer because a counteroffer adjusts the
+    requested exposure treatment, not the synthetic applicant's existing obligations.
+
+WHY DTI IS REVIEWED SEPARATELY FROM REQUESTED PTI:
+    requested_payment_to_income_ratio reflects the affordability burden of the requested structure.
+
+    debt_to_income_ratio reflects existing-obligation capacity.
+
+    Both can affect strategy outcomes, but they are distinct capacity signals and should not be
+    collapsed into one metric.
+
+WHAT TO LOOK FOR:
+    Low / moderate DTI buckets should generally show stronger approval / offer-exposure rates.
+
+    High / severe DTI buckets should generally show more manual-review or decline pressure.
+
+    Severe DTI trigger rows should not silently appear as unexplained approvals.
+
+REVIEW TRIGGERS:
+    High or severe DTI rows with high approval rates require interpretation.
+
+    DTI decline triggers that resolve to APPROVE should be reviewed against the intended decision
+    hierarchy.
+
+    DTI patterns should be interpreted with product, score, requested PTI, requested exposure, and
+    reason-code distribution.
+
+BOUNDARY:
+    Section 14.9 does not recalculate DTI.
+    Section 14.9 does not adjust DTI through counteroffer exposure treatment.
+    Section 14.9 does not create production affordability rules.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    GROUP BY:
+        Creates DTI-bucket-level diagnostic summaries.
+
+    FILTER:
+        Calculates outcome-specific rates.
+
+    CASE:
+        Creates human-readable sensitivity status and business ordering.
+
+    NULLIF:
+        Prevents divide-by-zero in approval-rate comparisons.
+
+DOCUMENTATION USE:
+    Section 14.9 supports the Validation Summary narrative that the strategy recognizes existing
+    obligation capacity separately from requested-product affordability.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.9A DTI bucket × final decision outcome.
+
+Business purpose:
+    Review how existing-obligation capacity pressure flows into final simulated outcomes.
+
+Credit risk interpretation:
+    This query shows whether DTI buckets align directionally with approval, counteroffer, review,
+    decline, and simulated offer-exposure rates.
+
+What to look for:
+    Higher DTI buckets should generally show lower clean approval rates or higher review / decline
+    outcomes.
+
+    Lower DTI buckets should generally show more favorable outcomes.
+
+Review triggers:
+    Exceptions should be explained through product mix, score band, requested PTI, requested exposure,
+    and reason-code distributions.
+
+SQL mechanics:
+    dti_summary:
+        creates one row per DTI bucket with overall decision rates.
+
+    dti_outcome:
+        creates one row per DTI bucket × final outcome with DTI / risk / requested-structure averages.
+
+    Final SELECT:
+        joins DTI-bucket rates onto each outcome row.
+
+Documentation use:
+    Use this output to explain whether existing-obligation capacity pressure is influencing strategy
+    outcomes as expected.
+-----------------------------------------------------------------------------------------------*/
+
+WITH dti_summary AS (
+    SELECT
+        dti_bucket,
+
+        /*******************************************************************************************
+        DTI bucket population size.
+        *******************************************************************************************/
+        COUNT(*) AS applications,
+
+        /*******************************************************************************************
+        Final decision rates by DTI bucket.
+        *******************************************************************************************/
+        COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY dti_bucket
+),
+
+dti_outcome AS (
+    SELECT
+        dti_bucket,
+        decision_outcome,
+
+        /*******************************************************************************************
+        DTI bucket × final outcome row count.
+        *******************************************************************************************/
+        COUNT(*) AS row_count,
+
+        /*******************************************************************************************
+        Existing-obligation capacity and related risk / affordability context.
+        *******************************************************************************************/
+        AVG(debt_to_income_ratio) AS avg_debt_to_income_ratio,
+        AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+        AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+        AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+
+    FROM credit_decisioning_sim.strategy_decisions
+
+    GROUP BY
+        dti_bucket,
+        decision_outcome
+)
+
+SELECT
+    o.dti_bucket,
+    o.decision_outcome,
+    o.row_count,
+
+    /***********************************************************************************************
+    Percent of the DTI bucket represented by this final outcome.
+    ***********************************************************************************************/
+    ROUND(
+        100.0 * o.row_count::NUMERIC / NULLIF(s.applications, 0),
+        2
+    ) AS pct_within_dti_bucket,
+
+    o.avg_debt_to_income_ratio,
+    o.avg_synthetic_estimated_pd_proxy,
+    o.avg_requested_payment_to_income_ratio,
+    o.avg_requested_expected_loss_amount,
+
+    /***********************************************************************************************
+    Bucket-level rates repeated for review convenience.
+    ***********************************************************************************************/
+    s.approval_rate,
+    s.counteroffer_rate,
+    s.manual_review_rate,
+    s.decline_rate,
+    s.simulated_offer_exposure_rate
+
+FROM dti_outcome o
+
+JOIN dti_summary s
+    ON s.dti_bucket = o.dti_bucket
+
+ORDER BY
+    CASE o.dti_bucket
+        WHEN 'LOW_DTI' THEN 1
+        WHEN 'MODERATE_DTI' THEN 2
+        WHEN 'ELEVATED_DTI' THEN 3
+        WHEN 'HIGH_DTI' THEN 4
+        WHEN 'SEVERE_DTI' THEN 5
+        ELSE 99
+    END,
+    CASE o.decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.9B DTI decline-trigger diagnostic.
+
+Business purpose:
+    Review rows where the DTI decline trigger is active.
+
+Credit risk interpretation:
+    Severe DTI is treated as existing-obligation capacity pressure.
+
+    It is not directly solved by reducing approved exposure.
+
+What to look for:
+    Rows with dti_decline_trigger_flag = TRUE should route consistently with the accepted decision
+    hierarchy.
+
+    The distribution should be explainable through decision_path and primary_reason_code.
+
+Review triggers:
+    dti_decline_trigger_flag = TRUE rows that resolve to APPROVE should be reviewed carefully.
+
+    If they exist, confirm whether a later strategy design intentionally permits this or whether
+    routing hierarchy needs review.
+
+SQL mechanics:
+    GROUP BY dti_decline_trigger_flag, decision_outcome, decision_path, primary_reason_code shows how
+    the DTI trigger translated into final outcomes and explanation codes.
+
+    ORDER BY places TRUE trigger rows first and shows no-offer / review outcomes before positive
+    outcomes.
+
+Documentation use:
+    This output supports validation evidence that severe DTI handling is traceable and explainable.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    dti_decline_trigger_flag,
+    decision_outcome,
+    decision_path,
+    primary_reason_code,
+
+    /***********************************************************************************************
+    Count rows in each DTI trigger × final outcome × path × reason-code combination.
+    ***********************************************************************************************/
+    COUNT(*) AS row_count
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY
+    dti_decline_trigger_flag,
+    decision_outcome,
+    decision_path,
+    primary_reason_code
+
+ORDER BY
+    dti_decline_trigger_flag DESC,
+    CASE decision_outcome
+        WHEN 'DECLINE' THEN 1
+        WHEN 'MANUAL_REVIEW' THEN 2
+        WHEN 'COUNTEROFFER' THEN 3
+        WHEN 'APPROVE' THEN 4
+        ELSE 99
+    END,
+    decision_path,
+    primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.9C DTI sensitivity status check.
+
+Business purpose:
+    Compare approval rates in lower DTI buckets versus higher DTI buckets.
+
+Credit risk interpretation:
+    This compact diagnostic checks whether existing-obligation capacity pressure is directionally
+    reflected in clean approval behavior.
+
+What to look for:
+    high_or_severe_dti_approval_rate should generally be less than or equal to
+    low_or_moderate_dti_approval_rate.
+
+Review triggers:
+    DTI_CAPACITY_SENSITIVITY_REVIEW_REQUIRED means the result should be interpreted with:
+        score mix,
+        product mix,
+        requested PTI,
+        exposure,
+        reason-code concentration,
+        and risk-tier distribution.
+
+Status logic:
+    DTI_CAPACITY_SENSITIVITY_DIRECTIONALLY_ALIGNED:
+        High / severe DTI approval rate is less than or equal to low / moderate DTI approval rate.
+
+    DTI_CAPACITY_SENSITIVITY_REVIEW_REQUIRED:
+        High / severe DTI approval rate exceeds low / moderate DTI approval rate.
+
+    NOT_APPLICABLE_INSUFFICIENT_DTI_BUCKET_DENSITY:
+        One side of the comparison has no rows.
+
+SQL mechanics:
+    The CTE calculates grouped row counts and grouped approval rates.
+
+    The final SELECT assigns a readable status label using CASE.
+
+Documentation use:
+    This query is a useful validation-status input because it produces a compact directional status.
+-----------------------------------------------------------------------------------------------*/
+
+WITH dti_rates AS (
+    SELECT
+        /*******************************************************************************************
+        Lower DTI comparison population.
+        *******************************************************************************************/
+        COUNT(*) FILTER (
+            WHERE dti_bucket IN ('LOW_DTI', 'MODERATE_DTI')
+        ) AS low_or_moderate_dti_rows,
+
+        /*******************************************************************************************
+        Higher DTI comparison population.
+        *******************************************************************************************/
+        COUNT(*) FILTER (
+            WHERE dti_bucket IN ('HIGH_DTI', 'SEVERE_DTI')
+        ) AS high_or_severe_dti_rows,
+
+        /*******************************************************************************************
+        Low / moderate DTI approval rate.
+        *******************************************************************************************/
+        COUNT(*) FILTER (
+            WHERE dti_bucket IN ('LOW_DTI', 'MODERATE_DTI')
+              AND decision_outcome = 'APPROVE'
+        )::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (
+                WHERE dti_bucket IN ('LOW_DTI', 'MODERATE_DTI')
+            ),
+            0
+        ) AS low_or_moderate_dti_approval_rate,
+
+        /*******************************************************************************************
+        High / severe DTI approval rate.
+        *******************************************************************************************/
+        COUNT(*) FILTER (
+            WHERE dti_bucket IN ('HIGH_DTI', 'SEVERE_DTI')
+              AND decision_outcome = 'APPROVE'
+        )::NUMERIC
+        / NULLIF(
+            COUNT(*) FILTER (
+                WHERE dti_bucket IN ('HIGH_DTI', 'SEVERE_DTI')
+            ),
+            0
+        ) AS high_or_severe_dti_approval_rate
+
+    FROM credit_decisioning_sim.strategy_decisions
+)
+
+SELECT
+    low_or_moderate_dti_rows,
+    high_or_severe_dti_rows,
+    low_or_moderate_dti_approval_rate,
+    high_or_severe_dti_approval_rate,
+
+    /***********************************************************************************************
+    Diagnostic DTI sensitivity status.
+
+    REVIEW is a documentation-review trigger, not an automatic invalidation.
+    ***********************************************************************************************/
+    CASE
+        WHEN low_or_moderate_dti_rows = 0
+          OR high_or_severe_dti_rows = 0
+            THEN 'NOT_APPLICABLE_INSUFFICIENT_DTI_BUCKET_DENSITY'
+
+        WHEN high_or_severe_dti_approval_rate <= low_or_moderate_dti_approval_rate
+            THEN 'DTI_CAPACITY_SENSITIVITY_DIRECTIONALLY_ALIGNED'
+
+        ELSE 'DTI_CAPACITY_SENSITIVITY_REVIEW_REQUIRED'
+    END AS dti_capacity_sensitivity_status
+
+FROM dti_rates;
+
+
+
+/***************************************************************************************************
+SECTION 14.10 — APPROVED EXPOSURE AND EXPECTED LOSS QA
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate final approved exposure, affordability, and approved Expected Loss conventions after
+    final simulated decision resolution.
+
+    Section 14.10 answers:
+
+        "Do final approved amount, counteroffer amount, exposure reduction, approved PTI, and approved
+         Expected Loss behave consistently with each final simulated strategy outcome?"
+
+SQL PURPOSE:
+    1. Summarize requested amount versus approved amount by final decision outcome.
+    2. Summarize requested Expected Loss versus approved Expected Loss by final decision outcome.
+    3. Review exposure reduction behavior for final COUNTEROFFER rows.
+    4. Validate final approved exposure conventions by decision_outcome.
+    5. Validate final approved Expected Loss conventions by decision_outcome.
+    6. Summarize product-level requested versus approved exposure and Expected Loss.
+
+CREDIT RISK CONCEPT:
+    Decision outcomes alone are not enough.
+
+    A strategy output must also have coherent economics.
+
+    The key distinction is:
+        requested exposure:
+            what the applicant requested in the synthetic Module 1 application.
+
+        approved exposure:
+            what Module 2 assigns after strategy treatment.
+
+        requested Expected Loss:
+            expected loss on the requested exposure.
+
+        approved Expected Loss:
+            expected loss on the final approved exposure.
+
+BUSINESS INTERPRETATION:
+    This section confirms that final approved exposure economics behave as designed:
+
+        APPROVE:
+            approved_amount = requested_amount.
+            approved_expected_loss_amount = requested_expected_loss_amount.
+
+        COUNTEROFFER:
+            approved_amount is positive and lower than requested_amount.
+            approved_expected_loss_amount should be reduced or at least not exceed requested-exposure
+            Expected Loss under the accepted feasibility logic.
+
+        MANUAL_REVIEW:
+            approved exposure fields remain NULL because manual review is unresolved by design.
+
+        DECLINE:
+            approved exposure and approved Expected Loss are zero by convention.
+
+WHY THIS SECTION MATTERS:
+    A final strategy output must demonstrate that:
+        positive offer-exposure outcomes carry valid approved exposure values;
+        counteroffers truly reduce exposure;
+        manual review remains unresolved;
+        declines carry zero approved exposure;
+        approved Expected Loss follows approved-exposure treatment;
+        product-level exposure and Expected Loss contributions are explainable.
+
+REQUESTED VS APPROVED EXPECTED LOSS:
+    requested_expected_loss_amount:
+        Requested-exposure Expected Loss from Module 1.
+
+    approved_expected_loss_amount:
+        Module 2 approved-exposure Expected Loss after simulated exposure treatment.
+
+    Section 14.10 validates the distinction but does not recalculate either value.
+
+APPROVED PTI BOUNDARY:
+    approved_payment_to_income_ratio is a Module 2 strategy-simulation affordability proxy.
+
+    It is not:
+        a contractual payment ratio,
+        a servicing or billing output,
+        or production affordability underwriting.
+
+SIMULATED OFFER EXPOSURE BOUNDARY:
+    Approved exposure metrics are simulated strategy outputs.
+
+    They do not imply:
+        operational account creation,
+        funded exposure,
+        booked exposure,
+        production approval,
+        or real applicant treatment.
+
+WHAT TO LOOK FOR:
+    Approved exposure convention violation counts should be zero.
+
+    Approved Expected Loss convention violation counts should be zero.
+
+    Counteroffer exposure reduction should be positive.
+
+    Product-level approved exposure and approved Expected Loss should be explainable by product mix,
+    approved amount, synthetic estimated-risk proxy, and LGD.
+
+REVIEW TRIGGERS:
+    Approved amount above requested amount:
+        should be reviewed immediately.
+
+    Counteroffer approved amount not below requested amount:
+        suggests counteroffer convention failure.
+
+    Manual-review rows with approved exposure:
+        violates unresolved-review convention.
+
+    Decline rows with positive approved exposure:
+        violates zero-exposure convention.
+
+    Approved Expected Loss above requested Expected Loss for counteroffers:
+        requires review because reduced exposure should generally reduce approved Expected Loss when
+        estimated_pd and estimated_lgd are unchanged.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    IS DISTINCT FROM:
+        Performs NULL-safe comparisons in convention validation.
+
+    COALESCE:
+        Converts unresolved / no-offer values to zero when summarizing portfolio-level exposure.
+
+    FILTER:
+        Calculates outcome-specific metrics in the same grouped query.
+
+    CASE:
+        Implements locked decline Expected Loss percentage convention when requested Expected Loss is
+        zero.
+
+DOCUMENTATION USE:
+    Section 14.10 is central to the validation story because it proves that final strategy outcomes
+    are economically coherent, not just categorically assigned.
+
+READ-ONLY BOUNDARY:
+    Section 14.10 does not modify latest-run rows.
+    Section 14.10 does not modify archive rows.
+    Section 14.10 does not recalculate exposure treatment.
+    Section 14.10 does not recalculate Expected Loss.
+    Section 14.10 does not reassign decisions or reason codes.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.10A Final requested versus approved exposure and Expected Loss by decision outcome.
+
+Business purpose:
+    Summarize how requested exposure and requested Expected Loss translate into approved exposure and
+    approved Expected Loss after final strategy resolution.
+
+Credit risk interpretation:
+    This query connects final outcome taxonomy to exposure economics.
+
+    It helps reviewers confirm:
+        APPROVE preserves requested exposure,
+        COUNTEROFFER reduces exposure,
+        MANUAL_REVIEW remains unresolved,
+        DECLINE produces zero approved exposure,
+        approved Expected Loss follows approved exposure.
+
+What to look for:
+    APPROVE:
+        avg_approved_amount_all_apps should equal avg_requested_amount.
+        approved Expected Loss should match requested Expected Loss.
+
+    COUNTEROFFER:
+        avg_approved_amount_offer_rows should be below avg_requested_amount.
+        avg_exposure_reduction_pct_for_counteroffers should be positive.
+
+    MANUAL_REVIEW:
+        offer-row approved metrics should be NULL because no positive offer exposure exists.
+
+    DECLINE:
+        all-application approved amount and approved Expected Loss should be zero.
+
+Review triggers:
+    Negative approved amount, approved amount above requested amount, or nonzero decline approved
+    exposure should be reviewed in 14.10B.
+
+    Approved Expected Loss convention issues should be reviewed in 14.10C.
+
+SQL mechanics:
+    GROUP BY decision_outcome creates one row per final outcome.
+
+    COALESCE converts unresolved or no-offer approved values to zero for all-application impact.
+
+    FILTER isolates counteroffer rows or simulated offer-exposure rows where appropriate.
+
+Documentation use:
+    This is a strong executive evidence table because it ties final outcomes to exposure and approved
+    Expected Loss impact.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    decision_outcome,
+
+    /***********************************************************************************************
+    Outcome population size.
+    ***********************************************************************************************/
+    COUNT(*) AS row_count,
+
+    /***********************************************************************************************
+    Requested and approved exposure averages.
+
+    avg_approved_amount_all_apps:
+        all-application portfolio-impact view.
+
+    avg_approved_amount_offer_rows:
+        positive simulated offer-exposure economics only.
+    ***********************************************************************************************/
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+
+    AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_amount_offer_rows,
+
+    /***********************************************************************************************
+    Requested and approved exposure totals.
+
+    These are often easier to use in executive storytelling than averages alone.
+    ***********************************************************************************************/
+    SUM(requested_amount) AS total_requested_amount,
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+    /***********************************************************************************************
+    Counteroffer exposure reduction metrics.
+
+    These should be populated only for final COUNTEROFFER rows.
+    ***********************************************************************************************/
+    AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_exposure_reduction_pct_for_counteroffers,
+
+    MIN(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS min_exposure_reduction_pct_for_counteroffers,
+
+    MAX(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS max_exposure_reduction_pct_for_counteroffers,
+
+    /***********************************************************************************************
+    Requested and approved affordability proxy metrics.
+
+    approved_payment_to_income_ratio is an offer-row strategy-simulation proxy.
+    ***********************************************************************************************/
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_pti_offer_rows,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss totals.
+
+    requested_expected_loss_amount:
+        requested-exposure Expected Loss.
+
+    approved_expected_loss_amount:
+        approved-exposure Expected Loss after final Module 2 exposure treatment.
+    ***********************************************************************************************/
+    SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        AS total_approved_expected_loss_amount,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+
+    AVG(COALESCE(approved_expected_loss_amount, 0))
+        AS avg_approved_expected_loss_all_apps,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_expected_loss_offer_rows,
+
+    /***********************************************************************************************
+    Counteroffer approved Expected Loss reduction percent.
+
+    Positive values indicate approved Expected Loss reduction relative to requested Expected Loss.
+    ***********************************************************************************************/
+    AVG(approved_el_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+        AS avg_approved_el_reduction_pct_for_counteroffers
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY decision_outcome
+
+ORDER BY
+    CASE decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.10B Final approved exposure convention validation.
+
+Business purpose:
+    Provide compact violation counts for final approved exposure conventions.
+
+Expected result:
+    All violation counts should be zero.
+
+Validation conventions:
+    APPROVE:
+        approved_amount should equal requested_amount.
+
+    COUNTEROFFER:
+        approved_amount should be positive, below requested_amount, equal to counteroffer_amount, and
+        should have positive exposure reduction.
+
+    MANUAL_REVIEW:
+        approved_amount, counteroffer_amount, exposure_reduction_amount, and exposure_reduction_pct
+        should remain NULL.
+
+    DECLINE:
+        approved_amount should equal zero, counteroffer_amount should be NULL, exposure reduction
+        amount should equal requested_amount, and exposure reduction percent should equal 1.0.
+
+What to look for:
+    Every count should be zero.
+
+Review triggers:
+    Any nonzero count should be reviewed before documentation because it indicates a final exposure
+    convention issue.
+
+SQL mechanics:
+    COUNT(*) FILTER counts each violation family.
+
+    IS DISTINCT FROM is used instead of <> because it compares NULLs safely.
+
+    The final two counts catch general negative approved amount and approved amount above requested
+    amount issues.
+
+Boundary:
+    This query validates output conventions. It does not recalculate exposure treatment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    APPROVE convention:
+        approved amount should equal requested amount.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'APPROVE'
+          AND approved_amount IS DISTINCT FROM requested_amount
+    ) AS approve_approved_amount_violation_rows,
+
+    /***********************************************************************************************
+    COUNTEROFFER convention:
+        reduced positive approved exposure,
+        counteroffer amount equals approved amount,
+        positive exposure reduction.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_amount IS NULL
+             OR approved_amount <= 0
+             OR approved_amount >= requested_amount
+             OR counteroffer_amount IS DISTINCT FROM approved_amount
+             OR exposure_reduction_flag IS DISTINCT FROM TRUE
+             OR exposure_reduction_amount IS NULL
+             OR exposure_reduction_amount <= 0
+             OR exposure_reduction_pct IS NULL
+             OR exposure_reduction_pct <= 0
+          )
+    ) AS counteroffer_approved_amount_violation_rows,
+
+    /***********************************************************************************************
+    MANUAL_REVIEW convention:
+        unresolved outcome, so final approved exposure fields should remain NULL.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND (
+                approved_amount IS NOT NULL
+             OR counteroffer_amount IS NOT NULL
+             OR exposure_reduction_amount IS NOT NULL
+             OR exposure_reduction_pct IS NOT NULL
+          )
+    ) AS manual_review_approved_amount_violation_rows,
+
+    /***********************************************************************************************
+    DECLINE convention:
+        zero approved exposure and full requested-exposure reduction.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND (
+                approved_amount IS DISTINCT FROM 0::NUMERIC
+             OR counteroffer_amount IS NOT NULL
+             OR exposure_reduction_amount IS DISTINCT FROM requested_amount
+             OR exposure_reduction_pct IS DISTINCT FROM 1.0::NUMERIC
+          )
+    ) AS decline_approved_amount_violation_rows,
+
+    /***********************************************************************************************
+    General exposure sanity checks.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE approved_amount IS NOT NULL
+          AND approved_amount < 0
+    ) AS negative_approved_amount_rows,
+
+    COUNT(*) FILTER (
+        WHERE approved_amount IS NOT NULL
+          AND approved_amount > requested_amount
+    ) AS approved_amount_above_requested_amount_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.10C Final approved Expected Loss convention validation.
+
+Business purpose:
+    Provide compact violation counts for approved Expected Loss conventions.
+
+Expected result:
+    All violation counts should be zero.
+
+Validation conventions:
+    APPROVE:
+        approved_expected_loss_amount should equal requested_expected_loss_amount.
+
+    COUNTEROFFER:
+        approved_expected_loss_amount should be populated, non-negative, and less than or equal to
+        requested_expected_loss_amount.
+
+    MANUAL_REVIEW:
+        approved_expected_loss_amount, approved_el_reduction_amount, and approved_el_reduction_pct
+        should remain NULL because the outcome is unresolved.
+
+    DECLINE:
+        approved_expected_loss_amount should equal zero, approved_el_reduction_amount should equal
+        requested_expected_loss_amount, and approved_el_reduction_pct should follow the locked
+        decline convention.
+
+What to look for:
+    Every violation count should be zero.
+
+Review triggers:
+    Nonzero counts indicate approved Expected Loss convention issues and should be reviewed before
+    validation documentation.
+
+SQL mechanics:
+    IS DISTINCT FROM handles NULL-safe comparison.
+
+    CASE handles decline reduction percentage when requested Expected Loss is zero.
+
+Boundary:
+    This query validates output conventions. It does not recalculate approved Expected Loss.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    /***********************************************************************************************
+    APPROVE convention:
+        approved Expected Loss should equal requested Expected Loss.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'APPROVE'
+          AND approved_expected_loss_amount IS DISTINCT FROM requested_expected_loss_amount
+    ) AS approve_approved_expected_loss_violation_rows,
+
+    /***********************************************************************************************
+    COUNTEROFFER convention:
+        approved Expected Loss should be populated, non-negative, and not above requested Expected
+        Loss.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_expected_loss_amount IS NULL
+             OR approved_expected_loss_amount < 0
+             OR approved_expected_loss_amount > requested_expected_loss_amount
+          )
+    ) AS counteroffer_approved_expected_loss_violation_rows,
+
+    /***********************************************************************************************
+    MANUAL_REVIEW convention:
+        unresolved outcome, so approved Expected Loss fields should remain NULL.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND (
+                approved_expected_loss_amount IS NOT NULL
+             OR approved_el_reduction_amount IS NOT NULL
+             OR approved_el_reduction_pct IS NOT NULL
+          )
+    ) AS manual_review_approved_expected_loss_violation_rows,
+
+    /***********************************************************************************************
+    DECLINE convention:
+        zero approved Expected Loss and full requested Expected Loss reduction.
+
+    SQL note:
+        If requested_expected_loss_amount is zero, the expected reduction percentage is zero rather
+        than one, avoiding an undefined percentage interpretation.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND (
+                approved_expected_loss_amount IS DISTINCT FROM 0::NUMERIC
+             OR approved_el_reduction_amount IS DISTINCT FROM requested_expected_loss_amount
+             OR approved_el_reduction_pct IS DISTINCT FROM
+                CASE
+                    WHEN requested_expected_loss_amount > 0 THEN 1.0::NUMERIC
+                    ELSE 0::NUMERIC
+                END
+          )
+    ) AS decline_approved_expected_loss_violation_rows,
+
+    /***********************************************************************************************
+    General approved Expected Loss sanity check.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE approved_expected_loss_amount IS NOT NULL
+          AND approved_expected_loss_amount < 0
+    ) AS negative_approved_expected_loss_rows
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+14.10D Product-level requested versus approved exposure and Expected Loss profile.
+
+Business purpose:
+    Identify which products contribute most to simulated approved exposure and approved Expected Loss
+    after Module 2 final exposure treatment.
+
+Credit risk interpretation:
+    Product type can materially affect:
+        requested amount,
+        term,
+        payment burden,
+        LGD,
+        approved exposure,
+        counteroffer feasibility,
+        requested Expected Loss,
+        approved Expected Loss,
+        and simulated offer-exposure rate.
+
+What to look for:
+    Products with high total_approved_amount drive exposure.
+
+    Products with high total_approved_expected_loss_amount drive approved Expected Loss.
+
+    Products with high simulated_offer_exposure_rate drive access.
+
+    Products with high requested Expected Loss but low approved Expected Loss may reflect risk
+    tightening, counteroffer treatment, or no-offer routing.
+
+Review triggers:
+    Product-level approved Expected Loss concentration should be explainable through product mix,
+    score mix, approved exposure, estimated_pd, LGD, and reason-code distribution.
+
+SQL mechanics:
+    GROUP BY product_type_policy_key creates one row per product.
+
+    SUM requested fields capture original demand / risk exposure.
+
+    SUM(COALESCE approved fields) captures final approved portfolio impact.
+
+    FILTER calculates offer-row averages only for APPROVE and COUNTEROFFER outcomes.
+
+Documentation use:
+    Strong candidate for executive storylines because it connects product mix to exposure and
+    approved Expected Loss outcomes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+
+    /***********************************************************************************************
+    Product population size.
+    ***********************************************************************************************/
+    COUNT(*) AS applications,
+
+    /***********************************************************************************************
+    Requested and approved exposure totals.
+    ***********************************************************************************************/
+    SUM(requested_amount) AS total_requested_amount,
+    SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+    /***********************************************************************************************
+    Requested and approved exposure averages.
+
+    avg_approved_amount_all_apps:
+        all-application exposure impact.
+
+    avg_approved_amount_offer_rows:
+        economics of simulated positive offer-exposure rows only.
+    ***********************************************************************************************/
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+
+    AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_amount_offer_rows,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss totals.
+    ***********************************************************************************************/
+    SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+
+    SUM(COALESCE(approved_expected_loss_amount, 0))
+        AS total_approved_expected_loss_amount,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss averages.
+    ***********************************************************************************************/
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+
+    AVG(COALESCE(approved_expected_loss_amount, 0))
+        AS avg_approved_expected_loss_all_apps,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_expected_loss_offer_rows,
+
+    /***********************************************************************************************
+    Product-level simulated positive offer-exposure rate.
+
+    TRUE for final APPROVE and COUNTEROFFER rows.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate
+
+FROM credit_decisioning_sim.strategy_decisions
+
+GROUP BY product_type_policy_key
+
+ORDER BY product_type_policy_key;
+
+
+
+/***************************************************************************************************
+END OF SECTION 14.10 — APPROVED EXPOSURE AND EXPECTED LOSS QA
+
+This partial Section 14 chunk has established:
+    1. Synthetic estimated-risk tier outcome distribution review.
+    2. Synthetic estimated-risk tier compact summary review.
+    3. Offered-versus-declined synthetic estimated-risk directional status review.
+    4. Requested PTI affordability sensitivity review.
+    5. Counteroffer PTI improvement diagnostic.
+    6. DTI capacity sensitivity review.
+    7. DTI decline-trigger routing diagnostic.
+    8. Final requested versus approved exposure and Expected Loss review.
+    9. Final approved exposure convention validation.
+    10. Final approved Expected Loss convention validation.
+    11. Product-level requested versus approved exposure / Expected Loss profile.
+    12. Continued interpretation of estimated_pd as the synthetic estimated-PD proxy.
+    13. Continued distinction between requested-exposure Expected Loss and approved-exposure Expected
+        Loss.
+    14. Continued simulated offer-exposure boundary discipline.
+    15. Continued simulated reason-code boundary discipline.
+
+No latest-run output rows have been modified.
+No archive rows have been modified.
+No strategy parameter rows have been modified.
+No product policy parameter rows have been modified.
+No decision outcomes have been recalculated.
+No simulated reason codes have been reassigned.
+No approved exposure has been recalculated.
+No approved Expected Loss has been recalculated.
+No BRD or Validation Summary documentation has been drafted.
+
+Next section:
+    Section 14.11 should continue the latest-run QA framework by reviewing final counteroffer
+    feasibility, failed preliminary counteroffer behavior, and counteroffer reason-code explanation.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M00990 -->
+
+
+---
+
+<a id="c038-m00991"></a>
+
+### C038-M00991
+
+**Andrew** · 2026-05-10T09:32:31.591000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00991 -->
+let's do one more pass for commentary. Please note that besides the headers we want instructional commentary that details how the sql logic is working. the commentary/headers are supposed to do 3 main things: 1) Advise on the who/what/why/how to run and interpret the code and parameters; 2) teach the credit risk concepts and nuts and bolts; 3) teach how the sql logic is working. folks going through this code should not only understand how to use/interpret but also should learn about credit risk analytics and SQL. this is the elite level we are striving for. besides header comments, we expect in line comments explaining the sql logic and line by line process. here is the section 14.14-14.16 again. if suggested changes, return the full copy paste of those sections in one copy paste block.
+<!-- END_MESSAGE C038-M00991 -->
+
+
+**Attachments in export:** `Pasted text(156).txt`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_51.md) · [Next](Part_53.md)
