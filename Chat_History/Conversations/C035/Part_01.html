@@ -1,0 +1,292 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DBeaver SQL Execution Issue — Part 1</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>DBeaver SQL Execution Issue</h1><p>Part 01 · C035</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c035-m00001" class="message user"><div class="role">Andrew</div><p class="meta">C035-M00001 · 2026-04-21T16:44:12.492000-04:00 · active path</p><div class="body"><p>i&#39;m trying to run sql code in dbeaver and i&#39;m not getting any results.  help me understand why.  pressing alt-x to try to run whole script.</p>
+<p><strong>Attachments in export:</strong> <code>module1_synthetic_application_risk_engine(1).sql</code>, <code>image(23).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c035-m00003" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C035-M00003 · 2026-04-21T16:44:34.216226-04:00 · active path</p><div class="body"><p>It looks like the script <strong>did run</strong>.</p>
+<p>From your screenshot, the key clue is in the <strong>Execution Log</strong>:</p>
+<ul>
+<li>several statements show <strong>Success</strong></li>
+<li>one statement shows <strong>Rows = 50000</strong></li>
+<li>that strongly suggests the <code>CREATE TABLE ... AS SELECT ...</code> step populated<br><code>credit_decisioning_sim.synthetic_applications</code> with <strong>50,000 rows</strong></li>
+</ul>
+<p>So the problem is probably <strong>not that PostgreSQL returned nothing</strong>. The problem is more likely <strong>how DBeaver is displaying the results</strong> when you run the entire script.</p>
+<p>What is happening:</p>
+<ol>
+<li>Your script is mostly <strong>DDL / setup / insert / create-table</strong> work.</li>
+<li>Those statements do <strong>not</strong> produce a grid result like a normal <code>SELECT</code>.</li>
+<li>The result grid only appears for the <strong>QA queries at the bottom</strong> of your script.</li>
+<li>When you run the whole script, DBeaver often logs everything in <strong>Execution Log</strong>, but the result grids for the final <code>SELECT</code>s can be:<ul>
+<li>in separate result tabs</li>
+<li>hidden in the lower pane</li>
+<li>overwritten depending on which statement/result you click</li>
+<li>not obvious if the panel is focused on <strong>Output</strong> instead of <strong>Results</strong></li>
+</ul>
+</li>
+</ol>
+<p>Most likely explanation from your screenshot:
+You are looking at <strong>Output / Execution Log</strong>, not the actual <strong>data result tab</strong>.</p>
+<p>Do this next:</p>
+<h3>Quick proof that the script worked</h3>
+<p>Run just this single query by itself:</p>
+<pre><code class="language-sql">SELECT COUNT(*) AS application_count
+FROM credit_decisioning_sim.synthetic_applications;
+</code></pre>
+<p>Use the normal single-statement run command, not whole-script execution.</p>
+<p>If that returns <code>50000</code>, your script worked.</p>
+<p>Then try:</p>
+<pre><code class="language-sql">SELECT *
+FROM credit_decisioning_sim.synthetic_applications
+LIMIT 50;
+</code></pre>
+<p>That should give you the data grid immediately.</p>
+<h3>Why whole-script execution can feel like “no results”</h3>
+<p>Your file ends with many QA <code>SELECT</code>s, but when you execute the full script:</p>
+<ul>
+<li>DBeaver may create <strong>multiple result tabs</strong></li>
+<li>or it may keep focus on the execution log</li>
+<li>or you may need to click the result-set tab manually</li>
+<li>or the final result pane may be collapsed</li>
+</ul>
+<h3>What I would do in DBeaver</h3>
+<p>For this script specifically:</p>
+<ul>
+<li>use whole-script execution once to build the table</li>
+<li>then run the QA queries <strong>one at a time</strong></li>
+<li>or highlight just Section 9 and run that section</li>
+</ul>
+<p>That is much easier to inspect than running the entire file every time.</p>
+<h3>Also check these two common gotchas</h3>
+<p>First, make sure you do <strong>not</strong> have only part of the script selected. In DBeaver, if text is highlighted, sometimes it runs only the selection.</p>
+<p>Second, refresh the schema tree on the left:</p>
+<ul>
+<li>expand <code>credit_decisioning_sim</code></li>
+<li>refresh <code>Tables</code></li>
+<li>confirm <code>synthetic_applications</code> exists</li>
+</ul>
+<h3>Best next test</h3>
+<p>Paste and run these in order:</p>
+<pre><code class="language-sql">SELECT COUNT(*) AS application_count
+FROM credit_decisioning_sim.synthetic_applications;
+</code></pre>
+<pre><code class="language-sql">SELECT
+    product_type,
+    COUNT(*) AS applications,
+    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS pct_of_total
+FROM credit_decisioning_sim.synthetic_applications
+GROUP BY product_type
+ORDER BY applications DESC;
+</code></pre>
+<pre><code class="language-sql">SELECT *
+FROM credit_decisioning_sim.synthetic_applications
+ORDER BY application_id
+LIMIT 50;
+</code></pre>
+<p>If you want, send me a screenshot of what happens when you run just the first <code>COUNT(*)</code> query, and I’ll tell you exactly where DBeaver is putting the result grid.</p>
+</div></article><article id="c035-m00006" class="message user"><div class="role">Andrew</div><p class="meta">C035-M00006 · 2026-04-21T16:48:08.516000-04:00 · active path</p><div class="body"><p>ok, i do see: but where are my tables?  none are in credit_decisioning_sim</p>
+<p><strong>Attachments in export:</strong> <code>image(24).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c035-m00008" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C035-M00008 · 2026-04-21T16:48:18.180350-04:00 · active path</p><div class="body"><p>You <strong>do</strong> have the table.</p>
+<p>Your result proves this:</p>
+<pre><code class="language-sql">SELECT COUNT(*) AS application_count
+FROM credit_decisioning_sim.synthetic_applications;
+</code></pre>
+<p>returned <strong>50,000</strong>, so PostgreSQL can see:</p>
+<p><code>credit_decisioning_sim.synthetic_applications</code></p>
+<p>That means the issue is <strong>DBeaver’s navigator view</strong>, not the SQL.</p>
+<p>Why you do not see it on the left:</p>
+<ol>
+<li><p><strong>Navigator has not refreshed</strong>
+DBeaver often does not immediately refresh the schema tree after a script creates a table.</p>
+</li>
+<li><p><strong>One of your tables is temporary</strong>
+Your script also creates:</p>
+</li>
+</ol>
+<pre><code class="language-sql">CREATE TEMP TABLE tmp_module1_params ...
+</code></pre>
+<p>That temp table usually will <strong>not</strong> appear under <code>credit_decisioning_sim.Tables</code> like a normal permanent table. It lives in a session temp schema.</p>
+<ol start="3">
+<li><strong>The permanent table should be visible after refresh</strong>
+The permanent one is:</li>
+</ol>
+<pre><code class="language-sql">CREATE TABLE credit_decisioning_sim.synthetic_applications AS ...
+</code></pre>
+<p>That one absolutely should appear after refresh.</p>
+<p>What to do now:</p>
+<h3>First</h3>
+<p>Right-click:</p>
+<p><code>credit_decisioning_sim &gt; Tables</code></p>
+<p>Then click <strong>Refresh</strong></p>
+<p>If that does not work, right-click the whole connection or schema and refresh there too.</p>
+<h3>Second</h3>
+<p>Collapse and re-expand:</p>
+<ul>
+<li><code>Schemas</code></li>
+<li><code>credit_decisioning_sim</code></li>
+<li><code>Tables</code></li>
+</ul>
+<p>Sometimes DBeaver caches the empty node until you reopen it.</p>
+<h3>Third</h3>
+<p>Use this query to prove the table exists and where it lives:</p>
+<pre><code class="language-sql">SELECT schemaname, tablename
+FROM pg_tables
+WHERE tablename = &#39;synthetic_applications&#39;;
+</code></pre>
+<p>You should see <code>credit_decisioning_sim | synthetic_applications</code>.</p>
+<h3>Fourth</h3>
+<p>Open the table directly from SQL
+Run:</p>
+<pre><code class="language-sql">SELECT *
+FROM credit_decisioning_sim.synthetic_applications
+LIMIT 50;
+</code></pre>
+<p>or</p>
+<pre><code class="language-sql">SELECT *
+FROM credit_decisioning_sim.synthetic_applications
+ORDER BY application_id
+LIMIT 50;
+</code></pre>
+<p>That confirms it is there even if Navigator is being stubborn.</p>
+<h3>Most likely answer</h3>
+<p>Your SQL worked, but <strong>DBeaver’s object tree is stale</strong>.</p>
+<h3>One more detail</h3>
+<p>Because your script includes:</p>
+<pre><code class="language-sql">DROP TABLE IF EXISTS credit_decisioning_sim.synthetic_applications;
+CREATE TABLE credit_decisioning_sim.synthetic_applications AS ...
+</code></pre>
+<p>the table is being recreated during the run. DBeaver sometimes does a poor job updating the tree after a drop-and-recreate sequence until you manually refresh.</p>
+<h3>Best diagnostic query</h3>
+<p>Run this:</p>
+<pre><code class="language-sql">SELECT
+    n.nspname AS schema_name,
+    c.relname AS object_name,
+    c.relkind AS object_type
+FROM pg_class c
+JOIN pg_namespace n
+    ON n.oid = c.relnamespace
+WHERE n.nspname = &#39;credit_decisioning_sim&#39;
+ORDER BY c.relname;
+</code></pre>
+<p>If you see <code>synthetic_applications</code>, then everything is fine on the database side.</p>
+<p>The key takeaway:<br><strong>The table exists. DBeaver just has not shown it in the navigator yet.</strong></p>
+<p>Send me the result of the <code>pg_tables</code> query if you want, and I can tell you exactly what DBeaver is doing.</p>
+</div></article><article id="c035-m00010" class="message user"><div class="role">Andrew</div><p class="meta">C035-M00010 · 2026-04-21T16:49:05.230000-04:00 · active path</p><div class="body"><p>you know what i think it&#39;s because i tried to execute the query twice thinking it was not working...</p>
+</div></article><article id="c035-m00011" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C035-M00011 · 2026-04-21T16:49:05.837533-04:00 · active path</p><div class="body"><p>Yes — that is very plausible.</p>
+<p>What likely happened:</p>
+<ul>
+<li>first run started and was still building the table</li>
+<li>it took several minutes, so it looked like nothing was happening</li>
+<li>you launched it again</li>
+<li>DBeaver then showed overlapping successful runs in the log, which made it harder to tell what had completed</li>
+</ul>
+<p>Your log supports that:</p>
+<ul>
+<li>one earlier run took about <strong>9m 47s</strong></li>
+<li>the later run took about <strong>5m 37s</strong></li>
+<li>both show success</li>
+<li>both indicate the table creation completed</li>
+</ul>
+<p>Because your script does a <strong>drop and recreate</strong>, running it twice does <strong>not</strong> usually create two copies. It just rebuilds the same table again.</p>
+<p>So the practical result is probably:</p>
+<ul>
+<li>no real damage</li>
+<li>just extra wait time</li>
+<li>temporary confusion in the navigator and execution log</li>
+</ul>
+<p>What to do now:</p>
+<pre><code class="language-sql">SELECT COUNT(*) AS application_count
+FROM credit_decisioning_sim.synthetic_applications;
+</code></pre>
+<p>If it still shows <strong>50,000</strong>, you are fine.</p>
+<p>Then refresh:</p>
+<ul>
+<li>right-click <code>credit_decisioning_sim</code> or <code>Tables</code></li>
+<li>click <strong>Refresh</strong></li>
+</ul>
+<p>Then open the table with:</p>
+<pre><code class="language-sql">SELECT *
+FROM credit_decisioning_sim.synthetic_applications
+LIMIT 50;
+</code></pre>
+<p>One important caution for next time:
+when a script contains <code>DROP TABLE ...</code> followed by <code>CREATE TABLE ... AS SELECT ...</code>, pressing whole-script execution twice can make it seem broken, because the second run may start rebuilding while you are still waiting for the first one to finish.</p>
+<p>A safer habit in DBeaver is:</p>
+<ul>
+<li>run the full build script once</li>
+<li>wait for completion in Execution Log</li>
+<li>then run validation queries separately</li>
+</ul>
+<p>Your database looks fine from what you’ve shown.</p>
+</div></article><article id="c035-m00012" class="message user"><div class="role">Andrew</div><p class="meta">C035-M00012 · 2026-04-21T16:49:35.999000-04:00 · active path</p><div class="body"><p>and the second run encountered errors so it likely dropped and didn&#39;t recreate.</p>
+</div></article><article id="c035-m00013" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C035-M00013 · 2026-04-21T16:49:36.819878-04:00 · active path</p><div class="body"><p>Yes — that can absolutely happen.</p>
+<p>If the script structure is roughly:</p>
+<pre><code class="language-sql">DROP TABLE IF EXISTS credit_decisioning_sim.synthetic_applications;
+CREATE TABLE credit_decisioning_sim.synthetic_applications AS
+SELECT ...
+</code></pre>
+<p>then a failed second run could have done this sequence:</p>
+<ol>
+<li>dropped the existing table</li>
+<li>hit an error before the <code>CREATE TABLE AS SELECT</code> finished</li>
+<li>left you with <strong>no permanent table</strong></li>
+</ol>
+<p>That would explain why:</p>
+<ul>
+<li>your earlier <code>COUNT(*)</code> worked at one point</li>
+<li>but you no longer see the table under <code>credit_decisioning_sim</code></li>
+<li>and now it feels like it disappeared</li>
+</ul>
+<p>The key question is whether DBeaver is in <strong>Auto-commit</strong> mode or not. Your screenshot showed <strong>Auto</strong>, which usually means each statement commits as it finishes. So if the <code>DROP</code> succeeded and later statements failed, the drop may already be committed.</p>
+<p>Run these in order now.</p>
+<h3>1. Check whether the table currently exists</h3>
+<pre><code class="language-sql">SELECT schemaname, tablename
+FROM pg_tables
+WHERE schemaname = &#39;credit_decisioning_sim&#39;
+  AND tablename = &#39;synthetic_applications&#39;;
+</code></pre>
+<p>If this returns <strong>0 rows</strong>, the table is currently gone.</p>
+<h3>2. Confirm directly from information schema</h3>
+<pre><code class="language-sql">SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_schema = &#39;credit_decisioning_sim&#39;
+  AND table_name = &#39;synthetic_applications&#39;;
+</code></pre>
+<p>Again, 0 rows means it is gone.</p>
+<h3>3. If gone, rerun only the build portion once</h3>
+<p>Do <strong>not</strong> rerun the whole script repeatedly. Run it once and let it finish.</p>
+<p>Better yet, split it:</p>
+<ul>
+<li>schema setup</li>
+<li>parameter/temp setup</li>
+<li>final <code>CREATE TABLE ... AS</code></li>
+<li>QA queries after the table is built</li>
+</ul>
+<h3>4. Protect yourself going forward</h3>
+<p>This is the safer pattern:</p>
+<pre><code class="language-sql">DROP TABLE IF EXISTS credit_decisioning_sim.synthetic_applications;
+
+CREATE TABLE credit_decisioning_sim.synthetic_applications AS
+SELECT ...
+;
+</code></pre>
+<p>is fine for clean rebuilds, but risky during interrupted runs.</p>
+<p>A more resilient development pattern is:</p>
+<pre><code class="language-sql">CREATE TABLE credit_decisioning_sim.synthetic_applications_new AS
+SELECT ...
+;
+</code></pre>
+<p>Validate it, then swap:</p>
+<pre><code class="language-sql">DROP TABLE IF EXISTS credit_decisioning_sim.synthetic_applications;
+ALTER TABLE credit_decisioning_sim.synthetic_applications_new
+RENAME TO synthetic_applications;
+</code></pre>
+<p>That way, a failed rebuild does not destroy the prior good version.</p>
+<h3>Most likely diagnosis</h3>
+<p>I think your sequence was:</p>
+<ul>
+<li>first run completed successfully</li>
+<li>table existed</li>
+<li>second run started</li>
+<li>second run dropped the table</li>
+<li>second run failed before recreate completed</li>
+<li>result: table no longer present</li>
+</ul>
+<p>If you want, paste the exact error message from the failed second run, and I’ll tell you whether the script can be made safer and exactly where it stopped.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>
