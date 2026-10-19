@@ -1,0 +1,46 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MSBF — Module 1/2 Strategy Correction, Remediation &amp; Republishing Part 3 — Part 1</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>MSBF — Module 1/2 Strategy Correction, Remediation &amp; Republishing Part 3</h1><p>Part 01 · C119</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c119-m00023" class="message user"><div class="role">Andrew</div><p class="meta">C119-M00023 · 2026-09-04T01:52:10.923601-04:00 · active path</p><div class="body"><p>Is that typically how strategy profiles work? I would think typically a different strategy may result in a different decision </p>
+</div></article><article id="c119-m00024" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C119-M00024 · 2026-09-04T01:52:11.248606-04:00 · active path</p><div class="body"><p>Yes. <strong>Your intuition is closer to how “strategy” is normally used in credit decisioning.</strong></p>
+<p>What we built in M2.11 is a legitimate analytical construct, but the label <strong>strategy profile</strong> is broader than the actual function. Six of the profiles are principally <strong>candidate-selection/objective profiles operating inside a frozen decision-authority boundary</strong>. They answer “given what we&#39;re already allowed to do, which feasible structure do we prefer?” rather than fully answering “what decision would this strategy make?”</p>
+<p>In a more conventional credit-strategy challenger framework, changing the strategy can absolutely change the decision. For the same application and same underlying attributes, Strategy A might approve, Strategy B counteroffer, Strategy C send to review, and Strategy D decline. That can happen because a strategy may alter score cutoffs, risk appetite, affordability thresholds, exposure limits, pricing requirements, review rules, counteroffer rules, or other policy/decision parameters. The resulting terms can change too.</p>
+<p>That is <strong>not what our R26 profiles were permitted to do</strong>. We deliberately froze hard constraints and preserved policy declines and insufficient-evidence outcomes. The strategy-specific weights then rank feasible candidates rather than superseding those constraints. The source specification explicitly says an objective cannot override a hard constraint and weighted scores rank feasible candidates. fileciteturn6file1L59-L64</p>
+<p>So there are really three layers that are useful to distinguish:</p>
+<p><strong>Policy / eligibility boundary → decision strategy → offer optimization.</strong></p>
+<p>Our current implementation has a strong policy/decision engine upstream, and M2.11 mostly performs the <strong>offer-optimization/challenger-objective</strong> function downstream. Calling all of that a “strategy profile” makes the portfolio look more strategically dynamic than it actually is.</p>
+<p>For example, a more complete strategy framework could look like this:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Same merchant could produce</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Growth / Access</td>
+<td><strong>APPROVE $100K</strong></td>
+</tr>
+<tr>
+<td>Balanced</td>
+<td><strong>COUNTEROFFER $80K</strong></td>
+</tr>
+<tr>
+<td>Profitability</td>
+<td><strong>COUNTEROFFER $70K at different economics</strong></td>
+</tr>
+<tr>
+<td>Loss Containment</td>
+<td><strong>DECLINE</strong></td>
+</tr>
+<tr>
+<td>Conservative Stress</td>
+<td><strong>REVIEW</strong></td>
+</tr>
+</tbody></table>
+<p>Each strategy would still operate within immutable compliance/data-integrity constraints, but <strong>business-risk thresholds and decision rules could differ by strategy</strong>. That&#39;s a genuine strategy simulation.</p>
+<p>I think this matters for the quality of MSBF. We shouldn&#39;t simply relabel what we have and move on. <strong>There is a real strategic capability gap here.</strong></p>
+<p>The current R26 implementation is technically substantial: eight profiles, 52,152 candidate evaluations, 12,000 application simulations, and 1,040 account simulations are physically represented. fileciteturn6file3L55-L62 But if the portfolio is intended to demonstrate senior-level credit strategy design, optimization, challenger analysis, and executive decision support, I would expect at least some governed challenger strategies to demonstrate <strong>decision migration</strong>, not merely term selection.</p>
+<p>That doesn&#39;t mean we should throw away R26. Quite the opposite. Its current profiles make an excellent <strong>Layer 2: offer/structure optimization</strong> capability. We could preserve all accepted R26 work and add a separate <strong>Layer 1: decision-strategy challenger</strong> capability above it:</p>
+<p><strong>Application + scenario → challenger decision strategy → APPROVE / COUNTEROFFER / REVIEW / DECLINE → profile-specific candidate optimization → terms → downstream economics/performance.</strong></p>
+<p>That architecture would also make Power BI much more intuitive. An executive could select a challenger strategy and see decision migration versus baseline, incremental approvals, incremental declines/reviews, exposure change, expected-loss change, contribution change, and then drill into <em>why</em> a particular merchant migrated.</p>
+<p>So I agree with the concern behind your question: <strong>if we intend these eight items to represent full credit strategies, the present implementation is too constrained. If we describe them accurately as governed optimization profiles, it&#39;s valid—but it leaves a worthwhile decision-strategy challenger capability unimplemented.</strong></p>
+<p>Given where we are—R26 is technically accepted but integration/publication is still gated—I would address that design question <strong>before final republication</strong>, rather than polish Power BI around terminology that may obscure the gap. R26 is accepted as the technical successor, while publication and public supersession remain unauthorized, so we still have the appropriate governance window to decide whether this becomes an additional successor increment. fileciteturn6file3L33-L38 fileciteturn6file3L65-L69</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

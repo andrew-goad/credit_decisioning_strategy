@@ -1,0 +1,2059 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Power BI release validation and reporting — Part 3</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Power BI release validation and reporting</h1><p>Part 03 · C064</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_02.html">Previous</a><a href="Part_04.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c064-m00087" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00087 · 2026-07-19T17:42:58.240000-04:00 · active path</p><div class="body"><p>I like it Release Impact Explorer - give me step by steps to make this high level</p>
+</div></article><article id="c064-m00088" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00088 · 2026-07-19T17:43:03.150565-04:00 · active path</p><div class="body"><p>Build this as a focused <strong>application-level traceability page</strong>, not a second executive dashboard.</p>
+<h1>1. Create the page and framing</h1>
+<p>Add a new page and rename it:</p>
+<pre><code class="language-text">02 | Release Impact Explorer
+</code></pre>
+<p>Add a title:</p>
+<p><strong>Application Release Impact Explorer</strong></p>
+<p>Add a subtitle:</p>
+<p><strong>Trace how an individual matched application changed between Module 1 V1.0 and V2.0 and connect those changes to the documented V2.0 workstream themes.</strong></p>
+<p>Use the same title, font, background, and card styling as the Executive Summary.</p>
+<hr>
+<h1>2. Add the Application ID selector</h1>
+<p>Insert a <strong>Slicer</strong> using:</p>
+<pre><code class="language-text">FactReleaseComparison[Application_ID]
+</code></pre>
+<p>Configure it as:</p>
+<pre><code class="language-text">Style: Dropdown
+Search: On
+Single select: On
+Select all: Off
+</code></pre>
+<p>Label the slicer:</p>
+<pre><code class="language-text">Select Application
+</code></pre>
+<p>For initial testing, select:</p>
+<pre><code class="language-text">APP-00000001
+</code></pre>
+<p>That application should show two functional changes.</p>
+<hr>
+<h1>3. Create the application-profile measures</h1>
+<p>Create these measures in <code>_Measures</code>.</p>
+<h2>Selected Application</h2>
+<pre><code class="language-DAX">Selected Application =
+SELECTEDVALUE (
+    FactReleaseComparison[Application_ID],
+    &quot;Select one application&quot;
+)
+</code></pre>
+<h2>Selected Product</h2>
+<pre><code class="language-DAX">Selected Product =
+SELECTEDVALUE (
+    FactReleaseComparison[Product_Type],
+    &quot;—&quot;
+)
+</code></pre>
+<h2>Selected Score Band</h2>
+<pre><code class="language-DAX">Selected Score Band =
+SELECTEDVALUE (
+    FactReleaseComparison[Score_Band],
+    &quot;—&quot;
+)
+</code></pre>
+<h2>Selected Credit Score</h2>
+<pre><code class="language-DAX">Selected Credit Score =
+SELECTEDVALUE (
+    FactReleaseComparison[Credit_Score]
+)
+</code></pre>
+<h2>Selected Annual Income</h2>
+<pre><code class="language-DAX">Selected Annual Income =
+SELECTEDVALUE (
+    FactReleaseComparison[Annual_Income]
+)
+</code></pre>
+<p>Format this measure as Currency with zero decimals.</p>
+<h2>Selected Change Status</h2>
+<pre><code class="language-DAX">Selected Change Status =
+SELECTEDVALUE (
+    FactReleaseComparison[Functional_Change_Status],
+    &quot;—&quot;
+)
+</code></pre>
+<h2>Selected Changed Fields</h2>
+<pre><code class="language-DAX">Selected Changed Fields =
+SELECTEDVALUE (
+    FactReleaseComparison[Changed_Field_Count]
+)
+</code></pre>
+<hr>
+<h1>4. Add the application-profile cards</h1>
+<p>Across the top, underneath the slicer, add six cards:</p>
+<table>
+<thead>
+<tr>
+<th>Card</th>
+<th>Measure</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Application</td>
+<td><code>Selected Application</code></td>
+</tr>
+<tr>
+<td>Product</td>
+<td><code>Selected Product</code></td>
+</tr>
+<tr>
+<td>Score Band</td>
+<td><code>Selected Score Band</code></td>
+</tr>
+<tr>
+<td>Credit Score</td>
+<td><code>Selected Credit Score</code></td>
+</tr>
+<tr>
+<td>Changed Fields</td>
+<td><code>Selected Changed Fields</code></td>
+</tr>
+<tr>
+<td>Status</td>
+<td><code>Selected Change Status</code></td>
+</tr>
+</tbody></table>
+<p>Place <code>Selected Annual Income</code> in a seventh, slightly smaller profile card if space permits.</p>
+<p>Use shorter labels:</p>
+<pre><code class="language-text">Application
+Product
+Score Band
+Credit Score
+Annual Income
+Changed Fields
+Release Status
+</code></pre>
+<p>The application slicer should filter all cards immediately.</p>
+<hr>
+<h1>5. Build the V1-to-V2 reconciliation table</h1>
+<p>Insert a <strong>Table</strong> visual and add:</p>
+<pre><code class="language-text">FactReconciliationDetail[Variable]
+FactReconciliationDetail[Value_V1]
+FactReconciliationDetail[Value_V2]
+FactReconciliationDetail[Delta_V2_Minus_V1]
+FactReconciliationDetail[Relative_Delta]
+FactReconciliationDetail[Change_Direction]
+</code></pre>
+<p>Rename the visual columns locally:</p>
+<table>
+<thead>
+<tr>
+<th>Source field</th>
+<th>Display heading</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Variable</code></td>
+<td>Functional Variable</td>
+</tr>
+<tr>
+<td><code>Value_V1</code></td>
+<td>V1.0</td>
+</tr>
+<tr>
+<td><code>Value_V2</code></td>
+<td>V2.0</td>
+</tr>
+<tr>
+<td><code>Delta_V2_Minus_V1</code></td>
+<td>Change</td>
+</tr>
+<tr>
+<td><code>Relative_Delta</code></td>
+<td>Relative Change</td>
+</tr>
+<tr>
+<td><code>Change_Direction</code></td>
+<td>Direction</td>
+</tr>
+</tbody></table>
+<p>Format <code>Relative_Delta</code> as Percentage with two decimal places.</p>
+<p>Title the visual:</p>
+<pre><code class="language-text">Application-Level Functional Changes
+</code></pre>
+<p>Because the relationship is active, selecting one application should show only its changed variables.</p>
+<p>For an unaffected application, the table will be blank. That is correct.</p>
+<hr>
+<h1>6. Add workstream-theme flags</h1>
+<p>These measures should identify <strong>alignment to documented workstream themes</strong>, not claim exclusive causality.</p>
+<h2>Mortgage Realism Theme</h2>
+<pre><code class="language-DAX">Mortgage Realism Theme =
+VAR IsOneApplication =
+    HASONEVALUE ( FactReleaseComparison[Application_ID] )
+VAR IsMortgage =
+    SELECTEDVALUE ( FactReleaseComparison[Product_Type] ) = &quot;MORTGAGE&quot;
+VAR RelevantChange =
+        MAX ( FactReleaseComparison[Requested_Amount_Changed] )
+        + MAX ( FactReleaseComparison[Monthly_Payment_Proxy_Changed] )
+        + MAX ( FactReleaseComparison[Payment_To_Income_Ratio_Changed] )
+        + MAX ( FactReleaseComparison[Amount_To_Income_Ratio_Changed] )
+RETURN
+    IF (
+        NOT IsOneApplication,
+        BLANK (),
+        IF ( IsMortgage &amp;&amp; RelevantChange &gt; 0, &quot;Aligned&quot;, &quot;Not Detected&quot; )
+    )
+</code></pre>
+<h2>Estimated-PD Dispersion Theme</h2>
+<pre><code class="language-DAX">PD Dispersion Theme =
+VAR IsOneApplication =
+    HASONEVALUE ( FactReleaseComparison[Application_ID] )
+VAR PDChanged =
+    MAX ( FactReleaseComparison[Estimated_PD_Changed] )
+RETURN
+    IF (
+        NOT IsOneApplication,
+        BLANK (),
+        IF ( PDChanged = 1, &quot;Aligned&quot;, &quot;Not Detected&quot; )
+    )
+</code></pre>
+<h2>Revolving Sensitivity Theme</h2>
+<pre><code class="language-DAX">Revolving Sensitivity Theme =
+VAR IsOneApplication =
+    HASONEVALUE ( FactReleaseComparison[Application_ID] )
+VAR IsRevolving =
+    SELECTEDVALUE ( FactReleaseComparison[Product_Type] ) = &quot;REVOLVING_LINE&quot;
+VAR PaymentChanged =
+    MAX ( FactReleaseComparison[Monthly_Payment_Proxy_Changed] )
+VAR PTIChanged =
+    MAX ( FactReleaseComparison[Payment_To_Income_Ratio_Changed] )
+RETURN
+    IF (
+        NOT IsOneApplication,
+        BLANK (),
+        IF (
+            IsRevolving &amp;&amp; ( PaymentChanged = 1 || PTIChanged = 1 ),
+            &quot;Aligned&quot;,
+            &quot;Not Detected&quot;
+        )
+    )
+</code></pre>
+<h2>Affordability Translation Theme</h2>
+<pre><code class="language-DAX">Affordability Translation Theme =
+VAR IsOneApplication =
+    HASONEVALUE ( FactReleaseComparison[Application_ID] )
+VAR RelevantChange =
+        MAX ( FactReleaseComparison[Monthly_Payment_Proxy_Changed] )
+        + MAX ( FactReleaseComparison[Payment_To_Income_Ratio_Changed] )
+        + MAX ( FactReleaseComparison[Mult_PTI_Changed] )
+RETURN
+    IF (
+        NOT IsOneApplication,
+        BLANK (),
+        IF ( RelevantChange &gt; 0, &quot;Aligned&quot;, &quot;Not Detected&quot; )
+    )
+</code></pre>
+<p>Workstream C, the scenario framework, should <strong>not</strong> be assigned as an application-level functional impact on this page. It is an architectural enhancement supporting scenario persistence and matched comparison rather than one of the seven baseline functional differences.</p>
+<hr>
+<h1>7. Display the workstream alignment</h1>
+<p>Add four small cards beneath the profile section:</p>
+<table>
+<thead>
+<tr>
+<th>Card label</th>
+<th>Measure</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage Realism</td>
+<td><code>Mortgage Realism Theme</code></td>
+</tr>
+<tr>
+<td>PD Dispersion</td>
+<td><code>PD Dispersion Theme</code></td>
+</tr>
+<tr>
+<td>Revolving Sensitivity</td>
+<td><code>Revolving Sensitivity Theme</code></td>
+</tr>
+<tr>
+<td>Affordability Translation</td>
+<td><code>Affordability Translation Theme</code></td>
+</tr>
+</tbody></table>
+<p>Use conditional formatting later if convenient:</p>
+<ul>
+<li><strong>Aligned</strong> → accent color or light blue background</li>
+<li><strong>Not Detected</strong> → light gray</li>
+</ul>
+<p>For tonight, clear text alone is sufficient.</p>
+<p>Add a section heading:</p>
+<pre><code class="language-text">Workstream Theme Alignment
+</code></pre>
+<p>Add a small note below it:</p>
+<blockquote>
+<p>Theme alignment is inferred from the application’s product and changed functional variables. It supports interpretation but does not assert exclusive single-workstream causality.</p>
+</blockquote>
+<p>That caveat materially strengthens the governance quality of the page.</p>
+<hr>
+<h1>8. Add a dynamic interpretation statement</h1>
+<p>Create this measure:</p>
+<pre><code class="language-DAX">Selected Application Interpretation =
+VAR AppID =
+    [Selected Application]
+VAR Product =
+    [Selected Product]
+VAR ChangedFields =
+    [Selected Changed Fields]
+VAR Status =
+    [Selected Change Status]
+VAR MortgageText =
+    IF (
+        [Mortgage Realism Theme] = &quot;Aligned&quot;,
+        &quot; Mortgage realism alignment was detected through changes in exposure, payment, or affordability fields.&quot;,
+        &quot;&quot;
+    )
+VAR PDText =
+    IF (
+        [PD Dispersion Theme] = &quot;Aligned&quot;,
+        &quot; Estimated-PD dispersion alignment was detected through a change in the estimated-PD proxy.&quot;,
+        &quot;&quot;
+    )
+VAR RevolvingText =
+    IF (
+        [Revolving Sensitivity Theme] = &quot;Aligned&quot;,
+        &quot; Revolving sensitivity alignment was detected through payment or PTI movement.&quot;,
+        &quot;&quot;
+    )
+VAR AffordabilityText =
+    IF (
+        [Affordability Translation Theme] = &quot;Aligned&quot;,
+        &quot; Affordability translation alignment was detected through payment, PTI, or PTI-multiplier movement.&quot;,
+        &quot;&quot;
+    )
+RETURN
+    IF (
+        AppID = &quot;Select one application&quot;,
+        &quot;Select one application to review its V1.0-to-V2.0 release impact.&quot;,
+        AppID
+            &amp; &quot; is a &quot;
+            &amp; Product
+            &amp; &quot; application classified as &quot;
+            &amp; Status
+            &amp; &quot;, with &quot;
+            &amp; FORMAT ( ChangedFields, &quot;0&quot; )
+            &amp; &quot; changed functional field(s).&quot;
+            &amp; MortgageText
+            &amp; PDText
+            &amp; RevolvingText
+            &amp; AffordabilityText
+    )
+</code></pre>
+<p>Add this measure to a wide <strong>Card</strong> visual or a text-capable new Card visual.</p>
+<p>Turn on:</p>
+<pre><code class="language-text">Word wrap
+</code></pre>
+<p>Turn off:</p>
+<pre><code class="language-text">Category label
+</code></pre>
+<p>Title it:</p>
+<pre><code class="language-text">Application Interpretation
+</code></pre>
+<hr>
+<h1>9. Recommended page layout</h1>
+<p>Use this structure:</p>
+<pre><code class="language-text">------------------------------------------------------------
+Application Release Impact Explorer
+Subtitle
+------------------------------------------------------------
+Select Application slicer
+------------------------------------------------------------
+Application | Product | Score Band | Credit Score
+Annual Income | Changed Fields | Release Status
+------------------------------------------------------------
+Workstream Theme Alignment
+Mortgage | PD Dispersion | Revolving | Affordability
+------------------------------------------------------------
+Application-Level Functional Changes table
+------------------------------------------------------------
+Application Interpretation
+------------------------------------------------------------
+</code></pre>
+<p>Give the reconciliation table the most space. It is the page’s primary evidence.</p>
+<hr>
+<h1>10. Validate with three application types</h1>
+<p>Test at least these cases:</p>
+<h2>Affected application</h2>
+<pre><code class="language-text">APP-00000001
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>Status: Affected</li>
+<li>Changed Fields: 2</li>
+<li>Table should include Monthly Payment and Payment-to-Income Ratio</li>
+</ul>
+<h2>Unaffected application</h2>
+<pre><code class="language-text">APP-00000002
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>Status: Unaffected</li>
+<li>Changed Fields: 0</li>
+<li>Change table blank</li>
+<li>Workstream themes show Not Detected</li>
+</ul>
+<h2>Mortgage application with multiple changes</h2>
+<p>Use the slicer to find a Mortgage application with <code>Changed_Field_Count</code> of four or more. Verify:</p>
+<ul>
+<li>Mortgage Realism shows Aligned</li>
+<li>Reconciliation table includes the expected affordability/exposure fields</li>
+<li>Interpretation updates dynamically</li>
+</ul>
+<p>Once these elements function correctly, the page is high-level complete. Styling can follow the Executive Summary conventions without adding more visual types.</p>
+</div></article><article id="c064-m00091" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00091 · 2026-07-19T19:03:17.040000-04:00 · active path</p><div class="body"><p>what kind of slicer? i need more detailed instructions for that part.</p>
+</div></article><article id="c064-m00092" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00092 · 2026-07-19T19:03:18.131834-04:00 · active path</p><div class="body"><p>Good catch. From here on, I&#39;m going to slow down and give you <strong>&quot;click here, then here&quot;</strong> instructions. This is your first serious Power BI project, and I want you to understand <em>why</em> we&#39;re doing things, not just what to click.</p>
+<p>Also, I want to slightly change the design from what I proposed.</p>
+<h2>Instead of a dropdown slicer...</h2>
+<p>I think we should make this feel more like an <strong>application lookup tool</strong>.</p>
+<p>Imagine an analyst saying:</p>
+<blockquote>
+<p>&quot;Let&#39;s investigate APP-00012345.&quot;</p>
+</blockquote>
+<p>That should be the first thing they do.</p>
+<hr>
+<h1>Step 1 — Create the page</h1>
+<p>Create a new page.</p>
+<p>Rename it:</p>
+<pre><code class="language-text">02 | Release Impact Explorer
+</code></pre>
+<hr>
+<h1>Step 2 — Add the Application Lookup slicer</h1>
+<p>On the ribbon:</p>
+<pre><code class="language-text">Insert
+→ Slicer
+</code></pre>
+<p>(If your version doesn&#39;t have a Slicer button, click <strong>New visual</strong>, then select the <strong>Slicer</strong> visual—it looks like a rectangle with a small funnel.)</p>
+<p>A blank slicer appears.</p>
+<hr>
+<h2>Step 3 — Populate the slicer</h2>
+<p>From the Data pane, expand:</p>
+<pre><code class="language-text">FactReleaseComparison
+</code></pre>
+<p>Find:</p>
+<pre><code class="language-text">Application_ID
+</code></pre>
+<p>Drag it into the slicer&#39;s <strong>Field</strong> well.</p>
+<p>The slicer will probably become a long list of 50,000 application IDs.</p>
+<p>That&#39;s expected.</p>
+<hr>
+<h2>Step 4 — Change it to a dropdown</h2>
+<p>Click the slicer.</p>
+<p>In the upper-right corner of the slicer, there is a small downward arrow (or three dots, depending on your version).</p>
+<p>Change:</p>
+<pre><code class="language-text">List
+</code></pre>
+<p>to</p>
+<pre><code class="language-text">Dropdown
+</code></pre>
+<p>Now it should collapse into a single selection box.</p>
+<hr>
+<h2>Step 5 — Turn on Search</h2>
+<p>Click the slicer.</p>
+<p>Go to the <strong>Format visual</strong> pane (paint roller).</p>
+<p>Expand:</p>
+<pre><code class="language-text">Slicer settings
+</code></pre>
+<p>or</p>
+<pre><code class="language-text">Slicer
+</code></pre>
+<p>(depending on your Power BI version).</p>
+<p>Find:</p>
+<pre><code class="language-text">Search
+</code></pre>
+<p>Turn it <strong>On</strong>.</p>
+<p>Now you&#39;ll have a search box where you can type:</p>
+<pre><code class="language-text">APP-00000001
+</code></pre>
+<p>instead of scrolling through 50,000 IDs.</p>
+<hr>
+<h2>Step 6 — Make it single-select</h2>
+<p>Still in the Format pane.</p>
+<p>Find:</p>
+<pre><code class="language-text">Selection
+</code></pre>
+<p>Turn:</p>
+<pre><code class="language-text">Single select
+</code></pre>
+<p>to:</p>
+<pre><code class="language-text">On
+</code></pre>
+<p>Turn:</p>
+<pre><code class="language-text">Multi-select
+</code></pre>
+<p>Off.</p>
+<p>We only ever want to investigate <strong>one application at a time</strong>.</p>
+<hr>
+<h1>What the top of the page should look like</h1>
+<p>Eventually:</p>
+<pre><code>------------------------------------------------------------
+Application Release Impact Explorer
+
+Select Application
+┌──────────────────────────────────────┐
+│ APP-00000001                    ▼    │
+└──────────────────────────────────────┘
+------------------------------------------------------------
+</code></pre>
+<p>Notice I&#39;m <strong>not</strong> putting the slicer in the left sidebar.</p>
+<p>It&#39;s front-and-center because selecting an application is the primary action on this page.</p>
+<hr>
+<h1>Why I&#39;m changing the design</h1>
+<p>Originally I envisioned the slicer tucked away in the corner.</p>
+<p>I don&#39;t like that anymore.</p>
+<p>This page should feel like opening a case file.</p>
+<p>The workflow becomes:</p>
+<pre><code>Select Application
+
+↓
+
+See borrower summary
+
+↓
+
+See changed fields
+
+↓
+
+See workstream interpretation
+
+↓
+
+Understand why the release affected this borrower
+</code></pre>
+<p>That tells a much stronger story.</p>
+<hr>
+<h2>Let&#39;s build this page incrementally</h2>
+<p>Don&#39;t add any cards or tables yet.</p>
+<p>Just complete the slicer exactly as described.</p>
+<p>Once it&#39;s working (you can search for <code>APP-00000001</code> and select it), send me a screenshot.</p>
+<p>Then we&#39;ll build the <strong>Borrower Summary</strong> row underneath it.</p>
+<p>I think you&#39;ll find that building this page one section at a time is much easier than trying to place everything at once.</p>
+</div></article><article id="c064-m00093" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00093 · 2026-07-19T19:05:38.766000-04:00 · active path</p><div class="body"><p>i see button, input, and list slicer options</p>
+</div></article><article id="c064-m00094" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00094 · 2026-07-19T19:05:39.920380-04:00 · active path</p><div class="body"><p>Perfect—that tells me you&#39;re using the <strong>new Power BI visual experience</strong> (Microsoft changed this fairly recently). I actually prefer it.</p>
+<p>For our use case, <strong>use the Input slicer</strong>.</p>
+<h2>Why Input Slicer?</h2>
+<p>The three options are intended for different use cases:</p>
+<ul>
+<li><strong>List</strong> → Browse from a list (good for Product, Score Band, etc.)</li>
+<li><strong>Button</strong> → Quick predefined selections</li>
+<li><strong>Input</strong> → Search and type a specific value</li>
+</ul>
+<p>Since we have <strong>50,000 Application IDs</strong>, an Input slicer is exactly what we want.</p>
+<p>It creates an experience much closer to:</p>
+<blockquote>
+<p>🔎 &quot;Find application APP-00012345&quot;</p>
+</blockquote>
+<p>instead of forcing someone to scroll through thousands of values.</p>
+<hr>
+<h1>Use the Input Slicer</h1>
+<ol>
+<li>Click <strong>Input Slicer</strong>.</li>
+<li>Drag:</li>
+</ol>
+<pre><code class="language-text">FactReleaseComparison[Application_ID]
+</code></pre>
+<p>into the field.</p>
+<p>Power BI should create a text input/search box.</p>
+<hr>
+<h1>If it asks for Input Type</h1>
+<p>Choose:</p>
+<pre><code class="language-text">Dropdown
+</code></pre>
+<p>if available.</p>
+<p>Otherwise, leave the default. We mainly want the search capability.</p>
+<hr>
+<h1>Desired appearance</h1>
+<p>At the top of the page:</p>
+<pre><code>Application Release Impact Explorer
+
+Select Application
+
+┌─────────────────────────────────────┐
+│ 🔍 APP-00000001                 ▼   │
+└─────────────────────────────────────┘
+</code></pre>
+<hr>
+<h2>Even better idea (I want to improve the page)</h2>
+<p>While you were asking this question, I realized we can make this page much stronger.</p>
+<p>Instead of just:</p>
+<pre><code>Application_ID
+</code></pre>
+<p>I want the search experience to feel like a case management tool.</p>
+<p>Eventually we&#39;ll have:</p>
+<pre><code>────────────────────────────────────────
+
+Select Application
+
+APP-00000001
+
+Status:          Affected
+
+Changed Fields:  2
+
+Product:         Mortgage
+
+Score Band:      Prime
+
+────────────────────────────────────────
+</code></pre>
+<p>The user immediately knows whether they picked an interesting application <strong>before</strong> looking at the details.</p>
+<p>That makes the page feel much more intentional.</p>
+<hr>
+<h2>One question before we continue</h2>
+<p>After you add the <strong>Input Slicer</strong>, can you tell me:</p>
+<p><strong>Does it allow you to type <code>APP-00000001</code> and select it directly?</strong></p>
+<p>Or does it still behave like a long dropdown list?</p>
+<p>That answer will determine whether we keep the Input slicer or switch to the List slicer in dropdown mode.</p>
+</div></article><article id="c064-m00095" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00095 · 2026-07-19T19:18:41.715000-04:00 · active path</p><div class="body"><p>i only have the option to type unfortunately in my current power bi set-up. that or a list. i think the typing is fine - I have it where it is pre-populated with APP-00000001 so users have an example</p>
+</div></article><article id="c064-m00096" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00096 · 2026-07-19T19:18:42.800845-04:00 · active path</p><div class="body"><p>I actually think that&#39;s <strong>better</strong> for this project.</p>
+<p>A lot of people would try to make it prettier with a dropdown, but from an analyst workflow perspective, the <strong>Input slicer is more realistic</strong>.</p>
+<p>Think about how this would actually be used in production:</p>
+<blockquote>
+<p>QA Analyst: &quot;Let&#39;s investigate APP-00034892.&quot;</p>
+</blockquote>
+<p>They don&#39;t scroll through 50,000 values—they copy/paste or type the ID.</p>
+<p>Having <code>APP-00000001</code> pre-populated also subtly teaches the user what the expected format is. I would leave it exactly as you&#39;ve done it.</p>
+<hr>
+<h2>One improvement I&#39;d make</h2>
+<p>Instead of labeling it simply:</p>
+<blockquote>
+<p><strong>Select Application</strong></p>
+</blockquote>
+<p>I&#39;d make it:</p>
+<blockquote>
+<p><strong>Application Lookup</strong></p>
+</blockquote>
+<p>and underneath (using a small text box):</p>
+<blockquote>
+<p><em>Enter or paste an Application_ID to investigate release impacts.</em></p>
+</blockquote>
+<p>It feels much more intentional and professional.</p>
+<hr>
+<h1>Let&#39;s build this page like an investigation dashboard</h1>
+<p>Rather than immediately adding six KPI cards, I think we can make something that feels more like an enterprise analytics application.</p>
+<h2>Top section</h2>
+<pre><code>------------------------------------------------------------
+Application Release Impact Explorer
+
+Application Lookup
+
+[ APP-00000001                     ]
+
+Enter or paste an Application_ID
+------------------------------------------------------------
+</code></pre>
+<p>That&#39;s all across the width of the page.</p>
+<hr>
+<h2>Next section (this is where I&#39;d improve the design)</h2>
+<p>Instead of six scattered cards, create a <strong>Borrower Profile</strong> panel.</p>
+<pre><code>Borrower Profile
+
+Application ID      APP-00000001
+
+Product             Mortgage
+
+Score Band          Prime
+
+Credit Score        742
+
+Annual Income       $118,400
+
+Release Status      Affected
+
+Changed Fields      2
+</code></pre>
+<p>Notice how this reads like a case summary instead of a dashboard.</p>
+<p>I think interviewers will subconsciously recognize this as the kind of UI they&#39;d expect in an internal investigation tool.</p>
+<hr>
+<h2>Then below that</h2>
+<p>Give the entire width to:</p>
+<p><strong>Application-Level Functional Changes</strong></p>
+<p>This is where the evidence lives.</p>
+<hr>
+<h2>Then below that</h2>
+<p>Instead of four cards saying &quot;Aligned / Not Detected,&quot; I think we can do something even stronger.</p>
+<p>Let&#39;s build a <strong>Workstream Impact Summary</strong>.</p>
+<p>For example:</p>
+<hr>
+<h3>V2.0 Workstream Alignment</h3>
+<p>✔ <strong>Affordability Translation</strong></p>
+<ul>
+<li>Monthly Payment Proxy recalculated</li>
+<li>Payment-to-Income Ratio updated</li>
+</ul>
+<p>✔ <strong>Mortgage Realism</strong></p>
+<ul>
+<li>Requested amount adjusted through revised mortgage treatment</li>
+</ul>
+<p>✔ <strong>Estimated PD Dispersion</strong></p>
+<ul>
+<li>Estimated PD recalculated</li>
+<li>Expected Loss updated</li>
+</ul>
+<p>—</p>
+<p>That reads like something an analytics consultant would present to leadership. It also connects directly back to the BRD and validation summary rather than feeling like generic BI indicators.</p>
+<hr>
+<h2>I actually think this page has the potential to become the &quot;wow&quot; page</h2>
+<p>The Executive Summary shows:</p>
+<blockquote>
+<p>&quot;42.65% of applications changed.&quot;</p>
+</blockquote>
+<p>The Release Impact Explorer answers:</p>
+<blockquote>
+<p>&quot;Show me one of those applications and explain <strong>why</strong>.&quot;</p>
+</blockquote>
+<p>That progression is much more memorable than another dashboard full of charts.</p>
+<p>I think we&#39;ve evolved this into something stronger than my original concept. This page can demonstrate governance, traceability, and business interpretation—not just visualization.</p>
+</div></article><article id="c064-m00097" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00097 · 2026-07-19T19:23:39.022000-04:00 · active path</p><div class="body"><p>sounds great. give me next steps</p>
+</div></article><article id="c064-m00098" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00098 · 2026-07-19T19:23:40.131322-04:00 · active path</p><div class="body"><p>I think we should treat this page exactly like we treated the Executive Summary: <strong>don&#39;t build everything at once.</strong> We&#39;ll build one section, validate it, then move to the next. That minimizes rework and keeps the design cohesive.</p>
+<hr>
+<h1>Phase 1 — Borrower Profile (15–20 minutes)</h1>
+<p>We&#39;re going to build the &quot;case summary&quot; first.</p>
+<h2>Step 1. Create these DAX measures</h2>
+<p>Create these measures in your <code>_Measures</code> table.</p>
+<h3>Selected Application</h3>
+<pre><code class="language-DAX">Selected Application =
+SELECTEDVALUE(
+    FactReleaseComparison[Application_ID],
+    &quot;Enter an Application_ID above&quot;
+)
+</code></pre>
+<hr>
+<h3>Selected Product</h3>
+<pre><code class="language-DAX">Selected Product =
+SELECTEDVALUE(
+    FactReleaseComparison[Product_Type],
+    &quot;—&quot;
+)
+</code></pre>
+<hr>
+<h3>Selected Score Band</h3>
+<pre><code class="language-DAX">Selected Score Band =
+SELECTEDVALUE(
+    FactReleaseComparison[Score_Band],
+    &quot;—&quot;
+)
+</code></pre>
+<hr>
+<h3>Selected Credit Score</h3>
+<pre><code class="language-DAX">Selected Credit Score =
+SELECTEDVALUE(
+    FactReleaseComparison[Credit_Score]
+)
+</code></pre>
+<p>Format as Whole Number.</p>
+<hr>
+<h3>Selected Annual Income</h3>
+<pre><code class="language-DAX">Selected Annual Income =
+SELECTEDVALUE(
+    FactReleaseComparison[Annual_Income]
+)
+</code></pre>
+<p>Format as Currency, 0 decimals.</p>
+<hr>
+<h3>Selected Release Status</h3>
+<pre><code class="language-DAX">Selected Release Status =
+SELECTEDVALUE(
+    FactReleaseComparison[Functional_Change_Status],
+    &quot;—&quot;
+)
+</code></pre>
+<hr>
+<h3>Selected Changed Fields</h3>
+<pre><code class="language-DAX">Selected Changed Fields =
+SELECTEDVALUE(
+    FactReleaseComparison[Changed_Field_Count]
+)
+</code></pre>
+<hr>
+<h1>Step 2. Insert a Multi-row Card</h1>
+<p>Instead of six separate KPI cards, use <strong>one Multi-row Card</strong>.</p>
+<p>Go to:</p>
+<pre><code>Insert
+→ Multi-row Card
+</code></pre>
+<p>Add these measures:</p>
+<pre><code>Selected Product
+Selected Score Band
+Selected Credit Score
+Selected Annual Income
+Selected Release Status
+Selected Changed Fields
+</code></pre>
+<p>Leave <strong>Selected Application</strong> out—the lookup at the top already identifies the application.</p>
+<hr>
+<h1>Step 3. Format the Multi-row Card</h1>
+<p>I recommend:</p>
+<h3>Title</h3>
+<pre><code>Borrower Profile
+</code></pre>
+<hr>
+<h3>Grid</h3>
+<p>Set to <strong>2 columns</strong> if your Power BI version supports it.</p>
+<p>You&#39;ll get something like:</p>
+<pre><code>Borrower Profile
+
+Product              Mortgage
+
+Score Band           Prime
+
+Credit Score         742
+
+Annual Income        $118,400
+
+Release Status       Affected
+
+Changed Fields       2
+</code></pre>
+<p>This is much easier to scan than six independent cards.</p>
+<hr>
+<h3>Turn off</h3>
+<p>Category background</p>
+<p>Borders</p>
+<p>Shadows</p>
+<p>We&#39;ll add a subtle border later if needed.</p>
+<hr>
+<h1>Step 4. Test it</h1>
+<p>Enter:</p>
+<pre><code>APP-00000001
+</code></pre>
+<p>The profile should update instantly.</p>
+<p>Then try another application.</p>
+<p>Everything should change automatically.</p>
+<hr>
+<h1>Don&#39;t build the reconciliation table yet</h1>
+<p>We&#39;ll build that next because I want to make it much better than a default Power BI table.</p>
+<hr>
+<h1>The page should currently look like this</h1>
+<pre><code>---------------------------------------------------------
+
+Application Release Impact Explorer
+
+Application Lookup
+
+[ APP-00000001 ]
+
+Enter or paste an Application_ID
+
+---------------------------------------------------------
+
+Borrower Profile
+
+Product ............. Mortgage
+
+Score Band .......... Prime
+
+Credit Score ........ 742
+
+Annual Income ....... $118,400
+
+Release Status ...... Affected
+
+Changed Fields ...... 2
+
+---------------------------------------------------------
+</code></pre>
+<hr>
+<h1>After this</h1>
+<p>The next section will become the centerpiece of the page:</p>
+<h2><strong>Release Impact Details</strong></h2>
+<p>Not just a table—we&#39;ll make it read like an audit trail:</p>
+<table>
+<thead>
+<tr>
+<th>Functional Variable</th>
+<th>V1.0</th>
+<th>V2.0</th>
+<th>Δ</th>
+<th>Business Interpretation</th>
+</tr>
+</thead>
+</table>
+<p>That last <strong>Business Interpretation</strong> column is something I don&#39;t think many Power BI portfolios include, and it reinforces your broader theme of translating technical changes into business meaning.</p>
+<h2>My recommendation</h2>
+<p>Complete <strong>only Phase 1</strong> first. Once the Borrower Profile is working and looks clean, send me a screenshot. We&#39;ll then design the Release Impact Details section so it becomes the visual focal point of the page. I think that&#39;s where this dashboard will really differentiate itself in your interview.</p>
+</div></article><article id="c064-m00099" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00099 · 2026-07-19T19:45:27.649000-04:00 · active path</p><div class="body"><p>regarding 2 column multi-card: </p>
+<p><strong>Attachments in export:</strong> <code>image(123).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00100" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00100 · 2026-07-19T19:45:28.834643-04:00 · active path</p><div class="body"><p>Excellent catch. This is one of those cases where I think we should <strong>change the design instead of fighting Power BI.</strong></p>
+<p>The AI summary is essentially correct: <strong>a native multi-row card doesn&#39;t support a clean two-column layout</strong> the way we&#39;d like.</p>
+<p>Rather than trying to force it, I actually think we can build something <strong>better</strong>.</p>
+<h2>Option A (My recommendation ⭐)</h2>
+<p>Instead of one large Borrower Profile visual, create <strong>six small cards arranged in a clean grid</strong>.</p>
+<p>Like this:</p>
+<pre><code>Borrower Profile
+
+┌────────────────────┐  ┌────────────────────┐
+│ Product            │  │ Score Band         │
+│ Mortgage           │  │ Prime              │
+└────────────────────┘  └────────────────────┘
+
+┌────────────────────┐  ┌────────────────────┐
+│ Credit Score       │  │ Annual Income      │
+│ 742                │  │ $118,400           │
+└────────────────────┘  └────────────────────┘
+
+┌────────────────────┐  ┌────────────────────┐
+│ Release Status     │  │ Changed Fields     │
+│ Affected           │  │ 2                  │
+└────────────────────┘  └────────────────────┘
+</code></pre>
+<h3>Why I like this better</h3>
+<ul>
+<li>Consistent with your Executive Summary styling.</li>
+<li>Easier to align.</li>
+<li>Easier to conditionally format later.</li>
+<li>Looks more modern than a multi-row card.</li>
+<li>Gives us flexibility to highlight &quot;Release Status&quot; and &quot;Changed Fields.&quot;</li>
+</ul>
+<hr>
+<h2>Option B</h2>
+<p>Use a Matrix and make it look like a profile.</p>
+<p>Technically possible.</p>
+<p>Personally, I wouldn&#39;t.</p>
+<p>A matrix is great for tabular data, but this section is supposed to be a quick executive summary. A matrix will always feel like you&#39;re disguising a table.</p>
+<hr>
+<h2>Option C</h2>
+<p>Use six text boxes with measures (advanced technique).</p>
+<p>Very polished.</p>
+<p>More work than it&#39;s worth for Version 1.</p>
+<hr>
+<h1>I actually have an even better idea</h1>
+<p>Let&#39;s make the Borrower Profile look like an <strong>executive case header</strong>.</p>
+<pre><code>─────────────────────────────────────────────
+
+Application Lookup
+
+[ APP-00000001 ]
+
+─────────────────────────────────────────────
+
+Borrower Profile
+
+Product            Mortgage
+
+Score Band         Prime
+
+Credit Score       742
+
+Annual Income      $118,400
+
+─────────────────────────────────────────────
+
+Release Status        Affected
+
+Changed Fields        2
+
+─────────────────────────────────────────────
+</code></pre>
+<p>Notice what&#39;s happening.</p>
+<p>The <strong>profile</strong> is descriptive.</p>
+<p>The <strong>release metrics</strong> are emphasized.</p>
+<p>Those are the two pieces an interviewer cares about.</p>
+<hr>
+<h1>I&#39;d simplify even further</h1>
+<p>After thinking about it, I don&#39;t think we even need <strong>Annual Income</strong> here.</p>
+<p>The purpose of this page isn&#39;t to analyze the borrower; it&#39;s to analyze the <strong>release</strong>.</p>
+<p>So I&#39;d keep:</p>
+<ul>
+<li>Product</li>
+<li>Score Band</li>
+<li>Credit Score</li>
+<li><strong>Release Status</strong> ⭐</li>
+<li><strong>Changed Fields</strong> ⭐</li>
+</ul>
+<p>Five cards.</p>
+<p>Cleaner.</p>
+<hr>
+<h1>Here&#39;s the revised page structure I&#39;d build</h1>
+<pre><code>Application Lookup
+
+↓
+
+Borrower Profile
+(Product | Score Band | Credit Score)
+
+↓
+
+Release Summary
+(Status | Changed Fields)
+
+↓
+
+Application-Level Functional Changes
+
+↓
+
+Workstream Impact Summary
+</code></pre>
+<p>I actually like this layout <strong>more</strong> than what I originally proposed. It creates a clearer visual hierarchy:</p>
+<ol>
+<li><strong>Find an application</strong></li>
+<li><strong>Who is it?</strong></li>
+<li><strong>Was it affected?</strong></li>
+<li><strong>Exactly what changed?</strong></li>
+<li><strong>Which workstreams explain those changes?</strong></li>
+</ol>
+<p>I think that&#39;s a stronger story and one that will resonate well in your interview. It also keeps the page visually consistent with the Executive Summary by reusing the same card style instead of introducing a different visual type.</p>
+</div></article><article id="c064-m00101" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00101 · 2026-07-20T07:50:27.369000-04:00 · active path</p><div class="body"><p>what I have so far - let&#39;s move on to the rest of the design. this is good for today (unless you have very minor suggestions to improve aesthetics: </p>
+<p><strong>Attachments in export:</strong> <code>image(123).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00102" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00102 · 2026-07-20T07:50:29.519675-04:00 · active path</p><div class="body"><p>First, I think this is coming together really well. This already feels like an application rather than a dashboard, which is exactly where I wanted us to go.</p>
+<h2>Minor aesthetic tweaks (5 minutes total)</h2>
+<p>I would only make four small changes.</p>
+<h3>1. Rename &quot;Annual Income&quot;</h3>
+<p>Instead of:</p>
+<blockquote>
+<p>Annual Income</p>
+</blockquote>
+<p>Use:</p>
+<blockquote>
+<p><strong>Income</strong></p>
+</blockquote>
+<p>It shortens the label and lines up better with the other profile items.</p>
+<hr>
+<h3>2. Make the input slicer wider</h3>
+<p>Right now it feels a little cramped.</p>
+<p>I&#39;d make it about <strong>30–40% wider</strong> so it visually says:</p>
+<blockquote>
+<p>This is the primary interaction on the page.</p>
+</blockquote>
+<hr>
+<h3>3. Reduce the shadow</h3>
+<p>The drop shadow is a little stronger than what&#39;s on your Executive Summary.</p>
+<p>I&#39;d either:</p>
+<ul>
+<li>reduce transparency significantly, or</li>
+<li>remove it completely.</li>
+</ul>
+<p>The Executive Summary has a cleaner enterprise feel.</p>
+<hr>
+<h3>4. Highlight Release Status</h3>
+<p>I wouldn&#39;t leave it plain forever.</p>
+<p>Eventually:</p>
+<p>🟢 Affected</p>
+<p>⚪ Unaffected</p>
+<p>using conditional formatting.</p>
+<p>Not necessary tonight.</p>
+<hr>
+<h1>Now let&#39;s build the centerpiece</h1>
+<p>Everything we&#39;ve built so far is supporting context.</p>
+<p>The <strong>star of this page</strong> should be the release comparison.</p>
+<p>I would dedicate almost the entire remaining width to it.</p>
+<hr>
+<h1>Section 2</h1>
+<h2>Application-Level Functional Changes</h2>
+<p>Place this directly to the right of the borrower profile.</p>
+<pre><code>--------------------------------------------------------------
+
+Application-Level Functional Changes
+
+--------------------------------------------------------------
+Variable                V1        V2        Δ
+
+Monthly Payment         812.45    776.38   -36.07
+
+PTI                     15.81%    15.09%   -0.72%
+
+Expected Loss          4,882     4,601     -281
+
+--------------------------------------------------------------
+</code></pre>
+<p>Notice:</p>
+<p>No bar chart.</p>
+<p>No pie chart.</p>
+<p>No gauges.</p>
+<p>This is evidence.</p>
+<hr>
+<h2>Build it</h2>
+<p>Insert a <strong>Table</strong> visual.</p>
+<p>Add:</p>
+<pre><code>Variable
+
+Value_V1
+
+Value_V2
+
+Delta_V2_Minus_V1
+</code></pre>
+<p>I would actually leave <strong>Relative Delta</strong> off for Version 1.</p>
+<p>Why?</p>
+<p>Executives care about:</p>
+<blockquote>
+<p>What changed?</p>
+</blockquote>
+<p>not</p>
+<blockquote>
+<p>It changed by 4.1273%.</p>
+</blockquote>
+<p>If someone asks later, we can add it.</p>
+<hr>
+<h1>Formatting</h1>
+<p>Rename columns:</p>
+<table>
+<thead>
+<tr>
+<th>Current</th>
+<th>Rename to</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Variable</td>
+<td>Functional Variable</td>
+</tr>
+<tr>
+<td>Value_V1</td>
+<td>V1.0</td>
+</tr>
+<tr>
+<td>Value_V2</td>
+<td>V2.0</td>
+</tr>
+<tr>
+<td>Delta_V2_Minus_V1</td>
+<td>Change</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>Conditional formatting</h1>
+<p>On the Change column:</p>
+<p>Positive</p>
+<p>↓</p>
+<p>Blue</p>
+<p>Negative</p>
+<p>↓</p>
+<p>Orange</p>
+<p>(or whatever your Executive Summary accent colors are)</p>
+<p>That immediately draws the eye.</p>
+<hr>
+<h1>Make it read like an audit trail</h1>
+<p>Sort by:</p>
+<pre><code>Variable
+</code></pre>
+<p>or</p>
+<pre><code>Absolute Delta
+</code></pre>
+<p>Eventually we can discuss which tells the better story.</p>
+<hr>
+<h1>Section 3</h1>
+<p>Now underneath the table.</p>
+<p>Not cards.</p>
+<p>Not another visual.</p>
+<p>A narrative.</p>
+<pre><code>---------------------------------------------------------
+
+Workstream Impact Summary
+
+This application experienced no functional changes
+between Module 1 V1.0 and V2.0.
+
+---------------------------------------------------------
+</code></pre>
+<p>For affected applications:</p>
+<pre><code>---------------------------------------------------------
+
+Workstream Impact Summary
+
+This mortgage application aligned with the
+Mortgage Realism workstream.
+
+Observed impacts
+
+• Requested Amount decreased
+
+• Monthly Payment decreased
+
+• PTI decreased
+
+The Estimated PD workstream was also triggered,
+resulting in recalculated Expected Loss.
+
+---------------------------------------------------------
+</code></pre>
+<p>That is something I almost never see in Power BI portfolios.</p>
+<p>It demonstrates that analytics isn&#39;t just visualization—it&#39;s interpretation.</p>
+<hr>
+<h1>Final section (bottom)</h1>
+<p>Eventually:</p>
+<pre><code>Release Validation Notes
+</code></pre>
+<p>Small font.</p>
+<p>Something like:</p>
+<blockquote>
+<p>Workstream interpretations are inferred from documented Module 1 V2.0 design objectives and observed functional variable changes. They support release analysis and do not imply exclusive single-workstream causality.</p>
+</blockquote>
+<p>Governance reviewers love language like that.</p>
+<hr>
+<h1>The final page layout I&#39;d lock in</h1>
+<pre><code>====================================================================
+
+Application Release Impact Explorer
+
+====================================================================
+
+Application Lookup
+
+====================================================================
+
+Borrower Profile          Application-Level Functional Changes
+
+                           (table)
+
+====================================================================
+
+Workstream Impact Summary
+
+====================================================================
+
+Release Validation Notes
+
+====================================================================
+</code></pre>
+<h2>One change from my original vision</h2>
+<p>Originally I wanted several visual elements (cards for workstreams, more metrics, etc.).</p>
+<p>Looking at what you&#39;ve built, I think <strong>less is more</strong>.</p>
+<p>The Executive Summary is where you summarize.</p>
+<p>The Release Impact Explorer is where you <strong>investigate</strong>.</p>
+<p>That distinction gives each page a clear purpose:</p>
+<ul>
+<li><strong>Page 1:</strong> &quot;What changed across the portfolio?&quot;</li>
+<li><strong>Page 2:</strong> &quot;Why did this specific application change?&quot;</li>
+</ul>
+<p>I think that&#39;s a much stronger portfolio narrative than trying to make both pages look like dashboards.</p>
+</div></article><article id="c064-m00103" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00103 · 2026-07-20T08:05:07.834000-04:00 · active path</p><div class="body"><p>how to do conditional formatting in the change column? step by step</p>
+</div></article><article id="c064-m00104" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00104 · 2026-07-20T08:05:15.968883-04:00 · active path</p><div class="body"><p>Use <strong>font color conditional formatting</strong> on the <strong>Change</strong> column. It will be cleaner than filling each cell with background color.</p>
+<h2>Step 1: Select the table</h2>
+<p>Click once anywhere inside the <strong>Application-Level Functional Changes</strong> table.</p>
+<p>The visual must be selected before the formatting options appear.</p>
+<h2>Step 2: Open the Format visual pane</h2>
+<p>In the Visualizations pane, click the <strong>paintbrush</strong> icon:</p>
+<p><strong>Format visual</strong></p>
+<p>Then remain under the <strong>Visual</strong> tab.</p>
+<h2>Step 3: Find Cell elements</h2>
+<p>Scroll down and expand:</p>
+<p><strong>Cell elements</strong></p>
+<p>Depending on your Power BI version, it may appear as:</p>
+<ul>
+<li><code>Cell elements</code></li>
+<li><code>Specific column</code></li>
+<li>or <code>Values</code></li>
+</ul>
+<p>The current interface generally places column-level conditional formatting under <strong>Cell elements</strong>. citeturn233232search0turn233232search12</p>
+<h2>Step 4: Select the Change column</h2>
+<p>Under:</p>
+<p><strong>Apply settings to</strong></p>
+<p>or</p>
+<p><strong>Series</strong></p>
+<p>select:</p>
+<pre><code class="language-text">Delta_V2_Minus_V1
+</code></pre>
+<p>It may display as your renamed heading:</p>
+<pre><code class="language-text">Change
+</code></pre>
+<p>Make sure you have selected the <strong>Change column</strong>, not the entire table.</p>
+<h2>Step 5: Turn on Font color</h2>
+<p>Under the selected column, locate:</p>
+<p><strong>Font color</strong></p>
+<p>Turn it <strong>On</strong>.</p>
+<p>Then click the small <strong>fx</strong> button beside the color setting.</p>
+<p>That opens the conditional-formatting dialog.</p>
+<h2>Step 6: Configure rule-based formatting</h2>
+<p>Set:</p>
+<pre><code class="language-text">Format style: Rules
+</code></pre>
+<p>For:</p>
+<pre><code class="language-text">What field should we base this on?
+</code></pre>
+<p>select:</p>
+<pre><code class="language-text">FactReconciliationDetail[Delta_V2_Minus_V1]
+</code></pre>
+<p>For summarization, use the same aggregation the table uses—most likely:</p>
+<pre><code class="language-text">First
+</code></pre>
+<p>or:</p>
+<pre><code class="language-text">Sum
+</code></pre>
+<p>Because each application-variable combination should have one record, either may return the same displayed value, but <strong>First</strong> is conceptually cleaner if available.</p>
+<p>Microsoft supports rule-based font or background formatting using a selected numeric field as the basis. citeturn233232search0</p>
+<h2>Step 7: Create three rules</h2>
+<p>Use three bands:</p>
+<h3>Negative change</h3>
+<pre><code class="language-text">If value is &gt;= Minimum
+and &lt; 0
+</code></pre>
+<p>Choose a muted orange or dark red.</p>
+<p>For example:</p>
+<pre><code class="language-text">#C55A11
+</code></pre>
+<h3>No change</h3>
+<pre><code class="language-text">If value is &gt;= 0
+and &lt;= 0
+</code></pre>
+<p>Choose dark gray:</p>
+<pre><code class="language-text">#666666
+</code></pre>
+<h3>Positive change</h3>
+<pre><code class="language-text">If value is &gt; 0
+and &lt;= Maximum
+</code></pre>
+<p>Choose blue:</p>
+<pre><code class="language-text">#2F75B5
+</code></pre>
+<p>Your rules should effectively read:</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Color</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Minimum through less than 0</td>
+<td>Orange</td>
+</tr>
+<tr>
+<td>Exactly 0</td>
+<td>Gray</td>
+</tr>
+<tr>
+<td>Greater than 0 through Maximum</td>
+<td>Blue</td>
+</tr>
+</tbody></table>
+<p>Then click <strong>OK</strong>.</p>
+<h2>Important caution</h2>
+<p>Do <strong>not</strong> label positive values as inherently good and negative values as inherently bad.</p>
+<p>For this dashboard:</p>
+<ul>
+<li>A decrease in monthly payment or PTI may represent improved affordability.</li>
+<li>A decrease in requested amount may represent tighter exposure.</li>
+<li>An increase in estimated PD is adverse.</li>
+<li>An increase in requested amount may be neither universally favorable nor unfavorable.</li>
+</ul>
+<p>So the colors should communicate <strong>direction</strong>, not performance:</p>
+<ul>
+<li>Orange = decrease</li>
+<li>Blue = increase</li>
+<li>Gray = unchanged</li>
+</ul>
+<p>That is analytically safer than green/red.</p>
+<h2>Optional: add icons instead</h2>
+<p>Once the font coloring works, you could add directional icons:</p>
+<ul>
+<li>Down arrow for negative</li>
+<li>Dash for zero</li>
+<li>Up arrow for positive</li>
+</ul>
+<p>In the same <strong>Cell elements</strong> section:</p>
+<ol>
+<li>Select the Change column.</li>
+<li>Turn <strong>Icons</strong> on.</li>
+<li>Click <strong>fx</strong>.</li>
+<li>Use the same three rules.</li>
+<li>Set icon layout to <strong>Icon and value</strong>.</li>
+</ol>
+<p>I would use either colored text <strong>or</strong> icons today—not both. Colored text alone is enough.</p>
+</div></article><article id="c064-m00107" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00107 · 2026-07-20T08:18:13.116000-04:00 · active path</p><div class="body"><p>Can I adjust the change column decimals for a particular row (ESTIMATED_PD) only?</p>
+</div></article><article id="c064-m00108" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00108 · 2026-07-20T08:18:15.126152-04:00 · active path</p><div class="body"><p>Unfortunately, <strong>not directly</strong>. In a standard Power BI Table visual, <strong>formatting is applied to the entire column</strong>, not individual rows.</p>
+<p>However, there are a few approaches.</p>
+<h2>Option 1 (Recommended): Create a formatted display column</h2>
+<p>Since this is a portfolio project, I&#39;d actually do this. Create a calculated column (or Power Query custom column) that formats the values differently based on the variable.</p>
+<p>For example:</p>
+<pre><code class="language-DAX">Value_V1_Display =
+SWITCH(
+    FactReconciliationDetail[Variable],
+    &quot;ESTIMATED_PD&quot;, FORMAT(FactReconciliationDetail[Value_V1], &quot;0.000%&quot;),
+    &quot;PAYMENT_TO_INCOME_RATIO&quot;, FORMAT(FactReconciliationDetail[Value_V1], &quot;0.0%&quot;),
+    &quot;MONTHLY_PAYMENT_PROXY&quot;, FORMAT(FactReconciliationDetail[Value_V1], &quot;$#,##0.00&quot;),
+    &quot;EXPECTED_LOSS_AMOUNT&quot;, FORMAT(FactReconciliationDetail[Value_V1], &quot;$#,##0&quot;),
+    FORMAT(FactReconciliationDetail[Value_V1], &quot;#,##0.##&quot;)
+)
+</code></pre>
+<p>Do the same for <code>Value_V2</code> and <code>Change</code>.</p>
+<p><strong>Pros:</strong></p>
+<ul>
+<li>Beautiful presentation.</li>
+<li>Each variable uses an appropriate format.</li>
+<li>Makes the table much more professional.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+<li>The displayed values become <strong>text</strong>, so you lose numeric sorting (which isn&#39;t a big issue here because users aren&#39;t likely to sort this table).</li>
+</ul>
+<hr>
+<h2>Option 2: Keep numeric values</h2>
+<p>Leave the formatting as-is.</p>
+<p>This is the simplest approach, but you&#39;ll have things like:</p>
+<ul>
+<li><code>0.0865</code></li>
+<li><code>0.1024</code></li>
+</ul>
+<p>which are harder to interpret than percentages.</p>
+<hr>
+<h2>Option 3 (My favorite for this project ⭐)</h2>
+<p>Since there are only <strong>7 functional variables</strong>, I&#39;d build a <strong>display layer</strong>.</p>
+<p>Instead of trying to force one numeric format to work for everything, create display columns:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>V1.0</th>
+<th>V2.0</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Monthly Payment</td>
+<td><strong>$842.31</strong></td>
+<td><strong>$815.44</strong></td>
+<td><strong>-$26.87</strong></td>
+</tr>
+<tr>
+<td>PTI</td>
+<td><strong>15.4%</strong></td>
+<td><strong>14.9%</strong></td>
+<td><strong>-0.5 pp</strong></td>
+</tr>
+<tr>
+<td>Estimated PD</td>
+<td><strong>8.64%</strong></td>
+<td><strong>9.18%</strong></td>
+<td><strong>+0.54 pp</strong></td>
+</tr>
+<tr>
+<td>Expected Loss</td>
+<td><strong>$5,481</strong></td>
+<td><strong>$5,936</strong></td>
+<td><strong>+$455</strong></td>
+</tr>
+</tbody></table>
+<p>Notice that each row is formatted according to the <em>meaning</em> of the variable:</p>
+<ul>
+<li>Currency → dollars</li>
+<li>Ratios → percentages</li>
+<li>PD → percentages</li>
+<li>Counts → whole numbers</li>
+</ul>
+<p>This is exactly how executive reporting is usually done.</p>
+<h2>My recommendation</h2>
+<p>I would <strong>not</strong> spend time trying to make the raw numeric columns perfect. Instead, I&#39;d build three formatted display columns (<code>V1_Display</code>, <code>V2_Display</code>, <code>Change_Display</code>) and use those in the table. Since this page is for <strong>interpretation</strong>, not downstream calculations, it&#39;s the right tradeoff.</p>
+<p>I actually think this would elevate the professionalism of the Release Impact Explorer quite a bit. It&#39;s the kind of polish that reviewers notice without consciously realizing why the table feels easier to read.</p>
+</div></article><article id="c064-m00109" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00109 · 2026-07-20T08:21:36.832000-04:00 · active path</p><div class="body"><p>eh, let&#39;s not spend too much time on this for today. here is the table as is currently - will resize/place depending on the what else we plan on including.</p>
+<p><strong>Attachments in export:</strong> <code>image(123).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00110" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00110 · 2026-07-20T08:21:39.208275-04:00 · active path</p><div class="body"><p>I think this is exactly the right call. <strong>Let&#39;s stop polishing and keep building.</strong> Tomorrow&#39;s interview isn&#39;t going to be won or lost because <code>Estimated_PD</code> has two extra decimals. It <em>will</em> be won by having a coherent, well-designed analytical application.</p>
+<p>Looking at your screenshot, here&#39;s my assessment.</p>
+<h2>Overall: 8.8–9.2/10 already</h2>
+<p>I like it more than I expected.</p>
+<p>It already feels like:</p>
+<blockquote>
+<p>&quot;Investigate a release.&quot;</p>
+</blockquote>
+<p>rather than</p>
+<blockquote>
+<p>&quot;Look at another dashboard.&quot;</p>
+</blockquote>
+<p>That&#39;s exactly the direction we wanted.</p>
+<hr>
+<h1>My only observations</h1>
+<h3>1. The table should be larger.</h3>
+<p>Right now it looks secondary.</p>
+<p>I actually think the table is the <strong>most important visual</strong> on the page.</p>
+<p>Eventually I&#39;d make it approximately:</p>
+<pre><code class="language-text">45% Borrower Profile
+
+55% Release Detail Table
+</code></pre>
+<p>Maybe even 40 / 60.</p>
+<hr>
+<h3>2. Remove the table gridlines</h3>
+<p>Power BI defaults to a very Excel-like appearance.</p>
+<p>Turn off:</p>
+<ul>
+<li>Vertical gridlines</li>
+<li>Horizontal gridlines (or make them very subtle)</li>
+</ul>
+<p>The Executive Summary already established a cleaner visual language.</p>
+<hr>
+<h3>3. Rename V1/V2</h3>
+<p>Instead of</p>
+<pre><code>V1
+V2
+</code></pre>
+<p>I&#39;d use</p>
+<pre><code>Module 1 V1.0
+Module 1 V2.0
+</code></pre>
+<p>or simply</p>
+<pre><code>V1.0
+V2.0
+</code></pre>
+<p>Small improvement.</p>
+<hr>
+<h1>Now let&#39;s build the section that differentiates this dashboard</h1>
+<p>This is where I think most portfolio dashboards stop.</p>
+<p>We&#39;re going one step further.</p>
+<hr>
+<h1>Workstream Impact Summary</h1>
+<p>Instead of more charts...</p>
+<p>I want a dynamic explanation.</p>
+<p>Something like:</p>
+<hr>
+<h2>Workstream Impact Summary</h2>
+<p>For APP-00047839:</p>
+<p><strong>Detected V2.0 workstream alignment</strong></p>
+<p>✓ Mortgage Realism</p>
+<ul>
+<li>Requested Amount increased</li>
+<li>Monthly Payment recalculated</li>
+<li>PTI recalculated</li>
+<li>Amount-to-Income Ratio updated</li>
+</ul>
+<p>✓ Estimated PD Refinement</p>
+<ul>
+<li>Expected Loss recalculated</li>
+<li>Estimated PD proxy updated</li>
+</ul>
+<p>Overall impact:</p>
+<p>This application experienced <strong>6 functional changes</strong>, primarily driven by affordability recalculation and revised mortgage modeling introduced in Module 1 V2.0.</p>
+<hr>
+<p>Notice what&#39;s happening.</p>
+<p>The table tells you <strong>what</strong> changed.</p>
+<p>The summary tells you <strong>why</strong>.</p>
+<hr>
+<h1>Why this matters</h1>
+<p>Imagine the interviewer asks:</p>
+<blockquote>
+<p>&quot;Can you walk me through one borrower?&quot;</p>
+</blockquote>
+<p>You&#39;d literally do this:</p>
+<ol>
+<li><p>Search for an application.</p>
+</li>
+<li><p>Read Borrower Profile.</p>
+</li>
+<li><p>Review changed variables.</p>
+</li>
+<li><p>Read the generated summary.</p>
+</li>
+</ol>
+<p>That&#39;s a fantastic demonstration.</p>
+<hr>
+<h1>How I&#39;d build it</h1>
+<p>I actually would <strong>not</strong> try to generate every sentence dynamically tonight.</p>
+<p>I&#39;d create <strong>one DAX measure</strong> that returns text based on the application.</p>
+<p>Initially something as simple as:</p>
+<pre><code>This application experienced 6 functional changes.
+
+Observed impacts include:
+
+• Requested Amount
+
+• Monthly Payment
+
+• PTI
+
+• Amount-to-Income Ratio
+
+• Expected Loss
+
+• Estimated PD
+
+These changes align with the documented Module 1 V2.0 affordability and risk-model workstreams.
+</code></pre>
+<p>That&#39;s enough for Version 1.</p>
+<hr>
+<h1>I would stop there</h1>
+<p>Seriously.</p>
+<p>At that point you have:</p>
+<p>✅ Executive Summary</p>
+<p>✅ Application Lookup</p>
+<p>✅ Borrower Profile</p>
+<p>✅ Release Detail Table</p>
+<p>✅ Dynamic Interpretation</p>
+<p>That&#39;s a very respectable Power BI portfolio project.</p>
+<hr>
+<h2>My one suggestion for tomorrow morning</h2>
+<p>Before the interview, find <strong>three bookmarked applications</strong>:</p>
+<h3>Example 1</h3>
+<p>An unaffected application</p>
+<pre><code>Changed Fields = 0
+</code></pre>
+<p>Shows stability.</p>
+<hr>
+<h3>Example 2</h3>
+<p>A mortgage with 5–6 changes</p>
+<p>Like the one in your screenshot.</p>
+<p>Shows affordability.</p>
+<hr>
+<h3>Example 3</h3>
+<p>An application with primarily PD / Expected Loss movement.</p>
+<p>Shows the risk-model refinement.</p>
+<p>Then, during the interview, you can say:</p>
+<blockquote>
+<p>&quot;Rather than looking at aggregate metrics, let me show you three representative applications and how the release changed them.&quot;</p>
+</blockquote>
+<p>That turns the dashboard into a <strong>storytelling tool</strong>, which is much more compelling than simply clicking around. I honestly think that&#39;s the biggest differentiator you&#39;ve built into this project.</p>
+</div></article><article id="c064-m00111" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00111 · 2026-07-20T08:36:05.351000-04:00 · active path</p><div class="body"><p>ready for the dynamic interpretation that you discussed</p>
+<p><strong>Attachments in export:</strong> <code>image(123).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00112" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00112 · 2026-07-20T08:36:07.406663-04:00 · active path</p><div class="body"><p>I actually think the page looks <strong>quite good now</strong>. The table size is much better, and the visual balance is about where I&#39;d want it. I also like that you changed the headers to <strong>Module 1 V1.0</strong> and <strong>Module 1 V2.0</strong>—that&#39;s much clearer.</p>
+<p>Now let&#39;s build what I think will become the signature feature of this page.</p>
+<hr>
+<h1>Dynamic Release Interpretation</h1>
+<p>The goal is to answer, in plain English:</p>
+<blockquote>
+<p><strong>&quot;Why did this application change?&quot;</strong></p>
+</blockquote>
+<p>Rather than creating dozens of complicated DAX measures, we&#39;re going to create <strong>one intelligent narrative measure</strong>.</p>
+<hr>
+<h1>Step 1 - Create the measure</h1>
+<p>Create a new measure called:</p>
+<pre><code class="language-DAX">Release Interpretation =
+VAR Product =
+    SELECTEDVALUE ( FactReleaseComparison[Product_Type] )
+
+VAR Status =
+    SELECTEDVALUE ( FactReleaseComparison[Functional_Change_Status] )
+
+VAR ChangedFields =
+    SELECTEDVALUE ( FactReleaseComparison[Changed_Field_Count] )
+
+VAR RequestedAmount =
+    CALCULATE (
+        COUNTROWS ( FactReconciliationDetail ),
+        FactReconciliationDetail[Variable] = &quot;REQUESTED_AMOUNT&quot;
+    )
+
+VAR MonthlyPayment =
+    CALCULATE (
+        COUNTROWS ( FactReconciliationDetail ),
+        FactReconciliationDetail[Variable] = &quot;MONTHLY_PAYMENT_PROXY&quot;
+    )
+
+VAR PTI =
+    CALCULATE (
+        COUNTROWS ( FactReconciliationDetail ),
+        FactReconciliationDetail[Variable] = &quot;PAYMENT_TO_INCOME_RATIO&quot;
+    )
+
+VAR ATI =
+    CALCULATE (
+        COUNTROWS ( FactReconciliationDetail ),
+        FactReconciliationDetail[Variable] = &quot;AMOUNT_TO_INCOME_RATIO&quot;
+    )
+
+VAR PD =
+    CALCULATE (
+        COUNTROWS ( FactReconciliationDetail ),
+        FactReconciliationDetail[Variable] = &quot;ESTIMATED_PD&quot;
+    )
+
+VAR EL =
+    CALCULATE (
+        COUNTROWS ( FactReconciliationDetail ),
+        FactReconciliationDetail[Variable] = &quot;EXPECTED_LOSS_AMOUNT&quot;
+    )
+
+RETURN
+
+IF (
+    Status = &quot;Unaffected&quot;,
+
+    &quot;This application experienced no functional changes between Module 1 V1.0 and Module 1 V2.0. All calculated affordability and risk metrics remained unchanged.&quot;,
+
+    &quot;This &quot;
+        &amp; LOWER(Product)
+        &amp; &quot; application experienced &quot;
+        &amp; ChangedFields
+        &amp; &quot; functional change(s) following the Module 1 V2.0 enhancements.&quot;
+        &amp;
+        IF (
+            RequestedAmount + MonthlyPayment + PTI + ATI &gt; 0,
+            &quot; Affordability-related calculations were updated, including exposure and payment metrics.&quot;,
+            &quot;&quot;
+        )
+        &amp;
+        IF (
+            PD + EL &gt; 0,
+            &quot; Risk estimation was also recalculated through updated Estimated PD and Expected Loss logic.&quot;,
+            &quot;&quot;
+        )
+)
+</code></pre>
+<hr>
+<h1>Why I rewrote it</h1>
+<p>This version doesn&#39;t hard-code specific applications.</p>
+<p>Instead it asks:</p>
+<blockquote>
+<p>Did Requested Amount change?</p>
+</blockquote>
+<p>Yes?</p>
+<p>Mention affordability.</p>
+<p>Did Expected Loss change?</p>
+<p>Yes?</p>
+<p>Mention risk.</p>
+<p>So every application gets its own explanation.</p>
+<hr>
+<h1>Step 2 - Add a text visual</h1>
+<p>Here&#39;s where Power BI has a limitation.</p>
+<p>A normal Card visual doesn&#39;t display long text very well.</p>
+<p>Instead I recommend using the <strong>new Card</strong> visual if available.</p>
+<p>If not:</p>
+<p>Insert</p>
+<pre><code>Card
+</code></pre>
+<p>Use:</p>
+<pre><code>Release Interpretation
+</code></pre>
+<p>Turn on:</p>
+<ul>
+<li>Word Wrap</li>
+<li>Multi-line</li>
+</ul>
+<p>Turn off:</p>
+<ul>
+<li>Category Label</li>
+</ul>
+<p>Title:</p>
+<pre><code>Release Interpretation
+</code></pre>
+<hr>
+<h1>Step 3 - Make it span the page</h1>
+<p>I envision something like this:</p>
+<pre><code>------------------------------------------------------------
+
+Release Interpretation
+
+This mortgage application experienced six functional
+changes following the Module 1 V2.0 enhancements.
+Affordability-related calculations were updated,
+including exposure and payment metrics.
+Risk estimation was also recalculated through updated
+Estimated PD and Expected Loss logic.
+
+------------------------------------------------------------
+</code></pre>
+<hr>
+<h1>Eventually...</h1>
+<p>I&#39;d actually like to evolve this into something like:</p>
+<pre><code>Observed Changes
+
+✓ Requested Amount increased
+
+✓ Monthly Payment recalculated
+
+✓ PTI recalculated
+
+✓ Expected Loss recalculated
+
+✓ Estimated PD recalculated
+
+Interpretation
+
+The observed changes are consistent with the documented
+Module 1 V2.0 affordability and risk-model enhancement
+workstreams.
+</code></pre>
+<p>That would be version 2 of this page.</p>
+<hr>
+<h1>One improvement I&#39;d make to the wording</h1>
+<p>Notice I <strong>avoid saying</strong>:</p>
+<blockquote>
+<p>&quot;Mortgage Realism workstream caused...&quot;</p>
+</blockquote>
+<p>Instead I say:</p>
+<blockquote>
+<p><strong>&quot;The observed changes are consistent with...&quot;</strong></p>
+</blockquote>
+<p>That distinction is important.</p>
+<p>You&#39;re not inferring undocumented causality.</p>
+<p>You&#39;re interpreting observed release impacts using the BRD.</p>
+<p>That&#39;s exactly the kind of language model governance, validation, and audit teams appreciate.</p>
+<hr>
+<h2>My final thought</h2>
+<p>When we first started discussing this page, I imagined another dashboard.</p>
+<p>What you&#39;ve built is actually <strong>an investigation console</strong>.</p>
+<p>That is a much stronger portfolio piece.</p>
+<p>Page 1 answers:</p>
+<blockquote>
+<p><strong>What changed?</strong></p>
+</blockquote>
+<p>Page 2 answers:</p>
+<blockquote>
+<p><strong>Show me one application and explain the release impact.</strong></p>
+</blockquote>
+<p>Those are complementary stories, and together they present a much more mature analytical narrative than a collection of charts. I think this has become a very interview-worthy Power BI project.</p>
+</div></article><article id="c064-m00113" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00113 · 2026-07-20T08:38:27.113000-04:00 · active path</p><div class="body"><p><em>No text body is present in the export. This message may contain an image or attachment.</em></p>
+<p><strong>Attachments in export:</strong> <code>image(123).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00114" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00114 · 2026-07-20T08:38:29.588624-04:00 · active path</p><div class="body"><p>Good catch. I know exactly what&#39;s happening.</p>
+<p>The problem is <strong>not</strong> actually <code>Status</code>.</p>
+<p><code>STATUS</code> is a reserved word in DAX, and although variables <em>can</em> sometimes use it, Power BI occasionally throws confusing syntax errors that point at the variable name.</p>
+<p>Let&#39;s also simplify this considerably. We don&#39;t need all those <code>CALCULATE(COUNTROWS(...))</code> variables.</p>
+<h2>First, rename the variables</h2>
+<p>Instead of:</p>
+<pre><code class="language-DAX">VAR Product =
+...
+
+VAR Status =
+...
+
+VAR ChangedFields =
+...
+</code></pre>
+<p>Use:</p>
+<pre><code class="language-DAX">VAR SelectedProduct =
+    SELECTEDVALUE(FactReleaseComparison[Product_Type])
+
+VAR ChangeStatus =
+    SELECTEDVALUE(FactReleaseComparison[Functional_Change_Status])
+
+VAR ChangedFieldCount =
+    SELECTEDVALUE(FactReleaseComparison[Changed_Field_Count])
+</code></pre>
+<p>That alone may fix the parser.</p>
+<hr>
+<h2>But...I actually have a better idea.</h2>
+<p>After looking at your page, I think we should build this interpretation <strong>incrementally</strong>, not all at once.</p>
+<h3>Version 1</h3>
+<p>Create this measure first:</p>
+<pre><code class="language-DAX">Release Interpretation =
+VAR SelectedProduct =
+    SELECTEDVALUE(FactReleaseComparison[Product_Type])
+
+VAR ChangeStatus =
+    SELECTEDVALUE(FactReleaseComparison[Functional_Change_Status])
+
+VAR ChangedFieldCount =
+    SELECTEDVALUE(FactReleaseComparison[Changed_Field_Count])
+
+RETURN
+
+IF(
+    ChangeStatus = &quot;Unaffected&quot;,
+
+    &quot;This application experienced no functional changes between Module 1 V1.0 and Module 1 V2.0.&quot;,
+
+    &quot;This &quot;
+        &amp; LOWER(SelectedProduct)
+        &amp; &quot; application experienced &quot;
+        &amp; ChangedFieldCount
+        &amp; &quot; functional change(s) following the Module 1 V2.0 release.&quot;
+)
+</code></pre>
+<p>If this compiles successfully, we know the issue wasn&#39;t with the <code>VAR</code> syntax itself.</p>
+<hr>
+<h2>Then we&#39;ll make it smarter</h2>
+<p>Instead of writing one monster measure, we&#39;ll add sections.</p>
+<p>For example:</p>
+<pre><code class="language-DAX">VAR HasPayment =
+    CONTAINS(
+        VALUES(FactReconciliationDetail[Variable]),
+        FactReconciliationDetail[Variable],
+        &quot;MONTHLY_PAYMENT_PROXY&quot;
+    )
+</code></pre>
+<p>and append another sentence.</p>
+<p>This makes debugging much easier.</p>
+<hr>
+<h1>One more thing</h1>
+<p>Can you tell me the <strong>exact column names</strong> in <code>FactReleaseComparison</code> for these three fields?</p>
+<p>I&#39;m specifically interested in whether they are:</p>
+<ul>
+<li><code>Functional_Change_Status</code></li>
+<li><code>Changed_Field_Count</code></li>
+<li><code>Product_Type</code></li>
+</ul>
+<p>or if the imported names differ slightly (for example, spaces instead of underscores, or <code>Changed Fields</code>).</p>
+<p><strong>The fastest way</strong> is to expand <code>FactReleaseComparison</code> in the Fields pane and send me a screenshot of just that table&#39;s field list (or type the exact field names). Once I have the exact names, I&#39;ll write DAX that will compile on the first try.</p>
+</div></article><article id="c064-m00115" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00115 · 2026-07-20T08:39:39.122000-04:00 · active path</p><div class="body"><p>version 1 compiled successfully</p>
+</div></article><article id="c064-m00116" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00116 · 2026-07-20T08:39:40.960495-04:00 · active path</p><div class="body"><p>Excellent. That confirms my suspicion.</p>
+<p>The issue wasn&#39;t the logic—it was the variable name <code>Status</code>. This is why I prefer building DAX measures incrementally.</p>
+<p>Now let&#39;s make it smarter one step at a time.</p>
+<hr>
+<h1>Version 2 — Detect affordability changes</h1>
+<p>Replace the measure with this version.</p>
+<pre><code class="language-DAX">Release Interpretation =
+VAR SelectedProduct =
+    SELECTEDVALUE(FactReleaseComparison[Product_Type])
+
+VAR ChangeStatus =
+    SELECTEDVALUE(FactReleaseComparison[Functional_Change_Status])
+
+VAR ChangedFieldCount =
+    SELECTEDVALUE(FactReleaseComparison[Changed_Field_Count])
+
+VAR HasRequestedAmount =
+    CONTAINS(
+        VALUES(FactReconciliationDetail[Variable]),
+        FactReconciliationDetail[Variable],
+        &quot;REQUESTED_AMOUNT&quot;
+    )
+
+VAR HasMonthlyPayment =
+    CONTAINS(
+        VALUES(FactReconciliationDetail[Variable]),
+        FactReconciliationDetail[Variable],
+        &quot;MONTHLY_PAYMENT_PROXY&quot;
+    )
+
+VAR HasPTI =
+    CONTAINS(
+        VALUES(FactReconciliationDetail[Variable]),
+        FactReconciliationDetail[Variable],
+        &quot;PAYMENT_TO_INCOME_RATIO&quot;
+    )
+
+RETURN
+
+IF(
+    ChangeStatus = &quot;Unaffected&quot;,
+
+    &quot;This application experienced no functional changes between Module 1 V1.0 and Module 1 V2.0.&quot;,
+
+    &quot;This &quot;
+        &amp; LOWER(SelectedProduct)
+        &amp; &quot; application experienced &quot;
+        &amp; ChangedFieldCount
+        &amp; &quot; functional change(s) following the Module 1 V2.0 release.&quot;
+        &amp;
+        IF(
+            HasRequestedAmount || HasMonthlyPayment || HasPTI,
+            &quot; Affordability-related calculations were updated.&quot;,
+            &quot;&quot;
+        )
+)
+</code></pre>
+<hr>
+<h2>Test it</h2>
+<p>Try:</p>
+<ul>
+<li>An unaffected application</li>
+<li>Your current mortgage application with six changes</li>
+</ul>
+<p>If it compiles and the sentence changes correctly, we&#39;re in good shape.</p>
+<hr>
+<h1>Then we&#39;ll make it really interesting</h1>
+<p>I actually want to go <strong>beyond</strong> what I originally proposed.</p>
+<p>Looking at your screenshot, the table already tells us <strong>what changed</strong>.</p>
+<p>Repeating that in prose isn&#39;t adding much value.</p>
+<p>Instead, I think the interpretation should answer:</p>
+<blockquote>
+<p><strong>&quot;Why would an analyst care?&quot;</strong></p>
+</blockquote>
+<p>For example:</p>
+<h3>Unaffected</h3>
+<blockquote>
+<p>This application experienced no functional changes between Module 1 V1.0 and Module 1 V2.0. The revised affordability and risk calculations produced identical outputs, demonstrating release stability for this applicant profile.</p>
+</blockquote>
+<hr>
+<h3>Six changes</h3>
+<blockquote>
+<p>This mortgage application experienced six functional changes following the Module 1 V2.0 release. The observed changes indicate that revised affordability calculations propagated through downstream payment, exposure, and expected loss metrics while preserving a consistent risk profile.</p>
+</blockquote>
+<p>Notice how that doesn&#39;t simply restate the table—it <strong>interprets</strong> it.</p>
+<hr>
+<h2>I have one more idea</h2>
+<p>I think we should rename this section.</p>
+<p>Instead of:</p>
+<blockquote>
+<p><strong>Release Interpretation</strong></p>
+</blockquote>
+<p>I&#39;d use:</p>
+<blockquote>
+<p><strong>Analyst Interpretation</strong></p>
+</blockquote>
+<p>That subtly shifts the perspective.</p>
+<p>It tells the interviewer:</p>
+<blockquote>
+<p>&quot;This isn&#39;t generated documentation. This is the kind of interpretation an analyst would provide after reviewing the release.&quot;</p>
+</blockquote>
+<p>Given your background in model governance, remediation, and validation, I actually think <strong>Analyst Interpretation</strong> is a stronger and more distinctive title. It reinforces the idea that the dashboard supports expert analysis rather than just displaying data.</p>
+</div></article><article id="c064-m00117" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00117 · 2026-07-20T08:40:39.130000-04:00 · active path</p><div class="body"><p>version 2 compiled successfully</p>
+</div></article><article id="c064-m00118" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00118 · 2026-07-20T08:40:41.016895-04:00 · active path</p><div class="body"><p>Perfect. Now we&#39;re at the fun part.</p>
+<p>This is where we stop writing DAX like programmers and start writing it like analysts.</p>
+<h2>I want to change direction slightly</h2>
+<p>The current narrative says:</p>
+<blockquote>
+<p>&quot;Affordability-related calculations were updated.&quot;</p>
+</blockquote>
+<p>That&#39;s technically true.</p>
+<p>But it&#39;s not very interesting.</p>
+<p><strong>Your BRD already explains what the workstreams were.</strong> This page should connect the observed changes back to those workstreams.</p>
+<p>Instead of simply saying:</p>
+<blockquote>
+<p>Affordability calculations were updated.</p>
+</blockquote>
+<p>I&#39;d rather say:</p>
+<blockquote>
+<p>The observed changes are consistent with the documented Module 1 V2.0 Mortgage Realism workstream, where revised affordability calculations propagated through downstream payment and exposure metrics.</p>
+</blockquote>
+<p>That sounds much more like a release validation report.</p>
+<hr>
+<h1>Version 3</h1>
+<p>Replace the RETURN section with this.</p>
+<pre><code class="language-DAX">RETURN
+
+IF(
+    ChangeStatus = &quot;Unaffected&quot;,
+
+    &quot;This application experienced no functional changes between Module 1 V1.0 and Module 1 V2.0. The revised affordability and risk calculations produced identical outputs for this applicant profile, indicating release stability.&quot;,
+
+    &quot;This &quot;
+        &amp; LOWER(SelectedProduct)
+        &amp; &quot; application experienced &quot;
+        &amp; ChangedFieldCount
+        &amp; &quot; functional change(s) following the Module 1 V2.0 release.&quot;
+        &amp;
+        IF(
+            HasRequestedAmount || HasMonthlyPayment || HasPTI,
+            &quot; The observed changes are consistent with the documented Mortgage Realism workstream, where revised affordability calculations propagated through downstream payment and exposure metrics.&quot;,
+            &quot;&quot;
+        )
+)
+</code></pre>
+<p>Notice how this is beginning to read like something from a validation summary rather than a dashboard tooltip.</p>
+<hr>
+<h1>Then we&#39;ll add the risk workstream</h1>
+<p>After confirming Version 3 compiles, add two more variables <strong>above RETURN</strong>:</p>
+<pre><code class="language-DAX">VAR HasExpectedLoss =
+    CONTAINS(
+        VALUES(FactReconciliationDetail[Variable]),
+        FactReconciliationDetail[Variable],
+        &quot;EXPECTED_LOSS_AMOUNT&quot;
+    )
+
+VAR HasPD =
+    CONTAINS(
+        VALUES(FactReconciliationDetail[Variable]),
+        FactReconciliationDetail[Variable],
+        &quot;ESTIMATED_PD&quot;
+    )
+</code></pre>
+<p>Then append this to the narrative:</p>
+<pre><code class="language-DAX">&amp;
+IF(
+    HasExpectedLoss || HasPD,
+    &quot; Risk metrics were also recalculated, consistent with the Module 1 V2.0 Estimated PD refinement workstream.&quot;,
+    &quot;&quot;
+)
+</code></pre>
+<hr>
+<h1>This is where I&#39;d stop</h1>
+<p>At that point you&#39;ll have narratives like:</p>
+<h3>Unaffected</h3>
+<blockquote>
+<p>This application experienced no functional changes between Module 1 V1.0 and Module 1 V2.0. The revised affordability and risk calculations produced identical outputs for this applicant profile, indicating release stability.</p>
+</blockquote>
+<hr>
+<h3>Mortgage example</h3>
+<blockquote>
+<p>This mortgage application experienced six functional changes following the Module 1 V2.0 release. The observed changes are consistent with the documented Mortgage Realism workstream, where revised affordability calculations propagated through downstream payment and exposure metrics. Risk metrics were also recalculated, consistent with the Module 1 V2.0 Estimated PD refinement workstream.</p>
+</blockquote>
+<hr>
+<h2>One last recommendation</h2>
+<p>I&#39;d actually rename the section from <strong>Release Interpretation</strong> to <strong>Validation Interpretation</strong>.</p>
+<p>Why?</p>
+<p>Because everything in this project has really been about <strong>release validation</strong>:</p>
+<ul>
+<li>Executive Summary = validation results at the portfolio level.</li>
+<li>Release Impact Explorer = validation at the individual application level.</li>
+<li>This narrative = analyst validation conclusions.</li>
+</ul>
+<p>That creates a consistent theme across the report and aligns closely with the terminology used in your BRD and Validation Summary documents. I think &quot;Validation Interpretation&quot; will resonate more naturally with reviewers familiar with model validation, QA, and governed release processes.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

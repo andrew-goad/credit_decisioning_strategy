@@ -1,0 +1,3239 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Merchant POS Lending Simulator — Part 1</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Merchant POS Lending Simulator</h1><p>Part 01 · C068</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c068-m00001" class="message user"><div class="role">Andrew</div><p class="meta">C068-M00001 · 2026-07-23T12:54:09.812000-04:00 · active path</p><div class="body"><p>For context, here is the code for my module 1 v2.0 and module 2 of the credit decisioning strategy simulator plus the module 1 v2.0 brd/validation.  See attached prompt. Take your time and be very diligent. I&#39;d like to design all phases of this Merchant POS Lending Strategy Simulator by early or midday tomorrow.</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0(3).sql</code>, <code>module1_synthetic_application_risk_engine_v2.0(25).sql</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Validation_Summary_v2.0 (1).pdf</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v2.0 (1).pdf</code>, <code>Pasted markdown(11).md</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c068-m00008" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C068-M00008 · 2026-07-23T13:10:32.354305-04:00 · active path</p><div class="body"><h1>Merchant POS Lending Strategy Simulator — Design Blueprint v0.1</h1>
+<p>I reviewed the merchant-lending prompt together with the Module 1 V2.0 SQL, BRD, Validation Summary, and the Module 2 strategy engine. The correct approach is to reuse the <strong>governance and decision-system architecture</strong>, not the consumer-credit economics.</p>
+<p>Your existing work already establishes the most difficult reusable patterns: deterministic population anchoring, centralized parameter control, staged transformations, latest-run versus archive separation, matched comparisons, diagnostic transparency, synthetic-risk boundaries, and evidence-driven validation. Module 2 adds profile-driven strategies, product-policy controls, counteroffer feasibility, deterministic explanation codes, campaign registries, strategy frontiers, persistent evidence, and post-campaign acceptance. fileciteturn0file0 fileciteturn0file1 fileciteturn1file1</p>
+<p>The merchant project should preserve that architectural discipline while replacing the underlying economics with merchant revenue quality, cash-flow conversion, seasonality, transaction reversals, existing business obligations, declining-balance exposure, pricing economics, and portfolio concentration. That is also the distinction required in the attached project prompt. fileciteturn0file2</p>
+<p>A design-complete package by early or midday tomorrow is realistic, provided “design-complete” means:</p>
+<table>
+<thead>
+<tr>
+<th>Design artifact</th>
+<th>Tomorrow’s target</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Product decision record</td>
+<td>Product, repayment, pricing, target market, boundaries</td>
+</tr>
+<tr>
+<td>Enterprise architecture</td>
+<td>Module sequence, lineage, latest/archive design</td>
+</tr>
+<tr>
+<td>Logical data model</td>
+<td>Grains, keys, history windows, comparison keys</td>
+</tr>
+<tr>
+<td>V1 variable framework</td>
+<td>20–30 governed feature families</td>
+</tr>
+<tr>
+<td>Credit and sizing framework</td>
+<td>Eligibility, capacity, exposure, counteroffer</td>
+</tr>
+<tr>
+<td>Pricing and economics framework</td>
+<td>Revenue, costs, EAD, EL, contribution</td>
+</tr>
+<tr>
+<td>Risk-appetite framework</td>
+<td>Account limits, portfolio limits, actions and owners</td>
+</tr>
+<tr>
+<td>Scenario and strategy register</td>
+<td>Controlled initial campaign</td>
+</tr>
+<tr>
+<td>Validation framework</td>
+<td>Data, realism, risk, economics, strategy, reporting</td>
+</tr>
+<tr>
+<td>Implementation backlog</td>
+<td>Ordered build phases and acceptance gates</td>
+</tr>
+</tbody></table>
+<p>It should not mean that the PostgreSQL engines, validation campaign, documentation package, and Power BI application are all implemented and validated by tomorrow.</p>
+<hr>
+<h2>1. Why this parallel project is strategically valuable</h2>
+<p>This project fills a genuine portfolio gap rather than duplicating your current simulator.</p>
+<h3>It demonstrates transferability without overstating experience</h3>
+<p>Your existing simulator proves consumer-credit decision architecture. The merchant project demonstrates that you can transfer the same portfolio-management disciplines into a materially different domain:</p>
+<ul>
+<li>time-series cash-flow underwriting rather than primarily bureau-based underwriting;</li>
+<li>revenue quality rather than income alone;</li>
+<li>business and owner risk separation;</li>
+<li>short-term declining exposure;</li>
+<li>partner and industry concentration;</li>
+<li>offer-level pricing economics;</li>
+<li>repayment burden against volatile revenue;</li>
+<li>portfolio allocation under risk-appetite constraints.</li>
+</ul>
+<p>That is a credible transfer-of-discipline story. It does not require claiming prior ownership of a production merchant-lending portfolio.</p>
+<h3>It connects all major portfolio-management responsibilities</h3>
+<p>The resulting system would answer the management questions that matter:</p>
+<ol>
+<li>Which merchants qualify?</li>
+<li>What exposure is supportable?</li>
+<li>What structure is affordable?</li>
+<li>What price is economically viable?</li>
+<li>What portfolio concentrations and risk limits should govern deployment?</li>
+</ol>
+<p>The project therefore spans underwriting, exposure, pricing, expected loss, profitability, concentration management, champion/challenger testing, validation, and executive reporting rather than stopping at synthetic risk scoring.</p>
+<h3>It complements your current system</h3>
+<p>The existing Module 1 concludes at borrower/product risk and comparative Expected Loss. The current Module 2 intentionally excludes revenue, funding cost, profitability, capital, and pricing optimization. The merchant system should use the same clean module separation, but its Module 2 should include <strong>illustrative offer economics and risk-adjusted contribution</strong>, because pricing and portfolio economics are central to this project’s thesis. fileciteturn3file3</p>
+<hr>
+<h2>2. The three plausible POS-linked product structures</h2>
+<table>
+<thead>
+<tr>
+<th>Structure</th>
+<th>Core mechanics</th>
+<th>Analytical strengths</th>
+<th>Principal complications</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Closed-end short-term business loan</strong></td>
+<td>Fixed principal, defined term, stated interest or finance charge, fixed ACH payment</td>
+<td>Clear payment schedule, clean declining balance, transparent EAD, conventional affordability testing</td>
+<td>Fixed payment may be less responsive to volatile merchant sales</td>
+</tr>
+<tr>
+<td><strong>Sales-linked installment loan</strong></td>
+<td>Loan obligation remains debt, but payment or remittance responds partly to POS receipts</td>
+<td>Better alignment between payment and merchant revenue; strong POS-data story</td>
+<td>Duration varies; payment forecasting and legal characterization become more complex</td>
+</tr>
+<tr>
+<td><strong>Receivables purchase or revenue-based financing</strong></td>
+<td>Purchased amount or fixed repayment amount collected as a share of future receivables</td>
+<td>Authentic for some POS-finance providers; naturally sales-linked</td>
+<td>Distinct legal/accounting treatment, factor-rate conventions, APR-equivalent ambiguity, and significant disclosure risk</td>
+</tr>
+</tbody></table>
+<h3>Recommended V1 default</h3>
+<p>Use a:</p>
+<blockquote>
+<p><strong>Short-term closed-end small-business working-capital loan, underwritten primarily from POS and simplified deposit cash-flow data, with fixed weekly ACH repayment, a stated illustrative APR, and an optional origination fee.</strong></p>
+</blockquote>
+<p>Recommended V1 term options:</p>
+<ul>
+<li>26 weeks;</li>
+<li>39 weeks;</li>
+<li>52 weeks.</li>
+</ul>
+<p>Recommended payment cadence:</p>
+<ul>
+<li><strong>Weekly</strong>, not daily.</li>
+</ul>
+<p>Weekly payment retains the short-duration merchant-lending character while avoiding unnecessary banking-calendar, holiday, ACH-retry, and daily-servicing complexity. Daily POS history should still be used for underwriting, but daily repayment does not need to be simulated in the first version.</p>
+<p>The architecture should include a governed <code>repayment_mode</code>, with:</p>
+<ul>
+<li><code>FIXED_WEEKLY</code> implemented in V1;</li>
+<li><code>SALES_LINKED</code> reserved for a future enhancement.</li>
+</ul>
+<p>This preserves the product-definition gate in the prompt: the project should not be described as a merchant cash advance unless that legal and economic structure is deliberately selected. fileciteturn7file3</p>
+<h3>Important design boundary</h3>
+<p>The project can model illustrative loan economics, but it should not make conclusions about:</p>
+<ul>
+<li>legal product classification;</li>
+<li>required disclosures;</li>
+<li>state licensing;</li>
+<li>usury treatment;</li>
+<li>true-sale treatment;</li>
+<li>accounting classification;</li>
+<li>enforceability;</li>
+<li>regulatory compliance.</li>
+</ul>
+<p>Those would require jurisdiction-specific legal and compliance review.</p>
+<hr>
+<h2>3. Recommended two-module architecture</h2>
+<p>The two-module structure in the prompt is correct, but each module should be sharpened around a specific boundary. fileciteturn7file8</p>
+<h2>Module 1 — Merchant POS Cash-Flow, Structure &amp; Risk Engine</h2>
+<h3>Business question</h3>
+<blockquote>
+<p>Given a deterministic merchant population and an application as-of date, what merchant cash-flow profile, requested loan burden, synthetic default-risk proxy, EAD, LGD, and Expected Loss result from the selected merchant environment scenario?</p>
+</blockquote>
+<h3>Recommended processing chain</h3>
+<pre><code class="language-text">Run and Scenario Parameters
+→ Deterministic Merchant Population
+→ Baseline Daily POS History
+→ Scenario-Adjusted POS History
+→ Deposit and Liquidity Proxies
+→ As-of Cash-Flow Feature Snapshot
+→ Requested Loan Structure
+→ Requested Payment and Burden
+→ Base Merchant Risk
+→ Requested-Structure Risk Overlay
+→ Expected EAD
+→ LGD
+→ Expected Loss
+→ Latest Output
+→ Scenario Archive
+→ QA and Matched Scenario Comparison
+</code></pre>
+<h3>Recommended stages</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M1.0</td>
+<td>Purpose, boundaries, section map</td>
+</tr>
+<tr>
+<td>M1.1</td>
+<td>Schema and clean rerun controls</td>
+</tr>
+<tr>
+<td>M1.2</td>
+<td>Scenario, population, merchant-mix and economic parameters</td>
+</tr>
+<tr>
+<td>M1.3</td>
+<td>Fail-fast parameter and lineage gatekeeper</td>
+</tr>
+<tr>
+<td>M1.4</td>
+<td>Deterministic merchant/application population</td>
+</tr>
+<tr>
+<td>M1.5</td>
+<td>Base daily POS and deposit history</td>
+</tr>
+<tr>
+<td>M1.6</td>
+<td>Scenario overlays applied to matched daily history</td>
+</tr>
+<tr>
+<td>M1.7</td>
+<td>As-of revenue, stability, quality, liquidity and debt features</td>
+</tr>
+<tr>
+<td>M1.8</td>
+<td>Requested structure, payment and burden</td>
+</tr>
+<tr>
+<td>M1.9</td>
+<td>Base merchant risk and requested-structure risk</td>
+</tr>
+<tr>
+<td>M1.10</td>
+<td>Expected EAD, LGD and Expected Loss</td>
+</tr>
+<tr>
+<td>M1.11</td>
+<td>Latest-run output</td>
+</tr>
+<tr>
+<td>M1.12</td>
+<td>Scenario archive</td>
+</tr>
+<tr>
+<td>M1.13</td>
+<td>Single-run QA</td>
+</tr>
+<tr>
+<td>M1.14</td>
+<td>Matched scenario comparison</td>
+</tr>
+<tr>
+<td>M1.15</td>
+<td>Evidence summary and scenario acceptance</td>
+</tr>
+</tbody></table>
+<p>The scenario-design table on page 37 of your existing BRD makes an especially important distinction: <code>scenario_name</code> identifies <strong>what is being tested</strong>, while <code>population_id</code> identifies <strong>who is being tested</strong>. That same separation should be retained for merchants. fileciteturn6file0</p>
+<h2>Module 2 — Underwriting, Offer, Pricing &amp; Portfolio Strategy Engine</h2>
+<h3>Business question</h3>
+<blockquote>
+<p>Given a completed Module 1 merchant-risk profile and a governed strategy, what offer—if any—is individually feasible, economically viable, portfolio-compliant, and explainable?</p>
+</blockquote>
+<h3>Recommended processing chain</h3>
+<pre><code class="language-text">Module 1 Merchant Profile
+→ Strategy and Policy Profiles
+→ Source and Lineage Validation
+→ Eligibility and Risk Segmentation
+→ Rule-Trigger Evidence
+→ Candidate Offer Generation
+→ Candidate Payment and Burden
+→ Offer-Specific Risk Overlay
+→ Pricing and Expected Economics
+→ Counteroffer Feasibility
+→ Candidate Ranking
+→ Concentration and Funding-Budget Allocation
+→ Final Outcome
+→ Reason Codes
+→ Latest Output
+→ Archive
+→ Matched Strategy Comparison
+→ Strategy Frontier
+→ Evidence Capture
+→ Post-Campaign Acceptance
+</code></pre>
+<h3>Recommended stages</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M2.0</td>
+<td>Purpose, boundaries, architecture map</td>
+</tr>
+<tr>
+<td>M2.1</td>
+<td>Strategy, industry-policy, channel-policy and pricing profiles</td>
+</tr>
+<tr>
+<td>M2.2</td>
+<td>Run selector, campaign registry and comparison registry</td>
+</tr>
+<tr>
+<td>M2.3</td>
+<td>Fail-fast strategy/source/policy gatekeeper</td>
+</tr>
+<tr>
+<td>M2.4</td>
+<td>Module 1 source staging and lineage normalization</td>
+</tr>
+<tr>
+<td>M2.5</td>
+<td>Merchant-risk, cash-flow and exposure segmentation</td>
+</tr>
+<tr>
+<td>M2.6</td>
+<td>Eligibility and non-final policy flags</td>
+</tr>
+<tr>
+<td>M2.7</td>
+<td>Preliminary route</td>
+</tr>
+<tr>
+<td>M2.8</td>
+<td>Candidate-offer generation</td>
+</tr>
+<tr>
+<td>M2.9</td>
+<td>Candidate burden, offer-specific risk and economics</td>
+</tr>
+<tr>
+<td>M2.10</td>
+<td>Feasibility testing and candidate ranking</td>
+</tr>
+<tr>
+<td>M2.11</td>
+<td>Portfolio concentration and funding-budget allocation</td>
+</tr>
+<tr>
+<td>M2.12</td>
+<td>Final decision resolution</td>
+</tr>
+<tr>
+<td>M2.13</td>
+<td>Simulated explanation-code assignment</td>
+</tr>
+<tr>
+<td>M2.14</td>
+<td>Latest output</td>
+</tr>
+<tr>
+<td>M2.15</td>
+<td>Archive persistence</td>
+</tr>
+<tr>
+<td>M2.16</td>
+<td>Matched baseline/challenger comparison</td>
+</tr>
+<tr>
+<td>M2.17</td>
+<td>Latest-run validation</td>
+</tr>
+<tr>
+<td>M2.18</td>
+<td>Strategy and economics frontier</td>
+</tr>
+<tr>
+<td>M2.19</td>
+<td>Persistent evidence capture</td>
+</tr>
+<tr>
+<td>M2.20</td>
+<td>Post-campaign acceptance</td>
+</tr>
+</tbody></table>
+<p>This retains the strong staged pattern in your current Module 2—source, segmentation, flags, routing, exposure treatment, outcome, reasons, archive, comparison, QA, frontier, evidence and acceptance—but inserts the merchant-specific candidate-pricing and portfolio-allocation layers. fileciteturn5file4</p>
+<h3>One deliberate departure from the current Module 2</h3>
+<p>Your present Module 2 does not recalculate the upstream estimated-PD proxy. In the merchant simulator:</p>
+<ul>
+<li>Module 1 should calculate a <strong>base merchant-risk proxy</strong> and a <strong>requested-structure risk proxy</strong>.</li>
+<li>Module 2 should preserve the base merchant-risk assessment.</li>
+<li>Module 2 may calculate an <strong>offer-specific structural risk overlay</strong> because changing amount, term and payment burden changes the risk associated with the proposed offer.</li>
+</ul>
+<p>This is not rebuilding the merchant model. It is translating an approved or counteroffered structure into offer-specific risk.</p>
+<hr>
+<h2>4. Recommended table grains</h2>
+<h3>Core operational and analytical grains</h3>
+<table>
+<thead>
+<tr>
+<th>Logical table</th>
+<th>Grain</th>
+<th>Primary business key</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>merchant_population</code></td>
+<td>One row per synthetic merchant per population</td>
+<td><code>population_id + merchant_id</code></td>
+<td>Stable merchant identity and intrinsic profile</td>
+</tr>
+<tr>
+<td><code>merchant_application</code></td>
+<td>One row per application</td>
+<td><code>population_id + merchant_application_id</code></td>
+<td>Application date, requested structure and as-of date</td>
+</tr>
+<tr>
+<td><code>merchant_pos_daily_base</code></td>
+<td>One row per merchant per calendar date</td>
+<td><code>population_id + merchant_id + observation_date</code></td>
+<td>Immutable deterministic baseline POS history</td>
+</tr>
+<tr>
+<td><code>merchant_pos_daily_scenario</code></td>
+<td>One row per scenario, merchant and date</td>
+<td><code>scenario_set + scenario + population + merchant + date</code></td>
+<td>Scenario-adjusted daily POS, refunds, chargebacks and deposits</td>
+</tr>
+<tr>
+<td><code>merchant_feature_snapshot</code></td>
+<td>One row per Module 1 scenario and application</td>
+<td><code>scenario_set + scenario + population + application</code></td>
+<td>All features available as of the application date</td>
+</tr>
+<tr>
+<td><code>merchant_request_risk</code></td>
+<td>One row per Module 1 scenario and application</td>
+<td>Same as feature snapshot</td>
+<td>Requested payment, burden, risk proxy, EAD, LGD and EL</td>
+</tr>
+<tr>
+<td><code>offer_candidate</code></td>
+<td>One row per application, strategy and candidate</td>
+<td>M1 lineage + M2 strategy lineage + application + <code>candidate_id</code></td>
+<td>Alternative amount/term/price structures</td>
+</tr>
+<tr>
+<td><code>strategy_decision_latest</code></td>
+<td>One row per selected application and current strategy</td>
+<td>M1 lineage + M2 strategy lineage + application</td>
+<td>Replaceable latest final decision</td>
+</tr>
+<tr>
+<td><code>strategy_decision_archive</code></td>
+<td>One row per application, scenario and strategy version</td>
+<td>M1 lineage + M2 strategy lineage + application</td>
+<td>Persistent comparison history</td>
+</tr>
+<tr>
+<td><code>portfolio_limit_status</code></td>
+<td>One row per run, limit and monitored segment</td>
+<td>Run key + <code>risk_appetite_limit_id + segment_key</code></td>
+<td>Limit, early warning, breach, action and owner</td>
+</tr>
+<tr>
+<td><code>strategy_run_evidence</code></td>
+<td>One row per completed run</td>
+<td>Technical run key</td>
+<td>Executive outcome, exposure, risk and economics evidence</td>
+</tr>
+<tr>
+<td><code>strategy_run_segment_evidence</code></td>
+<td>One row per run and segment</td>
+<td>Run key + segment level + segment key</td>
+<td>Industry, channel, risk-tier and merchant-size drivers</td>
+</tr>
+<tr>
+<td><code>campaign_registry</code></td>
+<td>One row per planned/completed run</td>
+<td>Deterministic run ID</td>
+<td>Documentation and campaign linkage</td>
+</tr>
+<tr>
+<td><code>comparison_registry</code></td>
+<td>One row per governed comparison</td>
+<td>Comparison ID</td>
+<td>Explicit baseline/challenger selection</td>
+</tr>
+</tbody></table>
+<h3>V1 simplification</h3>
+<p>Use <strong>one application per merchant</strong> initially, while retaining distinct <code>merchant_id</code> and <code>merchant_application_id</code>. That supports future:</p>
+<ul>
+<li>repeat applications;</li>
+<li>renewals;</li>
+<li>multiple applications per merchant;</li>
+<li>booked-account performance.</li>
+</ul>
+<h3>Base history versus scenario history</h3>
+<p>Do not regenerate a completely different daily merchant history for each scenario. Instead:</p>
+<ol>
+<li>Generate one deterministic baseline history.</li>
+<li>Apply scenario transformations to the same merchant/date observations.</li>
+<li>Preserve all merchant IDs and dates.</li>
+<li>Archive the scenario feature and risk snapshots.</li>
+</ol>
+<p>This makes scenario deltas attributable and avoids population noise.</p>
+<h3>Leakage control</h3>
+<p>Every underwriting feature must satisfy:</p>
+<pre><code class="language-text">observation_date &lt;= as_of_date
+</code></pre>
+<p>The feature window should be explicit, such as:</p>
+<pre><code class="language-text">as_of_date - 364 days through as_of_date
+</code></pre>
+<p>The same <code>as_of_date</code>, merchant IDs, application IDs and baseline history must be used for matched scenarios. The attachment explicitly requires this no-future-data condition. fileciteturn7file15</p>
+<h3>Recommended scale</h3>
+<p>For the portfolio-grade V1 validation run:</p>
+<ul>
+<li>5,000 merchants;</li>
+<li>365 daily observations;</li>
+<li>approximately 1.825 million baseline POS rows;</li>
+<li>six Module 1 scenario snapshots;</li>
+<li>nine candidate offers per merchant and strategy, generated temporarily;</li>
+<li>approximately 95,000 archived final decisions for a 19-run Module 2 campaign.</li>
+</ul>
+<p>This is large enough to demonstrate data engineering and portfolio analysis without making the repository unwieldy.</p>
+<hr>
+<h2>5. The 30 most important V1 field families</h2>
+<p>These are <strong>field families</strong>, not necessarily single physical columns. They would probably produce approximately 45–55 output columns.</p>
+<table>
+<thead>
+<tr>
+<th align="right">#</th>
+<th>Field family</th>
+<th>Principal business purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">1</td>
+<td><code>population_id</code>, scenario identity</td>
+<td>Reproducibility and matched comparison</td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td><code>merchant_id</code>, <code>merchant_application_id</code></td>
+<td>Merchant and application lineage</td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td><code>application_date</code>, <code>as_of_date</code>, history start/end</td>
+<td>Leakage control and observation-window traceability</td>
+</tr>
+<tr>
+<td align="right">4</td>
+<td><code>industry_group</code>, <code>industry_risk_tier</code></td>
+<td>Structural revenue behavior, policy and concentration</td>
+</tr>
+<tr>
+<td align="right">5</td>
+<td><code>channel_id</code>, <code>partner_id</code>, <code>channel_risk_tier</code></td>
+<td>Acquisition quality, cost and concentration</td>
+</tr>
+<tr>
+<td align="right">6</td>
+<td><code>geography_region</code></td>
+<td>Regional segmentation and concentration</td>
+</tr>
+<tr>
+<td align="right">7</td>
+<td><code>months_in_business</code></td>
+<td>Business stability</td>
+</tr>
+<tr>
+<td align="right">8</td>
+<td><code>processor_tenure_months</code></td>
+<td>POS-history depth and data reliability</td>
+</tr>
+<tr>
+<td align="right">9</td>
+<td><code>owner_credit_score</code>, owner adverse flags</td>
+<td>Guarantor-quality evidence; secondary to business cash flow</td>
+</tr>
+<tr>
+<td align="right">10</td>
+<td><code>business_bureau_score</code>, liens, bankruptcy, prior default</td>
+<td>Business credit and legal-risk evidence</td>
+</tr>
+<tr>
+<td align="right">11</td>
+<td><code>avg_monthly_net_pos_sales_12m</code></td>
+<td>Long-run revenue level</td>
+</tr>
+<tr>
+<td align="right">12</td>
+<td><code>avg_monthly_net_pos_sales_3m</code></td>
+<td>Recent revenue capacity</td>
+</tr>
+<tr>
+<td align="right">13</td>
+<td><code>sales_growth_3m_vs_12m</code></td>
+<td>Recent deterioration or growth</td>
+</tr>
+<tr>
+<td align="right">14</td>
+<td><code>monthly_sales_coefficient_of_variation</code></td>
+<td>Revenue volatility</td>
+</tr>
+<tr>
+<td align="right">15</td>
+<td><code>zero_sales_day_rate_90d</code></td>
+<td>Operating continuity</td>
+</tr>
+<tr>
+<td align="right">16</td>
+<td><code>seasonality_index</code>, <code>largest_month_share</code></td>
+<td>Distinguish seasonality from concentration or deterioration</td>
+</tr>
+<tr>
+<td align="right">17</td>
+<td><code>refund_rate_90d</code></td>
+<td>Sales quality and reversal behavior</td>
+</tr>
+<tr>
+<td align="right">18</td>
+<td><code>chargeback_rate_90d</code>, reversal rate</td>
+<td>Transaction dispute and operational risk</td>
+</tr>
+<tr>
+<td align="right">19</td>
+<td><code>deposit_to_pos_sales_ratio</code>, deposit consistency</td>
+<td>POS-to-bank reconciliation and revenue usability</td>
+</tr>
+<tr>
+<td align="right">20</td>
+<td><code>negative_balance_days_90d</code>, <code>nsf_count_90d</code></td>
+<td>Liquidity stress</td>
+</tr>
+<tr>
+<td align="right">21</td>
+<td><code>existing_monthly_debt_service</code></td>
+<td>Existing payment burden</td>
+</tr>
+<tr>
+<td align="right">22</td>
+<td><code>active_short_term_advance_count</code>, <code>stacking_flag</code></td>
+<td>Existing short-term leverage</td>
+</tr>
+<tr>
+<td align="right">23</td>
+<td>Requested structure: amount, term, payment frequency, use</td>
+<td>Original merchant demand</td>
+</tr>
+<tr>
+<td align="right">24</td>
+<td><code>adjusted_eligible_monthly_revenue</code></td>
+<td>Governed, haircut revenue available for sizing</td>
+</tr>
+<tr>
+<td align="right">25</td>
+<td><code>adjusted_monthly_cash_flow_available</code></td>
+<td>Synthetic cash-flow capacity after industry conversion</td>
+</tr>
+<tr>
+<td align="right">26</td>
+<td><code>loan_to_annualized_sales</code>, <code>loan_to_monthly_sales</code></td>
+<td>Exposure intensity</td>
+</tr>
+<tr>
+<td align="right">27</td>
+<td><code>new_payment_to_sales</code>, <code>total_payment_to_sales</code></td>
+<td>Structural repayment burden</td>
+</tr>
+<tr>
+<td align="right">28</td>
+<td><code>post_loan_fixed_obligation_coverage_ratio</code></td>
+<td>Primary affordability/capacity measure</td>
+</tr>
+<tr>
+<td align="right">29</td>
+<td>Risk/loss package: base risk, offer risk, EAD, LGD, EL</td>
+<td>Risk ranking and comparative loss</td>
+</tr>
+<tr>
+<td align="right">30</td>
+<td>Offer/economics/outcome package</td>
+<td>Approved amount, term, price, contribution, outcome and reasons</td>
+</tr>
+</tbody></table>
+<h3>What should be deliberately omitted from V1</h3>
+<p>Do not add these merely for apparent sophistication:</p>
+<ul>
+<li>full financial statements;</li>
+<li>tax-return simulation;</li>
+<li>payroll detail;</li>
+<li>detailed merchant-category codes;</li>
+<li>transaction-level card events;</li>
+<li>full UCC priority modeling;</li>
+<li>collateral valuation;</li>
+<li>real bank-statement classification;</li>
+<li>machine-learning features with no explanatory role;</li>
+<li>lifetime account-performance variables.</li>
+</ul>
+<p>Each additional feature should have a defined business purpose, expected direction, valid range, QA test, and downstream use.</p>
+<hr>
+<h2>6. First-pass underwriting, sizing, counteroffer, pricing and risk-appetite framework</h2>
+<h2>6.1 Primary affordability design</h2>
+<p>The consumer analogue should <strong>not</strong> be a direct substitution of PTI with payment-to-sales.</p>
+<p>Gross sales are not business cash flow. The primary V1 capacity metric should be:</p>
+<pre><code class="language-text">Post-Loan Fixed-Obligation Coverage Ratio
+=
+Adjusted Monthly Cash Flow Available
+÷
+(Existing Monthly Debt Service + Proposed Monthly Payment)
+</code></pre>
+<p>Supporting measures should include:</p>
+<pre><code class="language-text">New Payment-to-Sales
+=
+Proposed Monthly Payment
+÷
+Adjusted Eligible Monthly Revenue
+</code></pre>
+<pre><code class="language-text">Total Payment-to-Sales
+=
+(Existing Monthly Debt Service + Proposed Monthly Payment)
+÷
+Adjusted Eligible Monthly Revenue
+</code></pre>
+<h3>Recommended hierarchy</h3>
+<ol>
+<li><strong>Post-loan fixed-obligation coverage</strong> — primary capacity control.</li>
+<li><strong>Total payment-to-sales</strong> — structural burden guardrail.</li>
+<li><strong>Loan-to-sales</strong> — exposure-size guardrail.</li>
+<li><strong>Cash flow after debt service</strong> — dollar buffer.</li>
+<li><strong>Revenue trend and volatility</strong> — confidence in the capacity estimate.</li>
+</ol>
+<p>This captures authentic merchant economics: the same payment-to-sales ratio has different implications for a high-margin professional service business and a low-margin restaurant or retailer.</p>
+<h2>6.2 Adjusted eligible revenue</h2>
+<p>A conservative initial formula is:</p>
+<pre><code class="language-text">Adjusted Eligible Monthly Revenue
+=
+Minimum of:
+    Recent 3-month average net POS sales
+    6-month average net POS sales
+    Seasonally adjusted 12-month average net POS sales
+×
+Data-quality factor
+×
+Revenue-stability factor
+×
+Transaction-quality factor
+</code></pre>
+<p>Possible haircuts:</p>
+<ul>
+<li>incomplete POS history;</li>
+<li>high volatility;</li>
+<li>recent sharp growth unsupported by history;</li>
+<li>high refunds;</li>
+<li>high chargebacks;</li>
+<li>inconsistent bank deposits;</li>
+<li>high zero-sales-day frequency;</li>
+<li>severe seasonal concentration.</li>
+</ul>
+<p>The calculation should preserve each component and haircut diagnostically.</p>
+<h2>6.3 Adjusted cash-flow availability</h2>
+<p>Because POS sales are not operating cash flow:</p>
+<pre><code class="language-text">Adjusted Monthly Cash Flow Available
+=
+Adjusted Eligible Monthly Revenue
+×
+Industry Cash-Flow Conversion Margin
+</code></pre>
+<p>The conversion margin is a <strong>synthetic policy assumption</strong>, not an estimate of actual EBITDA or free cash flow.</p>
+<p>Example tier structure:</p>
+<table>
+<thead>
+<tr>
+<th>Industry profile</th>
+<th align="right">Illustrative conversion margin</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Higher-margin services</td>
+<td align="right">25%–35%</td>
+</tr>
+<tr>
+<td>General retail</td>
+<td align="right">15%–22%</td>
+</tr>
+<tr>
+<td>Restaurants and food service</td>
+<td align="right">10%–18%</td>
+</tr>
+<tr>
+<td>Fuel, grocery or other thin-margin sectors</td>
+<td align="right">6%–12%</td>
+</tr>
+</tbody></table>
+<p>These ranges should be public demonstration assumptions, not represented as production benchmarks.</p>
+<h2>6.4 Eligibility and routing</h2>
+<h3>Hard simulated stops</h3>
+<ul>
+<li>insufficient POS-history window;</li>
+<li>inactive or terminated processor status;</li>
+<li>severe missingness or reconciliation failure;</li>
+<li>prohibited industry;</li>
+<li>severe bankruptcy or prior-default flag;</li>
+<li>two or more active short-term advances;</li>
+<li>extreme chargeback behavior;</li>
+<li>no positive capacity after existing obligations;</li>
+<li>requested use outside the synthetic product scope.</li>
+</ul>
+<h3>Manual-review conditions</h3>
+<ul>
+<li>6–11 months in business;</li>
+<li>3–5 months processor tenure;</li>
+<li>material POS/deposit conflict;</li>
+<li>strong owner credit but deteriorating business cash flow;</li>
+<li>weak owner credit but strong business cash flow;</li>
+<li>severe seasonality that cannot be separated from deterioration;</li>
+<li>one existing short-term advance;</li>
+<li>material threshold adjacency;</li>
+<li>unusual industry/channel combination.</li>
+</ul>
+<h3>Demonstration starting bands</h3>
+<p>These are starting calibration bands, not production policy recommendations:</p>
+<table>
+<thead>
+<tr>
+<th>Measure</th>
+<th align="right">Approve zone</th>
+<th align="right">Counteroffer zone</th>
+<th align="right">Review zone</th>
+<th align="right">Decline zone</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Post-loan FOCR</td>
+<td align="right">≥1.25x</td>
+<td align="right">≥1.15x</td>
+<td align="right">1.00x–1.15x</td>
+<td align="right">&lt;1.00x</td>
+</tr>
+<tr>
+<td>Total payment-to-sales</td>
+<td align="right">Industry-specific, generally ≤10%–12%</td>
+<td align="right">Generally ≤15%</td>
+<td align="right">15%–18%</td>
+<td align="right">&gt;18%</td>
+</tr>
+<tr>
+<td>Recent sales change</td>
+<td align="right">Better than −15%</td>
+<td align="right">−15% to −25%</td>
+<td align="right">−25% to −35%</td>
+<td align="right">Worse than −35%</td>
+</tr>
+<tr>
+<td>Monthly sales CV</td>
+<td align="right">≤0.35</td>
+<td align="right">0.35–0.50</td>
+<td align="right">0.50–0.65</td>
+<td align="right">&gt;0.65</td>
+</tr>
+<tr>
+<td>Chargeback rate</td>
+<td align="right">Low tier</td>
+<td align="right">Moderate tier</td>
+<td align="right">High tier</td>
+<td align="right">Severe tier</td>
+</tr>
+<tr>
+<td>Active short-term advances</td>
+<td align="right">0</td>
+<td align="right">0–1</td>
+<td align="right">1</td>
+<td align="right">2+</td>
+</tr>
+</tbody></table>
+<p>All thresholds should ultimately be parameterized by industry and strategy profile.</p>
+<h2>6.5 Loan sizing</h2>
+<p>Calculate maximum payment capacity first:</p>
+<pre><code class="language-text">Maximum New Monthly Debt Service
+=
+Adjusted Monthly Cash Flow Available
+÷
+Minimum Required FOCR
+−
+Existing Monthly Debt Service
+</code></pre>
+<p>Convert to weekly capacity:</p>
+<pre><code class="language-text">Maximum Weekly Payment
+=
+Maximum New Monthly Debt Service × 12 ÷ 52
+</code></pre>
+<p>Then solve the supported principal using:</p>
+<ul>
+<li>selected term;</li>
+<li>selected APR;</li>
+<li>weekly amortization schedule.</li>
+</ul>
+<p>Final individually supportable exposure:</p>
+<pre><code class="language-text">Maximum Individually Supportable Amount
+=
+Minimum of:
+    Requested amount
+    Payment-capacity amount
+    Loan-to-sales cap
+    Risk-tier exposure cap
+    Industry-policy cap
+    Global product cap
+</code></pre>
+<p>The final funded offer may be lower once concentration and funding-budget allocation are applied.</p>
+<h2>6.6 Transparent risk framework</h2>
+<p>Use an <strong>additive points framework mapped through a bounded logistic transformation</strong>, rather than multiplying many risk factors together.</p>
+<p>Example:</p>
+<pre><code class="language-text">Base Merchant Risk Points
++ Revenue Decline Points
++ Volatility Points
++ Refund / Chargeback Points
++ Liquidity Stress Points
++ Existing Debt / Stacking Points
++ Business Stability Points
++ Owner / Business Credit Points
++ Industry / Channel Points
++ Offer Burden Points
+=
+Raw Risk Score
+→ Bounded Estimated Default-Risk Proxy
+</code></pre>
+<p>Advantages:</p>
+<ul>
+<li>clearer component attribution;</li>
+<li>reduced risk of multiplier explosions;</li>
+<li>better high-risk differentiation;</li>
+<li>easier champion/challenger tuning;</li>
+<li>less mechanical cap crowding.</li>
+</ul>
+<p>Your Module 1 V2.0 validation identified cap crowding as a material issue and introduced soft saturation to preserve differentiation. The merchant system can retain the same governance lesson while using an additive score-to-risk mapping from the outset. fileciteturn2file8</p>
+<p>Required diagnostics:</p>
+<ul>
+<li>base merchant-risk points;</li>
+<li>each component’s point contribution;</li>
+<li>requested-structure points;</li>
+<li>offer-specific structure points;</li>
+<li>raw score;</li>
+<li>transformed risk proxy;</li>
+<li>floor/cap status;</li>
+<li>risk tier.</li>
+</ul>
+<p>The output must remain a <strong>synthetic estimated default-risk proxy</strong>, not a calibrated production PD.</p>
+<h2>6.7 EAD and Expected Loss</h2>
+<p>Publish both methods.</p>
+<h3>Reconciliation measure</h3>
+<pre><code class="language-text">Simple Expected Loss
+=
+Estimated Default-Risk Proxy
+×
+LGD
+×
+Approved Amount
+</code></pre>
+<h3>Preferred V1 measure</h3>
+<pre><code class="language-text">Schedule-Adjusted Expected Loss
+=
+Estimated Default-Risk Proxy
+×
+LGD
+×
+Expected EAD
+</code></pre>
+<p>Expected EAD should use the fixed weekly amortization schedule and parameterized default-timing weights.</p>
+<p>For example:</p>
+<pre><code class="language-text">Expected EAD
+=
+Σ (
+    Scheduled Outstanding Balance at Week t
+    ×
+    Default-Timing Weight at Week t
+)
+</code></pre>
+<p>This is substantially more authentic for a rapidly amortizing short-term loan than assuming the original principal remains outstanding at default.</p>
+<p>Retaining both measures gives a valuable validation identity:</p>
+<pre><code class="language-text">Schedule-adjusted EL should generally be lower than full-principal EL
+for amortizing offers, all else equal.
+</code></pre>
+<h2>6.8 Candidate-offer and counteroffer framework</h2>
+<p>Generate a bounded candidate set, not a continuous optimizer.</p>
+<p>Recommended V1 candidate grid:</p>
+<ul>
+<li>amounts: 100%, 80%, and 60% of the lower of request and preliminary policy cap;</li>
+<li>terms: 26, 39, and 52 weeks;</li>
+<li>price: determined by risk tier, term, channel cost and strategy profile.</li>
+</ul>
+<p>That creates nine candidates per otherwise eligible merchant.</p>
+<p>Each candidate should calculate:</p>
+<ul>
+<li>weekly payment;</li>
+<li>new and total payment-to-sales;</li>
+<li>post-loan FOCR;</li>
+<li>loan-to-sales;</li>
+<li>offer-specific risk proxy;</li>
+<li>expected EAD;</li>
+<li>Expected Loss;</li>
+<li>gross finance income;</li>
+<li>costs;</li>
+<li>expected contribution;</li>
+<li>margin rate;</li>
+<li>all candidate feasibility flags.</li>
+</ul>
+<h3>Recommended counteroffer sequence</h3>
+<ol>
+<li>Reduce amount.</li>
+<li>Extend term.</li>
+<li>Apply the appropriate risk-tier price.</li>
+<li>Recalculate payment, risk, EAD, EL and contribution.</li>
+<li>Select the best feasible candidate under the active strategy objective.</li>
+</ol>
+<p>Price should never be used to “cure” an unaffordable structure. A higher rate increases payment burden and can worsen risk.</p>
+<h3>Outcome resolution</h3>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Final outcome</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Requested structure passes all individual and portfolio controls</td>
+<td><code>APPROVE</code></td>
+</tr>
+<tr>
+<td>Requested structure fails, but another candidate is feasible</td>
+<td><code>COUNTEROFFER</code></td>
+</tr>
+<tr>
+<td>Data conflict, threshold adjacency or unresolved concentration issue</td>
+<td><code>MANUAL_REVIEW</code></td>
+</tr>
+<tr>
+<td>Hard stop or no viable candidate</td>
+<td><code>DECLINE</code></td>
+</tr>
+</tbody></table>
+<h2>6.9 Pricing and risk-adjusted economics</h2>
+<p>Use a governed price card rather than a mathematical price optimizer.</p>
+<p>Price dimensions:</p>
+<ul>
+<li>merchant risk tier;</li>
+<li>term;</li>
+<li>industry tier;</li>
+<li>partner/channel acquisition cost;</li>
+<li>optional relationship status;</li>
+<li>funding-cost environment.</li>
+</ul>
+<h3>Required economics</h3>
+<pre><code class="language-text">Gross Finance Income
++ Origination Fee Income
+− Cost of Funds
+− Partner Commission
+− Servicing Cost
+− Expected Credit Loss
+− Capital Charge
+=
+Expected Net Contribution
+</code></pre>
+<p>Recommended calculations:</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>V1 treatment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Interest income</td>
+<td>Weekly amortization schedule</td>
+</tr>
+<tr>
+<td>Fee income</td>
+<td>Illustrative upfront origination fee</td>
+</tr>
+<tr>
+<td>Cost of funds</td>
+<td>Schedule-based average outstanding balance</td>
+</tr>
+<tr>
+<td>Partner commission</td>
+<td>Percentage of approved/funded amount</td>
+</tr>
+<tr>
+<td>Servicing cost</td>
+<td>Fixed account cost plus payment-frequency cost</td>
+</tr>
+<tr>
+<td>Expected loss</td>
+<td>Offer-specific risk × LGD × expected EAD</td>
+</tr>
+<tr>
+<td>Capital charge</td>
+<td>Simplified risk-weighted EAD × term factor</td>
+</tr>
+<tr>
+<td>Margin rate</td>
+<td>Contribution ÷ approved amount</td>
+</tr>
+<tr>
+<td>Return proxy</td>
+<td>Annualized contribution ÷ average outstanding balance</td>
+</tr>
+</tbody></table>
+<p>Avoid calling the return measure RAROC unless the denominator is explicitly modeled regulatory or economic capital.</p>
+<h3>Pricing feasibility conditions</h3>
+<p>A candidate should pass only when:</p>
+<ul>
+<li>APR and fee remain within synthetic floor/cap parameters;</li>
+<li>FOCR and payment burden pass;</li>
+<li>Expected Loss rate passes;</li>
+<li>expected net contribution is positive;</li>
+<li>expected margin exceeds strategy minimum;</li>
+<li>no hard policy or concentration stop applies.</li>
+</ul>
+<h2>6.10 Portfolio allocation and concentration</h2>
+<p>True concentration management cannot be demonstrated solely by reporting concentration after every merchant has been “approved.”</p>
+<p>Recommended design:</p>
+<ol>
+<li>Establish a fixed <code>strategy_funding_budget</code>.</li>
+<li>Calculate individually viable offers.</li>
+<li>Rank viable offers deterministically under the active strategy objective.</li>
+<li>Allocate exposure while monitoring:<ul>
+<li>industry caps;</li>
+<li>channel/partner caps;</li>
+<li>geography caps;</li>
+<li>risk-tier caps;</li>
+<li>new-business caps;</li>
+<li>high-volatility caps;</li>
+<li>stacking caps.</li>
+</ul>
+</li>
+<li>Reduce an offer to remaining capacity where feasible.</li>
+<li>Route unresolved rows to review or decline.</li>
+</ol>
+<p>This converts concentration limits into active portfolio strategy rather than decorative dashboard metrics.</p>
+<hr>
+<h2>6.11 First-pass risk-appetite framework</h2>
+<p>The following are synthetic starting points for baseline calibration, not industry benchmarks.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Limit</th>
+<th align="right">Early warning</th>
+<th>Breach action</th>
+<th>Primary owner</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approved Expected Loss rate</td>
+<td align="right">≤6%</td>
+<td align="right">6%–7%</td>
+<td>Tighten risk/exposure or price profile</td>
+<td>Credit Risk</td>
+</tr>
+<tr>
+<td>High-risk-tier exposure</td>
+<td align="right">≤15%</td>
+<td align="right">15%–18%</td>
+<td>Reduce risk-tier caps</td>
+<td>Credit Risk</td>
+</tr>
+<tr>
+<td>Largest industry share</td>
+<td align="right">≤20%</td>
+<td align="right">20%–23%</td>
+<td>Restrict further allocation</td>
+<td>Portfolio Management</td>
+</tr>
+<tr>
+<td>Largest partner/channel share</td>
+<td align="right">≤25%</td>
+<td align="right">25%–28%</td>
+<td>Apply partner overlay</td>
+<td>Portfolio/Product</td>
+</tr>
+<tr>
+<td>High-volatility exposure</td>
+<td align="right">≤12%</td>
+<td align="right">12%–15%</td>
+<td>Tighten stability haircut</td>
+<td>Credit Risk</td>
+</tr>
+<tr>
+<td>Stacking exposure</td>
+<td align="right">≤5%</td>
+<td align="right">5%–7%</td>
+<td>Suspend stacked approvals</td>
+<td>Credit Policy</td>
+</tr>
+<tr>
+<td>Exposure with FOCR &lt;1.15x</td>
+<td align="right">≤5%</td>
+<td align="right">5%–7%</td>
+<td>Counteroffer or review</td>
+<td>Underwriting</td>
+</tr>
+<tr>
+<td>Policy exception rate</td>
+<td align="right">≤3%</td>
+<td align="right">3%–5%</td>
+<td>Escalate and reduce delegation</td>
+<td>Credit Policy</td>
+</tr>
+<tr>
+<td>Manual-review rate</td>
+<td align="right">≤15%</td>
+<td align="right">15%–20%</td>
+<td>Review rules and data quality</td>
+<td>Operations</td>
+</tr>
+<tr>
+<td>Expected margin rate</td>
+<td align="right">≥8%</td>
+<td align="right">6%–8%</td>
+<td>Reprice or reduce acquisition cost</td>
+<td>Finance/Pricing</td>
+</tr>
+<tr>
+<td>Negative-contribution offers</td>
+<td align="right">0%</td>
+<td align="right">Any positive count</td>
+<td>Block offer generation</td>
+<td>Finance/Credit</td>
+</tr>
+<tr>
+<td>Top-10 merchant exposure</td>
+<td align="right">≤5%</td>
+<td align="right">5%–7%</td>
+<td>Reduce individual exposure caps</td>
+<td>Portfolio Management</td>
+</tr>
+</tbody></table>
+<p>Every risk-appetite record should preserve:</p>
+<pre><code class="language-text">Limit
+→ Early-Warning Threshold
+→ Current Result
+→ Status
+→ Breach Indicator
+→ Required Action
+→ Owner
+→ Review Date
+</code></pre>
+<hr>
+<h2>7. Recommended scenario and strategy campaign</h2>
+<p>Do not run a full Cartesian product of every scenario and every strategy. Use three campaign layers.</p>
+<h2>Module 1 merchant-environment scenarios</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Scenario</th>
+<th>Primary transmission</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M1-S01</td>
+<td>Baseline merchant environment</td>
+<td>Reference</td>
+</tr>
+<tr>
+<td>M1-S02</td>
+<td>Recent sales decline</td>
+<td>Revenue → capacity → burden → risk</td>
+</tr>
+<tr>
+<td>M1-S03</td>
+<td>Volatility and zero-sales-day stress</td>
+<td>Stability → haircuts → capacity/risk</td>
+</tr>
+<tr>
+<td>M1-S04</td>
+<td>Refund and chargeback stress</td>
+<td>Net eligible revenue and transaction quality</td>
+</tr>
+<tr>
+<td>M1-S05</td>
+<td>Existing-debt and stacking stress</td>
+<td>Obligations → FOCR → exposure/risk</td>
+</tr>
+<tr>
+<td>M1-S06</td>
+<td>Industry/channel deterioration</td>
+<td>Segment risk and concentration</td>
+</tr>
+</tbody></table>
+<p>Funding-cost stress should ordinarily be a Module 2 economics environment because it changes offer economics, not the underlying merchant history.</p>
+<h2>Module 2 strategy profiles</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Strategy</th>
+<th>Objective</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M2-B01</td>
+<td>Balanced baseline</td>
+<td>Balanced access, loss and margin</td>
+</tr>
+<tr>
+<td>M2-G01</td>
+<td>Growth/access</td>
+<td>Expand viable offers subject to minimum economics</td>
+</tr>
+<tr>
+<td>M2-R01</td>
+<td>Loss containment</td>
+<td>Reduce high-risk exposure and EL</td>
+</tr>
+<tr>
+<td>M2-A01</td>
+<td>Affordability discipline</td>
+<td>Tighten FOCR and payment burden</td>
+</tr>
+<tr>
+<td>M2-C01</td>
+<td>Selective counteroffer</td>
+<td>Preserve access through feasible restructuring</td>
+</tr>
+<tr>
+<td>M2-P01</td>
+<td>Margin protection / price for risk</td>
+<td>Protect contribution under cost pressure</td>
+</tr>
+<tr>
+<td>M2-K01</td>
+<td>Concentration guardrail</td>
+<td>Enforce industry and partner limits</td>
+</tr>
+</tbody></table>
+<h2>Campaign design</h2>
+<h3>Layer A — Pure strategy frontier</h3>
+<p>Run all seven Module 2 strategies against M1 baseline.</p>
+<p><strong>Runs: 7</strong></p>
+<p>This isolates downstream strategy effects.</p>
+<h3>Layer B — Environment sensitivity</h3>
+<p>Run the balanced baseline strategy against all six Module 1 scenarios.</p>
+<p><strong>Runs: 6</strong></p>
+<p>This isolates upstream merchant-environment effects.</p>
+<h3>Layer C — Targeted scenario × strategy tests</h3>
+<table>
+<thead>
+<tr>
+<th>Environment</th>
+<th>Target strategy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Sales decline</td>
+<td>Affordability discipline</td>
+</tr>
+<tr>
+<td>Volatility stress</td>
+<td>Selective counteroffer</td>
+</tr>
+<tr>
+<td>Refund/chargeback stress</td>
+<td>Loss containment</td>
+</tr>
+<tr>
+<td>Existing-debt/stacking stress</td>
+<td>Loss containment</td>
+</tr>
+<tr>
+<td>Industry/channel deterioration</td>
+<td>Concentration guardrail</td>
+</tr>
+<tr>
+<td>Funding-cost increase</td>
+<td>Margin protection</td>
+</tr>
+</tbody></table>
+<p><strong>Runs: 6</strong></p>
+<h3>Total initial campaign</h3>
+<pre><code class="language-text">7 + 6 + 6 = 19 runs
+</code></pre>
+<p>This is large enough to produce a meaningful strategy frontier without creating an unmanageable campaign.</p>
+<h3>Comparison rules</h3>
+<ul>
+<li>M1 scenario comparisons: hold strategy and population constant.</li>
+<li>M2 strategy comparisons: hold M1 scenario and population constant.</li>
+<li>Scenario × strategy frontier: may summarize all archived points, but must not conflate upstream environment effects with downstream policy effects.</li>
+<li>Matched row comparisons: use <code>merchant_application_id</code>.</li>
+<li>Timestamps and run IDs: audit metadata only, not match keys.</li>
+</ul>
+<p>This follows the comparison discipline in your existing modules. The current architecture correctly treats latest output as replaceable and the archive as the governed comparison source. fileciteturn4file15</p>
+<hr>
+<h2>8. Principal risks of overbuilding</h2>
+<table>
+<thead>
+<tr>
+<th>Overbuild risk</th>
+<th>Why it would weaken the project</th>
+<th>Control</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Supporting three legal products at once</td>
+<td>Blurs mechanics, pricing and legal boundaries</td>
+<td>Implement one closed-end product</td>
+</tr>
+<tr>
+<td>Transaction-level POS generation</td>
+<td>Creates enormous data volume with little incremental strategy value</td>
+<td>Generate daily aggregates</td>
+</tr>
+<tr>
+<td>Full financial-statement simulation</td>
+<td>Produces false precision</td>
+<td>Use documented cash-flow conversion assumptions</td>
+</tr>
+<tr>
+<td>Dozens of low-value features</td>
+<td>Reduces explainability and QA quality</td>
+<td>Limit V1 to 30 field families</td>
+</tr>
+<tr>
+<td>Machine learning in V1</td>
+<td>Distracts from strategy, economics and governance</td>
+<td>Use transparent additive risk framework</td>
+</tr>
+<tr>
+<td>Full account-performance lifecycle</td>
+<td>Requires state transitions and time-series validation</td>
+<td>Reserve for Module 3</td>
+</tr>
+<tr>
+<td>Continuous pricing optimizer</td>
+<td>Implies precision unsupported by synthetic data</td>
+<td>Use discrete price cards</td>
+</tr>
+<tr>
+<td>Full candidate archive</td>
+<td>Multiplies data volume unnecessarily</td>
+<td>Keep candidates transient; archive final offer and diagnostics</td>
+</tr>
+<tr>
+<td>Hard concentration allocation too early</td>
+<td>Can obscure individual offer logic during development</td>
+<td>Validate individual feasibility first, then add allocation</td>
+</tr>
+<tr>
+<td>Full Cartesian campaign</td>
+<td>Creates repeated outputs without clear management questions</td>
+<td>Use the targeted 19-run campaign</td>
+</tr>
+<tr>
+<td>Power BI before definitions stabilize</td>
+<td>Produces denominator and grain problems</td>
+<td>Build only after source acceptance</td>
+</tr>
+<tr>
+<td>BRD length before design decisions</td>
+<td>Repeats unresolved assumptions in polished prose</td>
+<td>Lock decision records first</td>
+</tr>
+<tr>
+<td>Copying consumer thresholds</td>
+<td>Creates a superficial reskin</td>
+<td>Rebuild burden, risk and economics from merchant cash flow</td>
+</tr>
+<tr>
+<td>Overclaiming calibration or profitability</td>
+<td>Undermines credibility</td>
+<td>Preserve explicit synthetic boundaries</td>
+</tr>
+</tbody></table>
+<p>The strongest lesson from the existing Validation Summary is that realism comes from governing edge behavior—not eliminating it—and that strong-looking synthetic outputs must remain within explicit non-production boundaries. fileciteturn6file5</p>
+<hr>
+<h2>9. Phased minimum viable build</h2>
+<h2>Phase 0 — Product and portfolio charter</h2>
+<p><strong>Deliverables</strong></p>
+<ul>
+<li>closed-end fixed-weekly product decision;</li>
+<li>target merchant definition;</li>
+<li>illustrative amount and term ranges;</li>
+<li>pricing convention;</li>
+<li>risk-appetite objectives;</li>
+<li>boundary statement.</li>
+</ul>
+<p><strong>Acceptance gate</strong></p>
+<p>One internally consistent product definition, with no mixed debt/receivables terminology.</p>
+<h2>Phase 1 — BRD and logical architecture</h2>
+<p><strong>Deliverables</strong></p>
+<ul>
+<li>Module 1 and Module 2 objectives;</li>
+<li>architecture diagram;</li>
+<li>grains and keys;</li>
+<li>lineage model;</li>
+<li>scenario and strategy identity;</li>
+<li>latest/archive design;</li>
+<li>requirements traceability skeleton.</li>
+</ul>
+<p><strong>Acceptance gate</strong></p>
+<p>Every material requirement maps to a module, grain, output and validation test.</p>
+<h2>Phase 2 — V1 data and parameter dictionaries</h2>
+<p><strong>Deliverables</strong></p>
+<ul>
+<li>30 field families;</li>
+<li>valid ranges;</li>
+<li>expected direction;</li>
+<li>generation logic;</li>
+<li>downstream use;</li>
+<li>parameter catalog;</li>
+<li>reason-code catalog;</li>
+<li>risk-appetite catalog.</li>
+</ul>
+<p><strong>Acceptance gate</strong></p>
+<p>No field exists without a defined purpose, range and QA rule.</p>
+<h2>Phase 3 — Module 1 baseline engine</h2>
+<p><strong>Build</strong></p>
+<ul>
+<li>5,000 deterministic merchants;</li>
+<li>365 days of daily POS history;</li>
+<li>six to eight industry groups;</li>
+<li>simplified deposit/liquidity proxy;</li>
+<li>as-of feature engineering;</li>
+<li>one requested closed-end loan;</li>
+<li>transparent risk proxy;</li>
+<li>schedule-derived EAD;</li>
+<li>LGD and EL;</li>
+<li>latest output and QA.</li>
+</ul>
+<p><strong>Acceptance gate</strong></p>
+<p>Stable population, complete history, no leakage, plausible distributions, coherent risk directions.</p>
+<h2>Phase 4 — Module 1 scenario framework</h2>
+<p><strong>Build</strong></p>
+<ul>
+<li>six governed merchant-environment scenarios;</li>
+<li>archive persistence;</li>
+<li>matched scenario comparison;</li>
+<li>diagnostic evidence;</li>
+<li>scenario acceptance.</li>
+</ul>
+<p><strong>Acceptance gate</strong></p>
+<p>Merchant identity and intrinsic attributes match; only controlled scenario fields move.</p>
+<h2>Phase 5 — Module 2 individual decision and economics engine</h2>
+<p><strong>Build</strong></p>
+<ul>
+<li>strategy and policy profiles;</li>
+<li>hard and soft policy flags;</li>
+<li>nine candidate offers;</li>
+<li>candidate burden and offer-specific risk;</li>
+<li>schedule-based economics;</li>
+<li>counteroffer selection;</li>
+<li>outcomes and reason codes;</li>
+<li>latest output and archive.</li>
+</ul>
+<p><strong>Acceptance gate</strong></p>
+<p>One exclusive outcome per merchant; all positive offers pass capacity, risk and contribution controls.</p>
+<h2>Phase 6 — Portfolio allocation and campaign</h2>
+<p><strong>Build</strong></p>
+<ul>
+<li>funding budget;</li>
+<li>concentration limits;</li>
+<li>deterministic allocation;</li>
+<li>comparison registry;</li>
+<li>19-run campaign;</li>
+<li>strategy frontier;</li>
+<li>persistent evidence;</li>
+<li>post-campaign acceptance.</li>
+</ul>
+<p><strong>Acceptance gate</strong></p>
+<p>All archived runs reconcile to registries, evidence, parameter snapshots and matched comparison keys.</p>
+<h2>Phase 7 — Documentation and Power BI</h2>
+<p><strong>Deliverables</strong></p>
+<ul>
+<li>Module 1 BRD and Validation Summary;</li>
+<li>Module 2 BRD and Validation Summary;</li>
+<li>parameter and data dictionaries;</li>
+<li>boundaries document;</li>
+<li>README and artifact map;</li>
+<li>Power BI model;</li>
+<li>four report pages;</li>
+<li>source-to-report reconciliation;</li>
+<li>executive presentation.</li>
+</ul>
+<p><strong>Acceptance gate</strong></p>
+<p>Every material dashboard value reconciles to an accepted PostgreSQL output.</p>
+<h3>Deliberately deferred</h3>
+<ul>
+<li>sales-linked repayment;</li>
+<li>merchant cash advance or receivables-purchase treatment;</li>
+<li>calibrated PD;</li>
+<li>machine-learning challenger;</li>
+<li>account performance;</li>
+<li>renewals;</li>
+<li>time to default or payoff;</li>
+<li>detailed fair-lending analysis;</li>
+<li>production legal/compliance conclusions;</li>
+<li>dynamic price optimization.</li>
+</ul>
+<hr>
+<h2>10. Five decisions needed before the BRD and PostgreSQL design</h2>
+<ol>
+<li><p><strong>Repayment cadence:</strong> Should V1 use fixed weekly ACH, as recommended, rather than daily ACH?</p>
+</li>
+<li><p><strong>Pricing form:</strong> Should the illustrative product use a stated APR plus origination fee, as recommended, rather than a fixed finance charge or factor-rate convention?</p>
+</li>
+<li><p><strong>Target merchant universe:</strong> Should V1 represent a diversified six-to-eight-industry portfolio with governed industry tiers and exclusions, or focus on one vertical such as restaurants or retail?</p>
+</li>
+<li><p><strong>Data scope:</strong> Should V1 include 12 months of daily POS history plus a simplified deposit/liquidity proxy, as recommended, or POS history only?</p>
+</li>
+<li><p><strong>Concentration enforcement:</strong> Should the first accepted Module 2 version allocate against a fixed funding budget and hard concentration caps, or initially report concentrations and add active allocation in the next release?</p>
+</li>
+</ol>
+<p>Absent a contrary decision, the recommended defaults above are sufficient to begin the BRD, enterprise architecture, data model, parameter dictionary, scenario register, and validation matrix.</p>
+</div></article><article id="c068-m00025" class="message user"><div class="role">Andrew</div><p class="meta">C068-M00025 · 2026-07-23T13:40:53.469000-04:00 · active path</p><div class="body"><p>covenants and collateral are key elements. also price elasticity - finding the sweet spot that keeps a customer from choosing a competitor while also earning the bank a profit (while also reducing expected loss) is key. furthermore, we must be able to stress test this against economic downturns, etc - including slicing the segments and identifying at risk portions of the portfolio (as a hypthoetical example: energy sector more heavily impacted by recession and inter-industry relations - if energy sector impacted then industries heavily reliant on energy will be impacted, etc).</p>
+</div></article><article id="c068-m00026" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C068-M00026 · 2026-07-23T13:40:53.556418-04:00 · active path</p><div class="body"><p>I think we&#39;re getting much closer to what could become an exceptional portfolio project.</p>
+<p>What you&#39;ve just described actually pushes this beyond a <strong>credit decisioning simulator</strong> into something much more valuable:</p>
+<blockquote>
+<p><strong>An Enterprise Merchant Lending Portfolio Management &amp; Strategy Laboratory.</strong></p>
+</blockquote>
+<p>That is the kind of thinking a Director of Credit Strategy, Chief Credit Officer, or Head of Portfolio Management does—not simply an underwriting manager.</p>
+<p>Here are my reactions.</p>
+<hr>
+<h2>1. Covenants should absolutely be first-class citizens</h2>
+<p>I had originally thought of them as later enhancements.</p>
+<p>I no longer think that&#39;s correct.</p>
+<p>They should be embedded directly into Module 2 because they&#39;re another <strong>risk mitigation lever</strong>, just like pricing or loan amount.</p>
+<p>Instead of simply asking:</p>
+<blockquote>
+<p>Approve or decline?</p>
+</blockquote>
+<p>the strategy engine asks:</p>
+<blockquote>
+<p><strong>What combination of amount + price + term + collateral + covenant package creates acceptable risk-adjusted return?</strong></p>
+</blockquote>
+<p>For example:</p>
+<pre><code class="language-text">Requested:
+
+$100,000
+2 months
+12% remittance
+
+↓
+
+Strategy Engine
+
+Option A
+Approve as requested
+
+Option B
+Approve
+$80,000
+10% remittance
+Weekly reporting covenant
+
+Option C
+Approve
+$100,000
+Additional collateral required
+
+Option D
+Approve
+Personal guarantee
+Minimum deposit covenant
+
+Option E
+Decline
+</code></pre>
+<p>Now we&#39;re making genuine credit strategy decisions.</p>
+<hr>
+<h2>2. Collateral becomes another risk transformation</h2>
+<p>Instead of treating LGD as fixed:</p>
+<pre><code class="language-text">LGD
+=
+Function(
+    collateral,
+    collateral coverage,
+    guarantee,
+    industry,
+    recovery assumptions
+)
+</code></pre>
+<p>Collateral types might include</p>
+<ul>
+<li>equipment</li>
+<li>inventory</li>
+<li>receivables</li>
+<li>blanket lien</li>
+<li>personal guarantee</li>
+<li>cash reserve</li>
+<li>deposit account control</li>
+<li>none</li>
+</ul>
+<p>Those don&#39;t necessarily reduce PD.</p>
+<p>They primarily reduce</p>
+<ul>
+<li>LGD</li>
+<li>expected loss</li>
+<li>capital requirement</li>
+</ul>
+<p>Exactly the type of thinking portfolio managers perform.</p>
+<hr>
+<h2>3. Price elasticity is the part I&#39;m most excited about</h2>
+<p>This is where the simulator starts becoming genuinely unique.</p>
+<p>Most portfolio demonstrations stop at:</p>
+<pre><code class="language-text">higher APR
+=
+higher revenue
+</code></pre>
+<p>Reality isn&#39;t that simple.</p>
+<p>Higher APR also means</p>
+<ul>
+<li>fewer acceptances</li>
+<li>higher adverse selection</li>
+<li>higher payment burden</li>
+<li>higher expected default</li>
+<li>more competition</li>
+</ul>
+<p>What we actually want is</p>
+<pre><code class="language-text">Expected Profit
+=
+Acceptance Rate
+×
+Net Interest / Fee Revenue
+−
+Expected Loss
+−
+Funding Cost
+−
+Acquisition Cost
+</code></pre>
+<p>The acceptance rate itself becomes a modeled function.</p>
+<p>For example</p>
+<pre><code class="language-text">Acceptance Probability
+
+=
+
+f(
+
+APR,
+
+competitor pricing,
+
+merchant quality,
+
+relationship,
+
+requested amount,
+
+industry
+
+)
+</code></pre>
+<p>Now we can actually build <strong>pricing frontiers</strong>.</p>
+<hr>
+<p>Imagine three offers.</p>
+<table>
+<thead>
+<tr>
+<th>APR</th>
+<th>Acceptance</th>
+<th>EL</th>
+<th>Profit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>18%</td>
+<td>92%</td>
+<td>$420</td>
+<td>$950</td>
+</tr>
+<tr>
+<td>22%</td>
+<td>80%</td>
+<td>$470</td>
+<td>$1,220</td>
+</tr>
+<tr>
+<td>30%</td>
+<td>41%</td>
+<td>$640</td>
+<td>$810</td>
+</tr>
+</tbody></table>
+<p>The optimal price is <strong>not</strong> the highest APR.</p>
+<p>It is where</p>
+<p>marginal revenue</p>
+<p>equals</p>
+<p>marginal customer loss</p>
+<p>minus</p>
+<p>incremental credit loss.</p>
+<p>That&#39;s real pricing strategy.</p>
+<hr>
+<h2>4. This also introduces elasticity by segment</h2>
+<p>Restaurants behave differently than</p>
+<p>HVAC</p>
+<p>which behave differently than</p>
+<p>Dentists</p>
+<p>which behave differently than</p>
+<p>Auto Repair.</p>
+<p>So instead of one elasticity curve</p>
+<p>we build</p>
+<pre><code class="language-text">Restaurant elasticity
+
+Construction elasticity
+
+Professional services elasticity
+
+Medical
+
+Retail
+
+Transportation
+
+Energy
+</code></pre>
+<p>Now pricing itself becomes segmented.</p>
+<hr>
+<h2>5. Stress testing becomes far more sophisticated</h2>
+<p>This is the part where I think we can eclipse most portfolio demonstrations.</p>
+<p>Instead of merely</p>
+<p>&quot;Recession&quot;</p>
+<p>we model</p>
+<p><strong>transmission mechanisms.</strong></p>
+<p>Exactly like CCAR thinking.</p>
+<p>For example</p>
+<pre><code class="language-text">Oil Price Shock
+
+↓
+
+Energy Sector Revenue ↓
+
+↓
+
+Oilfield Service Companies ↓
+
+↓
+
+Heavy Equipment Repair ↓
+
+↓
+
+Commercial Trucking ↓
+
+↓
+
+Regional Restaurants ↓
+
+↓
+
+Regional Retail ↓
+</code></pre>
+<p>Notice</p>
+<p>we&#39;re no longer shocking individual merchants.</p>
+<p>We&#39;re shocking</p>
+<p><strong>the economic network.</strong></p>
+<hr>
+<h2>6. That means industries need relationships</h2>
+<p>Instead of</p>
+<pre><code class="language-text">Industry Risk Tier
+</code></pre>
+<p>we build</p>
+<pre><code class="language-text">Industry Dependency Graph
+</code></pre>
+<p>Example</p>
+<pre><code>Energy
+│
+├── Transportation
+│
+│    ├── Logistics
+│    ├── Warehousing
+│
+└── Manufacturing
+      │
+      ├── Industrial Equipment
+      ├── Construction
+</code></pre>
+<p>Now recession scenarios propagate.</p>
+<p>Exactly like macroeconomic stress testing.</p>
+<hr>
+<h2>7. Scenario Engine 2.0</h2>
+<p>Instead of</p>
+<pre><code>Higher Chargebacks
+
+Higher Volatility
+</code></pre>
+<p>we now have</p>
+<pre><code>Oil Shock
+
+↓
+
+Revenue Decline
+
+↓
+
+Liquidity Reduction
+
+↓
+
+Higher Payment Burden
+
+↓
+
+PD Increase
+
+↓
+
+LGD Increase
+
+↓
+
+Expected Loss
+
+↓
+
+Pricing Changes
+
+↓
+
+Approval Strategy Changes
+
+↓
+
+Portfolio Migration
+</code></pre>
+<p>Now we&#39;re performing</p>
+<p>enterprise portfolio stress testing.</p>
+<hr>
+<h2>8. Portfolio monitoring becomes dynamic</h2>
+<p>Rather than simply reporting</p>
+<pre><code>Expected Loss
+</code></pre>
+<p>we monitor</p>
+<p>Portfolio Migration.</p>
+<p>Examples</p>
+<pre><code>Risk Tier Migration
+
+Industry Migration
+
+Price Migration
+
+Expected Loss Migration
+
+Concentration Migration
+
+Collateral Migration
+
+Liquidity Migration
+</code></pre>
+<p>That&#39;s something you&#39;d expect from an ALCO or Credit Committee package.</p>
+<hr>
+<h2>9. The project architecture is evolving</h2>
+<p>Originally I envisioned</p>
+<pre><code>Module 1
+
+Risk
+
+↓
+
+Module 2
+
+Decision
+</code></pre>
+<p>Now I think it becomes</p>
+<pre><code>Module 1
+
+Merchant Data
+Cash Flow
+Risk
+
+↓
+
+Module 2
+
+Strategy
+
+Pricing
+
+Collateral
+
+Covenants
+
+Decision
+
+↓
+
+Module 3
+
+Portfolio Analytics
+
+Stress Testing
+
+Concentration
+
+Economic Scenarios
+
+Price Elasticity
+
+Risk Appetite
+
+↓
+
+Module 4 (future)
+
+Performance
+
+Vintage
+
+Renewals
+
+Delinquency
+
+Collections
+
+Recovery
+</code></pre>
+<p>Notice how Module 3 becomes an executive portfolio-management layer rather than just reporting.</p>
+<hr>
+<h2>10. One additional idea</h2>
+<p>This may end up being the most impressive capability in the entire repository.</p>
+<p>Rather than asking</p>
+<blockquote>
+<p>Which strategy performs best?</p>
+</blockquote>
+<p>we ask</p>
+<blockquote>
+<p><strong>How robust is this strategy under multiple futures?</strong></p>
+</blockquote>
+<p>Suppose Strategy A produces the most profit today.</p>
+<p>Stress it through:</p>
+<ul>
+<li>recession;</li>
+<li>interest-rate spike;</li>
+<li>energy shock;</li>
+<li>retail slowdown;</li>
+<li>inflation;</li>
+<li>funding-cost increase.</li>
+</ul>
+<p>If Strategy A collapses under one realistic stress while Strategy B remains resilient with only slightly lower base-case profit, many institutions would favor Strategy B.</p>
+<p>That introduces the concept of <strong>strategy robustness</strong>, not just expected profitability.</p>
+<hr>
+<p>I think this is the direction that differentiates your project from a sophisticated simulator into something that resembles an internal credit strategy platform. It also aligns remarkably well with your existing work. Your current Module 1 already demonstrates deterministic populations, scenario control, explainable risk translation, matched comparisons, and governance boundaries. fileciteturn4file3 fileciteturn4file2</p>
+<p>The next project doesn&#39;t replace those ideas—it extends them into pricing, portfolio optimization, collateral, covenants, competitive positioning, and macroeconomic stress transmission. That&#39;s the type of thinking I&#39;d expect from someone responsible for an entire lending portfolio rather than a single underwriting model.</p>
+</div></article><article id="c068-m00084" class="message user"><div class="role">Andrew</div><p class="meta">C068-M00084 · 2026-07-23T17:42:43.695000-04:00 · active path</p><div class="body"><p>Great work. Quick aside - Give me a detailed step by step on how to perform the live postgresql execution or is that something you can do?</p>
+</div></article><article id="c068-m00085" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C068-M00085 · 2026-07-23T17:42:51.297610-04:00 · active path</p><div class="body"><p>Yes, I can guide you through it precisely, but I cannot perform the live execution in this session because the current runtime does not have PostgreSQL installed or running. I verified that <code>psql</code>, <code>postgres</code>, and <code>pg_isready</code> are unavailable.</p>
+<p>The best approach is to run the scripts locally in your PostgreSQL 15 environment, ideally through <strong>DBeaver</strong>, since that matches your existing setup. The instructions below assume PostgreSQL 15 and DBeaver, with a command-line alternative afterward.</p>
+<h1>Recommended execution path: DBeaver</h1>
+<h2>Step 1 — Download the two SQL files</h2>
+<p>Use these files:</p>
+<ul>
+<li><a href="sandbox:/mnt/data/merchant_sales_based_financing_module1_foundation_v0_2/sql/00_msbf_physical_schema_v0_2.sql">Physical PostgreSQL schema</a></li>
+<li><a href="sandbox:/mnt/data/merchant_sales_based_financing_module1_foundation_v0_2/sql/01_msbf_reference_parameter_seed_v0_2.sql">Reference and parameter seed</a></li>
+</ul>
+<p>Keep them in a local folder such as:</p>
+<pre><code class="language-text">[local user directory]\Documents\merchant_sales_based_financing\
+</code></pre>
+<p>Do not modify the files before the first execution.</p>
+<hr>
+<h1>Part A — Create a clean database</h1>
+<h2>Step 2 — Open DBeaver</h2>
+<p>Open DBeaver and connect to your local PostgreSQL server.</p>
+<p>You likely already have a connection similar to:</p>
+<pre><code class="language-text">PostgreSQL 15
+localhost
+Port 5432
+</code></pre>
+<p>If prompted, enter your PostgreSQL password.</p>
+<h2>Step 3 — Create a new database</h2>
+<p>In the left-side <strong>Database Navigator</strong>:</p>
+<ol>
+<li>Expand your PostgreSQL connection.</li>
+<li>Right-click <strong>Databases</strong>.</li>
+<li>Select <strong>Create New Database</strong>.</li>
+<li>Enter:</li>
+</ol>
+<pre><code class="language-text">msbf_strategy
+</code></pre>
+<p>Recommended settings:</p>
+<pre><code class="language-text">Database name: msbf_strategy
+Owner: postgres
+Encoding: UTF8
+Template: template0 or default
+</code></pre>
+<p>Click <strong>OK</strong> or <strong>Save</strong>.</p>
+<p>Use a new database rather than placing this project inside an existing simulator database. This isolates the schemas, seed data, and testing evidence.</p>
+<h2>Step 4 — Refresh the connection</h2>
+<p>Right-click the PostgreSQL connection and select:</p>
+<pre><code class="language-text">Refresh
+</code></pre>
+<p>You should now see:</p>
+<pre><code class="language-text">Databases
+└── msbf_strategy
+</code></pre>
+<p>Double-click the database or open a SQL editor connected specifically to it.</p>
+<p>Confirm the active database shown in the SQL editor toolbar is:</p>
+<pre><code class="language-text">msbf_strategy
+</code></pre>
+<p>This is critical. Do not execute against your existing credit decisioning database.</p>
+<hr>
+<h1>Part B — Execute the physical schema</h1>
+<h2>Step 5 — Open the schema SQL file</h2>
+<p>From DBeaver:</p>
+<ol>
+<li>Select <strong>SQL Editor</strong>.</li>
+<li>Choose <strong>Open SQL Script</strong>.</li>
+<li>Open:</li>
+</ol>
+<pre><code class="language-text">00_msbf_physical_schema_v0_2.sql
+</code></pre>
+<p>Alternatively, drag the file into DBeaver.</p>
+<h2>Step 6 — Confirm the active connection</h2>
+<p>At the top of the script window, verify:</p>
+<pre><code class="language-text">Connection: your PostgreSQL connection
+Database: msbf_strategy
+</code></pre>
+<p>If it is connected to the wrong database:</p>
+<ol>
+<li>Right-click within the SQL editor.</li>
+<li>Select <strong>Connection</strong> or <strong>Set active connection</strong>.</li>
+<li>Choose <code>msbf_strategy</code>.</li>
+</ol>
+<h2>Step 7 — Turn off auto-commit for the first execution</h2>
+<p>For the initial run, I recommend disabling auto-commit.</p>
+<p>In DBeaver, find the transaction mode control, often near the top toolbar.</p>
+<p>Select:</p>
+<pre><code class="language-text">Manual commit
+</code></pre>
+<p>This allows you to roll back if the script stops unexpectedly before completion.</p>
+<h2>Step 8 — Execute the entire schema file</h2>
+<p>Do not highlight only part of the script.</p>
+<p>Use:</p>
+<pre><code class="language-text">Alt + X
+</code></pre>
+<p>or select:</p>
+<pre><code class="language-text">Execute SQL Script
+</code></pre>
+<p>Do not use the command that executes only the current statement.</p>
+<p>The script should build the following schemas:</p>
+<pre><code class="language-text">msbf_ref
+msbf_ctl
+msbf_m1
+msbf_m2
+msbf_m3
+msbf_m4
+msbf_evd
+msbf_rpt
+</code></pre>
+<p>It will also create tables, indexes, functions, views, comments, and constraints.</p>
+<h2>Step 9 — Review the execution log</h2>
+<p>At the bottom of DBeaver, inspect:</p>
+<ul>
+<li><strong>Output</strong></li>
+<li><strong>Error Log</strong></li>
+<li><strong>Query Manager</strong></li>
+<li><strong>Statistics</strong></li>
+</ul>
+<p>You should not see any red error messages.</p>
+<p>Normal successful messages may include:</p>
+<pre><code class="language-text">CREATE SCHEMA
+CREATE TABLE
+CREATE INDEX
+CREATE FUNCTION
+CREATE VIEW
+COMMENT
+ALTER TABLE
+</code></pre>
+<p>Warnings or notices are not automatically failures, but save any message that appears unusual.</p>
+<h2>Step 10 — Commit the schema</h2>
+<p>If the full execution succeeds:</p>
+<pre><code class="language-text">Commit
+</code></pre>
+<p>Use the checkmark or commit button in the DBeaver toolbar.</p>
+<p>If execution fails before completion:</p>
+<pre><code class="language-text">Rollback
+</code></pre>
+<p>Do not commit a partially created schema unless we intentionally diagnose an idempotent rerun.</p>
+<hr>
+<h1>Part C — Verify the schema before loading seed data</h1>
+<h2>Step 11 — Refresh the database objects</h2>
+<p>In Database Navigator:</p>
+<ol>
+<li>Right-click <code>msbf_strategy</code>.</li>
+<li>Select <strong>Refresh</strong>.</li>
+<li>Expand:</li>
+</ol>
+<pre><code class="language-text">Schemas
+</code></pre>
+<p>Confirm all eight schemas appear.</p>
+<h2>Step 12 — Run the schema inventory query</h2>
+<p>Open a new SQL editor connected to <code>msbf_strategy</code> and execute:</p>
+<pre><code class="language-sql">SELECT
+    schema_name
+FROM information_schema.schemata
+WHERE schema_name LIKE &#39;msbf_%&#39;
+ORDER BY schema_name;
+</code></pre>
+<p>Expected schemas:</p>
+<pre><code class="language-text">msbf_ctl
+msbf_evd
+msbf_m1
+msbf_m2
+msbf_m3
+msbf_m4
+msbf_ref
+msbf_rpt
+</code></pre>
+<p>Expected row count:</p>
+<pre><code class="language-text">8
+</code></pre>
+<h2>Step 13 — Count physical tables</h2>
+<p>Execute:</p>
+<pre><code class="language-sql">SELECT
+    table_schema,
+    COUNT(*) AS table_count
+FROM information_schema.tables
+WHERE table_schema LIKE &#39;msbf_%&#39;
+  AND table_type = &#39;BASE TABLE&#39;
+GROUP BY table_schema
+ORDER BY table_schema;
+</code></pre>
+<p>The total should be approximately:</p>
+<pre><code class="language-text">70 physical tables
+</code></pre>
+<p>To get the exact total:</p>
+<pre><code class="language-sql">SELECT
+    COUNT(*) AS total_table_count
+FROM information_schema.tables
+WHERE table_schema LIKE &#39;msbf_%&#39;
+  AND table_type = &#39;BASE TABLE&#39;;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">70
+</code></pre>
+<h2>Step 14 — Count physical columns</h2>
+<p>Execute:</p>
+<pre><code class="language-sql">SELECT
+    COUNT(*) AS total_column_count
+FROM information_schema.columns
+WHERE table_schema LIKE &#39;msbf_%&#39;;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">1041
+</code></pre>
+<p>A materially different result means the schema did not execute fully or the database contains another version of the project.</p>
+<h2>Step 15 — Count foreign keys</h2>
+<p>Execute:</p>
+<pre><code class="language-sql">SELECT
+    COUNT(*) AS foreign_key_count
+FROM information_schema.table_constraints
+WHERE constraint_schema LIKE &#39;msbf_%&#39;
+  AND constraint_type = &#39;FOREIGN KEY&#39;;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">141
+</code></pre>
+<h2>Step 16 — Confirm functions</h2>
+<p>Execute:</p>
+<pre><code class="language-sql">SELECT
+    routine_schema,
+    routine_name,
+    routine_type
+FROM information_schema.routines
+WHERE routine_schema LIKE &#39;msbf_%&#39;
+ORDER BY routine_schema, routine_name;
+</code></pre>
+<p>You should see the deterministic helper and contract-validation functions defined by the physical schema.</p>
+<h2>Step 17 — Confirm views</h2>
+<p>Execute:</p>
+<pre><code class="language-sql">SELECT
+    table_schema,
+    table_name
+FROM information_schema.views
+WHERE table_schema LIKE &#39;msbf_%&#39;
+ORDER BY table_schema, table_name;
+</code></pre>
+<p>You should see the governed reporting and reconciliation views.</p>
+<hr>
+<h1>Part D — Execute the reference and parameter seed</h1>
+<h2>Step 18 — Open the seed file</h2>
+<p>Open:</p>
+<pre><code class="language-text">01_msbf_reference_parameter_seed_v0_2.sql
+</code></pre>
+<p>Again, ensure the active database is:</p>
+<pre><code class="language-text">msbf_strategy
+</code></pre>
+<h2>Step 19 — Execute the entire seed script</h2>
+<p>Use:</p>
+<pre><code class="language-text">Execute SQL Script
+</code></pre>
+<p>The seed script should populate reference catalogs, governed parameter definitions, parameter values, feature definitions, industry assumptions, contract definitions, and related control records.</p>
+<h2>Step 20 — Review the output</h2>
+<p>Confirm there are no:</p>
+<pre><code class="language-text">duplicate key value violates unique constraint
+foreign key violation
+relation does not exist
+column does not exist
+invalid input syntax
+</code></pre>
+<p>If successful, commit the transaction.</p>
+<hr>
+<h1>Part E — Validate the seed</h1>
+<h2>Step 21 — Verify parameter-definition count</h2>
+<p>The exact table name can be confirmed from the DDL, but the primary parameter-definition table should return approximately:</p>
+<pre><code class="language-text">155 parameter definitions
+</code></pre>
+<p>A likely query pattern is:</p>
+<pre><code class="language-sql">SELECT COUNT(*)
+FROM msbf_ctl.parameter_definition;
+</code></pre>
+<p>If the table uses a different exact name, locate it in DBeaver under:</p>
+<pre><code class="language-text">Schemas
+└── msbf_ctl
+    └── Tables
+</code></pre>
+<p>Expected count:</p>
+<pre><code class="language-text">155
+</code></pre>
+<h2>Step 22 — Verify baseline scoped values</h2>
+<p>Likely query:</p>
+<pre><code class="language-sql">SELECT COUNT(*)
+FROM msbf_ctl.parameter_value;
+</code></pre>
+<p>Expected baseline value count:</p>
+<pre><code class="language-text">397
+</code></pre>
+<p>The table may contain additional control records depending on the seed design, so use the appropriate filter if needed, such as active parameter-set version or baseline status.</p>
+<h2>Step 23 — Verify feature-definition count</h2>
+<p>Likely query:</p>
+<pre><code class="language-sql">SELECT COUNT(*)
+FROM msbf_ctl.feature_definition;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">32
+</code></pre>
+<h2>Step 24 — Verify industry reference values</h2>
+<p>Run a query against the industry reference table, likely in <code>msbf_ref</code>.</p>
+<p>Example:</p>
+<pre><code class="language-sql">SELECT *
+FROM msbf_ref.industry
+ORDER BY industry_code;
+</code></pre>
+<p>Expected initial segment count:</p>
+<pre><code class="language-text">8
+</code></pre>
+<h2>Step 25 — Inspect parameter values by category</h2>
+<p>Run:</p>
+<pre><code class="language-sql">SELECT
+    pd.parameter_category,
+    COUNT(DISTINCT pd.parameter_definition_id) AS parameter_count,
+    COUNT(pv.parameter_value_id) AS scoped_value_count
+FROM msbf_ctl.parameter_definition pd
+LEFT JOIN msbf_ctl.parameter_value pv
+    ON pv.parameter_definition_id = pd.parameter_definition_id
+GROUP BY pd.parameter_category
+ORDER BY pd.parameter_category;
+</code></pre>
+<p>This should reconcile to the parameter workbook.</p>
+<hr>
+<h1>Part F — Test idempotence</h1>
+<p>Idempotence means that rerunning the seed does not create duplicate approved reference or parameter records.</p>
+<h2>Step 26 — Record initial counts</h2>
+<p>Save the results of:</p>
+<pre><code class="language-sql">SELECT COUNT(*) FROM msbf_ctl.parameter_definition;
+SELECT COUNT(*) FROM msbf_ctl.parameter_value;
+SELECT COUNT(*) FROM msbf_ctl.feature_definition;
+</code></pre>
+<h2>Step 27 — Run the seed file a second time</h2>
+<p>Execute the complete:</p>
+<pre><code class="language-text">01_msbf_reference_parameter_seed_v0_2.sql
+</code></pre>
+<p>again.</p>
+<h2>Step 28 — Recheck the counts</h2>
+<p>The counts should remain unchanged.</p>
+<p>Expected:</p>
+<pre><code class="language-text">Parameter definitions: 155
+Baseline scoped values: 397
+Feature definitions:   32
+</code></pre>
+<p>If counts increase, the seed is not behaving idempotently and should not yet be accepted.</p>
+<p>If the second run produces duplicate-key errors, capture the exact error and line number. That is fixable, but it should be corrected before implementation continues.</p>
+<hr>
+<h1>Part G — Test deterministic functions</h1>
+<p>The schema includes deterministic helper functions. Their purpose is to generate the same value whenever the same seed and inputs are supplied.</p>
+<h2>Step 29 — Locate the exact function names</h2>
+<p>Run:</p>
+<pre><code class="language-sql">SELECT
+    n.nspname AS schema_name,
+    p.proname AS function_name,
+    pg_get_function_identity_arguments(p.oid) AS arguments
+FROM pg_proc p
+JOIN pg_namespace n
+    ON n.oid = p.pronamespace
+WHERE n.nspname LIKE &#39;msbf_%&#39;
+ORDER BY n.nspname, p.proname;
+</code></pre>
+<p>Identify the deterministic uniform and normal helper functions.</p>
+<h2>Step 30 — Run the same call twice</h2>
+<p>Using the exact function signature shown by PostgreSQL, execute the same input twice.</p>
+<p>The conceptual test is:</p>
+<pre><code class="language-sql">SELECT deterministic_function(&#39;same_seed&#39;, &#39;same_key&#39;);
+SELECT deterministic_function(&#39;same_seed&#39;, &#39;same_key&#39;);
+</code></pre>
+<p>The returned values must be identical.</p>
+<h2>Step 31 — Test input sensitivity</h2>
+<p>Change one input:</p>
+<pre><code class="language-sql">SELECT deterministic_function(&#39;same_seed&#39;, &#39;different_key&#39;);
+</code></pre>
+<p>The result should generally differ while remaining within the defined output range.</p>
+<h2>Step 32 — Test a batch</h2>
+<p>A stronger test pattern is:</p>
+<pre><code class="language-sql">WITH test_keys AS (
+    SELECT generate_series(1, 100) AS key_value
+)
+SELECT
+    key_value,
+    function_call_1,
+    function_call_2,
+    function_call_1 = function_call_2 AS exact_match
+FROM ...
+</code></pre>
+<p>All <code>exact_match</code> values should be <code>TRUE</code>.</p>
+<hr>
+<h1>Part H — Validate constraints and data types</h1>
+<h2>Step 33 — Inspect primary keys</h2>
+<pre><code class="language-sql">SELECT
+    tc.table_schema,
+    tc.table_name,
+    kcu.column_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+    ON tc.constraint_name = kcu.constraint_name
+   AND tc.constraint_schema = kcu.constraint_schema
+WHERE tc.table_schema LIKE &#39;msbf_%&#39;
+  AND tc.constraint_type = &#39;PRIMARY KEY&#39;
+ORDER BY tc.table_schema, tc.table_name, kcu.ordinal_position;
+</code></pre>
+<p>Confirm every operational and archive table has an appropriate primary key.</p>
+<h2>Step 34 — Inspect check constraints</h2>
+<pre><code class="language-sql">SELECT
+    n.nspname AS schema_name,
+    c.relname AS table_name,
+    con.conname AS constraint_name,
+    pg_get_constraintdef(con.oid) AS definition
+FROM pg_constraint con
+JOIN pg_class c
+    ON c.oid = con.conrelid
+JOIN pg_namespace n
+    ON n.oid = c.relnamespace
+WHERE n.nspname LIKE &#39;msbf_%&#39;
+  AND con.contype = &#39;c&#39;
+ORDER BY n.nspname, c.relname, con.conname;
+</code></pre>
+<p>Review constraints for:</p>
+<ul>
+<li>percentages between valid bounds;</li>
+<li>nonnegative monetary values;</li>
+<li>effective-date validity;</li>
+<li>allowable status codes;</li>
+<li>scenario and run controls;</li>
+<li>EAD and loss values;</li>
+<li>required version fields.</li>
+</ul>
+<h2>Step 35 — Confirm partitioned tables</h2>
+<pre><code class="language-sql">SELECT
+    n.nspname AS schema_name,
+    c.relname AS partitioned_table
+FROM pg_partitioned_table pt
+JOIN pg_class c
+    ON c.oid = pt.partrelid
+JOIN pg_namespace n
+    ON n.oid = c.relnamespace
+WHERE n.nspname LIKE &#39;msbf_%&#39;
+ORDER BY n.nspname, c.relname;
+</code></pre>
+<p>Expected partitioned structures:</p>
+<pre><code class="language-text">4
+</code></pre>
+<hr>
+<h1>Part I — Test views and reconciliation logic</h1>
+<h2>Step 36 — Query every project view</h2>
+<p>First list them:</p>
+<pre><code class="language-sql">SELECT
+    table_schema,
+    table_name
+FROM information_schema.views
+WHERE table_schema LIKE &#39;msbf_%&#39;
+ORDER BY table_schema, table_name;
+</code></pre>
+<p>Then execute:</p>
+<pre><code class="language-sql">SELECT * FROM schema_name.view_name LIMIT 10;
+</code></pre>
+<p>for each view.</p>
+<p>At this stage, many views may return zero rows because Module 1 has not yet generated analytical data. That is acceptable.</p>
+<p>What is not acceptable:</p>
+<pre><code class="language-text">relation does not exist
+column does not exist
+ambiguous column
+operator does not exist
+invalid cast
+</code></pre>
+<h2>Step 37 — Confirm empty-state behavior</h2>
+<p>Contract and reconciliation views should return either:</p>
+<ul>
+<li>zero rows; or</li>
+<li>structurally valid rows showing zero counts or not-yet-executed status.</li>
+</ul>
+<p>They should not fail merely because analytical runs do not yet exist.</p>
+<hr>
+<h1>Part J — Run the contract-validation function</h1>
+<p>The delivered schema includes a Module 1 contract-validation function.</p>
+<h2>Step 38 — Identify its exact signature</h2>
+<p>Run:</p>
+<pre><code class="language-sql">SELECT
+    n.nspname AS schema_name,
+    p.proname AS function_name,
+    pg_get_function_identity_arguments(p.oid) AS arguments,
+    pg_get_function_result(p.oid) AS return_type
+FROM pg_proc p
+JOIN pg_namespace n
+    ON n.oid = p.pronamespace
+WHERE n.nspname LIKE &#39;msbf_%&#39;
+  AND p.proname ILIKE &#39;%contract%&#39;
+ORDER BY n.nspname, p.proname;
+</code></pre>
+<h2>Step 39 — Do not expect a passing analytical contract yet</h2>
+<p>Because no Module 1 population or risk snapshots have been generated, the function may correctly return:</p>
+<ul>
+<li>missing run;</li>
+<li>no analytical rows;</li>
+<li>incomplete contract;</li>
+<li>failed run existence;</li>
+<li>not accepted.</li>
+</ul>
+<p>That is expected at this phase.</p>
+<p>The objective is to ensure:</p>
+<ol>
+<li>The function executes.</li>
+<li>It returns a structured result.</li>
+<li>It fails coherently rather than raising a SQL error.</li>
+<li>Its result identifies the appropriate unmet validation gates.</li>
+</ol>
+<hr>
+<h1>Part K — Create an execution evidence file</h1>
+<p>Capture the results of the following queries:</p>
+<pre><code class="language-sql">SELECT version();
+
+SELECT current_database();
+
+SELECT current_user;
+
+SELECT
+    COUNT(*) AS schema_count
+FROM information_schema.schemata
+WHERE schema_name LIKE &#39;msbf_%&#39;;
+
+SELECT
+    COUNT(*) AS table_count
+FROM information_schema.tables
+WHERE table_schema LIKE &#39;msbf_%&#39;
+  AND table_type = &#39;BASE TABLE&#39;;
+
+SELECT
+    COUNT(*) AS column_count
+FROM information_schema.columns
+WHERE table_schema LIKE &#39;msbf_%&#39;;
+
+SELECT
+    COUNT(*) AS foreign_key_count
+FROM information_schema.table_constraints
+WHERE constraint_schema LIKE &#39;msbf_%&#39;
+  AND constraint_type = &#39;FOREIGN KEY&#39;;
+
+SELECT
+    COUNT(*) AS view_count
+FROM information_schema.views
+WHERE table_schema LIKE &#39;msbf_%&#39;;
+
+SELECT
+    COUNT(*) AS function_count
+FROM information_schema.routines
+WHERE routine_schema LIKE &#39;msbf_%&#39;;
+</code></pre>
+<p>Export the results from DBeaver:</p>
+<ol>
+<li>Right-click the result grid.</li>
+<li>Select <strong>Export Data</strong>.</li>
+<li>Choose CSV or Excel.</li>
+<li>Save as:</li>
+</ol>
+<pre><code class="language-text">msbf_postgresql_live_execution_evidence_YYYYMMDD.xlsx
+</code></pre>
+<p>Also export the DBeaver execution log or save screenshots showing:</p>
+<ul>
+<li>successful schema execution;</li>
+<li>successful seed execution;</li>
+<li>counts;</li>
+<li>deterministic function tests;</li>
+<li>second-run idempotence;</li>
+<li>contract-function behavior.</li>
+</ul>
+<hr>
+<h1>Part L — Recommended acceptance checklist</h1>
+<p>Mark each item as pass or fail.</p>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PostgreSQL version</td>
+<td>14+; PostgreSQL 15 preferred</td>
+</tr>
+<tr>
+<td>Correct database</td>
+<td><code>msbf_strategy</code></td>
+</tr>
+<tr>
+<td>Schema script execution</td>
+<td>No errors</td>
+</tr>
+<tr>
+<td>Seed script execution</td>
+<td>No errors</td>
+</tr>
+<tr>
+<td>Project schema count</td>
+<td>8</td>
+</tr>
+<tr>
+<td>Physical table count</td>
+<td>70</td>
+</tr>
+<tr>
+<td>Physical column count</td>
+<td>1,041</td>
+</tr>
+<tr>
+<td>Foreign-key count</td>
+<td>141</td>
+</tr>
+<tr>
+<td>Partitioned structures</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Parameter definitions</td>
+<td>155</td>
+</tr>
+<tr>
+<td>Baseline scoped values</td>
+<td>397</td>
+</tr>
+<tr>
+<td>Feature definitions</td>
+<td>32</td>
+</tr>
+<tr>
+<td>Industry segments</td>
+<td>8</td>
+</tr>
+<tr>
+<td>Seed rerun</td>
+<td>No duplicate records</td>
+</tr>
+<tr>
+<td>Deterministic same-input test</td>
+<td>Exact match</td>
+</tr>
+<tr>
+<td>Deterministic changed-input test</td>
+<td>Usually changed result</td>
+</tr>
+<tr>
+<td>Views</td>
+<td>Compile and query</td>
+</tr>
+<tr>
+<td>Contract function</td>
+<td>Executes and returns structured gate results</td>
+</tr>
+<tr>
+<td>Database transaction</td>
+<td>Committed only after successful execution</td>
+</tr>
+<tr>
+<td>Evidence</td>
+<td>Saved and exportable</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>Command-line alternative</h1>
+<p>If you prefer <code>psql</code>, use this sequence.</p>
+<h2>Step 1 — Create the database</h2>
+<p>From Command Prompt or PowerShell:</p>
+<pre><code class="language-bash">createdb -U postgres msbf_strategy
+</code></pre>
+<h2>Step 2 — Execute the schema</h2>
+<pre><code class="language-bash">psql -U postgres -d msbf_strategy \
+  -v ON_ERROR_STOP=1 \
+  -f &quot;C:\path\to\00_msbf_physical_schema_v0_2.sql&quot;
+</code></pre>
+<p>On Windows PowerShell, a single-line version may be easier:</p>
+<pre><code class="language-powershell">psql -U postgres -d msbf_strategy -v ON_ERROR_STOP=1 -f &quot;C:\path\to\00_msbf_physical_schema_v0_2.sql&quot;
+</code></pre>
+<h2>Step 3 — Execute the seed</h2>
+<pre><code class="language-powershell">psql -U postgres -d msbf_strategy -v ON_ERROR_STOP=1 -f &quot;C:\path\to\01_msbf_reference_parameter_seed_v0_2.sql&quot;
+</code></pre>
+<p>The critical option is:</p>
+<pre><code class="language-text">-v ON_ERROR_STOP=1
+</code></pre>
+<p>Without it, <code>psql</code> can continue after an error and leave a partially executed database.</p>
+<h2>Step 4 — Save a full execution log</h2>
+<pre><code class="language-powershell">psql -U postgres -d msbf_strategy -v ON_ERROR_STOP=1 -a -e `
+  -f &quot;C:\path\to\00_msbf_physical_schema_v0_2.sql&quot; `
+  &gt; &quot;C:\path\to\logs\00_schema_execution.log&quot; 2&gt;&amp;1
+</code></pre>
+<p>Then:</p>
+<pre><code class="language-powershell">psql -U postgres -d msbf_strategy -v ON_ERROR_STOP=1 -a -e `
+  -f &quot;C:\path\to\01_msbf_reference_parameter_seed_v0_2.sql&quot; `
+  &gt; &quot;C:\path\to\logs\01_seed_execution.log&quot; 2&gt;&amp;1
+</code></pre>
+<hr>
+<h1>Safest workflow for us</h1>
+<p>My recommended workflow is:</p>
+<ol>
+<li>You execute the schema in DBeaver.</li>
+<li>If any error appears, stop immediately.</li>
+<li>Copy the <strong>complete error</strong>, including:<ul>
+<li>SQLSTATE;</li>
+<li>line number;</li>
+<li>statement;</li>
+<li>preceding context.</li>
+</ul>
+</li>
+<li>Send me the error or screenshot.</li>
+<li>I diagnose and revise the SQL.</li>
+<li>You rerun against a newly created clean database.</li>
+<li>Once both scripts execute cleanly, we run the count, idempotence, function, and contract tests.</li>
+<li>We preserve the live execution evidence as part of the repository.</li>
+</ol>
+<p>Do not begin the Module 1 analytical stage build until the physical foundation passes this live-execution gate.</p>
+</div></article><article id="c068-m00408" class="message user"><div class="role">Andrew</div><p class="meta">C068-M00408 · 2026-07-24T13:21:47.869000-04:00 · active path</p><div class="body"><p>let&#39;s outline the architecture blocks for the image as well as the rows and any relevant subtitles (methodology within) that should go with each block</p>
+</div></article><article id="c068-m00409" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C068-M00409 · 2026-07-24T13:21:52.434719-04:00 · active path</p><div class="body"><p>Yes. A single-page architecture can show the <strong>complete business and code flow</strong>, while status treatment demonstrates how far the implementation has progressed.</p>
+<p>The page should read from <strong>top to bottom as governance → data generation → intelligence → decisions → portfolio action → enterprise learning</strong>, with the main code sequence moving left to right within each row.</p>
+<h1>Proposed title</h1>
+<h2>Enterprise Merchant Sales-Based Financing Platform</h2>
+<p><strong>Governed architecture, code flow, and implementation status</strong></p>
+<p>Small status line beneath:</p>
+<blockquote>
+<p>Accepted through M1.3 | Active development: M1.4 Daily POS &amp; Settlement History</p>
+</blockquote>
+<h1>Status language</h1>
+<p>Use the same three states consistently:</p>
+<ul>
+<li><strong>Accepted</strong> — completed, validated, and formally accepted</li>
+<li><strong>Active Development</strong> — current build phase</li>
+<li><strong>Planned</strong> — architected capability not yet implemented</li>
+</ul>
+<p>I recommend avoiding “Complete.” <strong>Accepted</strong> better communicates evidence, governance, and a controlled delivery process.</p>
+<hr>
+<h1>Overall page structure</h1>
+<p>The architecture should contain seven horizontal rows:</p>
+<pre><code class="language-text">ROW 0   Governance &amp; Run Control
+ROW 1   Merchant and Application Foundation
+ROW 2   Daily Activity and Performance Intelligence
+ROW 3   Risk, Economics, and Stress Intelligence
+ROW 4   Decision and Offer Strategy
+ROW 5   Portfolio and Relationship Management
+ROW 6   Enterprise Optimization and Learning
+BOTTOM  Evidence, Validation, and Delivery Controls
+</code></pre>
+<p>A single vertical flow should connect the rows. Inside each row, blocks generally move left to right.</p>
+<hr>
+<h1>ROW 0 — Governance &amp; Run Control</h1>
+<p>This is the control plane governing everything beneath it.</p>
+<h2>Block G0</h2>
+<h3>Physical Data Foundation</h3>
+<p><strong>Status: Accepted</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>PostgreSQL schemas, governed tables, partitions, relationships, constraints, metadata, and reusable evidence structures.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Schemas • tables • partitions • constraints • metadata</p>
+</blockquote>
+<p>Supporting status note:</p>
+<blockquote>
+<p>74 physical tables | 1,041 designed columns</p>
+</blockquote>
+<p>I would use <strong>1,041 designed columns</strong>, not 1,213 information-schema columns, because the larger number includes partition children and views and would require explanation.</p>
+<hr>
+<h2>Block G1</h2>
+<h3>Governed Run Control</h3>
+<p><strong>Status: Accepted</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Controlled run initialization with parameter, profile, and source snapshots captured before generation begins.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Run IDs • parameter snapshots • source snapshots • profile snapshots</p>
+</blockquote>
+<p>Small evidence line:</p>
+<blockquote>
+<p>Reproducible snapshot hashes across governed reruns</p>
+</blockquote>
+<hr>
+<h2>Block G1-QA</h2>
+<h3>Validation &amp; Acceptance Gates</h3>
+<p><strong>Status: Accepted</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Preflight controls, positive tests, negative controls, reconciliation, exception handling, and formal milestone acceptance.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Preflight • controls • reconciliation • acceptance evidence</p>
+</blockquote>
+<p>This block should visually connect downward to every module, indicating that validation is not merely the final step.</p>
+<hr>
+<h1>ROW 1 — Merchant and Application Foundation</h1>
+<p>Recommended row title:</p>
+<h2>Merchant &amp; Application Foundation</h2>
+<p>Row subtitle:</p>
+<blockquote>
+<p>Create the deterministic merchant, relationship, and requested-financing foundation required by every downstream strategy decision.</p>
+</blockquote>
+<hr>
+<h2>Block M1.2</h2>
+<h3>Deterministic Merchant Population</h3>
+<p><strong>Status: Accepted</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Synthetic merchant identities, sectors, sales profiles, relationship characteristics, operating tenure, and deterministic risk attributes.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Merchant identity • sector • sales profile • relationship attributes</p>
+</blockquote>
+<p>Small evidence line:</p>
+<blockquote>
+<p>4,352 deterministic merchant records</p>
+</blockquote>
+<p>A small QA tag can read:</p>
+<blockquote>
+<p>Row count, field logic, and canonical hashes reconciled</p>
+</blockquote>
+<hr>
+<h2>Block M1.3</h2>
+<h3>Application &amp; Requested Structure</h3>
+<p><strong>Status: Accepted</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Merchant applications and requested sales-linked financing structures generated from governed relationship and funding-path assumptions.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Application • requested funding • remittance structure • relationship path</p>
+</blockquote>
+<p>Small evidence line:</p>
+<blockquote>
+<p>Positive, negative, differentiation, and acceptance controls passed</p>
+</blockquote>
+<hr>
+<h2>Block M1.4</h2>
+<h3>Daily POS &amp; Settlement History</h3>
+<p><strong>Status: Active Development</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Deterministic daily card sales, processor settlements, seasonality, volatility, disruptions, and sales-performance history.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Daily sales • settlements • seasonality • volatility • disruptions</p>
+</blockquote>
+<p>This should be the only block using the <strong>Active Development</strong> status treatment.</p>
+<p>A small callout could say:</p>
+<blockquote>
+<p>Current build phase</p>
+</blockquote>
+<hr>
+<h1>ROW 2 — Daily Activity and Performance Intelligence</h1>
+<p>Recommended row title:</p>
+<h2>Daily Activity &amp; Performance Intelligence</h2>
+<p>Row subtitle:</p>
+<blockquote>
+<p>Convert merchant transaction activity into observable cash-flow, repayment, exposure, and early-warning evidence.</p>
+</blockquote>
+<p>This entire row is <strong>Planned</strong>.</p>
+<hr>
+<h2>Block M2.1</h2>
+<h3>Sales &amp; Cash-Flow Features</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Derive sales velocity, stability, concentration, seasonality, trend, and cash-flow capacity from daily activity.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Velocity • stability • trend • concentration • capacity</p>
+</blockquote>
+<hr>
+<h2>Block M2.2</h2>
+<h3>Remittance &amp; Exposure Engine</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Apply sales-linked remittance mechanics to calculate collections, outstanding exposure, payoff progress, and repayment velocity.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Remittance • exposure • payoff velocity • remaining balance</p>
+</blockquote>
+<p>This is important because it distinguishes the product from conventional installment lending.</p>
+<hr>
+<h2>Block M2.3</h2>
+<h3>Early-Warning Signals</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Detect sales deterioration, abnormal volatility, processor disruption, remittance weakness, and emerging merchant stress.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Sales decline • volatility • disruption • remittance stress</p>
+</blockquote>
+<p>This block should feed both the risk row below and the portfolio-management row later.</p>
+<hr>
+<h1>ROW 3 — Risk, Economics, and Stress Intelligence</h1>
+<p>Recommended row title:</p>
+<h2>Risk, Economics &amp; Stress Intelligence</h2>
+<p>Row subtitle:</p>
+<blockquote>
+<p>Translate merchant behavior and financing structure into risk, profitability, resilience, and portfolio-comparison evidence.</p>
+</blockquote>
+<p>All blocks are <strong>Planned</strong>.</p>
+<hr>
+<h2>Block M2.4</h2>
+<h3>Merchant Risk Assessment</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Evaluate merchant quality using sales resilience, operating history, affordability, concentration, sector, and observed performance.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Quality • affordability • resilience • sector • observed performance</p>
+</blockquote>
+<p>Avoid calling this a “credit score model.” The platform is broader than a score.</p>
+<hr>
+<h2>Block M2.5</h2>
+<h3>Unit Economics &amp; Pricing Evidence</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Estimate revenue, cost, loss exposure, payoff economics, and risk-adjusted portfolio contribution.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Revenue • cost • loss • payoff economics • risk-adjusted value</p>
+</blockquote>
+<hr>
+<h2>Block M2.6</h2>
+<h3>Stress &amp; Scenario Engine</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Test sector shocks, sales declines, volatility increases, processor disruptions, and adverse portfolio environments.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Sector shocks • sales stress • volatility • disruption • scenarios</p>
+</blockquote>
+<p>This block should visually connect forward to strategy and upward from the daily activity history.</p>
+<hr>
+<h1>ROW 4 — Decision and Offer Strategy</h1>
+<p>Recommended row title:</p>
+<h2>Decision &amp; Offer Strategy</h2>
+<p>Row subtitle:</p>
+<blockquote>
+<p>Convert risk and economics into transparent, configurable, and testable merchant-level decisions.</p>
+</blockquote>
+<p>All blocks are <strong>Planned</strong>.</p>
+<hr>
+<h2>Block M3.1</h2>
+<h3>Eligibility &amp; Policy Gates</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Apply fail-fast eligibility rules, prohibited conditions, portfolio limits, and policy constraints before offer construction.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Eligibility • policy limits • fail-fast controls • exceptions</p>
+</blockquote>
+<hr>
+<h2>Block M3.2</h2>
+<h3>Pricing, Structure &amp; Protections</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Configure funding amount, factor or price, remittance rate, expected duration, collateral, and covenant protections.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Funding • price • remittance • duration • collateral • covenants</p>
+</blockquote>
+<p>This is one of the most important blocks because it demonstrates that strategy extends beyond approval.</p>
+<hr>
+<h2>Block M3.3</h2>
+<h3>Decision Routing &amp; Alternatives</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Route merchants to approval, counteroffer, manual review, decline, or alternative structure with transparent reasons.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Approve • counteroffer • review • decline • reason codes</p>
+</blockquote>
+<p>This block should echo the strength of the existing credit-decisioning simulator without suggesting that this is simply a recycled consumer-credit model.</p>
+<hr>
+<h1>ROW 5 — Portfolio and Relationship Management</h1>
+<p>Recommended row title:</p>
+<h2>Portfolio &amp; Relationship Management</h2>
+<p>Row subtitle:</p>
+<blockquote>
+<p>Manage exposure after funding by using daily evidence to support growth, intervention, and portfolio control.</p>
+</blockquote>
+<p>All blocks are <strong>Planned</strong>.</p>
+<hr>
+<h2>Block M4.1</h2>
+<h3>Daily Monitoring &amp; Portfolio Limits</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Monitor merchant performance, concentrations, exposure, emerging risks, and compliance with portfolio limits.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Monitoring • exposure • concentrations • limits • exceptions</p>
+</blockquote>
+<hr>
+<h2>Block M4.2</h2>
+<h3>Renewal &amp; Dynamic Line Strategy</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Reward strong performance through renewal, exposure increases, pricing adjustments, and deeper merchant relationships.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Renewal • dynamic lines • repricing • relationship growth</p>
+</blockquote>
+<hr>
+<h2>Block M4.3</h2>
+<h3>Intervention &amp; Loss Mitigation</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Trigger covenant action, remittance adjustment, restructuring, controlled exit, and recovery strategies when stress emerges.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Covenant action • restructure • recover • exit</p>
+</blockquote>
+<p>This creates a clear visual counterpart to the relationship-growth block.</p>
+<hr>
+<h1>ROW 6 — Enterprise Optimization and Learning</h1>
+<p>Recommended row title:</p>
+<h2>Enterprise Optimization &amp; Learning</h2>
+<p>Row subtitle:</p>
+<blockquote>
+<p>Compare strategies, allocate risk, communicate performance, and improve each successive portfolio cycle.</p>
+</blockquote>
+<p>All blocks are <strong>Planned</strong>.</p>
+<hr>
+<h2>Block M5.1</h2>
+<h3>Strategy Simulation &amp; Comparison</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Run governed baseline and challenger strategies against matched merchant populations and common scenarios.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Baseline • challenger • matched comparison • governed scenarios</p>
+</blockquote>
+<hr>
+<h2>Block M5.2</h2>
+<h3>Portfolio Optimization</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Evaluate growth, risk density, profitability, concentration, liquidity, and operational tradeoffs across strategies.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Growth • risk • profitability • concentration • capacity</p>
+</blockquote>
+<hr>
+<h2>Block M5.3</h2>
+<h3>Executive Portfolio Intelligence</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Deliver decision-ready dashboards, portfolio monitoring, scenario evidence, and management reporting.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Dashboards • KPIs • scenarios • executive reporting</p>
+</blockquote>
+<hr>
+<h2>Block M5.4</h2>
+<h3>Learning &amp; Next Campaign</h3>
+<p><strong>Status: Planned</strong></p>
+<p>Methodology subtitle:</p>
+<blockquote>
+<p>Convert portfolio outcomes into revised parameters, policies, pricing, limits, and strategy controls for the next governed run.</p>
+</blockquote>
+<p>Compact visible version:</p>
+<blockquote>
+<p>Observe • learn • adjust controls • rerun</p>
+</blockquote>
+<p>This should have a feedback arrow returning to <strong>G1 Governed Run Control</strong>, with wording such as:</p>
+<blockquote>
+<p>Review results → adjust governed strategy parameters → launch next campaign iteration</p>
+</blockquote>
+<p>That creates a complete enterprise loop.</p>
+<hr>
+<h1>Bottom strip — Evidence, Validation, and Delivery Controls</h1>
+<p>This should run across the full width beneath the architecture.</p>
+<h2>Title</h2>
+<h3>Evidence, Validation &amp; Controlled Delivery</h3>
+<p>The strip should contain six compact evidence blocks:</p>
+<h3>Deterministic Generation</h3>
+<blockquote>
+<p>Same governed inputs produce the same governed outputs.</p>
+</blockquote>
+<h3>Snapshot Integrity</h3>
+<blockquote>
+<p>Parameter, profile, and source snapshots preserved with reproducible hashes.</p>
+</blockquote>
+<h3>Positive &amp; Negative Controls</h3>
+<blockquote>
+<p>Expected outcomes and intentional failures validate both logic and control effectiveness.</p>
+</blockquote>
+<h3>Reconciliation</h3>
+<blockquote>
+<p>Counts, distributions, business rules, and evidence outputs reconciled before acceptance.</p>
+</blockquote>
+<h3>Acceptance Milestones</h3>
+<blockquote>
+<p>Each completed phase receives explicit review, evidence, and acceptance.</p>
+</blockquote>
+<h3>Versioned Delivery</h3>
+<blockquote>
+<p>Governed SQL, documentation, evidence, and release packages maintained by build version.</p>
+</blockquote>
+<p>This strip is one of the architecture’s most differentiating features. It demonstrates <strong>how the platform is being built</strong>, not merely what it may eventually do.</p>
+<hr>
+<h1>Current milestone panel</h1>
+<p>A compact panel on the lower right or upper right should read:</p>
+<h2>Current Accepted Milestones</h2>
+<ul>
+<li><strong>G0</strong> — Physical Data Foundation</li>
+<li><strong>G1</strong> — Governed Run Control</li>
+<li><strong>M1.2</strong> — Deterministic Merchant Population</li>
+<li><strong>M1.3</strong> — Application &amp; Requested Structure</li>
+</ul>
+<h2>Active Development</h2>
+<ul>
+<li><strong>M1.4</strong> — Daily POS &amp; Settlement History</li>
+</ul>
+<p>This panel should remain small. The architecture itself should show status through color and symbols; the milestone panel simply confirms the formal delivery sequence.</p>
+<hr>
+<h1>Recommended architecture flow</h1>
+<p>The principal flow should be:</p>
+<pre><code class="language-text">G0 Physical Foundation
+        ↓
+G1 Governed Run Control
+        ↓
+M1.2 Merchant Population
+        →
+M1.3 Application &amp; Requested Structure
+        →
+M1.4 Daily POS &amp; Settlement History
+        ↓
+M2 Daily Performance / Risk / Economics / Stress
+        ↓
+M3 Decision &amp; Offer Strategy
+        ↓
+M4 Portfolio &amp; Relationship Management
+        ↓
+M5 Strategy Comparison / Optimization / Reporting
+        ↓
+Learning &amp; Next Campaign
+        └────────────────────────────→ G1 Governed Run Control
+</code></pre>
+<p>The validation layer should span all rows rather than appear as a final checkpoint.</p>
+<hr>
+<h1>Recommended visual density</h1>
+<p>The image should contain approximately:</p>
+<ul>
+<li><strong>3 governance blocks</strong></li>
+<li><strong>3 foundation blocks</strong></li>
+<li><strong>3 performance-intelligence blocks</strong></li>
+<li><strong>3 risk/economics blocks</strong></li>
+<li><strong>3 decision-strategy blocks</strong></li>
+<li><strong>3 portfolio-management blocks</strong></li>
+<li><strong>4 optimization/learning blocks</strong></li>
+<li><strong>1 full-width evidence strip</strong></li>
+<li><strong>1 small milestone/status panel</strong></li>
+</ul>
+<p>That is 22 architecture blocks, which is dense but viable for a full-page 16:9 poster if the subtitles are concise and the row bands are disciplined.</p>
+<p>For the visible architecture, each block should contain only:</p>
+<ol>
+<li>module identifier;</li>
+<li>block title;</li>
+<li>one concise methodology line;</li>
+<li>status indicator.</li>
+</ol>
+<p>The longer methodology descriptions above should guide the build specification, not all appear verbatim.</p>
+<h1>Status presentation</h1>
+<h2>Accepted</h2>
+<ul>
+<li>soft navy or teal fill</li>
+<li>white checkmark</li>
+<li>small label: <strong>ACCEPTED</strong></li>
+</ul>
+<h2>Active Development</h2>
+<ul>
+<li>gold outline or gold top rule</li>
+<li>half-filled status marker</li>
+<li>label: <strong>ACTIVE DEVELOPMENT</strong></li>
+</ul>
+<h2>Planned</h2>
+<ul>
+<li>white or very pale fill</li>
+<li>cool-gray outline</li>
+<li>open-circle marker</li>
+<li>label: <strong>PLANNED</strong></li>
+</ul>
+<p>This lets the implementation status register immediately without overwhelming the architecture.</p>
+<p>The strongest final message beneath the poster would be:</p>
+<blockquote>
+<p><strong>A governed merchant-financing platform designed to progress from deterministic foundations to adaptive portfolio strategy.</strong></p>
+</blockquote>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

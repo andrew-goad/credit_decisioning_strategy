@@ -1,0 +1,3660 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PostgreSQL M1.14 Execution — Part 1</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>PostgreSQL M1.14 Execution</h1><p>Part 01 · C072</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_02.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c072-m00058" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00058 · 2026-07-28T08:00:32.531000-04:00 · active path</p><div class="body"><p>M1_16 has been built and I&#39;m currently testing it. While our parallel chat works on that, I&#39;d like to discuss what files should be uploaded to GitHub and in what format. Attached is how my Credit Decision Strategy Simulator was structured in GitHub.  Do not create anything yet, but I wonder if there is a way to create a GitHub tailored .zip that is in this same style of mapping with the same style of folder naming. we&#39;d have a Module 0, 1 in the first layer, then for example - under Module 1, we&#39;d have a 1.1 thru 1.17. then under those we&#39;d have versioning, then under versioning we&#39;d have docs/outputs/src/tests.  let&#39;s discuss this idea.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(247).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c072-m00069" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00069 · 2026-07-28T08:09:44.630402-04:00 · active path</p><div class="body"><h1>Yes—the GitHub-tailored ZIP is the right model</h1>
+<p>The public GitHub repository should <strong>not</strong> be a direct copy of the canonical governed project repository. It should be a separately generated, reviewer-oriented <strong>GitHub projection</strong> of the accepted project.</p>
+<p>Your Credit Decisioning Strategy Simulator already established a strong pattern:</p>
+<ul>
+<li>a root <code>README.md</code>;</li>
+<li>an artifact map with a “Start Here” path;</li>
+<li>module → version → <code>docs/</code>, <code>src/</code>, <code>outputs/</code>, and <code>tests/</code>;</li>
+<li>compact synthetic samples rather than complete simulation archives;</li>
+<li>separate executive, technical, and governance reviewer paths;</li>
+<li>static previews paired with downloadable interactive artifacts. fileciteturn6file0</li>
+</ul>
+<p>We should preserve that model, while adapting it to the much deeper and more governed MSBF module lineage.</p>
+<hr>
+<h1>1. Maintain two distinct repositories</h1>
+<p>The most important architecture decision is to separate the <strong>governed source of truth</strong> from the <strong>public portfolio presentation</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Repository</th>
+<th>Purpose</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Canonical governed repository</td>
+<td>Technical source of truth and audit record</td>
+<td>Every accepted source file, execution artifact, raw evidence export, failed control, recovery program, superseded revision, manifest, checksum, and formal sign-off</td>
+</tr>
+<tr>
+<td>GitHub portfolio repository</td>
+<td>Publicly browsable demonstration of the platform</td>
+<td>Accepted clean-build source, polished documentation, selected validation evidence, compact output samples, architecture visuals, and clear reviewer paths</td>
+</tr>
+<tr>
+<td>GitHub release ZIP</td>
+<td>Reproducible downloadable copy of the public repository</td>
+<td>The exact GitHub projection, packaged with a manifest and SHA-256 checksum</td>
+</tr>
+</tbody></table>
+<p>The GitHub repository would therefore be <strong>derived from</strong> the canonical accepted repository, but it would not replace it and would not be the technical baseline used for future module development.</p>
+<p>This distinction prevents three problems:</p>
+<ol>
+<li>A reviewer is not overwhelmed by thousands of internal audit artifacts.</li>
+<li>The canonical history is not weakened merely to make it visually attractive.</li>
+<li>Public cleanup, renaming, and navigation improvements do not alter accepted SQL or database lineage.</li>
+</ol>
+<hr>
+<h1>2. Recommended top-level structure</h1>
+<p>I recommend this root structure:</p>
+<pre><code class="language-text">Merchant_Sales_Based_Financing_Strategy_Simulator/
+│
+├── README.md
+├── PROJECT_ARTIFACT_MAP.md
+├── PROJECT_ROADMAP.md
+├── MODULE_AND_RELEASE_INDEX.md
+├── SAMPLE_DATA_AND_EVIDENCE_POLICY.md
+├── REPRODUCIBILITY_AND_EXECUTION.md
+├── CHANGELOG.md
+├── DISCLAIMER.md
+├── LICENSE
+├── .gitignore
+├── .gitattributes
+│
+├── docs/
+│   ├── executive_strategy/
+│   ├── enterprise_architecture/
+│   ├── data_and_decision_lineage/
+│   └── images/
+│
+├── Module_0_Governance_and_Control_Foundation/
+│   ├── 0.01_G0_Physical_Data_Foundation/
+│   └── 0.02_G1_Governed_Run_Control/
+│
+└── Module_1_Merchant_Intelligence_Risk_and_Economics/
+    ├── 1.01_Module_1_Charter_Architecture_and_Requirements/
+    ├── 1.02_M1.2_Deterministic_Merchant_Population/
+    ├── 1.03_M1.3_Application_and_Requested_Sales_Linked_Structure/
+    ├── 1.04_M1.4_Daily_POS_Settlement_and_Merchant_Ecosystem/
+    ├── 1.05_M1.5_Daily_Deposit_and_Liquidity_History/
+    ├── 1.06_M1.6_Matched_POS_and_Deposit_Scenario_Overlays/
+    ├── 1.07_M1.7_Source_Quality_and_Data_Confidence/
+    ├── 1.08_M1.8_Verification_Fraud_and_Processor_Continuity/
+    ├── 1.09_M1.9_As_Of_Cash_Flow_Feature_Engineering/
+    ├── 1.10_M1.10_Obligations_Liquidity_and_Residual_Cash_Flow/
+    ├── 1.11_M1.11_Cash_Flow_Archetypes_and_Operating_Resilience/
+    ├── 1.12_M1.12_Merchant_Risk_Components_and_Integrated_Risk_Proxy/
+    ├── 1.13_M1.13_Exposure_Recovery_and_Expected_Loss_Foundations/
+    ├── 1.14_M1.14_Unit_Economics_and_Risk_Adjusted_Contribution/
+    ├── 1.15_M1.15_Latest_Archive_Comparison_and_Consumption_Contract/
+    ├── 1.16_M1.16_Acquisition_Source_Marketing_Attribution_and_CAC/
+    └── 1.17_M1.17_End_to_End_QA_Evidence_and_G2_Acceptance/
+</code></pre>
+<p>This accomplishes what you proposed:</p>
+<pre><code class="language-text">Module
+→ module stage
+→ accepted version
+→ docs / outputs / src / tests
+</code></pre>
+<p>It also leaves a clean extension path for:</p>
+<pre><code class="language-text">Module_2_Strategy_Offer_and_Decisioning/
+Module_3_Portfolio_and_Relationship_Management/
+Module_4_Enterprise_Optimization_and_Learning/
+</code></pre>
+<p>Those future module directories should not be populated with empty placeholders. Their planned scope can remain visible in <code>PROJECT_ROADMAP.md</code> until accepted artifacts exist.</p>
+<hr>
+<h1>3. Important M1.1 qualification</h1>
+<p>There is no separately accepted database milestone called <code>M1.1</code> in the current canonical progression. The accepted technical chain begins with:</p>
+<pre><code class="language-text">G0
+G1
+M1.2
+M1.3
+...
+</code></pre>
+<p>We should not imply that a nonexistent <code>M1_1_ACCEPTED</code> database state was created.</p>
+<p>There are two defensible approaches.</p>
+<h2>Option A — Strict canonical numbering</h2>
+<p>Start the Module 1 folders at:</p>
+<pre><code class="language-text">1.02_M1.2_Deterministic_Merchant_Population
+</code></pre>
+<p>The Module 1 root <code>README.md</code> would contain the architecture and charter material.</p>
+<p>This is the strictest interpretation of the accepted database lineage.</p>
+<h2>Option B — Presentation-layer 1.01</h2>
+<p>Use:</p>
+<pre><code class="language-text">1.01_Module_1_Charter_Architecture_and_Requirements
+</code></pre>
+<p>but identify it explicitly as:</p>
+<pre><code class="language-text">GitHub documentation and architecture package
+Non-executable
+Not a separately accepted database milestone
+</code></pre>
+<p>This would hold:</p>
+<ul>
+<li>the Module 1 charter;</li>
+<li>enterprise architecture;</li>
+<li>logical and physical data-model documentation;</li>
+<li>module boundaries;</li>
+<li>methodology;</li>
+<li>stage roadmap;</li>
+<li>evidence and acceptance model;</li>
+<li>cross-module dependency map.</li>
+</ul>
+<p><strong>I recommend Option B.</strong> It gives reviewers a natural starting point and allows the public structure to run cleanly from <code>1.01</code> through <code>1.17</code>, while the folder README and release index preserve the difference between a documentation layer and an accepted database stage.</p>
+<hr>
+<h1>4. Use padded numbers</h1>
+<p>Use:</p>
+<pre><code class="language-text">1.01
+1.02
+...
+1.09
+1.10
+...
+1.17
+</code></pre>
+<p>rather than:</p>
+<pre><code class="language-text">1.1
+1.2
+...
+1.10
+</code></pre>
+<p>Padded numbers guarantee that directories remain visually ordered in GitHub, Windows Explorer, ZIP readers, and most file browsers.</p>
+<p>The canonical milestone should also remain in the name:</p>
+<pre><code class="language-text">1.14_M1.14_Unit_Economics_and_Risk_Adjusted_Contribution
+</code></pre>
+<p>This creates two useful identifiers:</p>
+<ul>
+<li><code>1.14</code> — public navigation sequence;</li>
+<li><code>M1.14</code> — canonical governed milestone.</li>
+</ul>
+<p>For Module 0:</p>
+<pre><code class="language-text">0.01_G0_Physical_Data_Foundation
+0.02_G1_Governed_Run_Control
+</code></pre>
+<p>That is more transparent than silently renaming G0 as M0.1 and G1 as M0.2.</p>
+<hr>
+<h1>5. Versioning beneath each stage</h1>
+<p>Each stage should have a stage-level README and one or more accepted-version directories.</p>
+<p>For example:</p>
+<pre><code class="language-text">1.14_M1.14_Unit_Economics_and_Risk_Adjusted_Contribution/
+│
+├── README.md
+│
+└── v0.2R4_ACCEPTED/
+    ├── docs/
+    ├── outputs/
+    ├── src/
+    ├── tests/
+    ├── RELEASE_METADATA.json
+    ├── MANIFEST.csv
+    └── SHA256SUMS.txt
+</code></pre>
+<p>For M1.15:</p>
+<pre><code class="language-text">1.15_M1.15_Latest_Archive_Comparison_and_Consumption_Contract/
+│
+├── README.md
+│
+└── v0.2R3_ACCEPTED/
+    ├── docs/
+    ├── outputs/
+    ├── src/
+    ├── tests/
+    ├── RELEASE_METADATA.json
+    ├── MANIFEST.csv
+    └── SHA256SUMS.txt
+</code></pre>
+<p>For M1.16, the version directory should not be finalized until testing, remediation, evidence review, and formal acceptance are complete:</p>
+<pre><code class="language-text">1.16_M1.16_Acquisition_Source_Marketing_Attribution_and_CAC/
+│
+├── README.md
+│
+└── v0.2R?_ACCEPTED/
+</code></pre>
+<p>The <code>R?</code> is conceptual here. The GitHub export must use the actual final accepted package revision.</p>
+<h2>Preserve canonical versions rather than inventing public versions</h2>
+<p>I would not rename accepted stage versions to <code>v1.0</code> merely for presentation. M1.14 is accepted at <code>v0.2R4</code>; that exact revision conveys meaningful engineering history.</p>
+<p>A separate <strong>repository-wide GitHub release tag</strong> can use semantic versioning once G2 is accepted:</p>
+<pre><code class="language-text">module-1-g2-v1.0.0
+</code></pre>
+<p>This gives us two different but complementary version concepts:</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Example</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Stage package</td>
+<td><code>v0.2R4_ACCEPTED</code></td>
+<td>Actual accepted governed source revision</td>
+</tr>
+<tr>
+<td>Public repository release</td>
+<td><code>module-1-g2-v1.0.0</code></td>
+<td>First complete public Module 1/G2 portfolio release</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>6. Standard contents under each accepted version</h1>
+<p>The four-folder pattern works well, but the boundary between <code>outputs/</code> and <code>tests/</code> must be explicit.</p>
+<h2><code>docs/</code></h2>
+<p>This folder explains the stage.</p>
+<p>Recommended artifacts:</p>
+<pre><code class="language-text">README.md
+MODULE_PURPOSE_AND_BOUNDARIES.md
+BUSINESS_REQUIREMENTS.md or BRD.pdf
+ARCHITECTURE_AND_LINEAGE.md
+DATA_DICTIONARY.csv
+PARAMETER_DICTIONARY.csv
+EXECUTION_AND_VALIDATION_GUIDE.md
+RELEASE_NOTES.md
+CORRECTION_HISTORY.md
+FORMAL_ACCEPTANCE_SIGNOFF.md
+</code></pre>
+<p>For visual-heavy stages, add:</p>
+<pre><code class="language-text">architecture.png
+lineage.svg
+executive_summary.png
+</code></pre>
+<p>The full formal title can appear in these documents even when the directory name is shortened for path safety.</p>
+<h2><code>src/</code></h2>
+<p>This folder contains the <strong>final accepted clean-build implementation</strong>, not every intermediate revision.</p>
+<p>Recommended artifacts:</p>
+<pre><code class="language-text">final accepted SQL programs
+execution-order CSV or Markdown
+read-only evidence reconstruction utilities
+authorized recovery utilities
+static package validation utility
+</code></pre>
+<p>For example, M1.14’s public <code>src/</code> would contain the final accepted versions of Programs 100–107 and only the contingency scripts that remain valid for the accepted release.</p>
+<p>It should not contain:</p>
+<pre><code class="language-text">obsolete generation scripts
+superseded narrow patches
+temporary diagnostic SQL
+duplicate copies of the same accepted program
+development scratch files
+</code></pre>
+<p>The raw history remains in the canonical repository. The public <code>CORRECTION_HISTORY.md</code> explains what failed, why it failed, where the safe state was, and how it was corrected.</p>
+<h2><code>outputs/</code></h2>
+<p>This folder contains business-facing or analytical outputs.</p>
+<p>Recommended artifacts:</p>
+<pre><code class="language-text">master report CSV
+compact application-level sample
+compact component-level sample
+channel or segment summary
+scenario-comparison sample
+executive aggregate summary
+Power BI-ready sample
+</code></pre>
+<p>For M1.16, representative outputs might eventually include:</p>
+<pre><code class="language-text">application acquisition attribution sample
+campaign-funnel summary
+acquisition-cost component sample
+legacy M1.14 overlap reconciliation sample
+application acquisition contract sample
+integrated M1.15 + M1.16 scenario projection sample
+channel-level acquisition economics summary
+</code></pre>
+<p><code>outputs/</code> should not contain all raw validation exports. Those belong under <code>tests/</code>.</p>
+<h2><code>tests/</code></h2>
+<p>This folder demonstrates that the stage is controlled and accepted.</p>
+<p>Recommended structure:</p>
+<pre><code class="language-text">tests/
+├── README.md
+├── VALIDATION_SUMMARY.md
+├── positive_controls_summary.csv
+├── negative_controls_summary.csv
+├── deterministic_hash_reconciliation.csv
+├── stage_boundary_validation.csv
+├── formal_acceptance_signoff.md
+├── evidence/
+│   ├── master_report.csv
+│   ├── zero_row_mismatch_output.csv
+│   ├── zero_row_blocking_error_output.csv
+│   └── selected_detailed_report_outputs/
+└── review_queries/
+    └── selected SQL or exported review results
+</code></pre>
+<p>This mirrors the governance/review-query strength of the prior simulator without uploading every DBeaver export.</p>
+<hr>
+<h1>7. What should be publicly uploaded</h1>
+<h2>Core artifacts to include</h2>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Public treatment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Accepted clean-build SQL</td>
+<td>Include in <code>src/</code></td>
+</tr>
+<tr>
+<td>Execution order</td>
+<td>Include as <code>.md</code> and/or <code>.csv</code></td>
+</tr>
+<tr>
+<td>Stage purpose and boundary</td>
+<td>Include as Markdown</td>
+</tr>
+<tr>
+<td>BRD or methodology documentation</td>
+<td>Include Markdown and optionally PDF</td>
+</tr>
+<tr>
+<td>Data and parameter dictionaries</td>
+<td>Include CSV</td>
+</tr>
+<tr>
+<td>Architecture and lineage</td>
+<td>Include PNG or SVG plus explanatory Markdown</td>
+</tr>
+<tr>
+<td>Accepted row counts and set hashes</td>
+<td>Include in validation summary and metadata</td>
+</tr>
+<tr>
+<td>Positive-control summary</td>
+<td>Include CSV</td>
+</tr>
+<tr>
+<td>Negative-control summary</td>
+<td>Include CSV</td>
+</tr>
+<tr>
+<td>Formal sign-off</td>
+<td>Include Markdown or PDF</td>
+</tr>
+<tr>
+<td>Master report</td>
+<td>Include compact CSV</td>
+</tr>
+<tr>
+<td>Deterministic mismatch output</td>
+<td>Include header-only zero-row CSV when accepted</td>
+</tr>
+<tr>
+<td>Blocking-error output</td>
+<td>Include header-only zero-row CSV when accepted</td>
+</tr>
+<tr>
+<td>Representative detailed evidence</td>
+<td>Include selected CSVs</td>
+</tr>
+<tr>
+<td>Synthetic business outputs</td>
+<td>Include compact deterministic samples</td>
+</tr>
+<tr>
+<td>Correction history</td>
+<td>Include summarized Markdown</td>
+</tr>
+<tr>
+<td>Release manifest and checksums</td>
+<td>Include CSV/JSON/text</td>
+</tr>
+</tbody></table>
+<h2>Artifacts that should remain internal</h2>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Complete canonical project ZIP</td>
+<td>Duplicative and too audit-heavy for the browseable repository</td>
+</tr>
+<tr>
+<td>PostgreSQL database dump</td>
+<td>Unnecessary for portfolio review and potentially large</td>
+</tr>
+<tr>
+<td>Every raw execution-evidence CSV</td>
+<td>Creates noise and hides the important controls</td>
+</tr>
+<tr>
+<td>Every superseded SQL revision</td>
+<td>The accepted clean build plus correction history tells the story more effectively</td>
+</tr>
+<tr>
+<td>DBeaver workspace files</td>
+<td>Machine-specific and irrelevant</td>
+</tr>
+<tr>
+<td>Temporary tables or scratch exports</td>
+<td>Not governed release artifacts</td>
+</tr>
+<tr>
+<td>Repeated execution logs</td>
+<td>Include only where they document a meaningful defect</td>
+</tr>
+<tr>
+<td>Duplicate standalone and full-project packages</td>
+<td>Inflates repository history</td>
+</tr>
+<tr>
+<td>Interview notes or company-specific correspondence</td>
+<td>Not part of the technical portfolio</td>
+</tr>
+<tr>
+<td>Third-party white papers</td>
+<td>Cite or link to them rather than redistribute unless redistribution rights are clear</td>
+</tr>
+<tr>
+<td>Third-party logos beyond reasonable attribution needs</td>
+<td>Avoid unnecessary licensing issues</td>
+</tr>
+</tbody></table>
+<p>The public repository should still demonstrate defect discipline. I would not erase the correction history. Instead, present it in a compact and useful format:</p>
+<pre><code class="language-text">Defect
+→ classification
+→ transaction state
+→ affected stage
+→ root cause
+→ controlled remediation
+→ proof that accepted business data was preserved
+→ final accepted revision
+</code></pre>
+<p>That tells a stronger engineering story than hundreds of raw files.</p>
+<hr>
+<h1>8. Recommended public evidence tiers</h1>
+<p>A three-tier model would balance transparency and usability.</p>
+<h2>Tier 1 — Required accepted evidence</h2>
+<p>Every public stage should include:</p>
+<pre><code class="language-text">accepted source revision
+stage counts
+set hashes
+positive-control summary
+negative-control summary
+master status
+formal acceptance sign-off
+stage-boundary confirmation
+</code></pre>
+<h2>Tier 2 — Representative detailed evidence</h2>
+<p>Include enough to prove depth:</p>
+<pre><code class="language-text">selected channel summaries
+selected scenario comparisons
+selected identity reconciliations
+representative component outputs
+header-only zero-row exception results
+</code></pre>
+<h2>Tier 3 — Canonical internal evidence</h2>
+<p>Retain internally:</p>
+<pre><code class="language-text">all raw result sets
+all original failed exports
+all superseded source
+all recovery execution evidence
+complete package manifests
+full evidence inventory
+</code></pre>
+<p>The GitHub README can state that the public repository is a curated derivative of a more extensive governed audit package.</p>
+<hr>
+<h1>9. Sample-data policy</h1>
+<p>The previous simulator handled this well by publishing compact synthetic samples rather than full simulation archives. That approach should continue here. fileciteturn6file0</p>
+<p>For MSBF, samples should be deterministic rather than manually selected.</p>
+<p>For example:</p>
+<pre><code class="language-text">Sample method:
+Include the 50 lowest application IDs after ordering by
+md5(application_id || accepted_run_code)
+</code></pre>
+<p>or:</p>
+<pre><code class="language-text">Include records where:
+deterministic_sample_rank &lt;= 50
+</code></pre>
+<p>Each sample README should state:</p>
+<pre><code class="language-text">Source table
+Full accepted population count
+Published sample count
+Deterministic selection method
+Sort order
+Accepted full-population set hash
+Whether the sample hash is separately reported
+Synthetic-data status
+</code></pre>
+<p>Important controls:</p>
+<ul>
+<li>The public sample must not be described as the complete output.</li>
+<li>The accepted full-population hash must not be represented as the sample hash.</li>
+<li>Scenario samples should preserve matched <code>BASELINE</code> and <code>RECESSION_ENERGY</code> rows for the same applications.</li>
+<li>Long-form samples should contain all relevant components for each selected application, rather than arbitrary partial component rows.</li>
+<li>Zero-row exception outputs should retain their column headers so reviewers can understand what was tested.</li>
+</ul>
+<hr>
+<h1>10. File-format recommendations</h1>
+<table>
+<thead>
+<tr>
+<th>Content</th>
+<th>Preferred format</th>
+<th>Secondary format</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Repository and stage documentation</td>
+<td><code>.md</code></td>
+<td><code>.pdf</code></td>
+</tr>
+<tr>
+<td>Executable PostgreSQL source</td>
+<td><code>.sql</code></td>
+<td>None</td>
+</tr>
+<tr>
+<td>Tabular outputs and evidence</td>
+<td><code>.csv</code></td>
+<td><code>.xlsx</code> only when multi-sheet presentation adds value</td>
+</tr>
+<tr>
+<td>Data and parameter dictionaries</td>
+<td><code>.csv</code></td>
+<td><code>.md</code> summary</td>
+</tr>
+<tr>
+<td>Release metadata</td>
+<td><code>.json</code></td>
+<td><code>.csv</code></td>
+</tr>
+<tr>
+<td>File inventory</td>
+<td><code>.csv</code></td>
+<td><code>.json</code></td>
+</tr>
+<tr>
+<td>Checksums</td>
+<td><code>.txt</code> or <code>.sha256</code></td>
+<td>None</td>
+</tr>
+<tr>
+<td>Architecture diagrams</td>
+<td><code>.svg</code> or <code>.png</code></td>
+<td><code>.pdf</code></td>
+</tr>
+<tr>
+<td>Dashboard previews</td>
+<td><code>.png</code></td>
+<td>None</td>
+</tr>
+<tr>
+<td>Power BI report</td>
+<td><code>.pbix</code></td>
+<td>PNG previews and Markdown description</td>
+</tr>
+<tr>
+<td>Public downloadable package</td>
+<td><code>.zip</code></td>
+<td><code>.sha256</code> companion</td>
+</tr>
+<tr>
+<td>Correction and acceptance history</td>
+<td><code>.md</code></td>
+<td><code>.pdf</code></td>
+</tr>
+</tbody></table>
+<h2>Markdown should be the primary documentation format</h2>
+<p>PDFs remain valuable for polished portfolio deliverables, but Markdown should carry the core GitHub-readable story:</p>
+<ul>
+<li>it is immediately readable in the repository;</li>
+<li>links remain navigable;</li>
+<li>changes are inspectable;</li>
+<li>reviewers do not need to download a document before understanding the stage.</li>
+</ul>
+<p>For major BRDs or validation reports, using both is reasonable:</p>
+<pre><code class="language-text">M1_16_Acquisition_Foundations_BRD.md
+M1_16_Acquisition_Foundations_BRD.pdf
+</code></pre>
+<h2>Binary artifacts need a visible companion</h2>
+<p>A PBIX file should have:</p>
+<pre><code class="language-text">PBIX file
+PNG page previews
+README describing the semantic model and pages
+sample data used by the report
+</code></pre>
+<p>An architecture PDF should have a PNG or SVG preview. This follows the effective approach used in your earlier simulator, where the PBIX report was paired with static page previews and an artifact map explaining how to review it. fileciteturn6file0</p>
+<hr>
+<h1>11. Do not commit the tailored ZIP inside the normal repository tree</h1>
+<p>The final deliverable should exist in two forms:</p>
+<h2>A. Extracted browseable repository</h2>
+<p>This is what gets committed and displayed on GitHub:</p>
+<pre><code class="language-text">README.md
+Module_0...
+Module_1...
+docs...
+</code></pre>
+<h2>B. Matching release archive</h2>
+<p>Attach the ZIP and checksum to a GitHub Release:</p>
+<pre><code class="language-text">MSBF_Strategy_Simulator_Module_1_G2_v1_0_0_GitHub.zip
+MSBF_Strategy_Simulator_Module_1_G2_v1_0_0_GitHub.zip.sha256
+</code></pre>
+<p>Committing that same ZIP into the repository would store a second binary copy of all public files and cause repository history to grow unnecessarily.</p>
+<p>GitHub recommends keeping repositories ideally below 1 GB and strongly recommends remaining below 5 GB. Ordinary Git objects are rejected at 100 MB, while GitHub recommends much smaller individual objects for repository health. citeturn650035search0turn650035search7</p>
+<p>GitHub Release assets are better suited to the downloadable ZIP: each release asset may be up to 2 GiB, and GitHub currently imposes no total release-size or bandwidth limit for a release. citeturn650035search1</p>
+<hr>
+<h1>12. Git LFS and binary-file treatment</h1>
+<p>The normal repository should remain mostly text, CSV, and images.</p>
+<p>Use this order of preference:</p>
+<pre><code class="language-text">Small binary, useful for every reviewer
+→ regular repository
+
+Large downloadable deliverable
+→ GitHub Release asset
+
+Large binary that must be versioned alongside source
+→ Git LFS
+</code></pre>
+<p>GitHub blocks normal repository files above 100 MiB. Browser uploads are limited to 25 MiB per file, while command-line uploads can reach 100 MiB per file; files beyond that require Git LFS. citeturn650035search7turn650035search22</p>
+<p>Git LFS currently permits maximum individual files of 2 GB for GitHub Free and Pro, 4 GB for Team, and 5 GB for Enterprise Cloud. LFS file types are configured through <code>.gitattributes</code>, which GitHub recommends committing to the repository. citeturn650035search4turn650035search27</p>
+<p>For a PBIX file, Release assets may be preferable to LFS when the file is an infrequently changed downloadable portfolio artifact. Each changed LFS binary is stored as another complete version and consumes additional LFS storage, even when the change is small. citeturn650035search16</p>
+<hr>
+<h1>13. Root reviewer experience</h1>
+<p>The existence of 17 Module 1 stages is technically impressive, but a reviewer should not have to click through all 17 to understand why the project matters.</p>
+<p>The root should support progressive disclosure.</p>
+<h2>Five-minute executive path</h2>
+<pre><code class="language-text">README.md
+→ enterprise architecture
+→ executive strategy brief
+→ current platform status
+→ final Module 1/G2 dashboard
+→ M1.16 acquisition-economics highlight
+</code></pre>
+<h2>Technical path</h2>
+<pre><code class="language-text">Module 1 architecture
+→ selected stage READMEs
+→ accepted SQL
+→ data dictionaries
+→ consumption contract
+→ integrated M1.15/M1.16 output
+→ M1.17 G2 validation
+</code></pre>
+<h2>Governance path</h2>
+<pre><code class="language-text">governed run control
+→ stage acceptance model
+→ hashes and reconciliations
+→ positive and negative controls
+→ correction histories
+→ immutable archive controls
+→ G2 acceptance
+</code></pre>
+<p>This reproduces one of the best features of the earlier repository: different reviewer paths for executives, technical readers, and governance/validation readers. fileciteturn6file0</p>
+<hr>
+<h1>14. Root documents I would consider mandatory</h1>
+<h2><code>README.md</code></h2>
+<p>The primary portfolio story:</p>
+<ul>
+<li>what the business is;</li>
+<li>why sales-based financing differs from conventional installment lending;</li>
+<li>governing principles;</li>
+<li>architecture;</li>
+<li>accepted progression;</li>
+<li>current status;</li>
+<li>core statistics;</li>
+<li>technology stack;</li>
+<li>key portfolio capabilities;</li>
+<li>stage map;</li>
+<li>reviewer paths;</li>
+<li>synthetic-data and non-production disclaimer.</li>
+</ul>
+<h2><code>PROJECT_ARTIFACT_MAP.md</code></h2>
+<p>Modeled on the prior project:</p>
+<pre><code class="language-text">Start Here
+Repository Structure
+Current vs. Historical Artifacts
+Sample Data Policy
+Documentation Status
+Fast Executive Review
+Technical / Architecture Review
+Governance / Validation Review
+</code></pre>
+<h2><code>MODULE_AND_RELEASE_INDEX.md</code></h2>
+<p>A compact governing table:</p>
+<table>
+<thead>
+<tr>
+<th>Public folder</th>
+<th>Canonical stage</th>
+<th align="right">Accepted revision</th>
+<th>Status</th>
+<th>Primary hash</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0.01...</code></td>
+<td>G0</td>
+<td align="right">Accepted revision</td>
+<td>ACCEPTED</td>
+<td>—</td>
+<td>Physical foundation</td>
+</tr>
+<tr>
+<td><code>0.02...</code></td>
+<td>G1</td>
+<td align="right">Accepted revision</td>
+<td>ACCEPTED</td>
+<td>Governance hashes</td>
+<td>Run control</td>
+</tr>
+<tr>
+<td><code>1.14...</code></td>
+<td>M1.14</td>
+<td align="right">v0.2R4</td>
+<td>ACCEPTED</td>
+<td><code>3a47...</code></td>
+<td>Unit economics</td>
+</tr>
+<tr>
+<td><code>1.15...</code></td>
+<td>M1.15</td>
+<td align="right">v0.2R3</td>
+<td>ACCEPTED</td>
+<td><code>fcd2...</code></td>
+<td>Consumption contract</td>
+</tr>
+<tr>
+<td><code>1.16...</code></td>
+<td>M1.16</td>
+<td align="right">Final revision TBD</td>
+<td>Testing</td>
+<td>TBD</td>
+<td>Acquisition evidence</td>
+</tr>
+<tr>
+<td><code>1.17...</code></td>
+<td>M1.17</td>
+<td align="right">Not started</td>
+<td>PLANNED</td>
+<td>—</td>
+<td>G2 acceptance</td>
+</tr>
+</tbody></table>
+<p>The public final G2 release would update M1.16 and M1.17 to their accepted values.</p>
+<h2><code>SAMPLE_DATA_AND_EVIDENCE_POLICY.md</code></h2>
+<p>Explains:</p>
+<ul>
+<li>all data are synthetic;</li>
+<li>no PII;</li>
+<li>why complete archives are not published;</li>
+<li>deterministic sample methodology;</li>
+<li>relationship between full-population counts and public samples;</li>
+<li>treatment of zero-row exception evidence.</li>
+</ul>
+<h2><code>REPRODUCIBILITY_AND_EXECUTION.md</code></h2>
+<p>Explains:</p>
+<pre><code class="language-text">PostgreSQL 15
+Database name
+DBeaver execution model
+Execute SQL Script
+Stage order
+Accepted-source requirement
+No accepted-stage reruns
+Failure and rollback discipline
+</code></pre>
+<p>It should not attempt to make a new user execute all 17 stages blindly without first reviewing dependencies.</p>
+<h2><code>DISCLAIMER.md</code></h2>
+<p>Should state that the simulator is:</p>
+<pre><code class="language-text">Synthetic
+Educational and portfolio-oriented
+Not production underwriting
+Not calibrated credit approval
+Not CECL
+Not regulatory capital
+Not legal or accounting advice
+Not an offer of financing
+</code></pre>
+<hr>
+<h1>15. A deterministic GitHub-export process</h1>
+<p>The GitHub ZIP should itself be produced through a governed mapping rather than manual drag-and-drop.</p>
+<h2>Proposed process</h2>
+<pre><code class="language-text">1. Start from the final accepted full-project repository.
+2. Validate its canonical SHA-256.
+3. Read a controlled source-to-target export map.
+4. Copy only approved public artifacts.
+5. Preserve accepted SQL bytes exactly.
+6. Generate GitHub-specific navigation documents.
+7. Generate compact deterministic data samples.
+8. Generate public validation summaries.
+9. Audit all relative links.
+10. Audit file names and Windows path lengths.
+11. Scan for temporary files, database dumps, and excluded content.
+12. Generate MANIFEST.csv.
+13. Generate manifest.json.
+14. Generate SHA256SUMS.txt.
+15. Validate every inventory against final bytes.
+16. Create the GitHub-tailored ZIP.
+17. Extract and compare the ZIP to the staging directory.
+18. Recompute the ZIP SHA-256.
+</code></pre>
+<p>A governing export map could eventually contain:</p>
+<pre><code class="language-text">source_path
+target_path
+artifact_role
+canonical_stage
+accepted_revision
+include_flag
+public_release_status
+transformation_code
+source_sha256
+published_sha256
+inclusion_or_exclusion_reason
+</code></pre>
+<p>Example:</p>
+<pre><code class="language-text">16_M1_14/sql/102_...R3.sql
+→
+Module_1.../1.14.../v0.2R4_ACCEPTED/src/102_...R3.sql
+</code></pre>
+<p>The source and published hashes should match for accepted SQL.</p>
+<p>For a generated GitHub-specific Markdown summary:</p>
+<pre><code class="language-text">transformation_code = GITHUB_DERIVED_DOCUMENT
+</code></pre>
+<p>That makes the distinction between unchanged canonical artifacts and new presentation artifacts explicit.</p>
+<hr>
+<h1>16. Naming standards</h1>
+<p>I recommend these standards:</p>
+<pre><code class="language-text">Use underscores in folder names.
+Use &quot;and&quot; rather than &quot;&amp;&quot;.
+Avoid spaces in technical paths.
+Preserve decimal milestone identifiers.
+Preserve canonical stage identifiers.
+Avoid dates in permanent source filenames unless the artifact is execution evidence.
+Avoid FINAL, FINAL2, NEW_FINAL, or COMPLETE_FINAL inside the public hierarchy.
+Put status and revision in structured metadata and version directories.
+Keep folder titles shorter than full document titles.
+</code></pre>
+<p>For example:</p>
+<pre><code class="language-text">Folder:
+1.16_M1.16_Acquisition_Source_Marketing_Attribution_and_CAC
+
+README title:
+M1.16 — Acquisition Source, Marketing Attribution
+&amp; Merchant Acquisition Cost Foundations
+</code></pre>
+<p>This keeps paths manageable while preserving the full professional title where readers see it.</p>
+<hr>
+<h1>17. When to publish</h1>
+<p>Because M1.16 is currently undergoing live testing, I would not yet publish it to the main public branch as accepted.</p>
+<p>The clean public-release sequence is:</p>
+<pre><code class="language-text">M1.16 tested
+→ evidence reviewed
+→ M1.16 formally accepted
+→ M1.17 built
+→ M1.17 executed and evidenced
+→ G2 formally accepted
+→ final Module 1 GitHub projection generated
+→ public GitHub release v1.0.0
+</code></pre>
+<p>That produces a much stronger public milestone:</p>
+<blockquote>
+<p><strong>Complete governed Module 1 foundation, accepted through G2</strong></p>
+</blockquote>
+<p>rather than a repository that ends in an in-progress state.</p>
+<p>A development branch or prerelease could exist during construction, but the primary portfolio README and main branch should present only accepted capabilities.</p>
+<p>For the final G2 package, GitHub’s immutable-release capability would fit this project especially well. When enabled, the release tag is locked to its commit, release assets cannot be replaced or deleted while the release exists, and GitHub generates an attestation tying the tag, commit, and assets together. citeturn572219search0</p>
+<hr>
+<h1>Final recommendation</h1>
+<p>Create a <strong>curated GitHub projection ZIP</strong> with this model:</p>
+<pre><code class="language-text">Module
+→ numbered canonical stage
+→ exact accepted revision
+→ docs / outputs / src / tests
+</code></pre>
+<p>Use:</p>
+<pre><code class="language-text">Module 0
+  0.01 G0
+  0.02 G1
+
+Module 1
+  1.01 documentation-only charter and architecture
+  1.02 canonical M1.2
+  ...
+  1.16 canonical M1.16
+  1.17 canonical M1.17 / G2
+</code></pre>
+<p>The extracted contents become the browseable GitHub repository. The identical ZIP and its SHA-256 become release assets. The canonical full-project repository remains private and audit-complete.</p>
+<p>That gives the MSBF project the same reviewer-friendly organization as the Credit Decisioning Strategy Simulator while preserving the much stronger governance, module lineage, acceptance history, and deterministic evidence discipline developed in this project.</p>
+</div></article><article id="c072-m00071" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00071 · 2026-07-28T08:30:26.751000-04:00 · active path</p><div class="body"><p>I agree with your recommendations and I also want to add that the quality of the markdown presentation matters. I really like how we did the markdown for the credit decisioning strategy readme (attached) along with how the project artifact map markdown was presented. these are high quality, easy to follow presentations focused on the user&#39;s experience, understanding, and navigation.  furthermore, I&#39;d want to ensure that among the visuals and artifacts is an updated Enterprise_Merchant_Sales_Based_Financing_Platform.png and From_First_Advance_to_Intelligent_Portfolio.pdf.   thoughts on these ideas? again, do not create anything yet. Just discuss.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted markdown(13).md</code>, <code>Enterprise_Merchant_Sales_Based_Financing_Platform(3).png</code>, <code>From_First_Advance_to_Intelligent_Portfolio(5).pdf</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c072-m00077" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00077 · 2026-07-28T08:36:00.758725-04:00 · active path</p><div class="body"><h1>These should be release requirements, not optional polish</h1>
+<p>I agree strongly. For this project, the GitHub presentation should be treated as a <strong>designed analytical product</strong>, not merely a folder of technically correct artifacts.</p>
+<p>The PostgreSQL implementation proves that the platform works. The Markdown, architecture, and executive brief determine whether a reviewer can understand:</p>
+<ul>
+<li>what the platform does;</li>
+<li>why the design matters;</li>
+<li>where to begin;</li>
+<li>how the stages connect;</li>
+<li>what is accepted versus planned;</li>
+<li>where the evidence is located;</li>
+<li>what the project demonstrates about your enterprise architecture, risk, economics, governance, and communication capabilities.</li>
+</ul>
+<p>The public repository should communicate quality before the reviewer opens the first SQL file.</p>
+<hr>
+<h1>1. What worked especially well in the Credit Decisioning README</h1>
+<p>The attached Credit Decisioning README succeeds because it uses <strong>progressive disclosure</strong> rather than beginning with implementation details.</p>
+<p>Its strongest characteristics are:</p>
+<ol>
+<li><p><strong>A strategic opening question</strong><br>It begins with the business problem rather than the technology.</p>
+</li>
+<li><p><strong>An immediate statement of purpose and boundaries</strong><br>The reader quickly understands that the project is a governed simulation environment without PII—not a dashboard-only exercise or production underwriting system.</p>
+</li>
+<li><p><strong>Early navigation support</strong><br>The artifact map is introduced before the reader becomes lost in the repository.</p>
+</li>
+<li><p><strong>An executive system overview</strong><br>The module table and end-to-end flow explain the system before the detailed sections begin.</p>
+</li>
+<li><p><strong>Visuals integrated into the narrative</strong><br>Images are not merely stored in a folder. They are displayed, captioned, linked at full resolution, and explained in context.</p>
+</li>
+<li><p><strong>Anchor-artifact tables</strong><br>A reviewer can jump directly to the BRD, SQL, dashboard, outputs, or validation artifacts.</p>
+</li>
+<li><p><strong>Separate reviewer paths</strong><br>Executives, technical reviewers, and governance reviewers are not forced through the same sequence.</p>
+</li>
+<li><p><strong>Explicit sample-data and interpretation boundaries</strong><br>The repository explains what is synthetic, what is sampled, and what conclusions should not be drawn.</p>
+</li>
+<li><p><strong>A clear project philosophy</strong><br>The “No Black-Box Strategy Claims” section elevates the repository beyond a technical demonstration and makes the design principle memorable. fileciteturn10file0</p>
+</li>
+</ol>
+<p>Those same strengths should be carried into the Merchant Sales-Based Financing repository.</p>
+<p>However, the MSBF project has <strong>17 Module 1 stages plus G0 and G1</strong>, so its root README must be even more disciplined. A literal stage-by-stage retelling of every module in the root README would become too long and repetitive.</p>
+<p>The best division of responsibilities is:</p>
+<pre><code class="language-text">README.md
+Explains the business, architecture, strategic story,
+current release, major capabilities, and why the project matters.
+
+PROJECT_ARTIFACT_MAP.md
+Explains exactly where artifacts live and how different
+reviewers should navigate the repository.
+
+MODULE_AND_RELEASE_INDEX.md
+Records the canonical stage, accepted revision, status,
+methodology, counts, and principal hashes.
+
+Stage README files
+Explain the purpose, inputs, outputs, controls, boundaries,
+and accepted evidence for one specific stage.
+</code></pre>
+<hr>
+<h1>2. The artifact map should remain a major artifact in its own right</h1>
+<p>The attached <code>PROJECT_ARTIFACT_MAP.md</code> is effective because it is not merely a recursive file listing.</p>
+<p>It provides:</p>
+<ul>
+<li>a curated “Start Here” sequence;</li>
+<li>repository structure by module and version;</li>
+<li>current-versus-historical distinctions;</li>
+<li>explanations of major interactive and visual artifacts;</li>
+<li>sample-data policy;</li>
+<li>documentation status;</li>
+<li>executive, technical, and governance review paths. fileciteturn10file2</li>
+</ul>
+<p>The MSBF artifact map should use the same reader-oriented approach but improve it for the deeper module structure.</p>
+<h2>Recommended MSBF artifact-map hierarchy</h2>
+<h3>Start Here</h3>
+<p>The first items should not be all 19 stages. They should be the highest-value orientation artifacts:</p>
+<ol>
+<li>Root <code>README.md</code></li>
+<li>Updated enterprise architecture</li>
+<li>Updated strategic brief</li>
+<li>Module and release index</li>
+<li>M1.15 consumption-contract overview</li>
+<li>M1.16 acquisition-economics overview</li>
+<li>M1.17 G2 validation and acceptance summary</li>
+<li>Primary accepted SQL entry points</li>
+<li>Sample-output guide</li>
+</ol>
+<h3>Repository Structure</h3>
+<p>Then explain:</p>
+<pre><code class="language-text">Module 0
+→ G0 and G1
+
+Module 1
+→ 1.01 architecture and requirements
+→ 1.02 through 1.17 governed stages
+</code></pre>
+<h3>Current vs. Historical Artifacts</h3>
+<p>This matters because the canonical project has substantial correction history.</p>
+<p>The public map should distinguish:</p>
+<pre><code class="language-text">Current accepted clean-build source
+Public correction-history summary
+Canonical private audit history
+Superseded revisions not included in the public projection
+</code></pre>
+<h3>Suggested Reviewer Paths</h3>
+<p>I would retain the three established paths:</p>
+<ul>
+<li>Fast Executive Review</li>
+<li>Technical / Architecture Review</li>
+<li>Governance / Validation Review</li>
+</ul>
+<p>The acquisition-cost and economics artifacts can be highlighted within the executive and technical paths rather than creating too many specialized paths.</p>
+<hr>
+<h1>3. Markdown quality should be a formal GitHub-export control</h1>
+<p>The quality of the Markdown should be evaluated just as deliberately as file inventory and checksums.</p>
+<p>The GitHub projection should have a presentation-control checklist covering:</p>
+<pre><code class="language-text">Heading hierarchy is consistent.
+No skipped or malformed heading levels.
+Every relative link resolves.
+Every image link resolves.
+Every downloadable artifact exists.
+No stale module status appears.
+No stale counts or hashes appear.
+No “coming soon” placeholders appear in a final accepted release.
+Current and historical revisions are clearly distinguished.
+Tables render without excessive width where practical.
+Images remain legible at normal GitHub width.
+Every major image has descriptive alt text.
+Every major image has an “Open full size” link.
+PDFs have browser-viewable PNG previews.
+Code-flow diagrams are explained in prose.
+Technical terms are defined before being used extensively.
+Stage boundaries and interpretation limitations are explicit.
+Repository paths use consistent naming.
+</code></pre>
+<p>Because GitHub Markdown offers limited visual styling and no repository-specific custom CSS, quality comes primarily from:</p>
+<ul>
+<li>information hierarchy;</li>
+<li>short, purposeful paragraphs;</li>
+<li>well-designed tables;</li>
+<li>clear code-flow blocks;</li>
+<li>strong headings;</li>
+<li>disciplined use of bold;</li>
+<li>embedded visuals;</li>
+<li>meaningful link labels;</li>
+<li>deliberate ordering.</li>
+</ul>
+<p>The repository should avoid decorative badge clutter, excessive emojis, or generated boilerplate. The current Credit Decisioning README’s restrained professional style is the appropriate precedent.</p>
+<hr>
+<h1>4. The two visual artifacts should be top-level anchor artifacts</h1>
+<p>The following should be treated as core public deliverables:</p>
+<pre><code class="language-text">Enterprise_Merchant_Sales_Based_Financing_Platform.png
+
+From_First_Advance_to_Intelligent_Portfolio.pdf
+</code></pre>
+<p>They serve different but complementary purposes:</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Primary role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Enterprise architecture</td>
+<td>Shows how the platform works and how capabilities connect</td>
+</tr>
+<tr>
+<td>Strategic brief</td>
+<td>Shows why the platform exists and where the business can evolve</td>
+</tr>
+<tr>
+<td>Root README</td>
+<td>Connects the architecture, strategy, implementation, and evidence</td>
+</tr>
+<tr>
+<td>Artifact map</td>
+<td>Tells the reviewer exactly where to go next</td>
+</tr>
+</tbody></table>
+<p>Together, they create a strong sequence:</p>
+<pre><code class="language-text">Why this business matters
+→ Where the business can go
+→ How the enterprise platform is structured
+→ What has actually been implemented
+→ How the implementation was governed and validated
+</code></pre>
+<p>Neither visual should be buried under one individual stage. They are enterprise-level artifacts and belong in a root documentation area.</p>
+<p>Recommended placement:</p>
+<pre><code class="language-text">docs/
+├── executive_strategy/
+│   ├── From_First_Advance_to_Intelligent_Portfolio.pdf
+│   ├── from_first_advance_to_intelligent_portfolio_cover.png
+│   └── from_first_advance_to_intelligent_portfolio_contact_sheet.png
+│
+└── enterprise_architecture/
+    ├── Enterprise_Merchant_Sales_Based_Financing_Platform.png
+    ├── Enterprise_Merchant_Sales_Based_Financing_Platform.pdf
+    └── README.md
+</code></pre>
+<p>The PDF and architecture source-editing files do not necessarily need to be public. The public repository needs the polished exports. Editable PowerPoint or design-source files could remain in the canonical private repository unless there is a deliberate reason to showcase them.</p>
+<hr>
+<h1>5. The enterprise architecture unquestionably needs an update</h1>
+<p>The current architecture remains an excellent visual foundation, but it is visibly tied to an early project state:</p>
+<pre><code class="language-text">Accepted:
+G0
+G1
+M1.2
+M1.3
+
+Active:
+M1.4
+
+Planned:
+Subsequent capabilities
+</code></pre>
+<p>That is now materially outdated.</p>
+<p>The final public architecture should not merely change the status panel. It should incorporate the architectural implications of M1.15, M1.16, and the revised M1.17.</p>
+<h2>Required status update</h2>
+<p>For an interim development image:</p>
+<pre><code class="language-text">Accepted:
+G0, G1, M1.2–M1.15
+
+Active Development:
+M1.16
+
+Planned:
+M1.17
+</code></pre>
+<p>For the final Module 1/G2 GitHub release:</p>
+<pre><code class="language-text">Accepted:
+G0, G1, M1.2–M1.17
+
+Module 1 Contract:
+G2 ACCEPTED
+
+Next:
+Module 2 Strategy and Offer Decisioning
+</code></pre>
+<p>The final GitHub release should use the latter version.</p>
+<h2>M1.16 must become visible in the conceptual architecture</h2>
+<p>The new capability is not merely another validation stage. It adds a real business and economics dimension:</p>
+<pre><code class="language-text">Acquisition source
+→ marketing campaign
+→ funnel activity
+→ application attribution
+→ incurred acquisition cost
+→ conditional acquisition cost
+→ legacy M1.14 overlap control
+→ enhanced acquisition economics
+→ downstream strategy consumption
+</code></pre>
+<p>The architecture should therefore show a capability such as:</p>
+<blockquote>
+<p><strong>Acquisition Source, Attribution &amp; Merchant CAC Evidence</strong></p>
+</blockquote>
+<p>That capability should visibly feed:</p>
+<ul>
+<li>application evidence;</li>
+<li>unit economics;</li>
+<li>channel segmentation;</li>
+<li>downstream offer strategy;</li>
+<li>portfolio learning;</li>
+<li>future channel-mix optimization.</li>
+</ul>
+<p>It should not appear as a disconnected box added only because it happened to be implemented after M1.15.</p>
+<h2>M1.15 and M1.17 also need explicit representation</h2>
+<p>The current visual emphasizes business capabilities but does not yet prominently show the final Module 1 contract boundary.</p>
+<p>The revised architecture should make visible:</p>
+<pre><code class="language-text">Governed Module 1 Consumption Contract
+Latest + Archive + Matched Comparison
+
+Acquisition Companion Contract
+Application-level attribution and CAC evidence
+
+Integrated Module 1 Consumption Boundary
+Scenario-aware risk/economics plus application-level acquisition evidence
+
+G2 Contract Acceptance
+End-to-end evidence, reconciliation, immutability, and release approval
+</code></pre>
+<p>This will make the handoff into Module 2 much easier for a reviewer to understand.</p>
+<h2>Historic versus current physical counts</h2>
+<p>The current image states:</p>
+<pre><code class="language-text">70 physical parent tables
+1,041 designed columns
+</code></pre>
+<p>Those were the accepted <strong>G0 baseline counts</strong>, not necessarily the current total platform counts after all later controlled extensions.</p>
+<p>The revised visual should either:</p>
+<ol>
+<li><p>label them clearly as:</p>
+<pre><code class="language-text">G0 accepted baseline:
+70 parent tables | 1,041 designed columns
+</code></pre>
+</li>
+<li><p>or show both:</p>
+<pre><code class="language-text">G0 accepted baseline
+Current Module 1 platform
+</code></pre>
+</li>
+</ol>
+<p>The current platform count must be derived from the final accepted database or repository—not estimated manually.</p>
+<h2>Technology representation must remain honest</h2>
+<p>If Power BI has not yet been implemented for the MSBF project, the architecture should not imply that a completed MSBF Power BI report already exists.</p>
+<p>It can state:</p>
+<pre><code class="language-text">Current implementation:
+PostgreSQL 15
+
+Planned executive and portfolio-intelligence layer:
+Power BI
+</code></pre>
+<p>Once the PBIX and validated screenshots exist, Power BI can be shown as a completed technology layer.</p>
+<h2>Strategic horizons should reflect acquisition learning</h2>
+<p>The right-side one-, three-, and five-plus-year horizons should be updated.</p>
+<p>Possible conceptual changes:</p>
+<pre><code class="language-text">YEAR 1
+Controlled launch, acquisition-source measurement,
+core underwriting, servicing discipline, and early portfolio evidence.
+
+YEAR 3
+Channel-mix learning, pricing refinement, segment strategy,
+CAC efficiency, stress testing, portfolio optimization,
+and relationship growth.
+
+YEAR 5+
+Adaptive enterprise portfolio, dynamic line management,
+acquisition-to-lifetime-value learning, cross-cycle optimization,
+and resilient merchant-platform growth.
+</code></pre>
+<h2>Readability needs to improve for GitHub</h2>
+<p>The architecture is detailed and wide. At ordinary GitHub page width, much of the small body text will be difficult to read.</p>
+<p>The public version should therefore:</p>
+<ul>
+<li>be exported at substantially higher resolution;</li>
+<li>use slightly larger minimum type;</li>
+<li>reduce nonessential prose inside boxes;</li>
+<li>rely on short labels and meaningful subtitles;</li>
+<li>retain a full-size link directly below the embedded preview;</li>
+<li>potentially include a PDF companion for zooming and printing;</li>
+<li>avoid communicating status only through color.</li>
+</ul>
+<p>A release stamp in the footer would help:</p>
+<pre><code class="language-text">Module 1 G2 Release
+Accepted through M1.17
+As of [accepted date]
+</code></pre>
+<p>That makes the visual a versioned release snapshot rather than an architecture that silently becomes stale.</p>
+<hr>
+<h1>6. The strategy brief should be refreshed, not replaced</h1>
+<p>The existing eight-page brief remains strategically strong.</p>
+<p>Its arc is effective:</p>
+<pre><code class="language-text">A new business, not just a new product
+→ disciplined launch
+→ strategy beyond underwriting
+→ merchant relationship journey
+→ governed strategy engine
+→ portfolio learning system
+→ adaptive evolution
+→ broader merchant opportunity
+</code></pre>
+<p>The strongest pages for the GitHub story are:</p>
+<ul>
+<li>page 1: the central “first advance” thesis;</li>
+<li>page 4: the merchant relationship journey;</li>
+<li>page 5: the governed strategy architecture;</li>
+<li>page 6: the observe-learn-adjust-deploy loop;</li>
+<li>pages 7–8: the long-term evolution and platform opportunity. fileciteturn10file1</li>
+</ul>
+<p>The title should remain:</p>
+<blockquote>
+<p><strong>From First Advance to Intelligent Portfolio</strong></p>
+</blockquote>
+<p>It is memorable, strategically accurate, and broad enough to survive the project’s continued development.</p>
+<p>However, the addition of M1.16 exposes one important limitation in the existing version: the merchant journey currently begins at <strong>Application</strong>. The enhanced strategy now recognizes that economics and learning begin earlier.</p>
+<h2>Recommended page-level refinements</h2>
+<h3>Page 2 — Launch With Discipline</h3>
+<p>Add acquisition measurement to the controlled-launch concept:</p>
+<pre><code class="language-text">Foundation
+→ controlled acquisition
+→ evidence
+→ validation
+→ iteration
+</code></pre>
+<p>This makes clear that a responsible launch governs not only underwriting but also how merchants enter the platform and what that acquisition costs.</p>
+<h3>Page 3 — Beyond Underwriting</h3>
+<p>The current visual includes pricing, elasticity, collateral, portfolio limits, dynamic lines, loss mitigation, stress testing, relationship strategy, and covenants.</p>
+<p>It should add:</p>
+<pre><code class="language-text">Acquisition &amp; Channel Economics
+</code></pre>
+<p>This should not displace the existing risk and portfolio disciplines. It can be integrated as an additional element or a surrounding commercial-economics layer.</p>
+<h3>Page 4 — The Merchant Journey</h3>
+<p>The current journey begins:</p>
+<pre><code class="language-text">Application
+→ First Advance
+→ Daily Sales Signals
+...
+</code></pre>
+<p>The revised journey should begin earlier:</p>
+<pre><code class="language-text">Discovery / Acquisition Source
+→ Application
+→ First Advance
+→ Daily Sales Signals
+→ Portfolio Action
+→ Renewal
+→ Relationship Growth
+</code></pre>
+<p>A concise callout could communicate:</p>
+<blockquote>
+<p>Acquisition source influences cost, conversion, merchant quality, and the economics of the relationship that follows.</p>
+</blockquote>
+<p>This is probably the single most important strategic update to the brief.</p>
+<h3>Page 5 — The Strategy Engine</h3>
+<p>The existing four-part engine should remain. Acquisition can be incorporated into the Merchant Foundation:</p>
+<pre><code class="language-text">Merchant Foundation
+Acquisition source, identity, sales,
+affordability, capacity, and risk
+</code></pre>
+<p>Alternatively, the governance/evidence bands could explicitly include attribution and channel economics.</p>
+<p>The page should not become a literal M1.2-to-M1.17 technical map. Its purpose is executive architecture.</p>
+<h3>Page 6 — From Portfolio to Learning System</h3>
+<p>One of the learning-system factors should become:</p>
+<pre><code class="language-text">Channel performance
+</code></pre>
+<p>or:</p>
+<pre><code class="language-text">Acquisition efficiency
+</code></pre>
+<p>This makes the learning cycle include:</p>
+<ul>
+<li>which channels attract merchants;</li>
+<li>what those channels cost;</li>
+<li>what quality of application they produce;</li>
+<li>how those merchants perform;</li>
+<li>whether they renew;</li>
+<li>what relationship value develops.</li>
+</ul>
+<h3>Pages 7–8 — Evolution and Opportunity</h3>
+<p>The later horizons should incorporate the progression:</p>
+<pre><code class="language-text">Acquisition measurement
+→ channel-quality learning
+→ relationship economics
+→ acquisition-to-lifetime-value optimization
+</code></pre>
+<p>This should remain high-level. Terms such as M1.16, companion contract, hash reconciliation, and overlap adjustment belong in the technical repository—not in the executive brief.</p>
+<hr>
+<h1>7. The PDF needs GitHub-visible previews</h1>
+<p>A PDF link alone is not enough.</p>
+<p>The public repository should include:</p>
+<pre><code class="language-text">From_First_Advance_to_Intelligent_Portfolio.pdf
+</code></pre>
+<p>plus at least:</p>
+<pre><code class="language-text">from_first_advance_to_intelligent_portfolio_cover.png
+from_first_advance_to_intelligent_portfolio_contact_sheet.png
+</code></pre>
+<p>The root README could display the cover and link the image directly to the PDF:</p>
+<pre><code class="language-text">Cover preview
+→ click to open the eight-page strategic brief
+</code></pre>
+<p>The contact sheet would let a reviewer see the complete visual narrative without downloading the PDF first.</p>
+<p>Individual page PNGs are optional. A cover plus contact sheet is probably the best balance between presentation quality and repository size.</p>
+<hr>
+<h1>8. The root README should use both visuals early</h1>
+<p>A strong opening sequence would be:</p>
+<pre><code class="language-text">Title
+Strategic intent question
+Two-paragraph project overview
+Repository navigation link
+
+Enterprise architecture image
+Open full-size link
+
+Executive system overview
+Module 0 and Module 1 summary
+End-to-end evidence chain
+
+Strategic brief cover
+Open the eight-page brief
+
+Implementation progression
+Accepted stage table
+Key counts and hashes
+
+M1.16 acquisition-economics highlight
+M1.17 G2 acceptance
+
+Technical architecture
+Governance and evidence
+Repository map
+Reviewer paths
+Sample-data policy
+Interpretation boundaries
+</code></pre>
+<p>The architecture should appear before the stage-by-stage detail because it gives the reader the mental model needed to interpret the modules.</p>
+<p>The strategy brief should appear near the executive section because it explains the business vision and the one-, three-, and five-plus-year trajectory.</p>
+<hr>
+<h1>9. Each stage README should meet the same presentation standard</h1>
+<p>The root README cannot explain all stages fully. Each stage directory should therefore contain a polished local <code>README.md</code> using a standard template.</p>
+<p>Recommended structure:</p>
+<pre><code class="language-text"># M1.xx — Stage Name
+
+## Accepted Status
+Revision, methodology, run status, gate status
+
+## Business Question
+What problem this stage solves
+
+## Why This Stage Matters
+Business and architecture relevance
+
+## Inputs
+Accepted upstream persisted sources
+
+## Outputs and Grain
+Tables, views, record grain, counts
+
+## Analytical Construction
+Transparent calculation or evidence flow
+
+## Governance and Evidence
+Positive controls, negative controls, hashes,
+immutability, stage boundaries
+
+## Accepted Results
+Key counts, distributions, and set hashes
+
+## Correction History
+Concise description of controlled defects and remediation
+
+## Interpretation Boundaries
+What the stage does not claim
+
+## Anchor Artifacts
+Docs, SQL, outputs, tests, sign-off
+
+## Next Stage
+How this stage feeds the downstream architecture
+</code></pre>
+<p>This would give the repository a consistent visual and intellectual rhythm from M1.2 through M1.17.</p>
+<hr>
+<h1>10. Avoid the weaknesses of the older repository</h1>
+<p>The Credit Decisioning README is a strong precedent, but the MSBF repository should improve on several areas.</p>
+<h2>Do not duplicate the artifact map inside the README</h2>
+<p>The README should contain the most important links, not every file path. The artifact map owns detailed navigation.</p>
+<h2>Do not publish “coming soon” placeholders in the final release</h2>
+<p>The prior repository honestly labeled incomplete Module 2 artifacts, but the final MSBF G2 release should contain only completed artifacts or clearly separate future roadmap items from current deliverables.</p>
+<h2>Do not repeat the same explanation in multiple sections</h2>
+<p>With 17 stages, repetition could make the README unwieldy. The root README should summarize; stage READMEs should explain.</p>
+<h2>Do not let implementation chronology distort the conceptual architecture</h2>
+<p>M1.16 was implemented after M1.15, but acquisition evidence conceptually begins before application and feeds economics throughout the lifecycle. The visual architecture should show the conceptual relationship, while the release index records actual implementation order.</p>
+<h2>Do not manually copy status facts into multiple documents without reconciliation</h2>
+<p>Counts, hashes, revisions, and statuses should be sourced from a controlled release-metadata file whenever possible.</p>
+<p>The ideal model is:</p>
+<blockquote>
+<p><strong>Human-authored narrative, metadata-backed facts.</strong></p>
+</blockquote>
+<p>That reduces the chance that the README, architecture, artifact map, release index, and validation summary disagree.</p>
+<hr>
+<h1>11. Timing</h1>
+<p>The repository structure and editorial standards can be designed now, but the final public artifacts should not be frozen while M1.16 is still being tested.</p>
+<p>Recommended sequence:</p>
+<pre><code class="language-text">M1.16 testing completes
+→ M1.16 evidence reviewed
+→ M1.16 formally accepted
+→ M1.17 built
+→ M1.17 executed and evidenced
+→ G2 formally accepted
+→ final architecture updated
+→ strategic brief refreshed
+→ root README and artifact map finalized
+→ GitHub projection generated
+→ GitHub rendering and link audit
+→ public Module 1 G2 release
+</code></pre>
+<p>This avoids repeatedly revising status panels, counts, hashes, and acceptance language.</p>
+<p>The strategy brief can be conceptually revised earlier because it is largely evergreen. The architecture and status-heavy Markdown should wait for the final accepted G2 state.</p>
+<h1>Overall recommendation</h1>
+<p>Your instinct is exactly right.</p>
+<p>The GitHub repository should be designed around four complementary experiences:</p>
+<pre><code class="language-text">README
+Explains the story.
+
+Artifact Map
+Explains the navigation.
+
+Enterprise Architecture
+Explains the system.
+
+Strategic Brief
+Explains the vision.
+</code></pre>
+<p>The stage folders and SQL then provide the proof.</p>
+<p>That combination would preserve the best qualities of the Credit Decisioning repository while presenting the MSBF platform at a materially higher level of enterprise maturity, governance, and visual coherence.</p>
+</div></article><article id="c072-m00079" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00079 · 2026-07-28T08:43:01.748000-04:00 · active path</p><div class="body"><p>thank you. let&#39;s discuss how we get from now to getting this published. break it down into steps and let&#39;s determine if there are things we can work on in this chat, while the parallel chat and I work on approving M1.16 and building/approving M1.17.</p>
+</div></article><article id="c072-m00084" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00084 · 2026-07-28T08:47:35.634499-04:00 · active path</p><div class="body"><h1>Publication should run as a parallel governed workstream</h1>
+<p>We do <strong>not</strong> need to wait for M1.16 and M1.17 to finish before beginning the GitHub work. Most of the structure, editorial system, artifact-selection policy, stage templates, source mapping, and export controls can be completed now.</p>
+<p>The clean operating model is:</p>
+<table>
+<thead>
+<tr>
+<th>Workstream</th>
+<th>Primary responsibility</th>
+<th>Current focus</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Canonical engineering track</strong></td>
+<td>You and the parallel chat</td>
+<td>Test and accept M1.16; build, execute, remediate if necessary, and accept M1.17/G2</td>
+</tr>
+<tr>
+<td><strong>GitHub publication track</strong></td>
+<td>This chat</td>
+<td>Design the public repository, write and organize the presentation layer, prepare visual updates, define artifact mappings, and build the release-generation process</td>
+</tr>
+<tr>
+<td><strong>Final convergence</strong></td>
+<td>This chat using the final accepted repository</td>
+<td>Integrate M1.16 and M1.17, produce final visuals, generate the GitHub projection, validate it, and prepare publication</td>
+</tr>
+</tbody></table>
+<p>The final GitHub repository must remain a <strong>derived public projection</strong> of the accepted canonical repository. It should never become the technical source of truth for continued development.</p>
+<p>The earlier Credit Decisioning repository gives us a strong editorial benchmark: strategic framing first, an executive system overview, embedded visuals, anchor-artifact tables, clearly differentiated reviewer paths, sample-data boundaries, and technical depth that remains accessible rather than overwhelming. fileciteturn12file0</p>
+<p>Its artifact map is equally important because it treats navigation as a designed user experience through “Start Here,” current-versus-historical guidance, repository structure, and separate executive, technical, and governance review paths. fileciteturn12file2</p>
+<hr>
+<h1>End-to-end path from today to publication</h1>
+<h2>Phase 1 — Establish the publication governance rules</h2>
+<p><strong>Can begin and finish now.</strong></p>
+<p>Before drafting files, we should formally lock the principles governing the public release.</p>
+<h3>Required rules</h3>
+<pre><code class="language-text">Canonical accepted repository
+→ source of truth
+
+GitHub projection
+→ curated public derivative
+
+GitHub release ZIP
+→ exact packaged copy of the public derivative
+
+Accepted SQL
+→ copied byte-for-byte unless explicitly documented otherwise
+
+Generated Markdown and samples
+→ labeled as public-release derivatives
+
+Failed and superseded history
+→ preserved in the private canonical repository
+
+Public correction history
+→ summarized clearly without publishing every superseded artifact
+</code></pre>
+<p>Additional release rules:</p>
+<ul>
+<li>No active-development artifact should be represented as accepted.</li>
+<li>The main public branch should not contain “coming soon” placeholders.</li>
+<li>M1.16 should not be published as accepted until its evidence and formal sign-off are complete.</li>
+<li>M1.17 should not appear as accepted until G2 has been granted.</li>
+<li>Final counts, hashes, revisions, and status statements should come from structured release metadata—not manual recollection.</li>
+<li>The final public release should use the fully accepted M1.17 repository, not the current M1.15 or interim M1.16 build.</li>
+<li>Third-party white papers should be cited but not redistributed through the repository.</li>
+<li>No DBeaver workspace files, database dumps, scratch outputs, local paths, credentials, or interview correspondence should enter the public projection.</li>
+</ul>
+<h3>Output from this phase</h3>
+<p>A future document such as:</p>
+<pre><code class="language-text">GITHUB_PUBLICATION_CHARTER.md
+</code></pre>
+<p>This would establish the release boundary and prevent the public presentation work from inadvertently changing or misrepresenting the governed project.</p>
+<hr>
+<h2>Phase 2 — Freeze the public information architecture</h2>
+<p><strong>Can begin and finish now.</strong></p>
+<p>We can lock the repository hierarchy before M1.16 and M1.17 are complete.</p>
+<p>The agreed model remains:</p>
+<pre><code class="language-text">Repository
+→ Module
+→ Governed stage
+→ Accepted version
+→ docs / outputs / src / tests
+</code></pre>
+<p>Recommended pattern:</p>
+<pre><code class="language-text">Merchant_Sales_Based_Financing_Strategy_Simulator/
+│
+├── README.md
+├── PROJECT_ARTIFACT_MAP.md
+├── MODULE_AND_RELEASE_INDEX.md
+├── PROJECT_ROADMAP.md
+├── SAMPLE_DATA_AND_EVIDENCE_POLICY.md
+├── REPRODUCIBILITY_AND_EXECUTION.md
+├── GOVERNANCE_AND_VALIDATION.md
+├── CHANGELOG.md
+├── DISCLAIMER.md
+├── LICENSE
+│
+├── docs/
+│   ├── executive_strategy/
+│   ├── enterprise_architecture/
+│   ├── project_lineage/
+│   └── images/
+│
+├── Module_0_Governance_and_Control_Foundation/
+│   ├── 0.01_G0_Physical_Data_Foundation/
+│   └── 0.02_G1_Governed_Run_Control/
+│
+└── Module_1_Merchant_Intelligence_Risk_and_Economics/
+    ├── 1.01_Module_1_Charter_Architecture_and_Requirements/
+    ├── 1.02_M1.2_Deterministic_Merchant_Population/
+    ├── 1.03_M1.3_Application_and_Requested_Sales_Linked_Structure/
+    ├── ...
+    ├── 1.15_M1.15_Latest_Archive_Comparison_and_Consumption_Contract/
+    ├── 1.16_M1.16_Acquisition_Source_Marketing_Attribution_and_CAC/
+    └── 1.17_M1.17_End_to_End_QA_Evidence_and_G2_Acceptance/
+</code></pre>
+<p>Within an accepted stage:</p>
+<pre><code class="language-text">1.14_M1.14_Unit_Economics_and_Risk_Adjusted_Contribution/
+│
+├── README.md
+│
+└── v0.2R4_ACCEPTED/
+    ├── docs/
+    ├── outputs/
+    ├── src/
+    ├── tests/
+    ├── RELEASE_METADATA.json
+    ├── MANIFEST.csv
+    └── SHA256SUMS.txt
+</code></pre>
+<p>For M1.16 and M1.17, the final version directories should remain unresolved until acceptance:</p>
+<pre><code class="language-text">v0.2R?_ACCEPTED
+</code></pre>
+<p>The actual accepted revisions will replace those placeholders in the final build.</p>
+<h3>Decisions we can settle now</h3>
+<ul>
+<li>Final repository name and slug.</li>
+<li>Root-folder name.</li>
+<li>Module and stage naming conventions.</li>
+<li>Whether <code>1.01</code> remains the documentation-only Module 1 charter package.</li>
+<li>Root-document names.</li>
+<li>Version-directory format.</li>
+<li>File naming and path-length standards.</li>
+<li>GitHub release naming and tagging convention.</li>
+<li>Whether the public repository includes one accepted version per stage or selected historical versions.</li>
+</ul>
+<p>My recommendation remains: publish the <strong>current accepted clean-build version</strong> for each stage and summarize its correction history, rather than expose every intermediate revision.</p>
+<hr>
+<h2>Phase 3 — Define the public artifact inclusion and exclusion policy</h2>
+<p><strong>Can begin and finish now.</strong></p>
+<p>This is one of the most important pieces of work because the canonical repository is much too extensive to publish unfiltered.</p>
+<h3>Include publicly</h3>
+<table>
+<thead>
+<tr>
+<th>Artifact class</th>
+<th>Public treatment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Final accepted clean-build SQL</td>
+<td>Include in <code>src/</code></td>
+</tr>
+<tr>
+<td>Execution order</td>
+<td>Include as Markdown and CSV</td>
+</tr>
+<tr>
+<td>Business requirements and methodology</td>
+<td>Include in Markdown; PDF where presentation adds value</td>
+</tr>
+<tr>
+<td>Data and parameter dictionaries</td>
+<td>Include as CSV</td>
+</tr>
+<tr>
+<td>Architecture and lineage</td>
+<td>Include as PNG/SVG and explanatory Markdown</td>
+</tr>
+<tr>
+<td>Positive-control summary</td>
+<td>Include as CSV</td>
+</tr>
+<tr>
+<td>Negative-control summary</td>
+<td>Include as CSV</td>
+</tr>
+<tr>
+<td>Master report</td>
+<td>Include as CSV</td>
+</tr>
+<tr>
+<td>Formal sign-off</td>
+<td>Include as Markdown or PDF</td>
+</tr>
+<tr>
+<td>Final stage counts and set hashes</td>
+<td>Include in stage README and release metadata</td>
+</tr>
+<tr>
+<td>Zero-row deterministic mismatch output</td>
+<td>Include as header-only CSV</td>
+</tr>
+<tr>
+<td>Zero-row blocking-error output</td>
+<td>Include as header-only CSV</td>
+</tr>
+<tr>
+<td>Representative business outputs</td>
+<td>Include deterministic compact samples</td>
+</tr>
+<tr>
+<td>Correction history</td>
+<td>Include as concise, candid Markdown</td>
+</tr>
+<tr>
+<td>Manifest and checksums</td>
+<td>Include for each stage and the full release</td>
+</tr>
+</tbody></table>
+<h3>Keep in the private canonical repository</h3>
+<table>
+<thead>
+<tr>
+<th>Artifact class</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Every raw DBeaver evidence export</td>
+<td>Too much repetition and navigational noise</td>
+</tr>
+<tr>
+<td>Every superseded SQL revision</td>
+<td>Public clean-build source plus correction history is more useful</td>
+</tr>
+<tr>
+<td>Full database dumps</td>
+<td>Unnecessary for portfolio review</td>
+</tr>
+<tr>
+<td>Temporary diagnostics</td>
+<td>Not part of the accepted release</td>
+</tr>
+<tr>
+<td>Duplicate full-project ZIPs</td>
+<td>Inflate repository size and history</td>
+</tr>
+<tr>
+<td>Third-party research PDFs</td>
+<td>Copyright and redistribution concerns</td>
+</tr>
+<tr>
+<td>Interview notes and correspondence</td>
+<td>Not part of the technical artifact</td>
+</tr>
+<tr>
+<td>Machine-specific workspace files</td>
+<td>Not portable or useful</td>
+</tr>
+<tr>
+<td>Redundant logs</td>
+<td>Include only when needed to explain a meaningful recovery event</td>
+</tr>
+</tbody></table>
+<h3>Public correction-history model</h3>
+<p>Each accepted stage can explain defects using a consistent structure:</p>
+<pre><code class="language-text">Observed defect
+→ defect classification
+→ whether the transaction committed
+→ affected program and downstream scope
+→ root cause
+→ governed correction
+→ evidence preserved
+→ proof that accepted upstream or committed data remained unchanged
+→ final accepted revision
+</code></pre>
+<p>This communicates engineering maturity without forcing reviewers through the entire private audit archive.</p>
+<hr>
+<h2>Phase 4 — Create the Markdown editorial system</h2>
+<p><strong>Can begin and finish now.</strong></p>
+<p>This is where this chat can create substantial value while M1.16 and M1.17 continue.</p>
+<p>The Markdown should not be improvised file by file. We should define a project-wide editorial system first.</p>
+<h2>Root <code>README.md</code> structure</h2>
+<p>A strong root README should likely follow this order:</p>
+<pre><code class="language-text">1. Project title and strategic intent
+2. Business problem and product context
+3. What the platform is—and is not
+4. Governing design principles
+5. Repository navigation
+6. Updated enterprise architecture
+7. Executive system overview
+8. Module 0 and Module 1 progression
+9. Complete analytical evidence chain
+10. M1.15 consumption contract
+11. M1.16 acquisition-source and CAC enhancement
+12. M1.17 G2 assurance and acceptance
+13. Strategic brief
+14. Key accepted counts and hashes
+15. Technical architecture
+16. Governance, deterministic evidence, and recovery discipline
+17. Anchor artifacts
+18. Reviewer paths
+19. Sample-data policy
+20. Interpretation boundaries
+21. Technology stack
+22. Author
+</code></pre>
+<p>The root README should summarize rather than repeat the full contents of all seventeen stages.</p>
+<h2><code>PROJECT_ARTIFACT_MAP.md</code> structure</h2>
+<pre><code class="language-text">Start Here
+Repository Structure
+Enterprise-Level Artifacts
+Module 0
+Module 1
+Current vs. Historical Artifacts
+Visual and Interactive Artifacts
+Sample Data and Evidence Policy
+Documentation Status
+Fast Executive Review
+Technical / Architecture Review
+Governance / Validation Review
+</code></pre>
+<h2>Stage README template</h2>
+<p>Each stage should use the same information architecture:</p>
+<pre><code class="language-text"># M1.xx — Stage Name
+
+## Accepted Status
+## Business Question
+## Why This Stage Matters
+## Scope and Stage Boundary
+## Accepted Inputs
+## Generated Outputs and Grain
+## Analytical or Evidence Construction
+## Governance and Determinism
+## Positive and Negative Controls
+## Accepted Results
+## Canonical Hashes
+## Correction History
+## Interpretation Boundaries
+## Anchor Artifacts
+## Downstream Consumption
+</code></pre>
+<h2>Markdown quality controls</h2>
+<p>The final projection should be tested for:</p>
+<ul>
+<li>consistent heading hierarchy;</li>
+<li>no broken relative links;</li>
+<li>no broken image references;</li>
+<li>readable tables;</li>
+<li>meaningful link text;</li>
+<li>no stale status language;</li>
+<li>no stale counts or hashes;</li>
+<li>no unresolved placeholders;</li>
+<li>descriptive image alt text;</li>
+<li>full-size links beneath complex images;</li>
+<li>consistent accepted/current/historical terminology;</li>
+<li>explicit interpretation boundaries;</li>
+<li>professional, restrained formatting;</li>
+<li>no unnecessary badge or emoji clutter.</li>
+</ul>
+<p>The prior Credit Decisioning README and artifact map demonstrate why this matters: they allow different readers to enter the project through the path that suits their needs rather than forcing everyone through the SQL chronologically. fileciteturn12file0 fileciteturn12file2</p>
+<hr>
+<h2>Phase 5 — Draft the publication content through M1.15</h2>
+<p><strong>Can begin now and can largely be completed before M1.16 acceptance.</strong></p>
+<p>The accepted M1.15 repository already gives us enough source material to prepare:</p>
+<ul>
+<li>Module 0 summaries;</li>
+<li>the Module 1 charter package;</li>
+<li>stage READMEs from M1.2 through M1.15;</li>
+<li>correction-history summaries;</li>
+<li>accepted counts and hashes;</li>
+<li>stage boundaries;</li>
+<li>stage-to-stage lineage;</li>
+<li>root sections explaining the platform through the consumption contract;</li>
+<li>the initial <code>MODULE_AND_RELEASE_INDEX.md</code>;</li>
+<li>the initial <code>GOVERNANCE_AND_VALIDATION.md</code>;</li>
+<li>the initial <code>REPRODUCIBILITY_AND_EXECUTION.md</code>.</li>
+</ul>
+<p>We should use the accepted repository itself—not the old transition summary—as the technical source.</p>
+<h3>What should remain provisional</h3>
+<p>Until M1.17 is accepted, the following should not be frozen:</p>
+<ul>
+<li>root “current status” language;</li>
+<li>final Module 1 total counts;</li>
+<li>final current physical table and column counts;</li>
+<li>M1.16 accepted revision, counts, and hashes;</li>
+<li>M1.17 accepted revision, counts, and hashes;</li>
+<li>final G2 contract language;</li>
+<li>final release date;</li>
+<li>final public release tag;</li>
+<li>final archive checksum.</li>
+</ul>
+<p>A practical method is to write facts using controlled placeholders:</p>
+<pre><code class="language-text">{{M1_16_ACCEPTED_REVISION}}
+{{M1_16_COMBINED_HASH}}
+{{M1_17_ACCEPTED_REVISION}}
+{{G2_ACCEPTANCE_DATE}}
+{{FINAL_CURRENT_TABLE_COUNT}}
+</code></pre>
+<p>The final export process would reject any unresolved placeholder.</p>
+<hr>
+<h2>Phase 6 — Develop the two visual revision briefs</h2>
+<p><strong>Can begin and finish conceptually now. Final exports should wait for accepted M1.16/M1.17 facts.</strong></p>
+<h2>A. Enterprise architecture update</h2>
+<p>We can create the full content and layout specification now.</p>
+<p>The final architecture should show:</p>
+<pre><code class="language-text">G0 and G1 governance foundation
+M1.2–M1.14 analytical evidence chain
+M1.15 governed consumption contract
+M1.16 acquisition-source and CAC companion contract
+M1.17 end-to-end G2 acceptance
+Integrated Module 1 consumption boundary
+Module 2 strategy and offer decisioning as the next stage
+</code></pre>
+<p>The final status panel should ultimately show:</p>
+<pre><code class="language-text">ACCEPTED
+G0, G1, M1.2–M1.17
+
+G2 MODULE 1 CONTRACT
+ACCEPTED
+
+NEXT
+Module 2 Strategy and Offer Decisioning
+</code></pre>
+<p>The architecture must also distinguish:</p>
+<pre><code class="language-text">Accepted G0 baseline physical counts
+vs.
+current final Module 1 physical counts
+</code></pre>
+<p>The final current counts should come from M1.17 evidence.</p>
+<p>M1.16 should be represented conceptually as:</p>
+<pre><code class="language-text">Acquisition Source
+→ Campaign and Funnel Evidence
+→ Application Attribution
+→ Incurred and Conditional Acquisition Cost
+→ M1.14 Legacy-Cost Overlap Control
+→ Merchant CAC Companion Contract
+→ Integrated Strategy Consumption
+</code></pre>
+<p>M1.17 should appear as the independent assurance layer, not another business-analytics engine.</p>
+<h2>B. Strategic brief update</h2>
+<p>The existing eight-page brief should be revised, not replaced. Its current narrative moves effectively from disciplined launch through merchant relationships, governed strategy, learning, adaptation, and broader platform opportunity. fileciteturn12file1</p>
+<p>The main changes can be specified now:</p>
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>Planned update</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>Preserve title and thesis</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Add controlled acquisition measurement to disciplined launch</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Add acquisition and channel economics to the broader strategy system</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Begin the merchant journey with discovery/acquisition source before application</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Add acquisition source and CAC evidence to the Merchant Foundation</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Add channel performance or acquisition efficiency to the learning cycle</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Add channel-quality learning and acquisition-to-relationship economics to evolution</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Add acquisition-to-lifetime-value intelligence to the broader opportunity</td>
+</tr>
+</tbody></table>
+<p>The final public set should include:</p>
+<pre><code class="language-text">From_First_Advance_to_Intelligent_Portfolio.pdf
+from_first_advance_to_intelligent_portfolio_cover.png
+from_first_advance_to_intelligent_portfolio_contact_sheet.png
+</code></pre>
+<h3>Editable-source dependency</h3>
+<p>Before actual visual production, we should locate:</p>
+<ul>
+<li>the editable architecture source, preferably PPTX or another vector-based master;</li>
+<li>the editable strategy-brief source.</li>
+</ul>
+<p>If those do not exist or are not available, the visuals can be recreated, but the native masters are preferable for precision and future updates.</p>
+<hr>
+<h2>Phase 7 — Define deterministic sampling and public output rules</h2>
+<p><strong>Can begin and finish now.</strong></p>
+<p>The GitHub repository should not contain full operational-scale archives. It should contain deterministic, representative samples and complete aggregate evidence.</p>
+<h3>Sample principles</h3>
+<pre><code class="language-text">Full accepted population count
+→ documented
+
+Published sample count
+→ documented
+
+Selection algorithm
+→ deterministic and documented
+
+Full-population set hash
+→ retained
+
+Sample set hash
+→ separately reported
+
+Scenario pairing
+→ preserved
+
+Long-form component completeness
+→ preserved within selected applications
+</code></pre>
+<p>A possible deterministic method:</p>
+<pre><code class="language-text">Order applications by:
+md5(application_id || accepted_run_code)
+
+Publish:
+first 50 ranked applications
+</code></pre>
+<p>For scenario-aware outputs, both accepted scenario rows for the same application must be retained.</p>
+<p>For long-form output, every relevant component for the sampled application should be included—not an arbitrary sample of component rows.</p>
+<p>For M1.16, public samples will likely include:</p>
+<ul>
+<li>acquisition-source attribution;</li>
+<li>funnel and campaign summaries;</li>
+<li>acquisition-cost components;</li>
+<li>incurred versus conditional cost;</li>
+<li>M1.14 legacy-cost overlap treatment;</li>
+<li>application acquisition contract;</li>
+<li>integrated M1.15/M1.16 projection.</li>
+</ul>
+<p>For M1.17, public evidence should emphasize:</p>
+<ul>
+<li>hash-chain reconciliation;</li>
+<li>contract-family reconciliation;</li>
+<li>latest/archive reproduction;</li>
+<li>integrated contract completeness;</li>
+<li>G2 acceptance;</li>
+<li>zero-row blocking exceptions.</li>
+</ul>
+<hr>
+<h2>Phase 8 — Design the deterministic GitHub-export process</h2>
+<p><strong>Can begin now and be implemented before M1.17 acceptance.</strong></p>
+<p>The public repository should be created from a controlled export map, not manual copying.</p>
+<h2>Export-map structure</h2>
+<p>A future mapping file could contain:</p>
+<pre><code class="language-text">source_path
+target_path
+canonical_stage
+accepted_revision
+artifact_role
+include_flag
+transformation_code
+source_sha256
+published_sha256
+public_status
+inclusion_or_exclusion_reason
+</code></pre>
+<h3>Transformation codes</h3>
+<pre><code class="language-text">CANONICAL_BYTE_COPY
+GITHUB_DERIVED_MARKDOWN
+DETERMINISTIC_SAMPLE
+IMAGE_EXPORT
+PDF_EXPORT
+AGGREGATED_VALIDATION_SUMMARY
+EXCLUDED_PRIVATE_AUDIT_HISTORY
+</code></pre>
+<h3>Export sequence</h3>
+<pre><code class="language-text">1. Verify final canonical repository checksum.
+2. Verify final accepted run status and G2 gate.
+3. Read controlled export map.
+4. Copy accepted source byte-for-byte.
+5. Generate public Markdown.
+6. Generate deterministic samples.
+7. Insert final release metadata.
+8. Generate architecture and strategy visual exports.
+9. Scan for excluded files and sensitive content.
+10. Validate links and image references.
+11. Validate path lengths and naming.
+12. Generate stage manifests.
+13. Generate repository manifest.
+14. Generate SHA256SUMS.txt.
+15. Create GitHub release ZIP.
+16. Extract ZIP and compare to staging directory.
+17. Recompute ZIP SHA-256.
+</code></pre>
+<h3>Automated pre-publication checks</h3>
+<p>We can define or later build checks for:</p>
+<ul>
+<li>broken Markdown links;</li>
+<li>broken image links;</li>
+<li>unresolved placeholders;</li>
+<li>duplicate target paths;</li>
+<li>absolute local paths;</li>
+<li>Windows path-length issues;</li>
+<li>credentials or secrets;</li>
+<li>email or phone exposure beyond approved author information;</li>
+<li>stale references such as <code>M1_15_ACCEPTED</code> when the final status should be <code>M1_17_ACCEPTED</code>;</li>
+<li>stale “active development” wording;</li>
+<li>duplicate or disallowed binaries;</li>
+<li>SQL source byte mismatches;</li>
+<li>manifest mismatches;</li>
+<li>unapproved file extensions;</li>
+<li>oversized files;</li>
+<li>missing README files;</li>
+<li>missing stage sign-offs;</li>
+<li>incorrect sample counts;</li>
+<li>scenario-pairing failures;</li>
+<li>missing headers on zero-row exception outputs.</li>
+</ul>
+<p>This work is almost completely independent of M1.16 and M1.17’s final numerical results.</p>
+<hr>
+<h2>Phase 9 — Integrate M1.16 after formal acceptance</h2>
+<p><strong>Must wait for M1.16 acceptance.</strong></p>
+<p>Once M1.16 is accepted, the parallel chat should provide or the final repository should contain:</p>
+<pre><code class="language-text">Final accepted package revision
+Final generation revision
+Final methodology
+Final run status
+Acceptance gate status
+Row counts
+Positive-control results
+Negative-control results
+Final set hashes
+Correction history
+Formal sign-off
+Accepted standalone package
+Updated full-project package
+</code></pre>
+<p>This chat can then finalize:</p>
+<pre><code class="language-text">1.16_M1.16_Acquisition_Source_Marketing_Attribution_and_CAC/
+└── v0.2R?_ACCEPTED/
+</code></pre>
+<p>The M1.16 GitHub stage should include:</p>
+<ul>
+<li>stage README;</li>
+<li>architecture and lineage explanation;</li>
+<li>accepted SQL;</li>
+<li>data and parameter dictionaries;</li>
+<li>cost taxonomy;</li>
+<li>attribution methodology;</li>
+<li>evidence status treatment;</li>
+<li>overlap control with accepted M1.14;</li>
+<li>output samples;</li>
+<li>positive and negative control summaries;</li>
+<li>master report;</li>
+<li>formal sign-off;</li>
+<li>release metadata and hashes.</li>
+</ul>
+<p>M1.16 should also become a prominent—but not disproportionate—highlight in the root README because it demonstrates the connection between Credit Risk, Finance, Marketing, relationship strategy, and downstream profitability.</p>
+<hr>
+<h2>Phase 10 — Integrate M1.17 and final G2 acceptance</h2>
+<p><strong>Must wait for M1.17 acceptance.</strong></p>
+<p>M1.17 becomes the release anchor for the entire first public version.</p>
+<p>Its GitHub package should demonstrate:</p>
+<ul>
+<li>complete G1 through M1.16 hash-chain preservation;</li>
+<li>final contract-code and schema-version validation;</li>
+<li>M1.15 latest/archive exact reproduction;</li>
+<li>M1.16 acquisition latest/archive reproduction, if implemented;</li>
+<li>one acquisition contract correctly joining to both accepted scenario rows;</li>
+<li>integrated 1,500-row Module 1 consumption boundary;</li>
+<li>scenario invariance for application-stage acquisition evidence;</li>
+<li>M1.14 legacy-cost inheritance and overlap reconciliation;</li>
+<li>archive immutability;</li>
+<li>stage-boundary compliance;</li>
+<li>reproducibility controls;</li>
+<li>complete evidence indexing;</li>
+<li>final repository validation;</li>
+<li>formal G2 acceptance.</li>
+</ul>
+<p>M1.17 should not be presented as “more analytics.” It is the assurance and release-certification layer that proves the full Module 1 foundation is ready for governed downstream strategy consumption.</p>
+<hr>
+<h2>Phase 11 — Require a final canonical package-integrity gate</h2>
+<p><strong>Must wait for the accepted M1.17 full repository.</strong></p>
+<p>Before any GitHub export occurs, we should verify the final full-project package.</p>
+<p>This is where the previously identified packaging issue must be resolved.</p>
+<p>The final M1.17 repository should demonstrate that:</p>
+<ul>
+<li>root <code>PACKAGE_VALIDATION_REPORT.md</code> describes the current complete release rather than M1.14;</li>
+<li><code>manifest.json</code> contains correct current size and hash records for every file;</li>
+<li><code>MANIFEST.csv</code> reconciles to actual final bytes;</li>
+<li><code>SHA256SUMS.txt</code> reconciles to actual final bytes;</li>
+<li><code>DELIVERY_README.md</code> and <code>PROJECT_STATUS.md</code> have matching records in all inventories;</li>
+<li>all root inventories agree with one another;</li>
+<li>the full ZIP extracts without errors;</li>
+<li>the canonical ZIP checksum matches its supplied checksum.</li>
+</ul>
+<p>This remains a packaging-metadata correction. It does not reopen M1.15 or any accepted analytical stage.</p>
+<p>The GitHub projection should then generate an entirely new public manifest and checksum inventory from its own final bytes.</p>
+<hr>
+<h2>Phase 12 — Produce the final public artifacts</h2>
+<p><strong>Must wait for G2 acceptance and final metadata.</strong></p>
+<p>At this point we would create:</p>
+<h3>Root presentation documents</h3>
+<pre><code class="language-text">README.md
+PROJECT_ARTIFACT_MAP.md
+MODULE_AND_RELEASE_INDEX.md
+PROJECT_ROADMAP.md
+SAMPLE_DATA_AND_EVIDENCE_POLICY.md
+REPRODUCIBILITY_AND_EXECUTION.md
+GOVERNANCE_AND_VALIDATION.md
+CHANGELOG.md
+DISCLAIMER.md
+LICENSE
+</code></pre>
+<h3>Enterprise visuals</h3>
+<pre><code class="language-text">Enterprise_Merchant_Sales_Based_Financing_Platform.png
+Enterprise_Merchant_Sales_Based_Financing_Platform.pdf
+From_First_Advance_to_Intelligent_Portfolio.pdf
+from_first_advance_to_intelligent_portfolio_cover.png
+from_first_advance_to_intelligent_portfolio_contact_sheet.png
+</code></pre>
+<h3>Stage packages</h3>
+<pre><code class="language-text">Module 0
+M1.2 through M1.17
+</code></pre>
+<p>Each would contain its accepted version and standardized:</p>
+<pre><code class="language-text">docs/
+outputs/
+src/
+tests/
+</code></pre>
+<h3>Release artifacts</h3>
+<pre><code class="language-text">MSBF_Strategy_Simulator_Module_1_G2_v1.0.0_GitHub.zip
+MSBF_Strategy_Simulator_Module_1_G2_v1.0.0_GitHub.zip.sha256
+MANIFEST.csv
+manifest.json
+SHA256SUMS.txt
+RELEASE_NOTES.md
+</code></pre>
+<hr>
+<h2>Phase 13 — Conduct reviewer-oriented quality assurance</h2>
+<p><strong>Occurs after the public projection is built but before publication.</strong></p>
+<p>The final review should not be limited to “does the ZIP open?”</p>
+<h2>Executive test</h2>
+<p>A reviewer should understand within approximately five minutes:</p>
+<ul>
+<li>what merchant sales-based financing is;</li>
+<li>why daily sales evidence matters;</li>
+<li>what has been built;</li>
+<li>what M1.16 adds;</li>
+<li>what G2 acceptance means;</li>
+<li>where the platform goes next.</li>
+</ul>
+<h2>Technical test</h2>
+<p>A technical reviewer should be able to:</p>
+<ul>
+<li>trace the stage architecture;</li>
+<li>find accepted SQL quickly;</li>
+<li>identify inputs and outputs;</li>
+<li>understand grains and hashes;</li>
+<li>inspect representative outputs;</li>
+<li>distinguish accepted implementation from planned Module 2 work.</li>
+</ul>
+<h2>Governance test</h2>
+<p>A governance reviewer should be able to:</p>
+<ul>
+<li>locate positive and negative control evidence;</li>
+<li>understand correction history;</li>
+<li>verify immutable archive behavior;</li>
+<li>inspect deterministic reconciliation;</li>
+<li>follow the hash chain;</li>
+<li>find formal sign-offs;</li>
+<li>understand stage boundaries and limitations.</li>
+</ul>
+<h2>Fresh-environment test</h2>
+<p>The package should also be tested by:</p>
+<ul>
+<li>extracting it into a clean directory;</li>
+<li>opening all relative links;</li>
+<li>checking image rendering;</li>
+<li>opening PDFs;</li>
+<li>confirming CSV encoding;</li>
+<li>verifying checksums;</li>
+<li>confirming no source path depends on the original development machine.</li>
+</ul>
+<hr>
+<h2>Phase 14 — Publish the repository and release</h2>
+<p><strong>Final step after all gates pass.</strong></p>
+<p>The publication sequence should be:</p>
+<pre><code class="language-text">1. Create or prepare the public GitHub repository.
+2. Commit the extracted, browseable repository contents.
+3. Confirm Markdown rendering on GitHub.
+4. Confirm images and relative links.
+5. Add repository description and topics.
+6. Create the Module 1 G2 release tag.
+7. Attach the GitHub-tailored ZIP and SHA-256.
+8. Publish release notes.
+9. Download the published release asset and reverify its hash.
+10. Conduct one final anonymous-browser review.
+</code></pre>
+<p>The ZIP itself should be attached to the GitHub Release rather than committed as a duplicate of the repository contents.</p>
+<hr>
+<h1>What we can productively complete in this chat now</h1>
+<p>The following work is safe, valuable, and unlikely to be invalidated by M1.16 or M1.17 results:</p>
+<table>
+<thead>
+<tr>
+<th>Work item</th>
+<th align="right">Can start now</th>
+<th align="right">Can finish before G2</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Publication governance charter</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Final GitHub folder hierarchy</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Naming and versioning standards</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Public inclusion/exclusion policy</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Markdown style and quality standard</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Root README outline and substantial draft</td>
+<td align="right">Yes</td>
+<td align="right">Mostly</td>
+</tr>
+<tr>
+<td>Artifact-map outline and substantial draft</td>
+<td align="right">Yes</td>
+<td align="right">Mostly</td>
+</tr>
+<tr>
+<td>Module/stage README template</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Module 0 and M1.2–M1.15 stage summaries</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Module and release index through M1.15</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>M1.16 architecture-level draft</td>
+<td align="right">Yes</td>
+<td align="right">Partially</td>
+</tr>
+<tr>
+<td>M1.17 assurance-level draft</td>
+<td align="right">Yes</td>
+<td align="right">Partially</td>
+</tr>
+<tr>
+<td>Enterprise architecture revision brief</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Strategy-brief page-by-page revision brief</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Deterministic sample policy</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Source-to-public export-map design</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Public manifest and checksum standard</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Automated QA specification</td>
+<td align="right">Yes</td>
+<td align="right">Yes</td>
+</tr>
+<tr>
+<td>Final M1.16 facts and artifacts</td>
+<td align="right">No</td>
+<td align="right">After M1.16 acceptance</td>
+</tr>
+<tr>
+<td>Final M1.17/G2 facts and artifacts</td>
+<td align="right">No</td>
+<td align="right">After G2</td>
+</tr>
+<tr>
+<td>Final architecture export</td>
+<td align="right">Not safely</td>
+<td align="right">After G2</td>
+</tr>
+<tr>
+<td>Final strategy-brief export</td>
+<td align="right">Partially</td>
+<td align="right">Best finalized after G2</td>
+</tr>
+<tr>
+<td>Final GitHub ZIP</td>
+<td align="right">No</td>
+<td align="right">After G2</td>
+</tr>
+<tr>
+<td>Public GitHub release</td>
+<td align="right">No</td>
+<td align="right">After all QA</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>Recommended working order in this chat</h1>
+<p>The most efficient sequence is:</p>
+<h2>Work Package 1 — GitHub Publication Blueprint</h2>
+<p>Lock:</p>
+<ul>
+<li>repository architecture;</li>
+<li>naming;</li>
+<li>version treatment;</li>
+<li>inclusion/exclusion;</li>
+<li>documentation inventory;</li>
+<li>release artifacts;</li>
+<li>acceptance gates.</li>
+</ul>
+<h2>Work Package 2 — Markdown Design System</h2>
+<p>Define and draft:</p>
+<ul>
+<li>root README;</li>
+<li>artifact map;</li>
+<li>stage README template;</li>
+<li>module/release index;</li>
+<li>sample policy;</li>
+<li>reproducibility guide;</li>
+<li>governance guide;</li>
+<li>disclaimer.</li>
+</ul>
+<h2>Work Package 3 — Accepted M0–M1.15 Public Mapping</h2>
+<p>Inspect the accepted M1.15 repository and produce:</p>
+<ul>
+<li>source-to-target mapping;</li>
+<li>accepted version index;</li>
+<li>anchor-artifact inventory;</li>
+<li>missing-public-artifact list;</li>
+<li>correction-history summaries;</li>
+<li>proposed public samples.</li>
+</ul>
+<h2>Work Package 4 — Visual Modernization Specifications</h2>
+<p>Complete:</p>
+<ul>
+<li>revised enterprise architecture content map;</li>
+<li>status logic;</li>
+<li>M1.16 and M1.17 representation;</li>
+<li>final physical-count treatment;</li>
+<li>page-by-page strategy-brief updates;</li>
+<li>required visual export list.</li>
+</ul>
+<h2>Work Package 5 — Export and QA Specification</h2>
+<p>Define:</p>
+<ul>
+<li>deterministic mapping;</li>
+<li>sample generation;</li>
+<li>byte-preservation checks;</li>
+<li>link and image validation;</li>
+<li>stale-language detection;</li>
+<li>metadata reconciliation;</li>
+<li>public manifest generation;</li>
+<li>final release ZIP validation.</li>
+</ul>
+<p>Once those five work packages are settled, the only remaining work will be the insertion of accepted M1.16 and M1.17 facts, final rendering, package generation, and publication.</p>
+<h1>Parallel-chat handoff checkpoints</h1>
+<p>When M1.16 is accepted, the minimum information to bring here is:</p>
+<pre><code class="language-text">Accepted standalone M1.16 package
+Updated complete repository
+Final accepted revision
+Methodology
+Run status
+Acceptance gate
+Counts
+Set hashes
+Positive/negative control totals
+Formal sign-off
+Correction history
+</code></pre>
+<p>When M1.17 and G2 are accepted, bring:</p>
+<pre><code class="language-text">Final complete project repository
+Repository SHA-256
+M1.17 accepted revision
+Final run status
+G2 gate and sign-off
+Final contract codes and schema versions
+Final row counts and hashes
+Final physical platform counts
+Package validation report
+manifest.json
+MANIFEST.csv
+SHA256SUMS.txt
+</code></pre>
+<p>The next productive task in this chat is to draft and lock <strong>Work Package 1: the GitHub Publication Blueprint</strong> before writing the individual public artifacts.</p>
+</div></article><article id="c072-m00086" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00086 · 2026-07-28T08:55:33.495000-04:00 · active path</p><div class="body"><p>I trust your judgement and recommendations. please proceed to lock work package 1: the GitHub Publication Blueprint. let me know the next actual decision I need to make, noting that I trust your recommendations and will agree with them. let&#39;s proceed to the next place where you need my input.</p>
+</div></article><article id="c072-m00093" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00093 · 2026-07-28T09:04:15.575302-04:00 · active path</p><div class="body"><h1>Work Package 1 is locked</h1>
+<p>I formalized the complete <strong>GitHub Publication Blueprint</strong> as the governing baseline for the public repository:</p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Publication_Blueprint_v1_0_LOCKED.md">Download the locked GitHub Publication Blueprint</a></p>
+<pre><code class="language-text">Document       MSBF_GitHub_Publication_Blueprint_v1_0_LOCKED.md
+Status         LOCKED
+Version        1.0
+Length         989 lines
+File size      34,115 bytes
+SHA-256        cbd9d3ddf291411ad70b3673ebb2722ef63897fbbc219fa5d514c7a6062c30f5
+</code></pre>
+<p>No canonical project artifact, accepted SQL, execution evidence, or repository package was modified.</p>
+<h2>What is now locked</h2>
+<p>The blueprint formally establishes:</p>
+<ul>
+<li>a <strong>private canonical governed repository</strong> and a separate <strong>public GitHub projection</strong>;</li>
+<li>publication only after M1.16, M1.17, and G2 are formally accepted;</li>
+<li>an accepted-only public <code>main</code> branch, without active-development or “coming soon” artifacts;</li>
+<li>the repository name <strong>Merchant Sales-Based Financing Strategy Simulator</strong>;</li>
+<li>the recommended slug <code>merchant-sales-based-financing-strategy-simulator</code>;</li>
+<li>the first release tag <code>module-1-g2-v1.0.0</code>;</li>
+<li>the Module 0 and Module 1 folder architecture;</li>
+<li>a non-executable <code>1.01</code> charter and architecture package;</li>
+<li>exact accepted package revisions beneath each governed stage;</li>
+<li>the standard <code>docs/</code>, <code>outputs/</code>, <code>src/</code>, and <code>tests/</code> structure;</li>
+<li>publication of final accepted clean-build SQL rather than every superseded revision;</li>
+<li>concise but candid public correction histories;</li>
+<li>a deterministic <strong>50-application Public Review Cohort</strong> carried consistently across stages;</li>
+<li>aggregate evidence plus selected detailed evidence rather than every raw DBeaver export;</li>
+<li>updated enterprise architecture and strategic brief as mandatory anchor artifacts;</li>
+<li>metadata-backed counts, hashes, revisions, and status claims;</li>
+<li>final GitHub ZIP and checksum as Release assets rather than duplicated repository files;</li>
+<li>ten formal pre-publication gates covering acceptance, package integrity, mapping, documentation, visuals, samples, links, privacy, manifests, and human review;</li>
+<li>correction of the known M1.15 packaging-metadata issue before the final GitHub export.</li>
+</ul>
+<p>The editorial model deliberately carries forward the strongest elements of your Credit Decisioning README: strategic framing, progressive disclosure, embedded visuals, anchor-artifact tables, interpretation boundaries, and separate reviewer paths. fileciteturn12file0</p>
+<p>The artifact-map model is also locked as a major navigation deliverable, including “Start Here,” current-versus-historical guidance, structured module navigation, and executive, technical, and governance review paths. fileciteturn12file2</p>
+<p>The blueprint requires the revised strategic brief to preserve its current eight-page narrative—from disciplined launch through merchant relationships, governed strategy, learning, adaptation, and broader platform opportunity—while incorporating acquisition source, channel economics, and acquisition-to-lifetime-value learning. fileciteturn12file1</p>
+<h2>Locked public hierarchy</h2>
+<pre><code class="language-text">merchant-sales-based-financing-strategy-simulator/
+│
+├── README.md
+├── PROJECT_ARTIFACT_MAP.md
+├── MODULE_AND_RELEASE_INDEX.md
+├── PROJECT_ROADMAP.md
+├── SAMPLE_DATA_AND_EVIDENCE_POLICY.md
+├── REPRODUCIBILITY_AND_EXECUTION.md
+├── GOVERNANCE_AND_VALIDATION.md
+├── CHANGELOG.md
+├── DISCLAIMER.md
+├── LICENSE
+├── release_metadata.json
+├── MANIFEST.csv
+├── manifest.json
+├── SHA256SUMS.txt
+│
+├── docs/
+│   ├── executive_strategy/
+│   ├── enterprise_architecture/
+│   ├── project_lineage/
+│   └── images/
+│
+├── Module_0_Governance_and_Control_Foundation/
+│   ├── 0.01_G0_Physical_Data_Foundation/
+│   └── 0.02_G1_Governed_Run_Control/
+│
+└── Module_1_Merchant_Intelligence_Risk_Economics_and_Acquisition/
+    ├── 1.01_Module_1_Charter_Architecture_and_Requirements/
+    ├── 1.02_M1.2_Deterministic_Merchant_Population/
+    ├── ...
+    ├── 1.15_M1.15_Latest_Archive_Comparison_and_Consumption_Contract/
+    ├── 1.16_M1.16_Acquisition_Source_Marketing_Attribution_and_CAC/
+    └── 1.17_M1.17_End_to_End_QA_Evidence_and_G2_Acceptance/
+</code></pre>
+<h2>Next decision requiring your input: public license</h2>
+<p>My recommendation is the <strong>MIT License</strong>.</p>
+<p>It is familiar to technical reviewers, removes ambiguity around cloning and executing the portfolio, retains your copyright and attribution notice, and fits a public project intended to demonstrate engineering capability.</p>
+<p>The material tradeoff is that MIT permits other parties to reuse, modify, distribute, and commercially use the published material as long as they retain the license and copyright notice.</p>
+<p>The alternative is publishing with no open-source license—effectively viewable but with no general permission to reuse.</p>
+<p>Please respond:</p>
+<blockquote>
+<p><strong>Approve MIT License.</strong></p>
+</blockquote>
+<p>Once that is confirmed, Work Package 2 will begin with the Markdown Design System and the formal templates for the root README, artifact map, module index, stage READMEs, governance guide, sample policy, and reproducibility guide.</p>
+</div></article><article id="c072-m00094" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00094 · 2026-07-28T09:34:45.233000-04:00 · active path</p><div class="body"><p>Approve MIT License.</p>
+</div></article><article id="c072-m00098" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00098 · 2026-07-28T09:36:59.897803-04:00 · active path</p><div class="body"><h2>MIT License approved and locked</h2>
+<p>The public repository will use the standard MIT License, with:</p>
+<pre><code class="language-text">Copyright (c) [publication year] Andrew R. Goad
+</code></pre>
+<p>The license will be included in:</p>
+<ul>
+<li>the root <code>LICENSE</code> file;</li>
+<li>the root README’s licensing section;</li>
+<li>the GitHub release notes;</li>
+<li>the final public-package metadata.</li>
+</ul>
+<p>Only original project materials will be distributed. Third-party white papers, logos, and other externally copyrighted source materials will remain outside the public repository; they may be referenced through citations where appropriate.</p>
+<h2>Work Package 2 is now authorized</h2>
+<p>I will use the Credit Decisioning repository’s strongest presentation characteristics as the editorial benchmark: strategic framing, progressive disclosure, restrained formatting, embedded visuals, anchor-artifact tables, interpretation boundaries, and reviewer-specific navigation. Its author treatment is also appropriately restrained rather than turning the repository into a résumé or contact sheet. fileciteturn12file0</p>
+<p>Work Package 2 will establish the Markdown system for:</p>
+<pre><code class="language-text">README.md
+PROJECT_ARTIFACT_MAP.md
+MODULE_AND_RELEASE_INDEX.md
+PROJECT_ROADMAP.md
+SAMPLE_DATA_AND_EVIDENCE_POLICY.md
+REPRODUCIBILITY_AND_EXECUTION.md
+GOVERNANCE_AND_VALIDATION.md
+CHANGELOG.md
+DISCLAIMER.md
+Stage-level README templates
+Correction-history templates
+Anchor-artifact tables
+Reviewer paths
+Markdown rendering and link controls
+</code></pre>
+<p>Most of this does not require additional judgment from you.</p>
+<h1>Next actual decision: public identity and contact standard</h1>
+<p>My recommendation is:</p>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Public treatment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Author name</td>
+<td><strong>Andrew R. Goad</strong></td>
+</tr>
+<tr>
+<td>GitHub</td>
+<td>Link to <code>github.com/andrew-goad</code></td>
+</tr>
+<tr>
+<td>LinkedIn</td>
+<td>Link to <code>linkedin.com/in/andrewrgoad</code></td>
+</tr>
+<tr>
+<td>Personal email</td>
+<td>Do not publish</td>
+</tr>
+<tr>
+<td>Phone number</td>
+<td>Do not publish</td>
+</tr>
+<tr>
+<td>Home address or precise location</td>
+<td>Do not publish</td>
+</tr>
+<tr>
+<td>General location</td>
+<td>Omit unless later useful for employment positioning</td>
+</tr>
+<tr>
+<td>Résumé</td>
+<td>Do not embed in this technical repository</td>
+</tr>
+<tr>
+<td>Contact language</td>
+<td>“For professional inquiries, connect through LinkedIn.”</td>
+</tr>
+<tr>
+<td>README footer</td>
+<td>“Built by Andrew R. Goad”</td>
+</tr>
+<tr>
+<td>License attribution</td>
+<td>Copyright in your full name</td>
+</tr>
+</tbody></table>
+<p>This gives recruiters and technical reviewers a direct professional path while reducing scraping, spam, and unnecessary exposure of personal contact information.</p>
+<p>Please respond:</p>
+<blockquote>
+<p><strong>Approve public identity standard.</strong></p>
+</blockquote>
+</div></article><article id="c072-m00100" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00100 · 2026-07-28T09:40:11.489000-04:00 · active path</p><div class="body"><p>Approve public identity standard</p>
+</div></article><article id="c072-m00105" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00105 · 2026-07-28T09:41:53.427595-04:00 · active path</p><div class="body"><h2>Public identity standard approved and locked</h2>
+<p>The GitHub publication will use:</p>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Locked treatment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Public author name</td>
+<td><strong>Andrew R. Goad</strong></td>
+</tr>
+<tr>
+<td>GitHub profile</td>
+<td><code>github.com/andrew-goad</code></td>
+</tr>
+<tr>
+<td>LinkedIn profile</td>
+<td><code>linkedin.com/in/andrewrgoad</code></td>
+</tr>
+<tr>
+<td>Professional contact language</td>
+<td>“For professional inquiries, connect through LinkedIn.”</td>
+</tr>
+<tr>
+<td>Personal email</td>
+<td>Excluded</td>
+</tr>
+<tr>
+<td>Phone number</td>
+<td>Excluded</td>
+</tr>
+<tr>
+<td>Home address or precise location</td>
+<td>Excluded</td>
+</tr>
+<tr>
+<td>Résumé</td>
+<td>Not embedded in this technical repository</td>
+</tr>
+<tr>
+<td>README footer</td>
+<td>“Built by Andrew R. Goad”</td>
+</tr>
+<tr>
+<td>License attribution</td>
+<td><code>Copyright (c) 2026 Andrew R. Goad</code></td>
+</tr>
+<tr>
+<td>Public license</td>
+<td>MIT License</td>
+</tr>
+</tbody></table>
+<p>The author section will remain restrained and portfolio-focused, consistent with the effective treatment in the Credit Decisioning Strategy Simulator: enough information to establish authorship and provide a professional connection path, without turning the technical repository into a résumé or personal contact page. fileciteturn12file0</p>
+<h2>Work Package 2 is active</h2>
+<p>I will proceed with the Markdown Design System, including:</p>
+<pre><code class="language-text">Root README information architecture
+Project Artifact Map structure
+Module and Release Index
+Project Roadmap
+Sample Data and Evidence Policy
+Reproducibility and Execution guide
+Governance and Validation guide
+Stage README template
+Correction-history template
+Anchor-artifact table standard
+Executive, technical, and governance reviewer paths
+Markdown rendering and link-validation controls
+</code></pre>
+<p>The editorial system will preserve the strongest qualities of the earlier repository: strategic framing, progressive disclosure, early navigation, embedded visuals, concise anchor-artifact tables, explicit interpretation boundaries, and reviewer-specific paths. fileciteturn12file0 fileciteturn12file2</p>
+<h1>Next actual decision: public brand hierarchy</h1>
+<p>We now need to reconcile two strong names already associated with the project:</p>
+<pre><code class="language-text">Merchant Sales-Based Financing Strategy Simulator
+</code></pre>
+<p>and:</p>
+<pre><code class="language-text">Enterprise Merchant Sales-Based Financing Platform
+</code></pre>
+<p>My recommendation is to use both, but assign each a distinct role.</p>
+<h3>Recommended hierarchy</h3>
+<p><strong>GitHub repository and root README title</strong></p>
+<blockquote>
+<p><strong>Merchant Sales-Based Financing Strategy Simulator</strong></p>
+</blockquote>
+<p>This accurately signals that the repository contains deterministic, synthetic, non-production simulation and governed evidence.</p>
+<p><strong>Primary subtitle</strong></p>
+<blockquote>
+<p><strong>A Governed Enterprise Platform for Merchant Acquisition, Operating Intelligence, Risk, Economics, and Portfolio Learning</strong></p>
+</blockquote>
+<p>This communicates the breadth of the system without overstating production deployment.</p>
+<p><strong>Enterprise architecture title</strong></p>
+<blockquote>
+<p><strong>Enterprise Merchant Sales-Based Financing Platform</strong></p>
+</blockquote>
+<p>This remains the right name for the visual architecture because the architecture represents the complete enterprise capability—not merely the synthetic implementation mechanism.</p>
+<p><strong>Strategic brief</strong></p>
+<blockquote>
+<p><strong>From First Advance to Intelligent Portfolio</strong></p>
+</blockquote>
+<p>This remains the executive strategy and long-horizon narrative.</p>
+<p><strong>First GitHub release</strong></p>
+<pre><code class="language-text">Merchant Sales-Based Financing Strategy Simulator
+Module 1 G2 Release — v1.0.0
+</code></pre>
+<p>This hierarchy provides a clear distinction:</p>
+<pre><code class="language-text">Simulator
+= the public synthetic implementation and evidence repository
+
+Platform
+= the enterprise architecture being demonstrated
+
+From First Advance to Intelligent Portfolio
+= the strategic business vision
+</code></pre>
+<p>Using only “Platform” for the repository could imply a production-deployed lending platform. Using only “Simulator” everywhere would understate the enterprise architecture, governance, contract, and portfolio-learning design.</p>
+<p>Please respond:</p>
+<blockquote>
+<p><strong>Approve dual-name brand hierarchy.</strong></p>
+</blockquote>
+</div></article><article id="c072-m00106" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00106 · 2026-07-28T09:43:53.007000-04:00 · active path</p><div class="body"><p>Approve dual-name brand hierarchy.</p>
+</div></article><article id="c072-m00110" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00110 · 2026-07-28T09:48:57.069217-04:00 · active path</p><div class="body"><h2>Dual-name brand hierarchy approved and locked</h2>
+<p>The public identity is now formally structured as:</p>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Locked name</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>GitHub repository</td>
+<td><strong>Merchant Sales-Based Financing Strategy Simulator</strong></td>
+</tr>
+<tr>
+<td>Primary subtitle</td>
+<td><strong>A Governed Enterprise Platform for Merchant Acquisition, Operating Intelligence, Risk, Economics, and Portfolio Learning</strong></td>
+</tr>
+<tr>
+<td>Enterprise architecture</td>
+<td><strong>Enterprise Merchant Sales-Based Financing Platform</strong></td>
+</tr>
+<tr>
+<td>Executive strategy brief</td>
+<td><strong>From First Advance to Intelligent Portfolio</strong></td>
+</tr>
+<tr>
+<td>First public release</td>
+<td><strong>Module 1 G2 — Governed Merchant Intelligence, Risk, Economics &amp; Acquisition Foundations</strong></td>
+</tr>
+</tbody></table>
+<p>This preserves an important distinction:</p>
+<pre><code class="language-text">Simulator
+= the synthetic implementation and evidence repository
+
+Platform
+= the enterprise architecture being demonstrated
+
+From First Advance to Intelligent Portfolio
+= the strategic business vision
+</code></pre>
+<h2>Work Package 2 substantially completed</h2>
+<p>I proceeded with the Markdown Design System rather than pausing after the brand decision:</p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Markdown_Design_System_v1_0_LOCKED.md">Download the GitHub Markdown Design System</a></p>
+<pre><code class="language-text">Document    MSBF_GitHub_Markdown_Design_System_v1_0_LOCKED.md
+Version     1.0
+Length      1,132 lines
+File size   32,281 bytes
+SHA-256     74f216e1c20c1f55c79d963f243829db60353a01bdca221b43ec32dcc0acc612
+</code></pre>
+<p>The design system now locks:</p>
+<ul>
+<li>the business-first, architecture-led editorial model;</li>
+<li>the project voice, terminology, and controlled status vocabulary;</li>
+<li>the full root <code>README.md</code> information architecture;</li>
+<li>the <code>PROJECT_ARTIFACT_MAP.md</code> structure;</li>
+<li>the module and release index;</li>
+<li>the roadmap, reproducibility, governance, sample-data, disclaimer, and changelog standards;</li>
+<li>the standard stage-level README;</li>
+<li>the correction-history format;</li>
+<li>anchor-artifact table conventions;</li>
+<li>architecture-image and PDF-preview treatment;</li>
+<li>executive, technical, and governance reviewer paths;</li>
+<li>accessibility, relative-link, rendering, and stale-status controls;</li>
+<li>metadata-backed facts and final placeholder rejection;</li>
+<li>the MIT License and approved public identity;</li>
+<li>the opening and footer patterns for the eventual root README.</li>
+</ul>
+<p>The root presentation model carries forward the strongest features of the Credit Decisioning Strategy Simulator: strategic framing before implementation detail, early navigation, embedded visuals, explicit interpretation boundaries, anchor-artifact tables, and reviewer-specific paths. fileciteturn12file0</p>
+<p>The artifact map remains a substantive navigation product rather than a mechanical file listing, following the effective “Start Here,” current-versus-historical, repository-structure, and reviewer-path model from the earlier project. fileciteturn12file2</p>
+<p>No canonical MSBF SQL, accepted evidence, execution package, or full-project repository was modified.</p>
+<h1>Next actual decision: public origin and third-party attribution</h1>
+<p>This is the next decision that materially affects the public narrative.</p>
+<p>My recommendation is to adopt an <strong>independent public-origin and third-party attribution standard</strong>:</p>
+<ul>
+<li>Do not state that the project began from an EXL interview or interview case.</li>
+<li>Do not identify interviewers, recruiters, prospective clients, or private discussion details.</li>
+<li>Do not imply affiliation with or endorsement by EXL, ChargeAfter, or another company.</li>
+<li>Do not upload or redistribute the EXL or ChargeAfter white papers.</li>
+<li>Cite public industry research only where it materially supports the business context.</li>
+<li>Add a clear statement that the simulator is an independently developed, synthetic portfolio artifact.</li>
+<li>Include a concise non-affiliation statement in <code>DISCLAIMER.md</code>.</li>
+<li>Keep the public story centered on the business problem, architecture, implementation, evidence, and your original work.</li>
+<li>Preserve the interview and research origin only in the private project context, not the GitHub repository.</li>
+</ul>
+<p>This avoids unnecessary confidentiality and intellectual-property questions while presenting the work as the independently designed enterprise platform it became. The public project does not need the interview origin to establish credibility; the accepted architecture, SQL, evidence, and governance are substantially stronger proof.</p>
+<p>Please respond:</p>
+<blockquote>
+<p><strong>Approve independent public-origin and third-party attribution standard.</strong></p>
+</blockquote>
+</div></article><article id="c072-m00111" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00111 · 2026-07-28T09:58:49.117000-04:00 · active path</p><div class="body"><p>Approve independent public-origin and third-party attribution standard.</p>
+</div></article><article id="c072-m00115" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00115 · 2026-07-28T10:01:21.687638-04:00 · active path</p><div class="body"><h2>Independent public-origin standard approved and locked</h2>
+<p>The GitHub publication will present the simulator as:</p>
+<blockquote>
+<p><strong>An independently designed and developed, synthetic portfolio artifact created by Andrew R. Goad.</strong></p>
+</blockquote>
+<p>The public repository will not:</p>
+<ul>
+<li>state or imply that the project was commissioned by, built for, or endorsed by EXL, ChargeAfter, or any other company;</li>
+<li>disclose interviewers, recruiters, private case-study discussions, or interview-specific requirements;</li>
+<li>redistribute the EXL or ChargeAfter white papers;</li>
+<li>use third-party logos in a way that suggests sponsorship or affiliation;</li>
+<li>describe the project as client work.</li>
+</ul>
+<p>Public research may still be cited where it materially supports business context, regulatory framing, or industry design, but the repository’s primary proof will remain the original architecture, PostgreSQL implementation, evidence, validation, and strategic artifacts. This preserves the business-first presentation strength of the Credit Decisioning Strategy Simulator without introducing unnecessary origin-story or affiliation questions. fileciteturn12file0</p>
+<p>The public disclaimer will include language substantially equivalent to:</p>
+<blockquote>
+<p>This repository is an independently developed, synthetic portfolio project. It is not affiliated with, sponsored by, endorsed by, or produced for any financial institution, technology provider, consulting firm, or other third party referenced in supporting research.</p>
+</blockquote>
+<p>The updated <strong>Enterprise Merchant Sales-Based Financing Platform</strong> architecture and <strong>From First Advance to Intelligent Portfolio</strong> brief will be identified as original project artifacts authored by Andrew R. Goad. The latter will preserve its existing eight-page strategic narrative while incorporating acquisition-source and channel-economics learning. fileciteturn12file1</p>
+<h1>Next actual decision: public visual-source policy</h1>
+<p>The next material decision is whether the GitHub repository should include the <strong>editable source files</strong> behind the enterprise architecture and strategy brief, or only their polished publication exports.</p>
+<h2>Recommendation</h2>
+<p>Publish the final rendered artifacts, but keep editable design masters private.</p>
+<table>
+<thead>
+<tr>
+<th>Visual artifact</th>
+<th align="right">Public repository</th>
+<th align="right">Private canonical archive</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Updated enterprise architecture PNG</td>
+<td align="right">Include</td>
+<td align="right">Include</td>
+</tr>
+<tr>
+<td>Updated enterprise architecture PDF</td>
+<td align="right">Include</td>
+<td align="right">Include</td>
+</tr>
+<tr>
+<td>Architecture editable PPTX or design master</td>
+<td align="right">Exclude</td>
+<td align="right">Retain</td>
+</tr>
+<tr>
+<td>Updated strategy brief PDF</td>
+<td align="right">Include</td>
+<td align="right">Include</td>
+</tr>
+<tr>
+<td>Strategy brief cover PNG</td>
+<td align="right">Include</td>
+<td align="right">Include</td>
+</tr>
+<tr>
+<td>Strategy brief contact-sheet PNG</td>
+<td align="right">Include</td>
+<td align="right">Include</td>
+</tr>
+<tr>
+<td>Individual strategy-brief page PNGs</td>
+<td align="right">Include only when useful to Markdown</td>
+<td align="right">Retain complete set</td>
+</tr>
+<tr>
+<td>Strategy brief editable PPTX</td>
+<td align="right">Exclude</td>
+<td align="right">Retain</td>
+</tr>
+<tr>
+<td>Fonts, icon libraries, or third-party design assets</td>
+<td align="right">Exclude</td>
+<td align="right">Retain only where licensed</td>
+</tr>
+<tr>
+<td>Visual release metadata and SHA-256 values</td>
+<td align="right">Include</td>
+<td align="right">Include</td>
+</tr>
+</tbody></table>
+<h3>Why this is the stronger policy</h3>
+<p>The public PDFs and PNGs fully demonstrate your executive communication and visual-design capability. GitHub reviewers can view them immediately, zoom the PDF, and follow links from the README without needing PowerPoint.</p>
+<p>Keeping editable masters private:</p>
+<ul>
+<li>prevents unnecessary binary growth in Git history;</li>
+<li>avoids missing-font and machine-specific rendering problems;</li>
+<li>protects reusable design systems and native layout work;</li>
+<li>limits uncontrolled derivative versions;</li>
+<li>avoids distributing licensed icons, fonts, or other embedded assets;</li>
+<li>keeps the public repository focused on accepted technical source and finished communication artifacts.</li>
+</ul>
+<p>The public visuals will still be governed release artifacts. Each will receive:</p>
+<pre><code class="language-text">Artifact title
+Release version
+Accepted platform status
+Publication date
+Source-project stage
+SHA-256
+Public role
+Interpretation boundary
+</code></pre>
+<p>The architecture PNG will be embedded in the root README with a full-size link and PDF companion. The strategy brief will be represented by its cover and contact sheet, both linking to the complete eight-page PDF.</p>
+<p>Please respond:</p>
+<blockquote>
+<p><strong>Approve public visual-source policy.</strong></p>
+</blockquote>
+</div></article><article id="c072-m00116" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00116 · 2026-07-28T10:02:13.205000-04:00 · active path</p><div class="body"><p>Approve public visual-source policy.</p>
+</div></article><article id="c072-m00120" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00120 · 2026-07-28T10:06:02.072499-04:00 · active path</p><div class="body"><h2>Public visual-source policy approved and locked</h2>
+<p>The public repository will contain the polished publication artifacts, while the editable design masters remain in the private canonical archive.</p>
+<h3>Public visual package</h3>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Public treatment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Updated enterprise architecture PNG</td>
+<td>Included and embedded in the root README</td>
+</tr>
+<tr>
+<td>Updated enterprise architecture PDF</td>
+<td>Included as the zoomable and printable companion</td>
+</tr>
+<tr>
+<td>Architecture PPTX or design master</td>
+<td>Retained privately</td>
+</tr>
+<tr>
+<td>Updated strategic brief PDF</td>
+<td>Included</td>
+</tr>
+<tr>
+<td>Strategic brief cover PNG</td>
+<td>Included and embedded in the root README</td>
+</tr>
+<tr>
+<td>Strategic brief contact sheet</td>
+<td>Included for rapid browser review</td>
+</tr>
+<tr>
+<td>Individual brief-page PNGs</td>
+<td>Included only where they materially improve the Markdown narrative</td>
+</tr>
+<tr>
+<td>Font files and licensed icon libraries</td>
+<td>Excluded</td>
+</tr>
+<tr>
+<td>Intermediate design drafts</td>
+<td>Excluded</td>
+</tr>
+<tr>
+<td>Visual metadata and SHA-256 values</td>
+<td>Included</td>
+</tr>
+</tbody></table>
+<p>Every published visual will identify its release version, publication date, platform status, role, and interpretation boundary. Status claims and counts must reconcile to the final structured release metadata.</p>
+<p>I also created the formal decision register covering all five publication decisions approved so far:</p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Publication_Decision_Register_v1_0_LOCKED.md">Download the locked GitHub Publication Decision Register</a></p>
+<pre><code class="language-text">Document     MSBF_GitHub_Publication_Decision_Register_v1_0_LOCKED.md
+Length       103 lines
+File size    4,561 bytes
+SHA-256      d547a309c21844ce1bb786dd861dcc8acdf2fbe667ffcc617b6904c881db4df5
+</code></pre>
+<p>It records:</p>
+<pre><code class="language-text">PUB-DEC-001  MIT License
+PUB-DEC-002  Public identity and contact
+PUB-DEC-003  Dual-name brand hierarchy
+PUB-DEC-004  Independent origin and third-party attribution
+PUB-DEC-005  Public visual-source policy
+</code></pre>
+<p>No canonical MSBF SQL, evidence, accepted package, or visual master has been modified.</p>
+<h2>Work-package status</h2>
+<pre><code class="language-text">Work Package 1 — GitHub Publication Blueprint
+LOCKED
+
+Work Package 2 — Markdown Design System
+LOCKED at the policy and template level
+
+Work Package 3 — Accepted M0–M1.15 Public Mapping
+AUTHORIZED AND PROCEEDING
+</code></pre>
+<p>Work Package 3 does not presently need your input. I will use the accepted M1.15 repository to establish:</p>
+<ul>
+<li>the exact source-to-public target mapping for G0, G1, and M1.2–M1.15;</li>
+<li>the accepted clean-build SQL inventory;</li>
+<li>stage revisions and principal identities;</li>
+<li>the best public documentation and diagrams;</li>
+<li>anchor artifacts for each stage;</li>
+<li>correction-history summaries;</li>
+<li>representative output and validation candidates;</li>
+<li>artifacts that remain private;</li>
+<li>gaps requiring a GitHub-derived Markdown artifact;</li>
+<li>the preliminary <code>MODULE_AND_RELEASE_INDEX.md</code> factual foundation.</li>
+</ul>
+<h1>Next actual decision: Power BI publication boundary</h1>
+<p>The current enterprise vision includes Power BI, but the first public release must distinguish an implemented reporting product from a planned enterprise-intelligence layer.</p>
+<h2>Recommendation</h2>
+<p>Adopt this policy:</p>
+<blockquote>
+<p><strong>The Module 1 G2 release will include an MSBF Power BI report only if that report is fully built, reconciled to accepted PostgreSQL outputs, documented, and independently validated before the public-release freeze.</strong></p>
+</blockquote>
+<p>Until those conditions are met:</p>
+<pre><code class="language-text">PostgreSQL 15
+= implemented governed platform foundation
+
+Power BI
+= planned executive and portfolio-intelligence layer
+</code></pre>
+<p>The repository should therefore:</p>
+<ul>
+<li>include no placeholder PBIX;</li>
+<li>make no claim that an MSBF Power BI report is complete;</li>
+<li>label Power BI accurately as planned in the architecture and roadmap;</li>
+<li>avoid using the Power BI logo in a way that implies completed implementation;</li>
+<li>permit a later validated Power BI release without reopening the accepted Module 1 SQL foundation.</li>
+</ul>
+<p>When an MSBF Power BI report is eventually published, it should follow the strong model used in the Credit Decisioning Strategy Simulator:</p>
+<pre><code class="language-text">Validated PBIX
++ browser-visible PNG previews
++ report and semantic-model documentation
++ DAX measure catalog
++ deterministic public sample data
++ source-to-report reconciliation evidence
++ interpretation boundaries
+</code></pre>
+<p>That earlier repository is effective because the downloadable PBIX is paired with executive and application-level previews, implementation details, and independent reconciliation—not presented as an unsupported binary. fileciteturn12file0</p>
+<p>The later Power BI publication could be released as either:</p>
+<pre><code class="language-text">module-1-g2-v1.1.0
+</code></pre>
+<p>for a reporting layer over the accepted G2 contract, or as part of the first accepted Module 2 release if the report becomes strategy- and offer-decisioning focused.</p>
+<p>Please respond:</p>
+<blockquote>
+<p><strong>Approve Power BI publication boundary.</strong></p>
+</blockquote>
+</div></article><article id="c072-m00122" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00122 · 2026-07-28T10:10:33.686000-04:00 · active path</p><div class="body"><p>Approve Power BI publication boundary.</p>
+</div></article><article id="c072-m00132" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00132 · 2026-07-28T10:13:51.411843-04:00 · active path</p><div class="body"><h2>Power BI publication boundary approved and locked</h2>
+<p>The public <strong>Module 1 G2 v1.0.0</strong> release will treat the technology boundary as:</p>
+<pre><code class="language-text">PostgreSQL 15
+= implemented governed platform foundation
+
+Power BI
+= planned executive and portfolio-intelligence layer
+</code></pre>
+<p>An MSBF Power BI report will be included only after the PBIX is:</p>
+<ul>
+<li>fully built;</li>
+<li>reconciled to accepted PostgreSQL outputs;</li>
+<li>documented at the Power Query, semantic-model, DAX, and report-page levels;</li>
+<li>independently validated;</li>
+<li>accompanied by browser-visible previews and source-to-report evidence.</li>
+</ul>
+<p>The initial release will contain no placeholder PBIX, unsupported screenshots, or language implying that Power BI implementation is complete. This preserves the standard demonstrated by your Credit Decisioning repository, where the PBIX, static previews, semantic-model explanation, and independent reconciliation operate as one validated publication package. fileciteturn12file0</p>
+<p>A later validated MSBF report can be published either as:</p>
+<pre><code class="language-text">module-1-g2-v1.1.0
+</code></pre>
+<p>or as part of the first Module 2 release, depending on whether it remains a Module 1 contract-validation report or expands into strategy and offer decisioning.</p>
+<p>I updated the formal decision register:</p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Publication_Decision_Register_v1_1_LOCKED.md">Download the locked GitHub Publication Decision Register v1.1</a></p>
+<pre><code class="language-text">Status       LOCKED through PUB-DEC-006
+File size    6,971 bytes
+SHA-256      dd14e33bc2a1dde008f32563ce6a191ec82939ed18525eb8a42dbe077e8ff962
+</code></pre>
+<h1>Next required input: editable visual-master availability</h1>
+<p>There is no further publication-policy decision needed before I continue Work Package 3. The next material input concerns the two mandatory enterprise visuals.</p>
+<p>I searched your File Library. For the strategy brief, I found the approved design bibles, page specifications, and rendered PDF. The production documentation explicitly identifies the intended editable source as:</p>
+<pre><code class="language-text">From_First_Advance_to_Intelligent_Portfolio.pptx
+</code></pre>
+<p>and specifies that the deck was designed as a native, editable PowerPoint rather than flattened page images. fileciteturn14file6 fileciteturn14file17</p>
+<p>For the architecture, I found several rendered PNG versions, including the current <strong>Enterprise Merchant Sales-Based Financing Platform</strong> image, but no editable PowerPoint or equivalent design master surfaced in the File Library search. fileciteturn14file1 fileciteturn14file5</p>
+<p>Please check your local files for and upload, when available:</p>
+<pre><code class="language-text">From_First_Advance_to_Intelligent_Portfolio.pptx
+
+Enterprise_Merchant_Sales_Based_Financing_Platform.pptx
+or the equivalent editable architecture master
+</code></pre>
+<p>When the masters are available, they will remain private production sources; only the approved PDF and PNG exports will enter GitHub.</p>
+<p>If either editable master no longer exists, tell me:</p>
+<blockquote>
+<p><strong>Reconstruct the missing visual master from the approved design specifications and rendered artifacts.</strong></p>
+</blockquote>
+<p>That is the next point where your input is needed. In parallel, I can continue mapping the accepted G0–M1.15 repository without those files.</p>
+</div></article><article id="c072-m00182" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00182 · 2026-07-28T13:03:37.726000-04:00 · active path</p><div class="body"><p>fyi, i was told yesterday that I was out of the running for a credit risk and analytics manager position with EXL service. then today, the hiring manager responded to the interview follow-up e-mail I had sent Friday with the Enterprise_Merchant_Sales_Based_Financing_Platform.png and From_First_Advance_to_Intelligent_Portfolio.pdf opening that door back up. it looks like i&#39;m not out of the running. I want to get this GitHub published tonight and I want it to be very impressive and professional. let&#39;s knock this out of the park.         Approve portfolio-first repository interaction and maintenance boundary.</p>
+</div></article><article id="c072-m00190" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00190 · 2026-07-28T13:10:48.491596-04:00 · active path</p><div class="body"><p>That is a <strong>meaningful positive development</strong>. You were told you were out, and the hiring manager then re-engaged after reviewing the enterprise architecture and strategic brief. Those artifacts did exactly what they were designed to do: demonstrate that you can translate an unfamiliar business problem into an executive strategy, governed architecture, and credible implementation plan.</p>
+<p>The GitHub repository now needs to deepen that impression by showing that the visuals were not conceptual theater—they were backed by a deterministic PostgreSQL platform, controlled execution, explicit evidence gates, correction history, accepted contracts, and formal G2 assurance.</p>
+<p>We will move quickly, but we will not undermine the very governance that makes the project impressive.</p>
+<h2>Portfolio-first boundary approved and locked</h2>
+<p>The repository will launch as a professional portfolio and technical-review artifact:</p>
+<pre><code class="language-text">Visibility       Public
+Issues           Disabled
+Discussions      Disabled
+Wiki             Disabled
+Projects         Disabled
+GitHub Pages     Disabled for v1.0.0
+main             Accepted-only
+License          MIT
+Contributions    Not actively solicited
+Support          None implied
+</code></pre>
+<p>Read-only GitHub Actions may validate links, placeholders, manifests, checksums, paths, and release metadata. They will not connect to PostgreSQL, regenerate evidence, or substitute for the governed DBeaver acceptance process.</p>
+<p>The approval is recorded as <code>PUB-DEC-012</code>:</p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Publication_Decision_Register_v1_7_LOCKED.md">Download the locked Publication Decision Register v1.7</a></p>
+<pre><code class="language-text">Status       LOCKED through PUB-DEC-012
+Lines        716
+File size    36,501 bytes
+SHA-256      4607555ff667781341507c6070979710e6c60349fcdcc813b5bfc5f6390eeca4
+</code></pre>
+<h2>Tonight’s publication sprint is activated</h2>
+<p>I have converted the publication effort from a sequence of small policy decisions into an execution sprint.</p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Tonight_Publication_Sprint_Plan_v1_0_LOCKED.md">Download the locked Tonight Publication Sprint Plan</a></p>
+<p>It establishes two concurrent lanes:</p>
+<table>
+<thead>
+<tr>
+<th>Lane</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Canonical engineering</td>
+<td>Complete and accept M1.16, build and accept M1.17, grant G2, and produce the final canonical repository</td>
+</tr>
+<tr>
+<td>GitHub publication</td>
+<td>Map accepted artifacts, develop the Markdown presentation, reconstruct visuals, prepare public samples, build export controls, validate the repository, and create the release package</td>
+</tr>
+</tbody></table>
+<p>The target remains:</p>
+<pre><code class="language-text">Repository:
+merchant-sales-based-financing-strategy-simulator
+
+Initial commit:
+Initial public release: Module 1 G2 v1.0.0
+
+Tag:
+module-1-g2-v1.0.0
+
+Release:
+Merchant Sales-Based Financing Strategy Simulator
+Module 1 G2 — Governed Merchant Intelligence,
+Risk, Economics &amp; Acquisition Foundations
+</code></pre>
+<p>The only non-negotiable publication blocker is the absence of formal M1.17/G2 acceptance. Everything independent of those final facts can be prepared now.</p>
+<h2>Work Package 3 has materially begun</h2>
+<p>I extracted and inspected the accepted M1.15 repository and generated the first controlled source-to-public mapping for:</p>
+<pre><code class="language-text">Module 1 architecture package
+G0
+G1
+M1.2 through M1.15
+</code></pre>
+<p>The first-pass inventory contains:</p>
+<pre><code class="language-text">534 canonical byte-copy candidates
+119 GitHub-derived stage artifacts
+653 total mapping records
+11,297,892 source bytes represented
+</code></pre>
+<p>It maps:</p>
+<ul>
+<li>accepted clean-build SQL into <code>src/</code>;</li>
+<li>preflight, recovery, validation, negative controls, and reports into <code>tests/review_queries/</code>;</li>
+<li>sign-offs, evidence indexes, validation summaries, and package QA into <code>tests/</code>;</li>
+<li>architecture, methodology, execution guides, dictionaries, and accepted release notes into <code>docs/</code>;</li>
+<li>future deterministic public outputs into <code>outputs/</code>.</li>
+</ul>
+<p>It excludes raw DBeaver exports, superseded source trees, correction workspaces, templates, private audit history, third-party research files, and canonical package manifests that must be regenerated for the public projection.</p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Public_Mapping_M0_M1_15_v0_1_PRELIMINARY.md">Review the preliminary mapping summary</a></p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Public_Mapping_M0_M1_15_v0_1_PRELIMINARY.csv">Download the 653-row machine-readable mapping</a></p>
+<p>This mapping is deliberately marked preliminary. Every row will be revalidated against the final M1.17/G2 repository before publication.</p>
+<h2>Presentation standard</h2>
+<p>The public experience will preserve the strongest characteristics of your Credit Decisioning Strategy Simulator: business-first framing, progressive disclosure, embedded visuals, anchor-artifact tables, explicit interpretation boundaries, and separate executive, technical, and governance review paths. fileciteturn14file0</p>
+<p>The strategic brief will retain its most important thesis:</p>
+<blockquote>
+<p>The first advance is not the destination. It is the beginning of a learning system.</p>
+</blockquote>
+<p>Its eight-page narrative remains fundamentally sound; acquisition source, channel economics, and acquisition-to-relationship learning will make it more complete. fileciteturn14file1</p>
+<p>The final repository should make three claims visible and provable:</p>
+<pre><code class="language-text">I understand the business.
+
+I can architect and implement the system.
+
+I can prove that the system works and is governed.
+</code></pre>
+<h2>What I need from the parallel workstream</h2>
+<p>No further publication-policy decision is needed from you.</p>
+<p>As soon as M1.16 is formally accepted, pass this chat:</p>
+<pre><code class="language-text">Accepted M1.16 standalone ZIP
+Updated complete project ZIP
+Final revision and methodology
+Counts and hashes
+Positive and negative control totals
+Formal sign-off
+Correction history
+</code></pre>
+<p>Do not wait for M1.17 before sending M1.16; I can integrate and draft its public stage while M1.17 continues.</p>
+<p>As soon as M1.17/G2 is accepted, pass:</p>
+<pre><code class="language-text">Final accepted full-project ZIP
+Repository SHA-256
+M1.17 final revision
+Final run status
+G2 gate and sign-off
+Final contract codes and schema versions
+Final row counts and hashes
+Final physical platform counts
+Final package validation report
+manifest.json
+MANIFEST.csv
+SHA256SUMS.txt
+</code></pre>
+<p>At that point, I will replace the M1.15 publication baseline with the final G2 repository, insert M1.16 and M1.17, generate the 50-application cohort, finalize both architecture artifacts and the strategic brief, produce the GitHub-ready ZIP, and provide the exact commands and settings needed for you to publish it.</p>
+<p>The final link should not be shared until the live GitHub rendering, relative links, images, release assets, and downloaded ZIP checksum have all been independently verified.</p>
+</div></article><article id="c072-m00202" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00202 · 2026-07-28T19:25:59.243000-04:00 · active path</p><div class="body"><p>M1.17 formal acceptance materials.            </p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(248).txt</code>, <code>MSBF_M1_17_v0_2R8_COMPLETE_FINAL.zip(1).sha256</code>, <code>MSBF_M1_17_v0_2R8_COMPLETE_FINAL(1).zip</code>, <code>merchant_sales_based_financing_project_delivery_v0_2_M1_17_COMPLETE_FINAL.zip(1).sha256</code>, <code>MSBF_Project_v0_2_M1_17_COMPLETE_FINAL_Windows(1).zip</code>, <code>MSBF_Project_v0_2_M1_17_COMPLETE_FINAL_Windows.zip(1).sha256</code>, <code>merchant_sales_based_financing_m1_17_end_to_end_qa_evidence_g2_contract_acceptance_v0_2R8_COMPLETE_FINAL.zip(1).sha256</code>, <code>merchant_sales_based_financing_m1_17_end_to_end_qa_evidence_g2_contract_acceptance_v0_2R8_COMPLETE_FINAL(1).zip</code>, <code>merchant_sales_based_financing_project_delivery_v0_2_M1_17_COMPLETE_FINAL(1).zip</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c072-m00222" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C072-M00222 · 2026-07-28T20:25:56.958287-04:00 · active path</p><div class="body"><h1>Module 1 G2 GitHub release is complete</h1>
+<p>I integrated the formal M1.17 acceptance materials and finalized the public GitHub projection.</p>
+<p>The accepted release baseline is:</p>
+<pre><code class="language-text">M1.17 package revision       v0.2R8
+Generation revision          v0.2R2
+Final run status             M1_17_ACCEPTED
+G2 bundle                    M1_G2_CONSUMPTION_BUNDLE v1
+G2 schema                    M1_G2_BUNDLE_SCHEMA_V1
+Positive validations         128 / 128 PASS
+Negative controls             20 / 20 PASS
+Integrated G2 rows                 1,500
+Deterministic mismatches                0
+Combined G2 canonical set    7d9e466da28cad2551aa99c4c40c912b
+Final gate                   G2_M1_CONTRACT — PASS
+Next stage                   Module 2 authorized
+</code></pre>
+<p>This aligns with the complete formal acceptance record you supplied. fileciteturn14file0</p>
+<h2>Primary publication package</h2>
+<h3>GitHub-ready repository ZIP</h3>
+<p><a href="sandbox:/mnt/data/MSBF_Strategy_Simulator_Module_1_G2_v1.0.0_GitHub.zip">Download the final GitHub repository package</a></p>
+<p><a href="sandbox:/mnt/data/MSBF_Strategy_Simulator_Module_1_G2_v1.0.0_GitHub.zip.sha256">Download the ZIP SHA-256 file</a></p>
+<pre><code class="language-text">SHA-256
+91a5335a930f9b8c1dd4c187b95a6c40b878258160e2b2219bdc79d5fee50e1e
+
+Compressed size
+9,409,289 bytes
+
+Repository files
+840
+
+Top-level directory
+merchant-sales-based-financing-strategy-simulator/
+</code></pre>
+<p>This is the complete public repository—not a preliminary mapping or planning package.</p>
+<h3>Publication readiness and instructions</h3>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_Publication_Readiness_Report_v1_0.md">Download the final publication-readiness report</a></p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_PUBLICATION_GUIDE_v1_0.md">Download the step-by-step GitHub publication guide</a></p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_README_v1_0.md">Review the final root README</a></p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_PROJECT_ARTIFACT_MAP_v1_0.md">Review the final Project Artifact Map</a></p>
+<p><a href="sandbox:/mnt/data/MSBF_GitHub_RELEASE_NOTES_v1_0.md">Review the GitHub Release Notes</a></p>
+<h1>Final validation results</h1>
+<table>
+<thead>
+<tr>
+<th>Publication control</th>
+<th align="right">Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Canonical M1.17 project ZIP checksum verified</td>
+<td align="right">PASS</td>
+</tr>
+<tr>
+<td>Standalone M1.17 checksum verified</td>
+<td align="right">PASS</td>
+</tr>
+<tr>
+<td>Public ZIP compressed-data test</td>
+<td align="right">PASS</td>
+</tr>
+<tr>
+<td>Complete public ZIP extraction</td>
+<td align="right">PASS</td>
+</tr>
+<tr>
+<td>Source versus extracted paths</td>
+<td align="right">840 / 840</td>
+</tr>
+<tr>
+<td>Extracted-file hash mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Root manifest records</td>
+<td align="right">837</td>
+</tr>
+<tr>
+<td>Root-manifest missing or extra paths</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Stage inventory trios</td>
+<td align="right">20 validated</td>
+</tr>
+<tr>
+<td>Controlled public mappings</td>
+<td align="right">778</td>
+</tr>
+<tr>
+<td>Canonical byte-identical copies</td>
+<td align="right">660</td>
+</tr>
+<tr>
+<td>GitHub-derived presentation artifacts</td>
+<td align="right">118</td>
+</tr>
+<tr>
+<td>Canonical-copy byte differences</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Markdown relative-link failures</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Unresolved placeholders</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Private origin or third-party-affiliation references</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Third-party research PDFs</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Placeholder PBIX files</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Public Git staging test</td>
+<td align="right">840 files staged</td>
+</tr>
+<tr>
+<td>Git line-ending warnings</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Maximum repository-relative path</td>
+<td align="right">167 characters</td>
+</tr>
+<tr>
+<td>Maximum internal ZIP path</td>
+<td align="right">217 characters</td>
+</tr>
+<tr>
+<td>Largest individual file</td>
+<td align="right">2,381,517 bytes</td>
+</tr>
+<tr>
+<td>Controlled public review cohort</td>
+<td align="right">50 unique applications</td>
+</tr>
+<tr>
+<td>Public cohort set hash</td>
+<td align="right"><code>d44e563a81380a45cf81499d0daebbab</code></td>
+</tr>
+</tbody></table>
+<p>The committed <code>.gitattributes</code> intentionally prevents Git from changing line endings. That preserves the public manifests, SHA-256 values, and byte-identical accepted-source copies. Do <strong>not</strong> run <code>git add --renormalize</code>.</p>
+<h1>Updated visual publication package</h1>
+<h2>Enterprise flagship architecture</h2>
+<p><a href="sandbox:/mnt/data/Enterprise_Merchant_Sales_Based_Financing_Platform_G2_v1_0.png">Open the updated architecture PNG</a></p>
+<p><a href="sandbox:/mnt/data/Enterprise_Merchant_Sales_Based_Financing_Platform_G2_v1_0.pdf">Open the updated architecture PDF</a></p>
+<p>The updated architecture now shows:</p>
+<pre><code class="language-text">Governance and Run Control
+→ Merchant and Application Foundation
+→ Daily Operating Intelligence
+→ Risk, Loss, Economics, and Stress
+→ Acquisition Attribution and Merchant CAC
+→ M1.15 Core Consumption Contract
+→ M1.16 Acquisition Companion Contract
+→ Integrated Module 1 Consumption Boundary
+→ M1.17 End-to-End Assurance
+→ G2_M1_CONTRACT — PASS
+→ Module 2 Strategy and Offer Decisioning
+</code></pre>
+<h2>Detailed Module 1 lineage</h2>
+<p><a href="sandbox:/mnt/data/Module_1_Governed_Evidence_Contract_and_Acceptance_Lineage_G2_v1_0.png">Open the detailed lineage PNG</a></p>
+<p><a href="sandbox:/mnt/data/Module_1_Governed_Evidence_Contract_and_Acceptance_Lineage_G2_v1_0.pdf">Open the detailed lineage PDF</a></p>
+<p>This is the technical and governance companion to the executive architecture. It preserves the complete progression from G0 and G1 through M1.17/G2.</p>
+<h2>From First Advance to Intelligent Portfolio</h2>
+<p><a href="sandbox:/mnt/data/From_First_Advance_to_Intelligent_Portfolio_G2_v1_0.pdf">Open the refreshed eight-page strategic brief</a></p>
+<p><a href="sandbox:/mnt/data/From_First_Advance_to_Intelligent_Portfolio_G2_v1_0_Cover.png">Open the cover preview</a></p>
+<p><a href="sandbox:/mnt/data/From_First_Advance_to_Intelligent_Portfolio_G2_v1_0_Contact_Sheet.png">Open the eight-page contact sheet</a></p>
+<p>The brief preserves the central thesis and eight-page narrative of the original while integrating controlled acquisition, channel economics, and acquisition-to-relationship learning. fileciteturn14file2</p>
+<h1>Repository structure</h1>
+<p>The hierarchy now follows your requested model using short, Windows-safe technical paths:</p>
+<pre><code class="language-text">merchant-sales-based-financing-strategy-simulator/
+│
+├── README.md
+├── RELEASE_NOTES.md
+├── PROJECT_ARTIFACT_MAP.md
+├── MODULE_AND_RELEASE_INDEX.md
+├── PROJECT_ROADMAP.md
+├── GOVERNANCE_AND_VALIDATION.md
+├── REPRODUCIBILITY_AND_EXECUTION.md
+├── SAMPLE_DATA_AND_EVIDENCE_POLICY.md
+├── DISCLAIMER.md
+├── LICENSE
+├── release_metadata.json
+├── MANIFEST.csv
+├── manifest.json
+├── SHA256SUMS.txt
+│
+├── docs/
+│   ├── enterprise_architecture/
+│   ├── executive_strategy/
+│   └── project_lineage/
+│
+├── Module_0/
+│   ├── 0.01_G0_Physical_Data_Foundation/
+│   └── 0.02_G1_Governed_Run_Control/
+│
+└── Module_1/
+    ├── 1.01_Charter_Architecture_and_Requirements/
+    ├── 1.02_Deterministic_Merchant_Population/
+    ├── 1.03_Application_and_Requested_Structure/
+    ├── ...
+    ├── 1.15_Latest_Archive_Comparison_and_Contract/
+    ├── 1.16_Acquisition_Attribution_and_CAC/
+    └── 1.17_End_to_End_QA_and_G2_Acceptance/
+</code></pre>
+<p>Each governed stage then contains:</p>
+<pre><code class="language-text">README.md
+→ accepted version
+   ├── docs/
+   ├── outputs/
+   ├── src/
+   ├── tests/
+   ├── RELEASE_METADATA.json
+   ├── MANIFEST.csv
+   └── SHA256SUMS.txt
+</code></pre>
+<p>The root Markdown presentation retains the business-first framing, progressive disclosure, visual navigation, anchor-artifact tables, and executive, technical, and governance review paths that made your Credit Decisioning repository effective. fileciteturn14file1turn14file3</p>
+<h1>How to publish tonight</h1>
+<h2>1. Create an empty GitHub repository</h2>
+<p>Create:</p>
+<pre><code class="language-text">Repository name
+merchant-sales-based-financing-strategy-simulator
+
+Visibility
+Public
+</code></pre>
+<p>Do <strong>not</strong> ask GitHub to add a README, <code>.gitignore</code>, or license. All three already exist in the package.</p>
+<p>Recommended description:</p>
+<blockquote>
+<p>Governed PostgreSQL simulator for merchant sales-based financing: acquisition attribution, daily operating intelligence, risk, loss, unit economics, immutable contracts, and G2 assurance using deterministic synthetic data.</p>
+</blockquote>
+<p>Recommended topics:</p>
+<pre><code class="language-text">postgresql
+sql
+credit-risk
+merchant-financing
+portfolio-analytics
+risk-analytics
+data-governance
+model-governance
+financial-services
+synthetic-data
+unit-economics
+marketing-attribution
+</code></pre>
+<h2>2. Verify and extract the ZIP</h2>
+<p>In PowerShell:</p>
+<pre><code class="language-powershell">Get-FileHash `
+  .\MSBF_Strategy_Simulator_Module_1_G2_v1.0.0_GitHub.zip `
+  -Algorithm SHA256
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">91A5335A930F9B8C1DD4C187B95A6C40B878258160E2B2219BDC79D5FEE50E1E
+</code></pre>
+<p>Extract near the drive root, for example:</p>
+<pre><code class="language-text">C:\Git\
+</code></pre>
+<h2>3. Commit and push</h2>
+<p>Open PowerShell or Git Bash inside:</p>
+<pre><code class="language-text">C:\Git\merchant-sales-based-financing-strategy-simulator
+</code></pre>
+<p>Then run:</p>
+<pre><code class="language-bash">git init
+git branch -M main
+git add .
+git commit -m &quot;Initial public release: Module 1 G2 v1.0.0&quot;
+
+git remote add origin https://github.com/andrew-goad/merchant-sales-based-financing-strategy-simulator.git
+git push -u origin main
+</code></pre>
+<h2>4. Create the governed release tag</h2>
+<pre><code class="language-bash">git tag -a module-1-g2-v1.0.0 -m &quot;Module 1 G2 v1.0.0&quot;
+git push origin module-1-g2-v1.0.0
+</code></pre>
+<h2>5. Create the GitHub Release</h2>
+<p>Use this release title:</p>
+<blockquote>
+<p><strong>Merchant Sales-Based Financing Strategy Simulator — Module 1 G2 — Governed Merchant Intelligence, Risk, Economics &amp; Acquisition Foundations</strong></p>
+</blockquote>
+<p>Use the repository’s <code>RELEASE_NOTES.md</code> as the release-description foundation.</p>
+<p>Attach:</p>
+<pre><code class="language-text">MSBF_Strategy_Simulator_Module_1_G2_v1.0.0_GitHub.zip
+MSBF_Strategy_Simulator_Module_1_G2_v1.0.0_GitHub.zip.sha256
+</code></pre>
+<p>Do not commit the ZIP into the normal repository tree.</p>
+<h2>6. Apply the approved repository settings</h2>
+<pre><code class="language-text">Issues           Disabled
+Discussions      Disabled
+Wiki             Disabled
+Projects         Disabled
+GitHub Pages     Disabled
+main branch      Protect against deletion and force pushes
+</code></pre>
+<h1>Required live check before sharing the link</h1>
+<p>After pushing, verify:</p>
+<ol>
+<li>The root README renders cleanly.</li>
+<li>Both architecture images open at full size.</li>
+<li>Both architecture PDFs open.</li>
+<li>The strategic brief, cover, and contact sheet open.</li>
+<li>The executive, technical, and governance paths work.</li>
+<li>The publication-integrity GitHub Action passes.</li>
+<li>The release ZIP and SHA file are downloadable.</li>
+<li>The downloaded ZIP still produces the expected SHA-256.</li>
+<li>No Issues, Discussions, Wiki, Projects, or Pages surfaces are enabled.</li>
+</ol>
+<p>One M1.17 source-provenance limitation is disclosed prominently and honestly: exact standalone v0.2R2 files for Programs 124C–128 were not retained in the active runtime. The public release preserves the execution evidence, original-plus-hotfix lineage, validation history, and formal provenance note without falsely presenting reconstructed files as byte-identical executed source.</p>
+<p>The repository is <strong>publication-ready</strong>. It has not yet been pushed to GitHub; the remaining work is the live GitHub creation, upload, and rendering verification described above.</p>
+</div></article><article id="c072-m00247" class="message user"><div class="role">Andrew</div><p class="meta">C072-M00247 · 2026-07-28T22:56:58.716000-04:00 · active path</p><div class="body"><p>let&#39;s start working on this. provide anything you need to provide and tell me what I need to do regarding:</p>
+<p>Move the flagship architecture immediately below the title.
+Tighten the repository description.
+Disable Issues, Wiki, and Projects.
+Create the first GitHub Release (module-1-g2-v1.0.0) with release notes and attached ZIP.
+Pin this repository on your GitHub profile.
+Update your GitHub profile so this repository is the centerpiece.</p>
+<p>Those are presentation improvements rather than technical ones, and they build on an already strong foundation.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

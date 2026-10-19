@@ -1,0 +1,1790 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Power BI release validation and reporting — Part 2</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Power BI release validation and reporting</h1><p>Part 02 · C064</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_01.html">Previous</a><a href="Part_03.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c064-m00054" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00054 · 2026-07-19T15:10:35.591000-04:00 · active path</p><div class="body"><p>application_seq relationship existed</p>
+<p><strong>Attachments in export:</strong> <code>image(122).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00055" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00055 · 2026-07-19T15:10:37.022676-04:00 · active path</p><div class="body"><p>Perfect. That explains it.</p>
+<p><strong>Power BI auto-created the relationship on the wrong key.</strong></p>
+<p>It chose:</p>
+<pre><code class="language-text">application_seq
+</code></pre>
+<p>instead of</p>
+<pre><code class="language-text">Application_ID
+</code></pre>
+<p>This is exactly why I prefer turning Auto Detect off on enterprise models.</p>
+<hr>
+<h1>Fix it</h1>
+<h2>Step 1</h2>
+<p>Click the existing relationship line (the one connecting <code>application_seq</code>).</p>
+<p>Press:</p>
+<pre><code class="language-text">Delete
+</code></pre>
+<p>or right-click it and select:</p>
+<pre><code class="language-text">Delete
+</code></pre>
+<p>Confirm the deletion.</p>
+<p>There should now be <strong>no relationship</strong> between the two tables.</p>
+<hr>
+<h2>Step 2</h2>
+<p>Now create the correct relationship.</p>
+<p>Drag</p>
+<pre><code class="language-text">FactReleaseComparison[Application_ID]
+</code></pre>
+<p>to</p>
+<pre><code class="language-text">FactReconciliationDetail[Application_ID]
+</code></pre>
+<p>Configure:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Cardinality</td>
+<td><strong>One-to-many (1:*)</strong></td>
+</tr>
+<tr>
+<td>Cross-filter</td>
+<td><strong>Single</strong></td>
+</tr>
+<tr>
+<td>Active</td>
+<td><strong>Yes</strong></td>
+</tr>
+</tbody></table>
+<p>This one should save immediately.</p>
+<hr>
+<h1>Why <code>Application_ID</code> is the correct key</h1>
+<p>Your data model is:</p>
+<pre><code>FactReleaseComparison
+--------------------------------
+1 row per application
+50,000 rows
+</code></pre>
+<p>↓</p>
+<pre><code>FactReconciliationDetail
+--------------------------------
+1 row per
+Application
+×
+Changed Variable
+
+58,382 rows
+</code></pre>
+<p>So</p>
+<pre><code>Application_ID
+</code></pre>
+<p>is the business key.</p>
+<hr>
+<h1>Why <code>application_seq</code> is wrong</h1>
+<p>Although it <em>looks</em> unique inside each release,</p>
+<p>it&#39;s simply</p>
+<pre><code>1
+2
+3
+...
+50000
+</code></pre>
+<p>assigned during generation.</p>
+<p>It is <strong>not</strong> the business identifier.</p>
+<p>If later you introduce</p>
+<pre><code>Rate Stress
+
+Growth
+
+Tight Credit
+
+Baseline
+</code></pre>
+<p>you will have</p>
+<pre><code>application_seq = 1
+</code></pre>
+<p>four different times.</p>
+<p>But</p>
+<pre><code>Application_ID
+</code></pre>
+<p>will still uniquely identify the borrower/application.</p>
+<p>This is one of those subtle modeling decisions that separates a robust semantic model from a fragile one.</p>
+<hr>
+<h2>Another recommendation</h2>
+<p>Once the correct relationship is created, go to:</p>
+<pre><code class="language-text">File
+→ Options and settings
+→ Options
+→ Current File
+→ Data Load
+</code></pre>
+<p>and <strong>uncheck</strong>:</p>
+<pre><code class="language-text">Autodetect new relationships after data is loaded
+</code></pre>
+<p>For this project, we&#39;ll explicitly control every relationship ourselves. It prevents Power BI from making &quot;helpful&quot; guesses like the one it just made.</p>
+<hr>
+<p>Once the <code>Application_ID</code> relationship is active, we&#39;ll continue with the DAX measures and build the first QA dashboard. We&#39;re very close to having the analytical foundation fully locked down.</p>
+</div></article><article id="c064-m00056" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00056 · 2026-07-19T15:19:38.522000-04:00 · active path</p><div class="body"><p><em>No text body is present in the export. This message may contain an image or attachment.</em></p>
+<p><strong>Attachments in export:</strong> <code>image(122).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00057" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00057 · 2026-07-19T15:19:46.043151-04:00 · active path</p><div class="body"><p>Power BI is rejecting <code>Measures</code> because that name is reserved in your current version.</p>
+<p>Use a different table name. I recommend:</p>
+<pre><code class="language-text">_Measures
+</code></pre>
+<p>The leading underscore keeps it near the top of the field list and clearly identifies it as a technical measure table.</p>
+<h2>Fix</h2>
+<ol>
+<li>Close the error dialog.</li>
+<li>Rename the table to:</li>
+</ol>
+<pre><code class="language-text">_Measures
+</code></pre>
+<ol start="3">
+<li>Keep the placeholder column as:</li>
+</ol>
+<pre><code class="language-text">Measure_Home
+</code></pre>
+<ol start="4">
+<li>Right-click <code>Measure_Home</code> and select:</li>
+</ol>
+<pre><code class="language-text">Hide in report view
+</code></pre>
+<p>Then create all new measures in <code>_Measures</code>, not <code>Measures</code>.</p>
+<p>For example:</p>
+<pre><code class="language-DAX">Total Applications =
+COUNTROWS ( FactReleaseComparison )
+</code></pre>
+<p>This naming change does not affect any of the DAX formulas. Only the table that stores the measures changes.</p>
+</div></article><article id="c064-m00059" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00059 · 2026-07-19T15:25:52.967000-04:00 · active path</p><div class="body"><p>when you say DAX Total Applications, expected result 50,000 - where do I see that?</p>
+<p><strong>Attachments in export:</strong> <code>image(122).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00060" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00060 · 2026-07-19T15:25:54.498421-04:00 · active path</p><div class="body"><p>Excellent question. <strong>You won&#39;t see the value in the DAX editor itself.</strong> The DAX formula only defines the measure.</p>
+<p>There are three common ways to verify it. The easiest is #1.</p>
+<h2>Option 1 (Recommended): Put it on a Card visual</h2>
+<ol>
+<li>Go back to <strong>Report View</strong> (the bar chart icon on the left).</li>
+<li>On the Visualizations pane, insert a <strong>Card</strong> visual.</li>
+<li>Drag <strong>Total Applications</strong> from the <code>_Measures</code> table onto the card.</li>
+</ol>
+<p>You should immediately see:</p>
+<pre><code class="language-text">50,000
+</code></pre>
+<p>This is how we&#39;ll validate almost all of our measures.</p>
+<hr>
+<h2>Option 2: Use the Data pane</h2>
+<p>If you click the measure in the Fields/Data pane, you&#39;ll only see its formula—not its evaluated value. So this isn&#39;t useful for validation.</p>
+<hr>
+<h2>Option 3: Use a Table visual</h2>
+<p>Insert a Table visual and add the measure. It will display:</p>
+<table>
+<thead>
+<tr>
+<th align="right">Total Applications</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">50,000</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>Going forward</h1>
+<p>I actually want to change our workflow slightly because it will be faster and easier to debug.</p>
+<p>Instead of creating all nine measures and <strong>then</strong> checking them, we&#39;ll do this:</p>
+<ol>
+<li>Create one measure.</li>
+<li>Drop it on a Card.</li>
+<li>Verify the number.</li>
+<li>Move to the next measure.</li>
+</ol>
+<p>That way, if something is wrong, we know exactly which measure introduced the problem.</p>
+<p>So let&#39;s proceed like this:</p>
+<h3>Measure 1</h3>
+<pre><code class="language-DAX">Total Applications =
+COUNTROWS(FactReleaseComparison)
+</code></pre>
+<p><strong>Expected card value:</strong></p>
+<pre><code class="language-text">50,000
+</code></pre>
+<h3>Measure 2</h3>
+<pre><code class="language-DAX">Distinct Applications =
+DISTINCTCOUNT(FactReleaseComparison[Application_ID])
+</code></pre>
+<p><strong>Expected card value:</strong></p>
+<pre><code class="language-text">50,000
+</code></pre>
+<p>Once both cards show <strong>50,000</strong>, we&#39;ll move to <strong>Affected Applications</strong> and <strong>Unaffected Applications</strong>, where we&#39;ll validate the critical <strong>21,326 / 28,674</strong> split.</p>
+<p>This incremental approach is how I typically build enterprise Power BI models because it catches issues immediately rather than after dozens of measures have been written.</p>
+</div></article><article id="c064-m00061" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00061 · 2026-07-19T15:34:40.174000-04:00 · active path</p><div class="body"><p>here are my cards, although they round the thousands with the k suffix added</p>
+<p><strong>Attachments in export:</strong> <code>image(122).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00062" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00062 · 2026-07-19T15:34:46.136638-04:00 · active path</p><div class="body"><p>The measures appear to be working correctly. The <code>K</code> suffix is only a card formatting setting.</p>
+<p>For the QA page, show exact counts so you can verify them directly.</p>
+<h2>Change each count card to exact values</h2>
+<p>Select a card, then in the <strong>Format visual</strong> pane:</p>
+<ol>
+<li>Open <strong>Callout value</strong>.</li>
+<li>Find <strong>Display units</strong>.</li>
+<li>Change it from:</li>
+</ol>
+<pre><code class="language-text">Auto
+</code></pre>
+<p>to:</p>
+<pre><code class="language-text">None
+</code></pre>
+<ol start="4">
+<li>Set <strong>Decimal places</strong> to <code>0</code>.</li>
+</ol>
+<p>Repeat for:</p>
+<ul>
+<li>Total Applications</li>
+<li>Distinct Applications</li>
+<li>Affected Applications</li>
+<li>Unaffected Applications</li>
+<li>Variable Change Records</li>
+<li>Changed Functional Variables</li>
+</ul>
+<p>Leave <strong>Application Change Rate</strong> formatted as a percentage with two decimal places.</p>
+<p>Your cards should then display:</p>
+<table>
+<thead>
+<tr>
+<th>Measure</th>
+<th align="right">Expected</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Total Applications</td>
+<td align="right">50,000</td>
+</tr>
+<tr>
+<td>Distinct Applications</td>
+<td align="right">50,000</td>
+</tr>
+<tr>
+<td>Affected Applications</td>
+<td align="right">21,326</td>
+</tr>
+<tr>
+<td>Unaffected Applications</td>
+<td align="right">28,674</td>
+</tr>
+<tr>
+<td>Application Change Rate</td>
+<td align="right">42.65%</td>
+</tr>
+<tr>
+<td>Variable Change Records</td>
+<td align="right">58,382</td>
+</tr>
+<tr>
+<td>Changed Functional Variables</td>
+<td align="right">7</td>
+</tr>
+</tbody></table>
+<p>The current rounded values are consistent with those expectations, but exact display is preferable for the model-QA page. On the eventual executive page, we may deliberately use compact values such as <code>50K</code> and <code>58.4K</code>.</p>
+<h2>Next: variable reconciliation table</h2>
+<p>Add a <strong>Table</strong> visual and place these fields in it:</p>
+<pre><code class="language-text">FactReconciliationDetail[Variable]
+_Measures[Variable Change Records]
+</code></pre>
+<p>Sort <code>Variable Change Records</code> descending.</p>
+<p>You should see:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th align="right">Variable Change Records</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PAYMENT_TO_INCOME_RATIO</td>
+<td align="right">16,138</td>
+</tr>
+<tr>
+<td>MONTHLY_PAYMENT_PROXY</td>
+<td align="right">16,138</td>
+</tr>
+<tr>
+<td>EXPECTED_LOSS_AMOUNT</td>
+<td align="right">10,836</td>
+</tr>
+<tr>
+<td>ESTIMATED_PD</td>
+<td align="right">7,208</td>
+</tr>
+<tr>
+<td>REQUESTED_AMOUNT</td>
+<td align="right">3,686</td>
+</tr>
+<tr>
+<td>AMOUNT_TO_INCOME_RATIO</td>
+<td align="right">3,686</td>
+</tr>
+<tr>
+<td>MULT_PTI</td>
+<td align="right">690</td>
+</tr>
+</tbody></table>
+<p>This is the next critical reconciliation checkpoint.</p>
+</div></article><article id="c064-m00064" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00064 · 2026-07-19T15:38:00.748000-04:00 · active path</p><div class="body"><p>I do not see format visual callout value</p>
+</div></article><article id="c064-m00065" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00065 · 2026-07-19T15:38:02.562062-04:00 · active path</p><div class="body"><p>That&#39;s because you&#39;re likely using the <strong>new Card visual</strong> (introduced in newer Power BI versions). It has different formatting options than the classic Card, and Microsoft moved several settings.</p>
+<p>Let&#39;s first identify which visual you&#39;re using.</p>
+<h2>Quick check</h2>
+<p>Click one of your cards.</p>
+<p>On the right side, do you see the <strong>Format</strong> pane with a paint roller icon?</p>
+<p>If yes, look for one of these sections:</p>
+<ul>
+<li><strong>Visual</strong></li>
+<li><strong>General</strong></li>
+</ul>
+<p>Under <strong>Visual</strong>, do you see something called:</p>
+<ul>
+<li><strong>Reference labels</strong></li>
+<li><strong>Callout values</strong></li>
+<li><strong>Data label</strong></li>
+<li><strong>Values</strong></li>
+</ul>
+<p>The exact wording varies by Power BI version.</p>
+<hr>
+<h2>Easier way (works in every version)</h2>
+<p>Instead of hunting through the formatting pane:</p>
+<ol>
+<li>Click one of your cards.</li>
+<li>On the ribbon, select:</li>
+</ol>
+<pre><code class="language-text">Format
+</code></pre>
+<p>or</p>
+<pre><code class="language-text">Visualizations → Format
+</code></pre>
+<p>Search for:</p>
+<pre><code class="language-text">Display units
+</code></pre>
+<p>If there is a search box in the Format pane, type:</p>
+<pre><code class="language-text">display
+</code></pre>
+<p>Power BI will jump directly to that setting.</p>
+<hr>
+<h2>If you don&#39;t want to spend time on this right now...</h2>
+<p>We can safely ignore it.</p>
+<p>The measures are clearly correct:</p>
+<ul>
+<li>✅ 50K = 50,000</li>
+<li>✅ 21K = 21,326</li>
+<li>✅ 29K = 28,674</li>
+<li>✅ 58K = 58,382</li>
+<li>✅ 42.65%</li>
+<li>✅ 7</li>
+</ul>
+<p>So the DAX is working exactly as expected.</p>
+<p>I&#39;d rather keep the momentum than spend 15 minutes chasing a cosmetic setting.</p>
+<hr>
+<h3>Can you tell me one thing?</h3>
+<p>What version of Power BI Desktop are you running?</p>
+<p>Go to:</p>
+<pre><code class="language-text">File
+→ About
+</code></pre>
+<p>or</p>
+<pre><code class="language-text">Help
+→ About
+</code></pre>
+<p>and tell me the version (or take a screenshot).</p>
+<p>That will let me give instructions that match your UI exactly for the rest of the project.</p>
+</div></article><article id="c064-m00066" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00066 · 2026-07-19T15:54:24.817000-04:00 · active path</p><div class="body"><p>reached the end of 15.4 successfully. resolved the display issues.</p>
+<p><strong>Attachments in export:</strong> <code>image(122).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00067" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00067 · 2026-07-19T15:54:26.233409-04:00 · active path</p><div class="body"><p>This is a major milestone, and everything on this page looks <strong>exactly right</strong>.</p>
+<h2>Model QA Status: PASS ✅</h2>
+<p>Your dashboard has independently reproduced every critical reconciliation metric.</p>
+<table>
+<thead>
+<tr>
+<th>Validation</th>
+<th align="right">Expected</th>
+<th align="right">Actual</th>
+<th align="center">Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Total Applications</td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="center">✅</td>
+</tr>
+<tr>
+<td>Distinct Applications</td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="center">✅</td>
+</tr>
+<tr>
+<td>Affected Applications</td>
+<td align="right">21,326</td>
+<td align="right">21,326</td>
+<td align="center">✅</td>
+</tr>
+<tr>
+<td>Unaffected Applications</td>
+<td align="right">28,674</td>
+<td align="right">28,674</td>
+<td align="center">✅</td>
+</tr>
+<tr>
+<td>Application Change Rate</td>
+<td align="right">42.65%</td>
+<td align="right">42.65%</td>
+<td align="center">✅</td>
+</tr>
+<tr>
+<td>Variable Change Records</td>
+<td align="right">58,382</td>
+<td align="right">58,382</td>
+<td align="center">✅</td>
+</tr>
+<tr>
+<td>Changed Functional Variables</td>
+<td align="right">7</td>
+<td align="right">7</td>
+<td align="center">✅</td>
+</tr>
+</tbody></table>
+<p>The variable reconciliation table is also an exact match:</p>
+<ul>
+<li>PAYMENT_TO_INCOME_RATIO → <strong>16,138</strong></li>
+<li>MONTHLY_PAYMENT_PROXY → <strong>16,138</strong></li>
+<li>EXPECTED_LOSS_AMOUNT → <strong>10,836</strong></li>
+<li>ESTIMATED_PD → <strong>7,208</strong></li>
+<li>REQUESTED_AMOUNT → <strong>3,686</strong></li>
+<li>AMOUNT_TO_INCOME_RATIO → <strong>3,686</strong></li>
+<li>MULT_PTI → <strong>690</strong></li>
+</ul>
+<p>And the status table correctly reconciles:</p>
+<ul>
+<li>Affected → <strong>21,326</strong></li>
+<li>Unaffected → <strong>28,674</strong></li>
+<li>Total → <strong>50,000</strong></li>
+</ul>
+<p>This gives us very high confidence that the semantic model is correct.</p>
+<hr>
+<h1>Now I want to pivot</h1>
+<p>This QA page has served its purpose.</p>
+<p>From here forward, <strong>we&#39;re no longer validating data</strong>.</p>
+<p>We&#39;re building a <strong>portfolio-quality executive analytics application</strong>.</p>
+<p>That changes how we think.</p>
+<p>Instead of asking:</p>
+<blockquote>
+<p>&quot;What measures do we need?&quot;</p>
+</blockquote>
+<p>we start asking:</p>
+<blockquote>
+<p>&quot;If a Wells Fargo Managing Director opened this report for the first time, what would immediately communicate the value of this project?&quot;</p>
+</blockquote>
+<hr>
+<h1>I want to build this like an enterprise release dashboard</h1>
+<p>Instead of a collection of charts, I&#39;d like each page to answer one executive question.</p>
+<h2>Page 1 — Executive Release Summary</h2>
+<p><strong>Question:</strong></p>
+<blockquote>
+<p>What changed between V1 and V2?</p>
+</blockquote>
+<p>Large KPI cards</p>
+<p>Executive narrative</p>
+<p>Application impact</p>
+<p>Variable impact</p>
+<p>Workstream summary</p>
+<hr>
+<h2>Page 2 — Release Impact Explorer</h2>
+<p><strong>Question:</strong></p>
+<blockquote>
+<p>Which applications changed and why?</p>
+</blockquote>
+<p>Product slicer</p>
+<p>Score-band slicer</p>
+<p>Application search</p>
+<p>Changed field count</p>
+<p>V1 → V2 comparison</p>
+<hr>
+<h2>Page 3 — Variable Analysis</h2>
+<p><strong>Question:</strong></p>
+<blockquote>
+<p>Which variables changed the most?</p>
+</blockquote>
+<p>Waterfall</p>
+<p>Heatmap</p>
+<p>Distribution</p>
+<p>Increase vs decrease</p>
+<p>Product breakdown</p>
+<hr>
+<h2>Page 4 — Mortgage Realism (Workstream A)</h2>
+<p>This becomes almost a mini-case study.</p>
+<p>Show:</p>
+<ul>
+<li>Requested Amount distribution</li>
+<li>PTI improvement</li>
+<li>Mortgage diagnostics</li>
+<li>Before/After story</li>
+</ul>
+<hr>
+<h2>Page 5 — PD Dispersion (Workstream B)</h2>
+<p>Demonstrate</p>
+<ul>
+<li>reduced cap crowding</li>
+<li>improved dispersion</li>
+<li>retained ordering</li>
+</ul>
+<hr>
+<h2>Page 6 — Technical Validation</h2>
+<p>The page you&#39;d show another analytics developer.</p>
+<p>Relationships</p>
+<p>Reconciliation</p>
+<p>QA</p>
+<p>Counts</p>
+<p>Schema additions</p>
+<hr>
+<h1>Before we build another page...</h1>
+<p>I think we should improve the semantic model one more time.</p>
+<p>Right now everything works.</p>
+<p>But the field list is still &quot;developer-friendly.&quot;</p>
+<p>For example:</p>
+<pre><code class="language-text">Requested_Amount_V1
+Requested_Amount_V2
+Requested_Amount_Delta
+Requested_Amount_Changed
+</code></pre>
+<p>repeated dozens of times.</p>
+<p>I&#39;d like to organize it like an enterprise model:</p>
+<pre><code>Measures
+-------------------
+Executive KPIs
+
+Release KPIs
+
+Mortgage KPIs
+
+PD KPIs
+
+QA KPIs
+</code></pre>
+<pre><code>FactReleaseComparison
+-------------------
+Application
+
+Borrower
+
+Product
+
+Affordability
+
+Risk
+
+Diagnostics
+</code></pre>
+<p>Everything grouped logically, with hidden helper fields where appropriate.</p>
+<p>That will make the report much easier to build and much more polished.</p>
+<hr>
+<h1>My recommendation for the next session</h1>
+<p>Rather than immediately creating more visuals, let&#39;s spend 30–45 minutes on <strong>semantic model refinement</strong>:</p>
+<ol>
+<li>Create the remaining dimensions:<ul>
+<li><code>DimProduct</code></li>
+<li><code>DimScoreBand</code></li>
+<li><code>DimVariable</code></li>
+<li><code>DimSchemaAddition</code></li>
+</ul>
+</li>
+<li>Organize display folders for measures.</li>
+<li>Hide technical/helper columns that shouldn&#39;t appear in the field list.</li>
+<li>Assign proper data categories and formatting.</li>
+<li>Create a clean, business-friendly field list.</li>
+</ol>
+<p>That foundation will make every report page easier to build and will make the PBIX look like it came from an enterprise BI team rather than a prototype.</p>
+<p>After that, we&#39;ll start building what I think will become a very impressive executive dashboard. I think this project has evolved beyond a simple validation report into something that showcases architecture, governance, analytics, and communication together.</p>
+</div></article><article id="c064-m00068" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00068 · 2026-07-19T15:57:52.542000-04:00 · active path</p><div class="body"><p>sounds good though keep in mind I would like to publish a version of this by morning - and then use this experience to update my resume to include PowerBI - and then communicate updated resume/cover letter to the Wells Fargo HR recruiter ahead of tomorrow&#39;s interview. i&#39;m willing to stay up late, but let&#39;s do make sure we are working towards an appropriate finish line (can always make it fancier later).</p>
+</div></article><article id="c064-m00069" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00069 · 2026-07-19T15:57:55.346370-04:00 · active path</p><div class="body"><p>Agreed. We should <strong>freeze the finish line now</strong> and optimize for a credible Version 1 by morning—not a perfect enterprise build.</p>
+<h2>Morning-ready finish line</h2>
+<p>A publishable V1 should include only four things:</p>
+<ol>
+<li><strong>Executive Summary page</strong></li>
+<li><strong>Variable Analysis page</strong></li>
+<li><strong>Application Explorer page</strong></li>
+<li><strong>Technical QA page</strong> — your existing page, cleaned up and retained as supporting evidence</li>
+</ol>
+<p>That is enough to demonstrate:</p>
+<ul>
+<li>Power Query data preparation</li>
+<li>semantic modeling</li>
+<li>DAX</li>
+<li>release validation</li>
+<li>executive storytelling</li>
+<li>drill-down analysis</li>
+<li>governance discipline</li>
+</ul>
+<p>We should defer:</p>
+<ul>
+<li>dedicated Mortgage page</li>
+<li>dedicated PD Dispersion page</li>
+<li>elaborate schema dimensions</li>
+<li>heavy display-folder cleanup</li>
+<li>custom themes</li>
+<li>advanced bookmarks/navigation</li>
+<li>exhaustive tooltips</li>
+<li>pixel-perfect styling</li>
+</ul>
+<p>Those become V1.1 enhancements.</p>
+<h1>Tonight’s build order</h1>
+<h2>Block 1 — Executive Summary</h2>
+<p>Target: 60–90 minutes</p>
+<p>Create one page answering:</p>
+<blockquote>
+<p>What changed from Module 1 V1 to V2?</p>
+</blockquote>
+<p>Use:</p>
+<ul>
+<li>5 KPI cards</li>
+<li>affected vs unaffected visual</li>
+<li>variable-change bar chart</li>
+<li>concise release narrative</li>
+<li>product or score-band impact chart</li>
+</ul>
+<h2>Block 2 — Variable Analysis</h2>
+<p>Target: 45–60 minutes</p>
+<p>Answer:</p>
+<blockquote>
+<p>Which variables changed, in what direction, and by how much?</p>
+</blockquote>
+<p>Use:</p>
+<ul>
+<li>variable change counts</li>
+<li>increase/decrease split</li>
+<li>average absolute delta</li>
+<li>product breakdown</li>
+<li>variable slicer</li>
+</ul>
+<h2>Block 3 — Application Explorer</h2>
+<p>Target: 45–60 minutes</p>
+<p>Answer:</p>
+<blockquote>
+<p>What happened to a specific application?</p>
+</blockquote>
+<p>Use:</p>
+<ul>
+<li>Application ID slicer/search</li>
+<li>basic application profile</li>
+<li>changed-variable table with V1, V2, delta, relative delta</li>
+<li>changed-field count/status</li>
+</ul>
+<h2>Block 4 — QA cleanup and publish</h2>
+<p>Target: 45–60 minutes</p>
+<ul>
+<li>rename QA page</li>
+<li>align visuals</li>
+<li>add titles and source note</li>
+<li>remove obvious empty space</li>
+<li>test filters</li>
+<li>save PBIX</li>
+<li>publish/export screenshots or PDF</li>
+<li>capture 2–3 strong images for portfolio and recruiter communication</li>
+</ul>
+<h2>Block 5 — Resume and recruiter communication</h2>
+<p>After the report is stable:</p>
+<ul>
+<li>add Power BI to toolkit accurately</li>
+<li>add one project bullet grounded in what you actually built</li>
+<li>update cover letter or recruiter message</li>
+<li>prepare a 60–90 second interview explanation</li>
+</ul>
+<h1>What we should not claim yet</h1>
+<p>Do not position yourself as an advanced Power BI developer overnight.</p>
+<p>A defensible framing is:</p>
+<blockquote>
+<p>Built an interactive Power BI release-validation dashboard using Power Query, dimensional modeling, DAX measures, application-level reconciliation, and executive drill-down views across 50,000 matched synthetic credit applications.</p>
+</blockquote>
+<p>That is strong and accurate.</p>
+<h1>Immediate next step</h1>
+<p>Skip dimensions for now. Keep the current two-table model plus <code>_Measures</code>.</p>
+<p>Create a new page and rename it:</p>
+<pre><code class="language-text">01 | Executive Summary
+</code></pre>
+<p>Then create these five cards:</p>
+<pre><code class="language-text">Total Applications
+Affected Applications
+Application Change Rate
+Variable Change Records
+Changed Functional Variables
+</code></pre>
+<p>Use exact values for now.</p>
+<p>Next, add a <strong>100% stacked bar chart</strong>:</p>
+<pre><code class="language-text">Axis:
+FactReleaseComparison[Functional_Change_Status]
+
+Values:
+_Measures[Total Applications]
+</code></pre>
+<p>Then add a <strong>clustered bar chart</strong>:</p>
+<pre><code class="language-text">Y-axis:
+FactReconciliationDetail[Variable]
+
+X-axis:
+_Measures[Variable Change Records]
+</code></pre>
+<p>Sort descending.</p>
+<p>Once those are placed, send a screenshot. Then we will add the one segmentation visual and the executive narrative, and Page 1 will be structurally complete.</p>
+</div></article><article id="c064-m00071" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00071 · 2026-07-19T16:17:06.707000-04:00 · active path</p><div class="body"><p>the 100% stacked bar chart seems hard to follow - otherwise this is done</p>
+<p><strong>Attachments in export:</strong> <code>image(122).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00072" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00072 · 2026-07-19T16:17:08.181918-04:00 · active path</p><div class="body"><p>I agree. In fact, this is the first place where I think we should intentionally deviate from the original plan.</p>
+<p>The <strong>100% stacked bar chart is technically correct, but it tells the wrong story.</strong></p>
+<p>An executive doesn&#39;t care that there are two categories. They care that:</p>
+<blockquote>
+<p><strong>42.65% of the portfolio changed.</strong></p>
+</blockquote>
+<p>That&#39;s the headline.</p>
+<hr>
+<h1>Replace it</h1>
+<p>Delete the 100% stacked bar.</p>
+<p>Instead insert a <strong>Donut Chart</strong>.</p>
+<h3>Legend</h3>
+<pre><code class="language-text">Functional_Change_Status
+</code></pre>
+<h3>Values</h3>
+<pre><code class="language-text">Total Applications
+</code></pre>
+<p>Turn on:</p>
+<ul>
+<li>Category labels</li>
+<li>Percent of total</li>
+<li>Data labels</li>
+</ul>
+<p>This will immediately show</p>
+<pre><code>Affected     42.65%
+Unaffected   57.35%
+</code></pre>
+<p>That is much easier to understand.</p>
+<hr>
+<h1>Even better...</h1>
+<p>I think we can tell an executive story in one glance.</p>
+<p>Across the top:</p>
+<pre><code>50,000
+Applications
+</code></pre>
+<pre><code>21,326
+Affected
+</code></pre>
+<pre><code>42.65%
+Change Rate
+</code></pre>
+<pre><code>58,382
+Variable Changes
+</code></pre>
+<pre><code>7
+Variables Updated
+</code></pre>
+<p>Then underneath:</p>
+<p>LEFT</p>
+<p>Donut</p>
+<pre><code>Portfolio Impact
+</code></pre>
+<p>RIGHT</p>
+<p>Variable Change Counts</p>
+<p>Exactly what you already built.</p>
+<p>Now an executive immediately understands</p>
+<blockquote>
+<p>How much changed?</p>
+</blockquote>
+<p>↓</p>
+<blockquote>
+<p>What changed?</p>
+</blockquote>
+<hr>
+<h1>One thing I&#39;d also change</h1>
+<p>Move</p>
+<pre><code>58,382
+Variable Change Records
+</code></pre>
+<p>to the top row.</p>
+<p>I actually think this KPI is <em>more</em> interesting than Total Applications.</p>
+<p>Suggested top row:</p>
+<table>
+<thead>
+<tr>
+<th>KPI</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>50,000 Applications</td>
+<td>Portfolio size</td>
+</tr>
+<tr>
+<td>21,326 Changed</td>
+<td>Impact</td>
+</tr>
+<tr>
+<td>42.65%</td>
+<td>Rate</td>
+</tr>
+<tr>
+<td>58,382 Variable Changes</td>
+<td>Work performed</td>
+</tr>
+<tr>
+<td>7 Variables Updated</td>
+<td>Scope</td>
+</tr>
+</tbody></table>
+<p>That tells the whole release story in five numbers.</p>
+<hr>
+<h1>The variable chart</h1>
+<p>This one is already good.</p>
+<p>I would make only two tweaks.</p>
+<h3>1.</h3>
+<p>Rename</p>
+<pre><code>Variable Change Records by Variable
+</code></pre>
+<p>to</p>
+<pre><code>Functional Changes by Variable
+</code></pre>
+<p>Much more executive friendly.</p>
+<hr>
+<h3>2.</h3>
+<p>Use friendly names.</p>
+<p>Instead of</p>
+<pre><code>PAYMENT_TO_INCOME_RATIO
+</code></pre>
+<p>display</p>
+<pre><code>Payment-to-Income Ratio
+</code></pre>
+<p>Instead of</p>
+<pre><code>EXPECTED_LOSS_AMOUNT
+</code></pre>
+<p>display</p>
+<pre><code>Expected Loss
+</code></pre>
+<p>Instead of</p>
+<pre><code>MULT_PTI
+</code></pre>
+<p>display</p>
+<pre><code>PTI Multiplier
+</code></pre>
+<p>These are small changes, but they make the report feel much more polished.</p>
+<hr>
+<h1>I think we should stop adding visuals for a few minutes</h1>
+<p>This page is about <strong>80% complete</strong>.</p>
+<p>The remaining 20% isn&#39;t more charts—it&#39;s presentation.</p>
+<p>I suggest we spend the next 30–45 minutes making this one page look like something that could genuinely be shown in a release review.</p>
+<p>That includes:</p>
+<ul>
+<li>meaningful title</li>
+<li>executive subtitle</li>
+<li>concise narrative</li>
+<li>consistent spacing</li>
+<li>friendly field names</li>
+<li>polished formatting</li>
+</ul>
+<p>A recruiter or hiring manager will judge the report within the first 10–15 seconds. Good presentation multiplies the impact of the solid analytics you&#39;ve already built.</p>
+<h2>My suggested page title</h2>
+<p><strong>Module 1 V2.0 Release Validation Summary</strong></p>
+<h2>Subtitle</h2>
+<p><strong>Comparison of 50,000 matched synthetic applications between Module 1 V1.0 and V2.0, highlighting application impact, functional changes, and release validation metrics.</strong></p>
+<p>That immediately tells the viewer what they&#39;re looking at without requiring any explanation.</p>
+</div></article><article id="c064-m00073" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00073 · 2026-07-19T16:41:34.133000-04:00 · active path</p><div class="body"><p>advice on visual plus how to change &amp; axis data value labels</p>
+<p><strong>Attachments in export:</strong> <code>image(122).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00074" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00074 · 2026-07-19T16:41:35.633587-04:00 · active path</p><div class="body"><p>This is coming together nicely. More importantly, it already looks like something that belongs in a release review instead of a homework assignment.</p>
+<p>I have a few recommendations, ordered by impact.</p>
+<hr>
+<h1>Overall Rating</h1>
+<p><strong>Analytics:</strong> 10/10</p>
+<p><strong>Data model:</strong> 10/10</p>
+<p><strong>Visual design:</strong> 7.5/10</p>
+<p><strong>Executive storytelling:</strong> 7/10</p>
+<p>The analytics are already excellent. We just need to elevate the presentation.</p>
+<hr>
+<h1>1. The KPI cards</h1>
+<p>These are good, but they don&#39;t look like KPI cards yet.</p>
+<p>The blue background is competing with the charts.</p>
+<p>I&#39;d actually recommend <strong>white cards</strong> with:</p>
+<ul>
+<li>thin gray border</li>
+<li>subtle shadow</li>
+<li>large black number</li>
+<li>smaller gray subtitle</li>
+</ul>
+<p>Much more &quot;Power BI enterprise dashboard.&quot;</p>
+<p>Example:</p>
+<pre><code>50,000
+
+Total Applications
+</code></pre>
+<p>instead of the large blue blocks.</p>
+<hr>
+<h1>2. Donut chart</h1>
+<p>I like the donut much better.</p>
+<p>I would make two small improvements.</p>
+<h3>Change title</h3>
+<p>Instead of</p>
+<pre><code>Total Applications by Functional_Change_Status
+</code></pre>
+<p>I&#39;d use</p>
+<pre><code>Application Impact
+</code></pre>
+<p>Much shorter.</p>
+<hr>
+<h3>Legend</h3>
+<p>Instead of</p>
+<pre><code>Functional_Change_Status
+</code></pre>
+<p>rename the field (or use a friendly column) so the legend simply says</p>
+<pre><code>Status
+</code></pre>
+<p>with</p>
+<pre><code>Affected
+Unaffected
+</code></pre>
+<hr>
+<h1>3. Variable chart</h1>
+<p>This is where I&#39;d spend most of our polish.</p>
+<p>Instead of</p>
+<pre><code>Variable Change Records by Variable
+</code></pre>
+<p>use</p>
+<pre><code>Functional Changes by Variable
+</code></pre>
+<hr>
+<h2>Friendly names</h2>
+<p>Right now you&#39;re showing SQL variable names.</p>
+<p>Executives hate those.</p>
+<p>Instead use</p>
+<table>
+<thead>
+<tr>
+<th>Current</th>
+<th>Better</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MONTHLY_PAYMENT_PROXY</td>
+<td>Monthly Payment</td>
+</tr>
+<tr>
+<td>PAYMENT_TO_INCOME_RATIO</td>
+<td>Payment-to-Income Ratio</td>
+</tr>
+<tr>
+<td>EXPECTED_LOSS_AMOUNT</td>
+<td>Expected Loss</td>
+</tr>
+<tr>
+<td>ESTIMATED_PD</td>
+<td>Estimated PD</td>
+</tr>
+<tr>
+<td>REQUESTED_AMOUNT</td>
+<td>Requested Amount</td>
+</tr>
+<tr>
+<td>AMOUNT_TO_INCOME_RATIO</td>
+<td>Amount-to-Income Ratio</td>
+</tr>
+<tr>
+<td>MULT_PTI</td>
+<td>PTI Multiplier</td>
+</tr>
+</tbody></table>
+<p>That alone will make the report feel much more polished.</p>
+<hr>
+<h1>4. Biggest recommendation</h1>
+<p>I&#39;d actually add one sentence underneath the KPIs.</p>
+<p>Something like</p>
+<blockquote>
+<p><strong>21,326 of 50,000 applications (42.65%) experienced one or more functional changes between Module 1 V1.0 and V2.0. Most changes were concentrated in payment affordability, estimated risk, and mortgage realism enhancements.</strong></p>
+</blockquote>
+<p>That&#39;s the story.</p>
+<p>Without it, viewers have to interpret the charts themselves.</p>
+<hr>
+<h1>How to change axis labels (friendly names)</h1>
+<p>There are several ways.</p>
+<h2>Option A (what I&#39;d recommend)</h2>
+<p>Create a small lookup table later.</p>
+<pre><code>Variable                     Display Name
+
+MONTHLY_PAYMENT_PROXY        Monthly Payment
+PAYMENT_TO_INCOME_RATIO      Payment-to-Income Ratio
+...
+</code></pre>
+<p>Then use Display Name everywhere.</p>
+<p>This scales beautifully.</p>
+<hr>
+<h2>Option B (fastest tonight)</h2>
+<p>In Power Query:</p>
+<p>Duplicate</p>
+<pre><code>Variable
+</code></pre>
+<p>Rename it</p>
+<pre><code>Variable_Display
+</code></pre>
+<p>Then Replace Values:</p>
+<pre><code>MONTHLY_PAYMENT_PROXY
+↓
+
+Monthly Payment
+</code></pre>
+<p>etc.</p>
+<p>Use</p>
+<pre><code>Variable_Display
+</code></pre>
+<p>on the chart.</p>
+<p>For tonight, I&#39;d absolutely choose Option B.</p>
+<hr>
+<h1>How to change data labels</h1>
+<p>Select the chart.</p>
+<p>Then</p>
+<pre><code>Format visual
+</code></pre>
+<p>↓</p>
+<pre><code>Data labels
+</code></pre>
+<p>Turn ON.</p>
+<p>You can configure:</p>
+<ul>
+<li>Position</li>
+<li>Display units</li>
+<li>Decimal places</li>
+<li>Text size</li>
+</ul>
+<p>For this chart I&#39;d use</p>
+<pre><code>Display units = None
+
+Decimal places = 0
+
+Position = Outside end
+</code></pre>
+<hr>
+<h1>Hide the X-axis</h1>
+<p>Since every value is already labeled, you don&#39;t really need</p>
+<pre><code>0K
+5K
+10K
+15K
+20K
+</code></pre>
+<p>I would either:</p>
+<ul>
+<li>make them light gray</li>
+</ul>
+<p>or</p>
+<ul>
+<li>hide them completely</li>
+</ul>
+<p>This puts all the attention on the bars.</p>
+<hr>
+<h1>My biggest design suggestion</h1>
+<p>I actually think the report is missing one thing:</p>
+<p>A <strong>headline</strong>.</p>
+<p>Something like</p>
+<h1><strong>Module 1 V2.0 Release Validation Summary</strong></h1>
+<p>Underneath:</p>
+<blockquote>
+<p><strong>Comparison of 50,000 matched synthetic applications between Module 1 V1.0 and V2.0, highlighting application impact and functional release changes.</strong></p>
+</blockquote>
+<p>That transforms it from &quot;a Power BI page&quot; into &quot;a presentation.&quot;</p>
+<hr>
+<h2>I think we&#39;re very close</h2>
+<p>If I were interviewing someone and they opened <strong>this dashboard</strong>, then clicked into an Application Explorer page showing a single application&#39;s V1 vs. V2 changes, I&#39;d be impressed.</p>
+<p>We&#39;re no longer trying to prove you know Power BI basics—we&#39;re demonstrating that you can build an executive-facing analytical product. That&#39;s exactly the kind of artifact that can strengthen your discussion with the recruiter and give you concrete examples to reference in tomorrow&#39;s interview.</p>
+</div></article><article id="c064-m00075" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00075 · 2026-07-19T17:00:51.715000-04:00 · active path</p><div class="body"><p>i&#39;m fine with Y axis labels how they are for now. how is this visually now? </p>
+<p><strong>Attachments in export:</strong> <code>image(123).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00076" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00076 · 2026-07-19T17:00:53.410559-04:00 · active path</p><div class="body"><p>This is a <strong>significant improvement</strong>. If I compare it to where we started two hours ago, I&#39;d say:</p>
+<ul>
+<li><strong>Analytics quality:</strong> 10/10</li>
+<li><strong>Visual quality:</strong> 8.8/10</li>
+<li><strong>Portfolio readiness:</strong> 9.2/10</li>
+</ul>
+<p>It now looks like a dashboard that someone actually built to communicate results rather than simply satisfy a technical requirement.</p>
+<h2>What&#39;s working well</h2>
+<h3>The KPI strip</h3>
+<p>This is much cleaner.</p>
+<p>The white cards with shadows draw attention to the numbers instead of the background color. They&#39;re easy to scan left-to-right, which is exactly how executives consume dashboards.</p>
+<h3>The donut chart</h3>
+<p>This is a big improvement over the 100% stacked bar. The visual immediately answers:</p>
+<blockquote>
+<p>&quot;How much of the portfolio changed?&quot;</p>
+</blockquote>
+<p>without requiring the viewer to interpret percentages.</p>
+<h3>The variable chart</h3>
+<p>The ordering is intuitive. The story is obvious:</p>
+<ol>
+<li>Payment logic</li>
+<li>PTI</li>
+<li>Expected Loss</li>
+<li>PD</li>
+<li>Requested Amount</li>
+<li>Amount-to-Income</li>
+<li>PTI Multiplier</li>
+</ol>
+<p>That&#39;s actually a nice narrative because it mirrors the architecture of the engine.</p>
+<hr>
+<h1>What I would change before publishing</h1>
+<p>These are all fairly quick changes.</p>
+<h2>1. Add a page title</h2>
+<p>Right now the page starts with KPI cards.</p>
+<p>I&#39;d add a title above them.</p>
+<p>Example:</p>
+<h1><strong>Module 1 V2.0 Release Validation Summary</strong></h1>
+<p>Then below it in smaller gray text:</p>
+<blockquote>
+<p><strong>Comparison of 50,000 matched synthetic applications across Module 1 V1.0 and V2.0, highlighting application impact and functional release changes.</strong></p>
+</blockquote>
+<p>That gives viewers immediate context.</p>
+<hr>
+<h2>2. Rename the variable chart</h2>
+<p>Current:</p>
+<blockquote>
+<p>Variable Change Records by Variable</p>
+</blockquote>
+<p>I&#39;d shorten it to:</p>
+<blockquote>
+<p><strong>Functional Changes by Variable</strong></p>
+</blockquote>
+<p>It&#39;s cleaner and reads more naturally.</p>
+<hr>
+<h2>3. Remove the legend from the donut</h2>
+<p>The labels already say:</p>
+<ul>
+<li>Affected</li>
+<li>Unaffected</li>
+</ul>
+<p>The legend repeats the same information and consumes valuable space.</p>
+<p>Removing it lets you enlarge the donut.</p>
+<hr>
+<h2>4. Increase the donut size</h2>
+<p>After removing the legend, increase the donut by roughly 15–20%.</p>
+<p>It becomes the dominant visual on the page.</p>
+<hr>
+<h2>5. Balance the two lower visuals</h2>
+<p>Right now:</p>
+<ul>
+<li>Donut occupies about <strong>45%</strong></li>
+<li>Bar chart about <strong>55%</strong></li>
+</ul>
+<p>I&#39;d make them essentially <strong>50/50</strong>.</p>
+<p>It gives the page a cleaner visual rhythm.</p>
+<hr>
+<h1>One enhancement I think is worth adding tonight</h1>
+<p>This is the only additional visual I&#39;d recommend before publishing.</p>
+<h2>Product Impact</h2>
+<p>Under the KPI row, add a small horizontal bar chart:</p>
+<p><strong>Title</strong></p>
+<blockquote>
+<p><strong>Affected Applications by Product</strong></p>
+</blockquote>
+<p>Axis:</p>
+<pre><code class="language-text">Product_Type
+</code></pre>
+<p>Value:</p>
+<pre><code class="language-text">Affected Applications
+</code></pre>
+<p>This immediately answers:</p>
+<blockquote>
+<p>&quot;Which lending products were most affected?&quot;</p>
+</blockquote>
+<p>That adds another executive insight without much effort.</p>
+<hr>
+<h1>Something to avoid tonight</h1>
+<p>Don&#39;t spend time trying to make this look like a marketing website.</p>
+<p>This is an <strong>analytics artifact</strong>.</p>
+<p>A reviewer should think:</p>
+<blockquote>
+<p>&quot;This looks like something used in a model validation or release review.&quot;</p>
+</blockquote>
+<p>not</p>
+<blockquote>
+<p>&quot;This looks flashy.&quot;</p>
+</blockquote>
+<p>You&#39;re already much closer to the first.</p>
+<hr>
+<h1>Thinking about tomorrow&#39;s interview</h1>
+<p>This dashboard also gives you a very nice story to tell if you&#39;re asked:</p>
+<blockquote>
+<p>&quot;Have you used Power BI?&quot;</p>
+</blockquote>
+<p>A truthful answer would be:</p>
+<blockquote>
+<p>&quot;Yes. As part of my Enterprise Credit Decisioning Strategy Simulator, I built a Power BI release-validation dashboard over two fact tables, using Power Query for transformation, DAX measures for KPIs, semantic modeling, and interactive visuals to reconcile 50,000 matched applications across two releases. The dashboard highlights release impact, variable-level changes, and application-level reconciliation.&quot;</p>
+</blockquote>
+<p>That&#39;s a strong answer because it&#39;s grounded in something you can actually demonstrate.</p>
+<h2>My recommendation for tonight</h2>
+<p>I&#39;d make the following your minimum publishable scope:</p>
+<ul>
+<li>✅ Finish this Executive Summary page (including title/subtitle and the small layout tweaks above).</li>
+<li>✅ Build the <strong>Application Explorer</strong> page. That&#39;s the differentiator—it shows this isn&#39;t just a collection of charts but a true analytical application.</li>
+<li>⏸ Skip additional specialty pages (Mortgage, PD, etc.) until after the interview.</li>
+</ul>
+<p>If you have those two polished pages plus the QA page, you&#39;ll have a portfolio piece that supports both your resume update and tomorrow&#39;s conversation with the Wells Fargo recruiter.</p>
+</div></article><article id="c064-m00078" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00078 · 2026-07-19T17:20:18.319000-04:00 · active path</p><div class="body"><p><em>No text body is present in the export. This message may contain an image or attachment.</em></p>
+<p><strong>Attachments in export:</strong> <code>image(123).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00079" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00079 · 2026-07-19T17:20:19.813307-04:00 · active path</p><div class="body"><p>This is now <strong>portfolio quality</strong>. If you told me this was the first page of an internal Wells Fargo model validation dashboard, I would believe it.</p>
+<p>I&#39;d rate it <strong>9.4/10</strong> in its current state.</p>
+<p>Now let&#39;s make it a <strong>9.8/10</strong> with about 20 minutes of work.</p>
+<hr>
+<h1>What I really like</h1>
+<h3>1. The KPI strip</h3>
+<p>This is exactly the right density.</p>
+<p>Someone can scan it in about three seconds.</p>
+<pre><code>50,000
+↓
+
+21,326
+
+↓
+
+42.65%
+
+↓
+
+58,382
+
+↓
+
+7
+</code></pre>
+<p>That&#39;s a complete executive summary.</p>
+<hr>
+<h3>2. The page title</h3>
+<p>Excellent.</p>
+<p>Exactly the right amount of information.</p>
+<hr>
+<h3>3. The subtitle</h3>
+<p>Also good.</p>
+<p>I&#39;d make one tiny wording change.</p>
+<p>Current:</p>
+<blockquote>
+<p>Comparison of 50,000 matched synthetic applications across Module 1 V1.0 and V2.0, highlighting application impact and functional release changes.</p>
+</blockquote>
+<p>I&#39;d shorten it slightly:</p>
+<blockquote>
+<p><strong>Comparison of 50,000 matched synthetic applications between Module 1 V1.0 and V2.0, highlighting application impact and functional release changes.</strong></p>
+</blockquote>
+<p>&quot;Between&quot; reads a little more naturally than &quot;across&quot; here.</p>
+<hr>
+<h1>Things I&#39;d improve</h1>
+<h2>1. Remove the donut legend</h2>
+<p>The legend duplicates information already displayed by the labels.</p>
+<p>Removing it lets you enlarge the donut another 10–15%.</p>
+<p>That&#39;s a free improvement.</p>
+<hr>
+<h2>2. Add one executive insight</h2>
+<p>Right now the dashboard shows data.</p>
+<p>Let&#39;s help the viewer interpret it.</p>
+<p>I&#39;d add a small text box between the KPI row and the visuals.</p>
+<p>Something like:</p>
+<blockquote>
+<p><strong>Release Summary:</strong> Module 1 V2.0 affected <strong>21,326 of 50,000</strong> matched applications (<strong>42.65%</strong>) across <strong>7 functional variables</strong>. The largest impacts were concentrated in <strong>Monthly Payment</strong>, <strong>Payment-to-Income Ratio</strong>, <strong>Expected Loss</strong>, and <strong>Estimated PD</strong>, reflecting targeted affordability and risk-model enhancements.</p>
+</blockquote>
+<p>That&#39;s only about 35 words, but it dramatically increases executive readability.</p>
+<hr>
+<h2>3. The bar chart</h2>
+<p>I think this is the one place where we should invest another few minutes.</p>
+<p>Instead of SQL names:</p>
+<pre><code>MONTHLY_PAYMENT_PROXY
+</code></pre>
+<p>I&#39;d strongly recommend:</p>
+<pre><code>Monthly Payment
+</code></pre>
+<p>Likewise:</p>
+<pre><code>Payment-to-Income Ratio
+
+Expected Loss
+
+Estimated PD
+
+Requested Amount
+
+Amount-to-Income Ratio
+
+PTI Multiplier
+</code></pre>
+<p>That single change makes the report feel much more polished.</p>
+<hr>
+<h1>The only thing I think is missing</h1>
+<p>This page answers:</p>
+<blockquote>
+<p><strong>How much changed?</strong></p>
+</blockquote>
+<p>It does <strong>not</strong> yet answer:</p>
+<blockquote>
+<p><strong>Where did it change?</strong></p>
+</blockquote>
+<p>That&#39;s why I think the second page should be the Application Explorer.</p>
+<hr>
+<h1>Application Explorer (Page 2)</h1>
+<p>This page is what will make people remember the project.</p>
+<p>Instead of another dashboard page, imagine something like this:</p>
+<hr>
+<h2>Left side</h2>
+<p>Application search</p>
+<pre><code>Application_ID
+
+APP-00012345
+</code></pre>
+<hr>
+<h2>Center</h2>
+<p>Borrower summary</p>
+<pre><code>Product
+
+Mortgage
+
+Score Band
+
+Prime
+
+Credit Score
+
+718
+
+Annual Income
+
+$143,000
+</code></pre>
+<hr>
+<h2>Right</h2>
+<p>Release outcome</p>
+<pre><code>Changed Fields
+
+5
+
+Status
+
+Affected
+</code></pre>
+<hr>
+<h2>Bottom</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>V1</th>
+<th>V2</th>
+<th>Delta</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Monthly Payment</td>
+<td>...</td>
+<td>...</td>
+<td>...</td>
+</tr>
+<tr>
+<td>PTI</td>
+<td>...</td>
+<td>...</td>
+<td>...</td>
+</tr>
+<tr>
+<td>Expected Loss</td>
+<td>...</td>
+<td>...</td>
+<td>...</td>
+</tr>
+</tbody></table>
+<p>Now you&#39;ve gone beyond showing metrics—you&#39;ve demonstrated drill-through, reconciliation, and traceability.</p>
+<hr>
+<h1>Thinking about tomorrow</h1>
+<p>If I were the hiring manager and you shared this during the interview, my questions would naturally become:</p>
+<ul>
+<li>&quot;How did you model the data?&quot;</li>
+<li>&quot;How did you validate the measures?&quot;</li>
+<li>&quot;Can you drill into one application?&quot;</li>
+<li>&quot;How did you decide which fields changed?&quot;</li>
+</ul>
+<p>Those are excellent questions because they let you talk about your actual work.</p>
+<hr>
+<h1>My recommendation</h1>
+<p>I would <strong>stop refining Page 1</strong> after the minor tweaks above.</p>
+<p>It is already strong enough.</p>
+<p>Your time is much better spent building <strong>one excellent Application Explorer page</strong> than squeezing another 2–3% of polish out of this one.</p>
+<p>That second page will differentiate you far more than another chart or another KPI ever could. I think it also gives you a concrete artifact to mention when updating your resume and when speaking with the Wells Fargo recruiter before tomorrow&#39;s interview.</p>
+</div></article><article id="c064-m00080" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00080 · 2026-07-19T17:26:35.815000-04:00 · active path</p><div class="body"><p>final for this visual for now. we need to move on to other visuals.</p>
+<p><strong>Attachments in export:</strong> <code>image(123).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c064-m00081" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00081 · 2026-07-19T17:26:37.332344-04:00 · active path</p><div class="body"><p>I think this is the right call. <strong>Freeze this page.</strong></p>
+<p>For a V1 that needs to support tomorrow&#39;s interview, I would not spend another minute polishing it.</p>
+<p><strong>Final assessment: 9.5/10</strong></p>
+<p>The only things I&#39;d change later are cosmetic (friendly variable names, custom theme, maybe icons). None of those will materially improve your interview tomorrow.</p>
+<hr>
+<h1>Next Priority: Application Explorer</h1>
+<p>This is the page that separates your work from a typical Power BI exercise.</p>
+<p>Right now you&#39;ve shown:</p>
+<blockquote>
+<p><strong>What changed?</strong></p>
+</blockquote>
+<p>Now we need to show:</p>
+<blockquote>
+<p><strong>Exactly how one application changed.</strong></p>
+</blockquote>
+<p>That&#39;s much more memorable.</p>
+<hr>
+<h1>Page 2 Layout</h1>
+<p>Rename the new page:</p>
+<pre><code class="language-text">02 | Application Explorer
+</code></pre>
+<p>We&#39;ll build it in four sections.</p>
+<pre><code>--------------------------------------------------------------
+                APPLICATION EXPLORER
+--------------------------------------------------------------
+
+Application Search         Borrower Summary
+
+--------------------------------------------------------------
+
+Changed Fields KPI         Product / Score / Status
+
+--------------------------------------------------------------
+
+                 V1 vs V2 Comparison Table
+
+--------------------------------------------------------------
+</code></pre>
+<hr>
+<h1>Step 1 — Application slicer</h1>
+<p>Insert a <strong>Slicer</strong>.</p>
+<p>Use:</p>
+<pre><code class="language-text">FactReleaseComparison[Application_ID]
+</code></pre>
+<p>Immediately change the slicer to a <strong>Dropdown</strong>.</p>
+<p>Turn on:</p>
+<pre><code class="language-text">Search
+</code></pre>
+<p>This gives interviewers the ability to type:</p>
+<pre><code>APP-00012345
+</code></pre>
+<p>and immediately drill into a borrower.</p>
+<hr>
+<h1>Step 2 — Summary cards</h1>
+<p>Across the top create four cards.</p>
+<h2>Product</h2>
+<p>Use:</p>
+<pre><code class="language-text">Product_Type
+</code></pre>
+<p>Card.</p>
+<hr>
+<h2>Score Band</h2>
+<p>Use</p>
+<pre><code class="language-text">Score_Band
+</code></pre>
+<p>Card.</p>
+<hr>
+<h2>Credit Score</h2>
+<p>Use</p>
+<pre><code class="language-text">Credit_Score
+</code></pre>
+<p>Card.</p>
+<hr>
+<h2>Changed Fields</h2>
+<p>Instead of a measure, use</p>
+<pre><code class="language-text">Changed_Field_Count
+</code></pre>
+<p>When one application is selected, the card will show:</p>
+<pre><code>0
+
+or
+
+2
+
+or
+
+5
+
+etc.
+</code></pre>
+<p>Very intuitive.</p>
+<hr>
+<h1>Step 3 — Status card</h1>
+<p>Another card:</p>
+<pre><code class="language-text">Functional_Change_Status
+</code></pre>
+<p>Should display</p>
+<pre><code>Affected
+
+or
+
+Unaffected
+</code></pre>
+<hr>
+<h1>Step 4 — The most important visual</h1>
+<p>Insert a <strong>Table</strong>.</p>
+<p>Use fields from <strong>FactReconciliationDetail</strong>:</p>
+<pre><code>Variable
+
+Value_V1
+
+Value_V2
+
+Delta_V2_Minus_V1
+
+Relative_Delta
+</code></pre>
+<p>Because of the relationship you built, selecting one application on the slicer will automatically filter the table to only the changed variables for that application.</p>
+<p>This is where the relationship work pays off.</p>
+<hr>
+<h1>Step 5 — Add two KPI cards</h1>
+<p>Using FactReleaseComparison:</p>
+<pre><code>Requested_Amount_V1
+
+Requested_Amount_V2
+</code></pre>
+<p>These let people immediately see if requested amount changed.</p>
+<hr>
+<h1>Why this page matters</h1>
+<p>Imagine this interview conversation:</p>
+<p>Interviewer:</p>
+<blockquote>
+<p>&quot;How do I know the dashboard isn&#39;t just showing aggregates?&quot;</p>
+</blockquote>
+<p>You respond:</p>
+<p><em>&quot;Let me search for one application...&quot;</em></p>
+<p>Type</p>
+<pre><code>APP-00000037
+</code></pre>
+<p>Immediately:</p>
+<ul>
+<li>Product changes</li>
+<li>Score band</li>
+<li>Changed field count</li>
+<li>Status</li>
+<li>Every changed variable</li>
+<li>V1 value</li>
+<li>V2 value</li>
+<li>Delta</li>
+</ul>
+<p>That&#39;s a much stronger demonstration than another dashboard page.</p>
+<hr>
+<h1>After that</h1>
+<p>Once the Application Explorer works, I think we should stop building new functionality.</p>
+<p>Instead we&#39;ll spend the remaining time on:</p>
+<ol>
+<li>Final cleanup.</li>
+<li>Publish the PBIX.</li>
+<li>Capture portfolio screenshots.</li>
+<li>Update your resume with an accurate Power BI bullet.</li>
+<li>Draft the recruiter email for tomorrow.</li>
+</ol>
+<p>That gives you a realistic, polished deliverable tonight while keeping the scope under control.</p>
+</div></article><article id="c064-m00082" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00082 · 2026-07-19T17:29:28.470000-04:00 · active path</p><div class="body"><p>Also, before we move on, I think that initial 00 | Model QA doesn&#39;t add value - the data is basically the same that we see in 01 | Executive Summary. unless you have other ideas for it later.  thoughts?</p>
+</div></article><article id="c064-m00083" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00083 · 2026-07-19T17:29:29.784843-04:00 · active path</p><div class="body"><p>I actually agree, and I was going to bring this up after seeing the Executive Summary.</p>
+<p>The <strong>00 | Model QA</strong> page was valuable during development because it let us validate the semantic model incrementally. But for a portfolio project and tomorrow&#39;s interview, it&#39;s largely redundant.</p>
+<p>I&#39;d think about it this way:</p>
+<ul>
+<li><strong>Development artifact</strong> → helped us prove the model was correct.</li>
+<li><strong>Portfolio artifact</strong> → should communicate insight, not just correctness.</li>
+</ul>
+<h2>Option 1 (my recommendation): Remove it from the published version</h2>
+<p>This is what I&#39;d do.</p>
+<p>Keep the page in the PBIX while you&#39;re building if you find it useful, but <strong>hide it before publishing</strong>.</p>
+<p>Power BI lets you right-click the page tab and choose <strong>Hide page</strong>.</p>
+<p>That way:</p>
+<ul>
+<li>You still have it for future development.</li>
+<li>Interviewers and GitHub viewers start immediately on the Executive Summary.</li>
+</ul>
+<hr>
+<h2>Option 2: Repurpose it into a Technical Appendix</h2>
+<p>If you want a second &quot;technical&quot; page, don&#39;t duplicate the Executive Summary. Instead make it something like:</p>
+<h3>99 | Technical Appendix</h3>
+<p>Include things like:</p>
+<ul>
+<li>Data model diagram (two fact tables + relationship)</li>
+<li>Validation methodology</li>
+<li>Row counts</li>
+<li>Relationship cardinality</li>
+<li>Data refresh assumptions</li>
+<li>Source inventory (V1 raw, V2 raw, reconciliation detail, reconciliation summary)</li>
+</ul>
+<p>That page would appeal to analytics managers and model governance reviewers without repeating KPIs.</p>
+<hr>
+<h2>What I would <strong>not</strong> do</h2>
+<p>I would not leave a page that simply repeats:</p>
+<ul>
+<li>50,000</li>
+<li>21,326</li>
+<li>42.65%</li>
+<li>58,382</li>
+</ul>
+<p>The Executive Summary already tells that story much better.</p>
+<hr>
+<h1>Here&#39;s the dashboard I&#39;d publish tomorrow</h1>
+<ol>
+<li><strong>Executive Summary</strong> <em>(completed)</em></li>
+<li><strong>Application Explorer</strong> <em>(we&#39;re building now)</em></li>
+<li><strong>Technical Appendix</strong> <em>(optional if time permits)</em></li>
+</ol>
+<p>That&#39;s enough.</p>
+<p>Remember the goal isn&#39;t to demonstrate every Power BI visual—it&#39;s to demonstrate that you can build an analytical application around a governed data model.</p>
+<hr>
+<h2>One more strategic thought</h2>
+<p>Given your audience tomorrow (Wells Fargo Auto Analytics), I would rather have:</p>
+<ul>
+<li><strong>2 excellent pages</strong></li>
+</ul>
+<p>than</p>
+<ul>
+<li><strong>6 average pages</strong>.</li>
+</ul>
+<p>The Executive Summary establishes the business impact.</p>
+<p>The Application Explorer demonstrates traceability, drill-down, reconciliation, and governed analytics.</p>
+<p>Together, those pages align very well with your broader portfolio theme of transparent, audit-ready decision systems.</p>
+<p>So my recommendation is:</p>
+<ul>
+<li><strong>Hide or delete <code>00 | Model QA</code></strong> from the published version.</li>
+<li>Focus the remaining time on making <strong>Application Explorer</strong> excellent.</li>
+<li>If we finish early, add a <strong>Technical Appendix</strong> rather than resurrecting the QA page. I think that&#39;s a much stronger narrative for tomorrow&#39;s interview.</li>
+</ul>
+</div></article><article id="c064-m00085" class="message user"><div class="role">Andrew</div><p class="meta">C064-M00085 · 2026-07-19T17:41:33.585000-04:00 · active path</p><div class="body"><p>let&#39;s work on the application explorer (which I would hope would focus on the workstream themes and how the changes align to those workstream changes) and decide on the technical appendix later.</p>
+</div></article><article id="c064-m00086" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C064-M00086 · 2026-07-19T17:41:34.913055-04:00 · active path</p><div class="body"><p>I like that direction much better.</p>
+<p>In fact, I&#39;d make one fairly major change to what I suggested earlier.</p>
+<h2>Don&#39;t make Page 2 a generic &quot;Application Explorer.&quot;</h2>
+<p>Make it a <strong>Release Impact Explorer</strong>.</p>
+<p>That aligns directly with your V2.0 workstreams and tells a much stronger story.</p>
+<p>The question the page answers becomes:</p>
+<blockquote>
+<p><strong>&quot;Why did this application change between V1.0 and V2.0?&quot;</strong></p>
+</blockquote>
+<p>That&#39;s much more interesting than simply displaying before-and-after values.</p>
+<hr>
+<h1>Proposed Page 2</h1>
+<h2>Title</h2>
+<p><strong>Application Release Impact Explorer</strong></p>
+<p>Subtitle:</p>
+<blockquote>
+<p><strong>Trace individual application changes across Module 1 V2.0 workstreams, highlighting affordability, mortgage realism, and risk-model refinements.</strong></p>
+</blockquote>
+<hr>
+<h1>Layout</h1>
+<pre><code>=========================================================
+           Application Release Impact Explorer
+=========================================================
+
+Application Search        Product        Score Band
+
+Credit Score              Status         Changed Fields
+
+---------------------------------------------------------
+
+V1 Profile                V2 Profile
+
+---------------------------------------------------------
+
+Changed Variables (table)
+
+---------------------------------------------------------
+
+Workstream Interpretation
+</code></pre>
+<hr>
+<h1>The key improvement</h1>
+<p>Instead of merely showing:</p>
+<pre><code>Monthly Payment
+
+895.87
+
+↓
+
+866.23
+</code></pre>
+<p>we explain <strong>why</strong>.</p>
+<h2>Workstream Interpretation panel</h2>
+<p>Imagine a text box like:</p>
+<hr>
+<h3>Workstream Impact Summary</h3>
+<p><strong>Application:</strong> APP-00000037</p>
+<p><strong>Workstreams affecting this application</strong></p>
+<p>✅ <strong>Workstream A — Mortgage Realism</strong></p>
+<ul>
+<li>Requested amount moderated through affordability-aware mortgage logic.</li>
+<li>Monthly payment decreased.</li>
+<li>Payment-to-Income Ratio improved.</li>
+</ul>
+<p>✅ <strong>Workstream B — Estimated PD Dispersion</strong></p>
+<ul>
+<li>Estimated PD adjusted through revised saturation behavior.</li>
+<li>Expected Loss recalculated accordingly.</li>
+</ul>
+<p>No impact detected from:</p>
+<ul>
+<li>Scenario Framework</li>
+<li>Revolving Payment Sensitivity</li>
+</ul>
+<hr>
+<p>Now you&#39;re connecting <strong>technical changes</strong> back to the business design.</p>
+<p>That&#39;s exactly what your BRD and Validation Summary emphasize. fileciteturn0file1L39-L50 fileciteturn0file4L1-L15</p>
+<hr>
+<h1>We can automate most of this</h1>
+<p>We already have everything we need.</p>
+<p>For example:</p>
+<p>If</p>
+<pre><code>Requested Amount changed
+Monthly Payment changed
+PTI changed
+</code></pre>
+<p>→ show</p>
+<blockquote>
+<p><strong>Mortgage Realism</strong></p>
+</blockquote>
+<p>If</p>
+<pre><code>Estimated PD changed
+Expected Loss changed
+</code></pre>
+<p>→ show</p>
+<blockquote>
+<p><strong>Estimated PD Dispersion</strong></p>
+</blockquote>
+<p>If</p>
+<pre><code>Mult PTI changed
+</code></pre>
+<p>→ show</p>
+<blockquote>
+<p><strong>Affordability Translation</strong></p>
+</blockquote>
+<p>Notice we&#39;re not claiming causality beyond what the release actually changed—we&#39;re grouping changes according to the documented workstream themes.</p>
+<hr>
+<h1>The V1 / V2 comparison table</h1>
+<p>I&#39;d simplify it.</p>
+<p>Instead of:</p>
+<p>| Variable | V1 | V2 | Delta | Relative Delta |</p>
+<p>I&#39;d use:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th align="right">V1</th>
+<th align="right">V2</th>
+<th align="right">Δ</th>
+</tr>
+</thead>
+</table>
+<p>and conditionally format the Δ column:</p>
+<p>🟢 Improvement</p>
+<p>🔴 Increase</p>
+<p>⚪ No change</p>
+<p>That reads much faster.</p>
+<hr>
+<h1>This becomes a story</h1>
+<p>Executive Summary</p>
+<p>↓</p>
+<blockquote>
+<p><strong>42.65% of applications changed.</strong></p>
+</blockquote>
+<p>Application Explorer</p>
+<p>↓</p>
+<blockquote>
+<p><strong>Here&#39;s one application. Here&#39;s exactly what changed. Here&#39;s why it changed.</strong></p>
+</blockquote>
+<p>That progression is much more compelling than simply drilling into numbers.</p>
+<hr>
+<h1>One recommendation</h1>
+<p>I would <strong>not</strong> expose every single V2 diagnostic field (mortgage candidate amount, damping factor, saturation zone, etc.) on this page.</p>
+<p>Those are fantastic technically, but they add cognitive load for a first-time viewer.</p>
+<p>Instead:</p>
+<ul>
+<li>Show the <strong>business outcome</strong> first (changed variables and workstream interpretation).</li>
+<li>Keep a collapsible or later <strong>Technical Appendix</strong> where those diagnostics can shine.</li>
+</ul>
+<p>That gives you a clean executive experience while still preserving the depth for technical reviewers.</p>
+<h2>I think this is now our finish line</h2>
+<p>By tomorrow morning, I&#39;d aim for:</p>
+<ul>
+<li>✅ Executive Summary (essentially complete)</li>
+<li>✅ Release Impact Explorer (focused on workstream interpretation and application-level traceability)</li>
+<li>⏳ Technical Appendix only if time permits</li>
+</ul>
+<p>That scope aligns well with your BRD, the validation narrative, and tomorrow&#39;s Wells Fargo interview without overextending into features that won&#39;t materially improve the conversation.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>
