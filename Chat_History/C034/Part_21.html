@@ -1,0 +1,3031 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 1 Synthetic Application Portfolio Build — Part 21</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 1 Synthetic Application Portfolio Build</h1><p>Part 21 · C034</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_20.html">Previous</a><a href="Part_22.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c034-m00979" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C034-M00979 · 2026-05-15T14:42:41.599358-04:00 · active path</p><div class="body"><p>According to a document from <strong>2026-05-15</strong>, the updated Section 6 is <strong>very close and directionally strong</strong>, but I would make <strong>one substantive logic hardening patch</strong> before moving to Section 7. The headers/comments are mostly aligned with Option C, and the rule-flag architecture is in the right place: Section 6 now creates Option C selective/aggressive counteroffer trigger evidence, while still avoiding preliminary routing, final decisioning, reason codes, approved amount, approved PTI, and approved Expected Loss. fileciteturn190file1</p>
+<h2>Verdict</h2>
+<pre><code class="language-text">Section 6 logic: almost ready
+Section 6 commentary: strong, with two small polish patches
+Execution blockers: no obvious syntax blocker found
+Logic hardening needed: yes — below-minimum requested exposure should not enter aggressive counteroffer override
+Proceed to Section 7 after patches: yes
+</code></pre>
+<p>The core Option C implementation is correctly placed in Section 6. Section 2 creates the controls, Section 3 validates them, and Section 6 now consumes them to determine whether additional rows become counteroffer candidates under <code>AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY</code>. That is the right governance chain.</p>
+<hr>
+<h1>1. Logic hardening needed — prevent below-minimum requests from aggressive counteroffer override</h1>
+<h2>Issue</h2>
+<p>Your current exposure logic defines <code>exposure_policy_stop_candidate_flag</code> as true for both:</p>
+<pre><code class="language-sql">BELOW_PRODUCT_MINIMUM
+EXTREME_REQUESTED_EXPOSURE
+</code></pre>
+<p>That is visible in the current <code>exposure_flags</code> CTE. fileciteturn190file2</p>
+<p>Your aggressive override logic then allows rows into <code>aggressive_counteroffer_requested_structure_override_flag</code> when:</p>
+<pre><code class="language-sql">exposure_policy_stop_counteroffer_override_enabled = TRUE
+AND exposure_policy_stop_candidate_flag = TRUE
+</code></pre>
+<p>The problem is that this can include <strong>below-product-minimum requested amounts</strong>.</p>
+<p>That is not desirable because a counteroffer must be:</p>
+<pre><code class="language-text">approved_amount &lt; requested_amount
+</code></pre>
+<p>but also must satisfy:</p>
+<pre><code class="language-text">approved_amount &gt;= product_min_approved_amount
+</code></pre>
+<p>If the original request is already below the product minimum, a lower counteroffer cannot satisfy the product minimum. Those rows are structurally not viable counteroffer expansion candidates. They should remain review/no-offer candidates, not aggressive counteroffer candidates.</p>
+<h2>Recommendation</h2>
+<p>Add this required guard to the aggressive override:</p>
+<pre><code class="language-sql">AND csc.requested_exposure_below_product_minimum_flag IS FALSE
+</code></pre>
+<p>This preserves the aggressive expansion behavior for severe requested-structure cases, but prevents the strategy from routing impossible below-minimum requests into counteroffer feasibility testing.</p>
+<hr>
+<h2>Patch 1 — Section 6.2 aggressive override condition</h2>
+<h3>Find this block inside <code>counteroffer_candidate_flags</code></h3>
+<pre><code class="language-sql">        (
+            csc.aggressive_counteroffer_expansion_enabled IS TRUE
+            AND csc.counteroffer_allowed_flag IS TRUE
+            AND csc.hard_policy_stop_flag IS FALSE
+            AND csc.synthetic_risk_decline_trigger_flag IS FALSE
+            AND csc.dti_decline_trigger_flag IS FALSE
+            AND csc.severe_requested_structure_counteroffer_override_enabled IS TRUE
+            AND (
+                    (
+                        csc.exposure_extreme_counteroffer_override_enabled IS TRUE
+                        AND csc.requested_exposure_extreme_flag IS TRUE
+                    )
+                 OR (
+                        csc.exposure_policy_stop_counteroffer_override_enabled IS TRUE
+                        AND csc.exposure_policy_stop_candidate_flag IS TRUE
+                    )
+                 OR (
+                        csc.requested_pti_decline_counteroffer_override_enabled IS TRUE
+                        AND csc.requested_pti_decline_trigger_flag IS TRUE
+                    )
+                 OR (
+                        csc.requested_el_decline_counteroffer_override_enabled IS TRUE
+                        AND csc.requested_el_decline_trigger_flag IS TRUE
+                    )
+                )
+        ) AS aggressive_counteroffer_requested_structure_override_flag
+</code></pre>
+<h3>Replace with this</h3>
+<pre><code class="language-sql">        /*
+        Aggressive requested-structure override.
+
+        This is the new Option C expansion signal.
+
+        It intentionally does not override:
+            hard simulated policy stops,
+            severe synthetic estimated-risk stops,
+            severe DTI capacity stops,
+            product-level counteroffer permission,
+            or below-product-minimum requested exposure.
+
+        Why below-product-minimum rows are excluded:
+            A counteroffer must be lower than requested_amount, but also must satisfy the
+            product_min_approved_amount rule.
+
+            If requested_amount is already below the product minimum, a lower counteroffer cannot
+            become a viable governed offer. Those rows should remain review/no-offer candidates
+            rather than being routed into aggressive counteroffer expansion.
+
+        It also does not bypass Section 8 counteroffer feasibility testing.
+        */
+        (
+            csc.aggressive_counteroffer_expansion_enabled IS TRUE
+            AND csc.counteroffer_allowed_flag IS TRUE
+            AND csc.hard_policy_stop_flag IS FALSE
+            AND csc.synthetic_risk_decline_trigger_flag IS FALSE
+            AND csc.dti_decline_trigger_flag IS FALSE
+            AND csc.requested_exposure_below_product_minimum_flag IS FALSE
+            AND csc.severe_requested_structure_counteroffer_override_enabled IS TRUE
+            AND (
+                    (
+                        csc.exposure_extreme_counteroffer_override_enabled IS TRUE
+                        AND csc.requested_exposure_extreme_flag IS TRUE
+                    )
+                 OR (
+                        csc.exposure_policy_stop_counteroffer_override_enabled IS TRUE
+                        AND csc.exposure_policy_stop_candidate_flag IS TRUE
+                    )
+                 OR (
+                        csc.requested_pti_decline_counteroffer_override_enabled IS TRUE
+                        AND csc.requested_pti_decline_trigger_flag IS TRUE
+                    )
+                 OR (
+                        csc.requested_el_decline_counteroffer_override_enabled IS TRUE
+                        AND csc.requested_el_decline_trigger_flag IS TRUE
+                    )
+                )
+        ) AS aggressive_counteroffer_requested_structure_override_flag
+</code></pre>
+<p>This is the most important Section 6 patch.</p>
+<hr>
+<h1>2. Add below-minimum protection to the aggressive override gatekeeper</h1>
+<p>The current Section 6 gatekeeper already validates that aggressive override rows do not violate Option C variant, product permission, hard policy stops, severe synthetic-risk stops, or severe DTI stops. fileciteturn190file16</p>
+<p>Add below-minimum protection there too.</p>
+<h2>Patch 2 — Section 6.3 aggressive override governance gatekeeper</h2>
+<h3>Find this condition</h3>
+<pre><code class="language-sql">    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND (
+            counteroffer_strategy_variant &lt;&gt; &#39;AGGRESSIVE_EXPANSION&#39;
+         OR aggressive_counteroffer_expansion_enabled IS DISTINCT FROM TRUE
+         OR counteroffer_allowed_by_product_flag IS DISTINCT FROM TRUE
+         OR hard_policy_stop_flag IS DISTINCT FROM FALSE
+         OR synthetic_risk_decline_trigger_flag IS DISTINCT FROM FALSE
+         OR dti_decline_trigger_flag IS DISTINCT FROM FALSE
+      );
+</code></pre>
+<h3>Replace with this</h3>
+<pre><code class="language-sql">    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND (
+            counteroffer_strategy_variant &lt;&gt; &#39;AGGRESSIVE_EXPANSION&#39;
+         OR aggressive_counteroffer_expansion_enabled IS DISTINCT FROM TRUE
+         OR counteroffer_allowed_by_product_flag IS DISTINCT FROM TRUE
+         OR hard_policy_stop_flag IS DISTINCT FROM FALSE
+         OR synthetic_risk_decline_trigger_flag IS DISTINCT FROM FALSE
+         OR dti_decline_trigger_flag IS DISTINCT FROM FALSE
+         OR requested_exposure_below_product_minimum_flag IS DISTINCT FROM FALSE
+      );
+</code></pre>
+<h3>Also update the gatekeeper comment</h3>
+<p>Replace:</p>
+<pre><code class="language-sql">        It is not designed to bypass:
+            - product-level counteroffer permission,
+            - hard simulated policy stops,
+            - severe synthetic estimated-risk stops,
+            - severe DTI capacity stops.
+</code></pre>
+<p>With:</p>
+<pre><code class="language-sql">        It is not designed to bypass:
+            - product-level counteroffer permission,
+            - hard simulated policy stops,
+            - severe synthetic estimated-risk stops,
+            - severe DTI capacity stops,
+            - below-product-minimum requested exposure.
+</code></pre>
+<p>And replace:</p>
+<pre><code class="language-sql">            dti_decline_trigger_flag = FALSE.
+</code></pre>
+<p>With:</p>
+<pre><code class="language-sql">            dti_decline_trigger_flag = FALSE,
+            requested_exposure_below_product_minimum_flag = FALSE.
+</code></pre>
+<hr>
+<h1>3. Section 6.2 SQL design commentary needs one small alignment fix</h1>
+<p>The top SQL concepts section correctly includes:</p>
+<pre><code class="language-text">counteroffer_strategy_controls
+counteroffer_candidate_flags
+counteroffer_candidate_counted
+</code></pre>
+<p>But the Section 6.2 <code>SQL DESIGN</code> CTE chain still appears to skip <code>counteroffer_strategy_controls</code> and goes directly from <code>exposure_counted</code> to <code>counteroffer_candidate_flags</code>. fileciteturn192file3</p>
+<p>This is commentary-only, but it should be fixed so reviewers see the actual CTE chain.</p>
+<h2>Patch 3 — Section 6.2 SQL design CTE chain</h2>
+<h3>Replace this portion</h3>
+<pre><code class="language-sql">        exposure_flags
+        exposure_counted
+        counteroffer_candidate_flags
+        counteroffer_candidate_counted
+        supplemental_behavior_flags
+</code></pre>
+<h3>With this</h3>
+<pre><code class="language-sql">        exposure_flags
+        exposure_counted
+        counteroffer_strategy_controls
+        counteroffer_candidate_flags
+        counteroffer_candidate_counted
+        supplemental_behavior_flags
+</code></pre>
+<p>This aligns Section 6.2 with the actual Option C implementation.</p>
+<hr>
+<h1>4. Section 6.0 preflight commentary should mention Option C dependency</h1>
+<p>Your Section 6.0 logic now validates the active strategy parameter row and confirms Option C controls are populated before the CTE chain consumes them. That logic is good. fileciteturn190file9</p>
+<p>The Section 6.0 header should explicitly say that, so the dependency is clear.</p>
+<h2>Patch 4 — Section 6.0 SQL purpose</h2>
+<h3>Add this to the Section 6.0 <code>SQL PURPOSE</code> list</h3>
+<pre><code class="language-sql">    6. Confirm exactly one active strategy parameter card exists because Section 6 consumes
+       Option C counteroffer split controls.
+    7. Confirm Option C counteroffer split controls are physically populated before the rule-flag
+       CTE chain consumes them.
+</code></pre>
+<p>This is not a logic change. It just aligns the Section 6.0 header with the updated preflight logic.</p>
+<hr>
+<h1>5. Section 6.4 readiness summary should include the aggressive override governance violation</h1>
+<p>Your compact readiness summary already includes:</p>
+<pre><code class="language-sql">aggressive_override_not_counteroffer_candidate_rows
+</code></pre>
+<p>and includes that field in the final readiness <code>CASE</code>. fileciteturn192file10</p>
+<p>I would add one additional compact diagnostic:</p>
+<pre><code class="language-sql">aggressive_override_governance_violation_rows
+</code></pre>
+<p>This mirrors the fail-fast gatekeeper and makes the compact readiness row more complete.</p>
+<h2>Patch 5 — Add to <code>rule_flag_summary</code></h2>
+<h3>Add this field after <code>aggressive_override_not_counteroffer_candidate_rows</code></h3>
+<pre><code class="language-sql">        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND (
+                    counteroffer_strategy_variant &lt;&gt; &#39;AGGRESSIVE_EXPANSION&#39;
+                 OR aggressive_counteroffer_expansion_enabled IS DISTINCT FROM TRUE
+                 OR counteroffer_allowed_by_product_flag IS DISTINCT FROM TRUE
+                 OR hard_policy_stop_flag IS DISTINCT FROM FALSE
+                 OR synthetic_risk_decline_trigger_flag IS DISTINCT FROM FALSE
+                 OR dti_decline_trigger_flag IS DISTINCT FROM FALSE
+                 OR requested_exposure_below_product_minimum_flag IS DISTINCT FROM FALSE
+              )
+        ) AS aggressive_override_governance_violation_rows,
+</code></pre>
+<h3>Add it to the final <code>SELECT</code></h3>
+<pre><code class="language-sql">    aggressive_override_governance_violation_rows,
+</code></pre>
+<p>Place it after:</p>
+<pre><code class="language-sql">    aggressive_override_not_counteroffer_candidate_rows,
+</code></pre>
+<h3>Add it to the readiness <code>CASE</code></h3>
+<pre><code class="language-sql">         AND aggressive_override_governance_violation_rows = 0
+</code></pre>
+<p>So the readiness condition becomes:</p>
+<pre><code class="language-sql">    CASE
+        WHEN stage3_row_count &gt; 0
+         AND stage3_row_count = distinct_application_id_count
+         AND required_trigger_gap_rows = 0
+         AND synthetic_risk_band_coverage_gap_rows = 0
+         AND dti_band_coverage_gap_rows = 0
+         AND counteroffer_permission_violation_rows = 0
+         AND manual_review_permission_violation_rows = 0
+         AND aggressive_override_not_counteroffer_candidate_rows = 0
+         AND aggressive_override_governance_violation_rows = 0
+            THEN &#39;SECTION_6_RULE_FLAGS_READY_FOR_PRELIMINARY_ROUTING&#39;
+        ELSE &#39;REVIEW_SECTION_6_RULE_FLAGS_BEFORE_PRELIMINARY_ROUTING&#39;
+    END AS section_6_rule_flag_status
+</code></pre>
+<p>This is partly redundant with Section 6.3, but it improves the one-row reviewer diagnostic.</p>
+<hr>
+<h1>6. What looks good and should stay</h1>
+<p>The Section 6 header is strong. It clearly states that Section 6 is a trigger-evidence layer, not final decisioning, and it preserves the right boundaries around final outcomes, reason codes, and approved exposure. fileciteturn190file1</p>
+<p>The Option C field list is strong. It explicitly adds:</p>
+<pre><code class="language-text">counteroffer_strategy_variant
+aggressive_counteroffer_expansion_enabled
+severe_requested_structure_counteroffer_override_enabled
+exposure_extreme_counteroffer_override_enabled
+exposure_policy_stop_counteroffer_override_enabled
+requested_pti_decline_counteroffer_override_enabled
+requested_el_decline_counteroffer_override_enabled
+ordinary_counteroffer_candidate_flag
+aggressive_counteroffer_requested_structure_override_flag
+</code></pre>
+<p>That gives downstream sections the audit visibility they need. fileciteturn192file0</p>
+<p>The core Option C candidate design is directionally right: ordinary counteroffer candidacy preserves selective feasibility behavior, while aggressive expansion can add counteroffer candidates through a governed requested-structure override. fileciteturn192file7</p>
+<p>The null-check and Option C control gatekeepers are also in good shape. The current Section 6 validates null rule flags and separately checks that the Option C controls carried into the rule-flag output. fileciteturn192file1</p>
+<p>The Section 6.4 Option C diagnostic is excellent. It summarizes ordinary counteroffer candidates, aggressive override rows, total counteroffer candidates, and the stress dimensions driving aggressive override. fileciteturn192file14</p>
+<hr>
+<h1>Final recommendation</h1>
+<p>Make these five patches:</p>
+<pre><code class="language-text">1. Exclude below-product-minimum rows from aggressive counteroffer override.
+2. Add the same below-minimum protection to the aggressive override gatekeeper.
+3. Add counteroffer_strategy_controls to the Section 6.2 CTE chain commentary.
+4. Add Option C dependency bullets to the Section 6.0 preflight header.
+5. Add aggressive_override_governance_violation_rows to the readiness summary.
+</code></pre>
+<p>After that, Section 6 is ready.</p>
+<p>The logic will then cleanly support the Option C narrative:</p>
+<pre><code class="language-text">SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+    preserves current conservative behavior.
+
+AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+    expands counteroffer candidacy for severe requested-structure cases,
+    but only where a counteroffer could plausibly be tested and only after respecting
+    product permission, hard stops, severe synthetic risk, severe DTI, and below-minimum exposure constraints.
+</code></pre>
+<p>That is the right level of governance before Section 7 consumes <code>counteroffer_candidate_flag</code> for preliminary routing.</p>
+</div></article><article id="c034-m00981" class="message user"><div class="role">Andrew</div><p class="meta">C034-M00981 · 2026-05-15T14:57:36.302000-04:00 · active path</p><div class="body"><p>review updated section 6 logic/headers/comments one final time.  then recommend the next section that needs logic/headers/comments updates.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(190).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c034-m00985" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C034-M00985 · 2026-05-15T15:01:22.715085-04:00 · active path</p><div class="body"><p>According to a document from <strong>2026-05-15</strong>, the updated Section 6 is <strong>ready from a logic standpoint</strong>. I do <strong>not</strong> see a SQL-breaking blocker.</p>
+<p>The Option C logic is now in the correct place: Section 6 is the first applicant-level layer that converts the validated strategy posture into rule-trigger evidence, while still avoiding preliminary routing, final decisions, reason codes, approved exposure, approved PTI, and approved Expected Loss. The section now carries the Option C fields, validates that they are populated, separates ordinary counteroffer candidacy from aggressive override candidacy, and preserves the staged architecture boundary. fileciteturn193file1 fileciteturn194file10</p>
+<h1>Final Section 6 verdict</h1>
+<pre><code class="language-text">Section 6 logic: ready
+Section 6 headers/comments: ready after one tiny polish patch
+Execution blockers: none found
+Next section needing updates: Section 7
+</code></pre>
+<p>The most important logic is aligned:</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th align="right">Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Section 6 remains a trigger-evidence layer, not final decisioning</td>
+<td align="right">✅</td>
+</tr>
+<tr>
+<td>Option C controls are consumed only after Section 2 creates and Section 3 validates them</td>
+<td align="right">✅</td>
+</tr>
+<tr>
+<td><code>ordinary_counteroffer_candidate_flag</code> preserves selective behavior</td>
+<td align="right">✅</td>
+</tr>
+<tr>
+<td><code>aggressive_counteroffer_requested_structure_override_flag</code> creates the aggressive expansion path</td>
+<td align="right">✅</td>
+</tr>
+<tr>
+<td>Aggressive override cannot bypass product permission, hard stops, severe synthetic-risk, severe DTI, or below-minimum exposure</td>
+<td align="right">✅</td>
+</tr>
+<tr>
+<td><code>counteroffer_candidate_flag</code> becomes true when ordinary or aggressive candidacy is true</td>
+<td align="right">✅</td>
+</tr>
+<tr>
+<td>Local gatekeepers validate Option C controls and aggressive override governance</td>
+<td align="right">✅</td>
+</tr>
+<tr>
+<td>Readiness summary includes aggressive override diagnostics</td>
+<td align="right">✅</td>
+</tr>
+<tr>
+<td>End-of-section summary is aligned</td>
+<td align="right">✅</td>
+</tr>
+</tbody></table>
+<p>The latest Section 6 correctly validates that the Option C control fields and the ordinary/aggressive counteroffer flags are non-null before downstream routing consumes them. fileciteturn194file0 It also now checks that aggressive override rows do not violate Option C governance boundaries, including product counteroffer permission, hard simulated policy stops, severe synthetic-risk stops, severe DTI stops, and below-product-minimum requested exposure. fileciteturn194file7</p>
+<h1>One final Section 6 commentary polish</h1>
+<p>This is <strong>not a blocker</strong>, but I would update the top Option C header so the high-level narrative matches the detailed logic and gatekeepers.</p>
+<h2>Current narrative issue</h2>
+<p>The top Option C boundary says aggressive expansion allows severe requested-structure rows to enter counteroffer feasibility testing when not blocked by:</p>
+<pre><code class="language-text">hard simulated policy stop,
+severe synthetic estimated-risk,
+or severe DTI capacity logic.
+</code></pre>
+<p>That is directionally correct, but now incomplete. The detailed logic also protects:</p>
+<pre><code class="language-text">product-level counteroffer permission
+below-product-minimum requested exposure
+</code></pre>
+<p>The CTE and gatekeeper comments already capture that more complete boundary; the top header should mirror it. fileciteturn194file12</p>
+<h2>Recommended header patch</h2>
+<p>Replace this portion:</p>
+<pre><code class="language-sql">        AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+            Allows certain severe requested-structure rows to enter counteroffer feasibility testing,
+            provided they are not blocked by:
+                hard simulated policy stop,
+                severe synthetic estimated-risk,
+                or severe DTI capacity logic.
+</code></pre>
+<p>With this:</p>
+<pre><code class="language-sql">        AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+            Allows certain severe requested-structure rows to enter counteroffer feasibility testing,
+            provided:
+                the product allows counteroffers,
+                the requested amount is not below the product minimum,
+                no hard simulated policy stop is active,
+                no severe synthetic estimated-risk stop is active,
+                and no severe DTI capacity stop is active.
+
+            This preserves the aggressive strategy&#39;s expansion intent while preventing the strategy
+            from routing structurally impossible or higher-priority stop cases into counteroffer
+            feasibility testing.
+</code></pre>
+<p>After that tiny patch, Section 6 is accepted.</p>
+<h1>Next section needing updates: Section 7</h1>
+<p>The next section that needs logic/header/comment review is:</p>
+<pre><code class="language-text">SECTION 7 — PRELIMINARY DECISION ROUTING LAYER
+</code></pre>
+<h2>Why Section 7 is next</h2>
+<p>Section 6 now changes how <code>counteroffer_candidate_flag</code> can be created:</p>
+<pre><code class="language-text">SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+    ordinary counteroffer candidates only
+
+AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+    ordinary candidates + governed aggressive requested-structure override candidates
+</code></pre>
+<p>Section 7 consumes <code>tmp_m2_stage_3_rule_flags</code> and converts overlapping flags into one preliminary route. The end of Section 6 explicitly says Section 7 should consume <code>tmp_m2_stage_3_rule_flags</code> and convert overlapping rule-trigger evidence into one preliminary strategy route per application. fileciteturn194file17</p>
+<p>So Section 7 must be checked for one critical condition:</p>
+<pre><code class="language-text">counteroffer_candidate_flag = TRUE must route to preliminary COUNTEROFFER
+before severe requested-structure review fallback.
+</code></pre>
+<p>If Section 7 already does that, the logic change is minimal. If it does not, Option C aggressive expansion will not work as intended because aggressive override rows could still be routed to manual review.</p>
+<h1>Recommended Section 7 updates</h1>
+<h2>1. Header/comment update</h2>
+<p>Add an Option C note explaining that Section 7 does <strong>not</strong> need to inspect strategy name directly. It should trust Section 6’s validated trigger evidence.</p>
+<p>Recommended comment:</p>
+<pre><code class="language-sql">OPTION C COUNTEROFFER STRATEGY SPLIT ROUTING NOTE:
+    Section 7 does not branch directly on strategy_name.
+
+    The selective-versus-aggressive counteroffer posture was already resolved in Section 6 through:
+        ordinary_counteroffer_candidate_flag
+        aggressive_counteroffer_requested_structure_override_flag
+        counteroffer_candidate_flag
+
+    Section 7 should route based on counteroffer_candidate_flag.
+
+    This means:
+        SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+            routes ordinary governed counteroffer candidates to preliminary COUNTEROFFER.
+
+        AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+            routes both ordinary candidates and governed aggressive override candidates to
+            preliminary COUNTEROFFER.
+
+    Section 7 still does not prove counteroffer feasibility.
+
+    Section 8 must evaluate:
+        approved amount,
+        approved payment,
+        approved PTI,
+        approved Expected Loss,
+        and counteroffer feasibility.
+</code></pre>
+<h2>2. Routing hierarchy check</h2>
+<p>The Section 7 hierarchy should remain:</p>
+<pre><code class="language-text">1. Hard simulated policy stop → preliminary DECLINE
+2. Severe synthetic estimated-risk → preliminary DECLINE
+3. Severe DTI capacity → preliminary DECLINE
+4. counteroffer_candidate_flag = TRUE → preliminary COUNTEROFFER
+5. Severe requested-structure unresolved stress → preliminary MANUAL_REVIEW
+6. Manual-review candidate → preliminary MANUAL_REVIEW
+7. Clean approval candidate → preliminary APPROVE
+8. Residual fallback → preliminary MANUAL_REVIEW
+</code></pre>
+<p>The key point is Priority 4 must stay above the severe requested-structure manual-review route. That is what allows aggressive override rows from Section 6 to flow into feasibility testing.</p>
+<h2>3. Add a local Section 7 gatekeeper</h2>
+<p>Add a gatekeeper confirming that aggressive override rows are routed to preliminary counteroffer.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+Gatekeeper: aggressive counteroffer override rows must route to preliminary COUNTEROFFER.
+
+Business interpretation:
+    Section 6 creates aggressive_counteroffer_requested_structure_override_flag only when the
+    aggressive strategy is active and higher-priority stop conditions are not present.
+
+    Therefore, Section 7 should route those rows to preliminary COUNTEROFFER so Section 8 can test
+    reduced-exposure feasibility.
+
+    If these rows route to MANUAL_REVIEW, Option C aggressive expansion is not operating as designed.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT COUNT(*)
+INTO v_aggressive_override_routing_violation_count
+FROM tmp_m2_stage_4_preliminary_decision_routing
+WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+  AND (
+        preliminary_decision_outcome &lt;&gt; &#39;COUNTEROFFER&#39;
+     OR requires_counteroffer_feasibility_flag IS DISTINCT FROM TRUE
+     OR requires_approved_exposure_calculation_flag IS DISTINCT FROM TRUE
+  );
+
+IF v_aggressive_override_routing_violation_count &gt; 0 THEN
+    RAISE EXCEPTION
+        &#39;Module 2 Section 7 failure: % aggressive counteroffer override row(s) did not route to preliminary COUNTEROFFER feasibility testing.&#39;,
+        v_aggressive_override_routing_violation_count;
+END IF;
+</code></pre>
+<p>Also add this variable to the Section 7 gatekeeper <code>DECLARE</code> block:</p>
+<pre><code class="language-sql">v_aggressive_override_routing_violation_count BIGINT;
+</code></pre>
+<h2>4. Add Section 7 local diagnostic</h2>
+<p>Add a small diagnostic so we can visibly confirm the selective/aggressive split is affecting preliminary routing.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+Section 7 Option C preliminary routing diagnostic.
+
+Purpose:
+    Show whether ordinary and aggressive counteroffer candidates are routing into preliminary
+    COUNTEROFFER as intended.
+
+Interpretation:
+    SELECTIVE_FEASIBILITY should generally show no aggressive override rows.
+
+    AGGRESSIVE_EXPANSION may show aggressive override rows, and those rows should generally route
+    to preliminary COUNTEROFFER unless a future strategy explicitly changes the hierarchy.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+
+    preliminary_decision_outcome,
+    preliminary_decision_path,
+
+    COUNT(*) AS row_count,
+
+    COUNT(*) FILTER (
+        WHERE ordinary_counteroffer_candidate_flag IS TRUE
+    ) AS ordinary_counteroffer_candidate_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+    ) AS aggressive_override_candidate_rows,
+
+    COUNT(*) FILTER (
+        WHERE counteroffer_candidate_flag IS TRUE
+    ) AS total_counteroffer_candidate_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+    ) AS aggressive_override_preliminary_counteroffer_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND preliminary_decision_outcome &lt;&gt; &#39;COUNTEROFFER&#39;
+    ) AS aggressive_override_not_routed_to_counteroffer_rows
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+GROUP BY
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+    preliminary_decision_outcome,
+    preliminary_decision_path
+ORDER BY
+    strategy_name,
+    preliminary_decision_outcome,
+    preliminary_decision_path;
+</code></pre>
+<h1>What Section 7 should not do</h1>
+<p>Do <strong>not</strong> let Section 7 start calculating feasibility. It should still avoid:</p>
+<pre><code class="language-text">approved_amount
+counteroffer_amount
+approved_monthly_payment_proxy
+approved_payment_to_income_ratio
+approved_expected_loss_amount
+final decision_outcome
+reason codes
+latest-run output
+archive insert logic
+</code></pre>
+<p>That remains Section 8+ work.</p>
+<h1>Final recommendation</h1>
+<p>Make the one small Section 6 header polish, then proceed to <strong>Section 7</strong>.</p>
+<p>For Section 7, focus on:</p>
+<pre><code class="language-text">1. Option C routing commentary.
+2. Confirm counteroffer_candidate_flag is routed before severe requested-structure review.
+3. Add a gatekeeper proving aggressive override rows route to preliminary COUNTEROFFER.
+4. Add a diagnostic showing ordinary vs aggressive preliminary routing.
+</code></pre>
+<p>After Section 7 is updated, the next section to review will be <strong>Section 8</strong>, because aggressive expansion will increase the importance of feasibility pass/fail diagnostics for aggressive override rows.</p>
+</div></article><article id="c034-m00987" class="message user"><div class="role">Andrew</div><p class="meta">C034-M00987 · 2026-05-15T15:08:41.868000-04:00 · active path</p><div class="body"><p>review section 7 logic/comments/headers after those changes: </p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(191).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c034-m00991" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C034-M00991 · 2026-05-15T15:12:34.807764-04:00 · active path</p><div class="body"><p>According to a document from <strong>2026-05-15</strong>, Section 7 is <strong>directionally correct but not quite execution-ready</strong>. The routing hierarchy itself is right: <code>counteroffer_candidate_flag</code> routes to preliminary <code>COUNTEROFFER</code> before severe requested-structure review, which is exactly what Option C needs. fileciteturn196file5</p>
+<p>However, I found one important blocker: the new aggressive-override routing gatekeeper appears to reference <code>tmp_m2_stage_4_preliminary_decision_routing</code> <strong>before Section 7.1 drops/rebuilds it and before Section 7.2 creates it</strong>. That can either error if the table does not exist, or worse, validate a stale table from a prior run. fileciteturn196file1turn196file2</p>
+<h1>Verdict</h1>
+<pre><code class="language-text">Section 7 route logic: correct
+Section 7 headers/comments: strong
+Section 7 execution readiness: not yet
+Blocker: move aggressive override routing gatekeeper after Section 7.2 table creation
+Next section needing updates: Section 8
+</code></pre>
+<p>The Option C header narrative is strong. It correctly says Section 7 should not branch directly on <code>strategy_name</code>; it should route based on the Section 6 flags: <code>ordinary_counteroffer_candidate_flag</code>, <code>aggressive_counteroffer_requested_structure_override_flag</code>, and <code>counteroffer_candidate_flag</code>. fileciteturn196file9</p>
+<hr>
+<h1>1. Blocker — move aggressive override routing gatekeeper out of Section 7.0</h1>
+<h2>Issue</h2>
+<p>The aggressive override routing gatekeeper currently queries:</p>
+<pre><code class="language-sql">FROM tmp_m2_stage_4_preliminary_decision_routing
+</code></pre>
+<p>inside the preflight block before the Section 7 staging table is created. The file shows this gatekeeper before the <code>END $$;</code>, then Section 7.1 begins with the reset/drop of the staging table. fileciteturn196file1turn196file2</p>
+<p>That placement is incorrect.</p>
+<h2>Why this matters</h2>
+<p>Section 7.0 should validate <strong>inputs</strong> only:</p>
+<pre><code class="language-text">tmp_m2_stage_3_rule_flags exists
+row count is valid
+application_id is unique
+route-driving Section 6 flags are populated
+</code></pre>
+<p>It should not validate <strong>outputs</strong> from:</p>
+<pre><code class="language-text">tmp_m2_stage_4_preliminary_decision_routing
+</code></pre>
+<p>because that table does not exist yet in the current Section 7 build sequence.</p>
+<hr>
+<h2>Patch 1A — remove the aggressive override routing gatekeeper from Section 7.0</h2>
+<h3>Remove this block from Section 7.0</h3>
+<pre><code class="language-sql">    /*-----------------------------------------------------------------------------------------------
+    Gatekeeper: aggressive counteroffer override rows must route to preliminary COUNTEROFFER.
+
+    Business interpretation:
+        Section 6 creates aggressive_counteroffer_requested_structure_override_flag only when the
+        aggressive strategy is active and higher-priority stop conditions are not present.
+
+        Therefore, Section 7 should route those rows to preliminary COUNTEROFFER so Section 8 can test
+        reduced-exposure feasibility.
+
+        If these rows route to MANUAL_REVIEW, Option C aggressive expansion is not operating as designed.
+-----------------------------------------------------------------------------------------------*/
+
+    SELECT COUNT(*)
+    INTO v_aggressive_override_routing_violation_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND (
+            preliminary_decision_outcome &lt;&gt; &#39;COUNTEROFFER&#39;
+         OR requires_counteroffer_feasibility_flag IS DISTINCT FROM TRUE
+         OR requires_approved_exposure_calculation_flag IS DISTINCT FROM TRUE
+      );
+
+    IF v_aggressive_override_routing_violation_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 7 failure: % aggressive counteroffer override row(s) did not route to preliminary COUNTEROFFER feasibility testing.&#39;,
+            v_aggressive_override_routing_violation_count;
+    END IF;
+</code></pre>
+<h3>Replace it with this commentary-only note in Section 7.0</h3>
+<pre><code class="language-sql">    /*-------------------------------------------------------------------------------------------
+    Option C routing validation note.
+
+    Section 7.0 validates Section 6 input readiness only.
+
+    The aggressive counteroffer override routing check must occur after Section 7.2 creates
+    tmp_m2_stage_4_preliminary_decision_routing.
+
+    Reason:
+        tmp_m2_stage_4_preliminary_decision_routing is a Section 7 output table.
+
+        Validating it before it is rebuilt could either:
+            - fail because the table does not exist, or
+            - accidentally inspect a stale table from a prior run.
+
+    The actual aggressive override routing gatekeeper is performed in the local Section 7
+    post-build validation block.
+    -------------------------------------------------------------------------------------------*/
+</code></pre>
+<h3>Also remove this variable from the Section 7.0 <code>DECLARE</code> block if it is declared there</h3>
+<pre><code class="language-sql">v_aggressive_override_routing_violation_count BIGINT;
+</code></pre>
+<p>It should be declared in the <strong>post-build</strong> Section 7 gatekeeper block instead.</p>
+<hr>
+<h1>2. Add Option C fields to the Section 7.0 input null-check</h1>
+<p>The current required-trigger check validates the major route-driving fields, including <code>counteroffer_candidate_flag</code>, <code>manual_review_candidate_flag</code>, requested-structure stress flags, and trigger counts. That is good. fileciteturn196file1</p>
+<p>However, now that Section 7 has an Option C diagnostic and post-build gatekeeper, it should also fail fast if the new Option C Section 6 fields are missing.</p>
+<h2>Patch 2 — update Section 7.0 required trigger gap check</h2>
+<h3>Before</h3>
+<pre><code class="language-sql">    SELECT COUNT(*)
+    INTO v_required_trigger_gap_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE hard_policy_stop_flag IS NULL
+       OR synthetic_risk_decline_trigger_flag IS NULL
+       OR dti_decline_trigger_flag IS NULL
+       OR counteroffer_candidate_flag IS NULL
+       OR manual_review_candidate_flag IS NULL
+       OR clean_approval_candidate_flag IS NULL
+       OR requested_pti_decline_trigger_flag IS NULL
+       OR requested_el_decline_trigger_flag IS NULL
+       OR requested_exposure_extreme_flag IS NULL
+       OR exposure_policy_stop_candidate_flag IS NULL
+       OR hard_policy_stop_count IS NULL
+       OR synthetic_risk_trigger_count IS NULL
+       OR dti_trigger_count IS NULL
+       OR counteroffer_candidate_trigger_count IS NULL
+       OR manual_review_candidate_trigger_count IS NULL;
+</code></pre>
+<h3>After</h3>
+<pre><code class="language-sql">    SELECT COUNT(*)
+    INTO v_required_trigger_gap_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE hard_policy_stop_flag IS NULL
+       OR synthetic_risk_decline_trigger_flag IS NULL
+       OR dti_decline_trigger_flag IS NULL
+
+       /*
+       Option C counteroffer routing inputs.
+
+       Section 7 does not branch directly on strategy_name. It relies on Section 6 to
+       translate the active selective/aggressive strategy posture into route-driving
+       trigger evidence.
+       */
+       OR counteroffer_strategy_variant IS NULL
+       OR aggressive_counteroffer_expansion_enabled IS NULL
+       OR ordinary_counteroffer_candidate_flag IS NULL
+       OR aggressive_counteroffer_requested_structure_override_flag IS NULL
+       OR counteroffer_candidate_flag IS NULL
+
+       OR manual_review_candidate_flag IS NULL
+       OR clean_approval_candidate_flag IS NULL
+       OR requested_pti_decline_trigger_flag IS NULL
+       OR requested_el_decline_trigger_flag IS NULL
+       OR requested_exposure_extreme_flag IS NULL
+       OR exposure_policy_stop_candidate_flag IS NULL
+       OR hard_policy_stop_count IS NULL
+       OR synthetic_risk_trigger_count IS NULL
+       OR dti_trigger_count IS NULL
+       OR counteroffer_candidate_trigger_count IS NULL
+       OR manual_review_candidate_trigger_count IS NULL;
+</code></pre>
+<p>This reinforces the Option C contract:</p>
+<pre><code class="language-text">Section 6 creates the selective/aggressive trigger evidence.
+Section 7 routes based on that evidence.
+</code></pre>
+<hr>
+<h1>3. Add the aggressive override routing gatekeeper after Section 7.2</h1>
+<h2>Placement</h2>
+<p>Place this in the <strong>post-build Section 7 local gatekeeper block</strong>, after <code>tmp_m2_stage_4_preliminary_decision_routing</code> has been created.</p>
+<p>Best placement:</p>
+<pre><code class="language-text">After preliminary flag reconciliation checks
+After exposure-routing flag consistency checks
+Before the &quot;no final fields created yet&quot; validation
+</code></pre>
+<h2>Add this variable to the Section 7 post-build gatekeeper <code>DECLARE</code> block</h2>
+<pre><code class="language-sql">v_aggressive_override_routing_violation_count BIGINT;
+</code></pre>
+<h2>Add this gatekeeper</h2>
+<pre><code class="language-sql">    /*-----------------------------------------------------------------------------------------------
+    Gatekeeper: aggressive counteroffer override rows must route to preliminary COUNTEROFFER.
+
+    Business interpretation:
+        Section 6 creates aggressive_counteroffer_requested_structure_override_flag only when:
+            - AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY is active,
+            - the product allows counteroffers,
+            - the requested amount is not below the product minimum,
+            - no hard simulated policy stop is active,
+            - no severe synthetic estimated-risk stop is active,
+            - no severe DTI capacity stop is active.
+
+        Therefore, Section 7 should route those rows to preliminary COUNTEROFFER so Section 8 can test
+        reduced-exposure feasibility.
+
+    Why this check belongs here:
+        tmp_m2_stage_4_preliminary_decision_routing now exists.
+
+        This is a post-build routing consistency check, not a Section 7.0 input preflight check.
+
+    Boundary:
+        Passing this check does not mean the counteroffer is feasible.
+
+        It only confirms that aggressive expansion rows are routed to feasibility testing.
+        Section 8 still determines whether a viable reduced-exposure offer exists.
+    -----------------------------------------------------------------------------------------------*/
+
+    SELECT COUNT(*)
+    INTO v_aggressive_override_routing_violation_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND (
+            preliminary_decision_outcome &lt;&gt; &#39;COUNTEROFFER&#39;
+         OR preliminary_decision_path &lt;&gt; &#39;COUNTEROFFER_FEASIBILITY_CHECK&#39;
+         OR requires_counteroffer_feasibility_flag IS DISTINCT FROM TRUE
+         OR requires_approved_exposure_calculation_flag IS DISTINCT FROM TRUE
+      );
+
+    IF v_aggressive_override_routing_violation_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 7 failure: % aggressive counteroffer override row(s) did not route to preliminary COUNTEROFFER feasibility testing.&#39;,
+            v_aggressive_override_routing_violation_count;
+    END IF;
+</code></pre>
+<p>This is the critical fix.</p>
+<hr>
+<h1>4. Routing logic itself is correct — no CASE change needed</h1>
+<p>The <code>route_assignment</code> logic already has the correct priority order:</p>
+<pre><code class="language-sql">WHEN hard_policy_stop_flag IS TRUE
+    THEN &#39;DECLINE&#39;
+
+WHEN synthetic_risk_decline_trigger_flag IS TRUE
+    THEN &#39;DECLINE&#39;
+
+WHEN dti_decline_trigger_flag IS TRUE
+    THEN &#39;DECLINE&#39;
+
+WHEN counteroffer_candidate_flag IS TRUE
+    THEN &#39;COUNTEROFFER&#39;
+
+WHEN severe_requested_structure_trigger_flag IS TRUE
+ AND counteroffer_candidate_flag IS DISTINCT FROM TRUE
+    THEN &#39;MANUAL_REVIEW&#39;
+</code></pre>
+<p>That means an aggressive override row created by Section 6 becomes <code>counteroffer_candidate_flag = TRUE</code>, then Section 7 routes it to preliminary <code>COUNTEROFFER</code> before severe requested-structure review. fileciteturn196file5turn196file11</p>
+<p>This is exactly what Option C requires. No change needed to the routing <code>CASE</code>.</p>
+<hr>
+<h1>5. Improve the compact Section 7 readiness summary</h1>
+<p>You already added a strong Section 7 Option C diagnostic that summarizes ordinary candidates, aggressive override candidates, and whether aggressive override rows routed to preliminary <code>COUNTEROFFER</code>. fileciteturn196file0turn196file10</p>
+<p>For elite readiness, I would also add the aggressive override routing gap into the compact readiness summary so the one-row status reflects the new Option C gate.</p>
+<h2>Patch 5 — add Option C routing fields to <code>routing_summary</code></h2>
+<p>Add these fields to the <code>routing_summary</code> CTE:</p>
+<pre><code class="language-sql">        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+        ) AS aggressive_override_candidate_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+              AND preliminary_decision_path = &#39;COUNTEROFFER_FEASIBILITY_CHECK&#39;
+              AND requires_counteroffer_feasibility_flag IS TRUE
+              AND requires_approved_exposure_calculation_flag IS TRUE
+        ) AS aggressive_override_routed_to_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND (
+                    preliminary_decision_outcome &lt;&gt; &#39;COUNTEROFFER&#39;
+                 OR preliminary_decision_path &lt;&gt; &#39;COUNTEROFFER_FEASIBILITY_CHECK&#39;
+                 OR requires_counteroffer_feasibility_flag IS DISTINCT FROM TRUE
+                 OR requires_approved_exposure_calculation_flag IS DISTINCT FROM TRUE
+              )
+        ) AS aggressive_override_routing_gap_rows,
+</code></pre>
+<p>Add these to the final <code>SELECT</code>:</p>
+<pre><code class="language-sql">    aggressive_override_candidate_rows,
+    aggressive_override_routed_to_counteroffer_rows,
+    aggressive_override_routing_gap_rows,
+</code></pre>
+<p>Then add this to the readiness <code>CASE</code>:</p>
+<pre><code class="language-sql">         AND aggressive_override_routing_gap_rows = 0
+</code></pre>
+<p>Updated readiness excerpt:</p>
+<pre><code class="language-sql">    CASE
+        WHEN stage4_row_count &gt; 0
+         AND stage4_row_count = distinct_application_id_count
+         AND preliminary_routing_gap_rows = 0
+         AND preliminary_flag_reconciliation_gap_rows = 0
+         AND counteroffer_feasibility_flag_gap_rows = 0
+         AND counteroffer_feasibility_false_gap_rows = 0
+         AND approved_exposure_calc_true_gap_rows = 0
+         AND approved_exposure_calc_false_gap_rows = 0
+         AND aggressive_override_routing_gap_rows = 0
+            THEN &#39;SECTION_7_PRELIMINARY_ROUTING_READY_FOR_EXPOSURE_TREATMENT&#39;
+        ELSE &#39;REVIEW_SECTION_7_PRELIMINARY_ROUTING_BEFORE_EXPOSURE_TREATMENT&#39;
+    END AS section_7_preliminary_routing_status
+</code></pre>
+<p>This makes the compact summary reflect the new Option C behavior.</p>
+<hr>
+<h1>6. Header / comments assessment</h1>
+<p>The Section 7 header is very strong. It clearly preserves the distinction between:</p>
+<pre><code class="language-text">preliminary_decision_outcome
+final decision_outcome
+counteroffer feasibility
+approved exposure
+reason-code assignment
+</code></pre>
+<p>The Option C narrative is also right. It says Section 7 should not inspect <code>strategy_name</code> directly and should instead trust Section 6’s route-driving evidence. fileciteturn196file9</p>
+<p>I would only add one small phrase to the Option C note:</p>
+<h2>Tiny header polish</h2>
+<h3>Current idea</h3>
+<pre><code class="language-text">Section 7 should route based on counteroffer_candidate_flag.
+</code></pre>
+<h3>Recommended wording</h3>
+<pre><code class="language-sql">    Section 7 should route based on counteroffer_candidate_flag, after higher-priority no-offer
+    routes have been evaluated.
+</code></pre>
+<p>That mirrors the actual hierarchy:</p>
+<pre><code class="language-text">hard policy stop
+severe synthetic risk
+severe DTI
+counteroffer candidate
+</code></pre>
+<p>This is not a blocker.</p>
+<hr>
+<h1>7. Next section needing updates: Section 8</h1>
+<p>After fixing Section 7, the next section that needs logic/header/comment review is:</p>
+<pre><code class="language-text">SECTION 8 — APPROVED EXPOSURE AND COUNTEROFFER FEASIBILITY LAYER
+</code></pre>
+<h2>Why Section 8 is next</h2>
+<p>Option C aggressive expansion creates additional preliminary <code>COUNTEROFFER</code> routes. Section 8 is where those rows either become:</p>
+<pre><code class="language-text">feasible reduced-exposure treatments
+</code></pre>
+<p>or</p>
+<pre><code class="language-text">failed counteroffer feasibility cases
+</code></pre>
+<p>The prior Section 8 logic likely does not need a core algorithm rewrite because all preliminary <code>COUNTEROFFER</code> rows should use the same feasibility framework. But the headers, diagnostics, and local gatekeepers should be updated so the aggressive expansion strategy is visibly evaluated.</p>
+<h2>Section 8 updates I expect</h2>
+<p>Section 8 should add:</p>
+<pre><code class="language-text">1. Option C feasibility commentary:
+   aggressive expansion routes more rows to feasibility testing but does not bypass feasibility.
+
+2. A diagnostic showing aggressive override pass/fail:
+   aggressive override rows,
+   aggressive override feasible rows,
+   aggressive override failed rows,
+   failure reason distribution,
+   average exposure reduction,
+   average approved PTI,
+   average approved Expected Loss.
+
+3. A gatekeeper confirming aggressive override preliminary COUNTEROFFER rows were evaluated:
+   counteroffer_feasibility_evaluated_flag = TRUE
+   counteroffer_feasibility_pass_flag IS NOT NULL
+
+4. Optional readiness summary fields:
+   aggressive_override_feasibility_pass_rows
+   aggressive_override_feasibility_fail_rows
+   aggressive_override_feasibility_gap_rows
+</code></pre>
+<p>No final <code>decision_outcome</code> should be created in Section 8.</p>
+<hr>
+<h1>Final recommendation</h1>
+<p>Make these Section 7 changes before moving on:</p>
+<pre><code class="language-text">1. Move the aggressive override routing gatekeeper out of Section 7.0 and into the post-build Section 7 gatekeeper.
+2. Add Option C fields to the Section 7.0 required-trigger null check.
+3. Add aggressive override routing metrics to the compact readiness summary.
+4. Optionally polish the Option C header wording to say “after higher-priority no-offer routes.”
+</code></pre>
+<p>After that, Section 7 is ready, and Section 8 is the next section to update.</p>
+</div></article><article id="c034-m00992" class="message user"><div class="role">Andrew</div><p class="meta">C034-M00992 · 2026-05-15T15:25:45.209000-04:00 · active path</p><div class="body"><p>review section 7 logic/headers/comments one final time following changes.  then move on to reviewing section 8 for potential logic/headers/comments changes (see current code attached).</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(192).txt</code>, <code>Pasted text (2)(5).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c034-m00995" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C034-M00995 · 2026-05-15T15:31:53.615249-04:00 · active path</p><div class="body"><p>According to a document from <strong>2026-05-15</strong>, Section 7 is now <strong>accepted</strong>. I do not see a remaining Section 7 blocker. The latest Section 7 version now has the correct Option C routing posture: aggressive override candidates are surfaced in diagnostics, aggressive override routing gaps are included in the readiness summary, and the end-of-section summary confirms that <code>counteroffer_candidate_flag</code> routes to preliminary <code>COUNTEROFFER</code> when no higher-priority decline route applies. fileciteturn200file0</p>
+<p>Section 8 is the next section that needs Option C alignment work. I do <strong>not</strong> recommend changing the core counteroffer feasibility algorithm. I recommend updating Section 8 headers/comments, adding a targeted Option C feasibility gatekeeper, and adding Option C diagnostics/readiness fields.</p>
+<hr>
+<h1>1. Section 7 final review</h1>
+<h2>Verdict</h2>
+<pre><code class="language-text">Section 7 logic: ready
+Section 7 headers/comments: ready
+Section 7 gatekeepers: ready
+Section 7 diagnostics: ready
+Remaining blockers: none found
+Next section requiring updates: Section 8
+</code></pre>
+<p>The important Section 7 architecture is now correct:</p>
+<pre><code class="language-text">hard simulated policy stop
+→ severe synthetic estimated-risk
+→ severe DTI
+→ counteroffer feasibility-check route
+→ severe requested-structure review
+→ manual review candidate
+→ clean approval candidate
+→ residual review
+</code></pre>
+<p>That ordering is exactly what Option C needs. The aggressive strategy does not bypass higher-priority stop logic, but when Section 6 creates <code>aggressive_counteroffer_requested_structure_override_flag = TRUE</code>, Section 7 now routes that row into preliminary <code>COUNTEROFFER</code> so Section 8 can test feasibility. The latest Section 7 readiness summary also includes <code>aggressive_override_routing_gap_rows</code>, and the readiness status requires that value to be zero. fileciteturn200file6</p>
+<p>The local Option C diagnostic is also in the right place. It reports ordinary counteroffer candidates, aggressive override candidates, total counteroffer candidates, aggressive override rows that routed to preliminary <code>COUNTEROFFER</code>, and aggressive override rows that did not. That is exactly the evidence we need before Section 8 feasibility testing. fileciteturn200file12</p>
+<p>No further Section 7 logic changes are needed.</p>
+<hr>
+<h1>2. Section 8 review</h1>
+<h2>Current Section 8 assessment</h2>
+<p>Section 8 is already structurally correct. It consumes <code>tmp_m2_stage_4_preliminary_decision_routing</code>, creates <code>tmp_m2_stage_5_exposure_treatment</code>, calculates preliminary approved exposure, approved payment, approved PTI, approved Expected Loss, and counteroffer feasibility diagnostics, while still avoiding final decision fields and reason-code fields. fileciteturn200file14</p>
+<p>The current Section 8 also already has the correct treatment-status structure:</p>
+<pre><code class="language-text">APPROVED_AS_REQUESTED_PRELIMINARY
+NO_OFFER_PRELIMINARY_DECLINE
+UNRESOLVED_MANUAL_REVIEW
+COUNTEROFFER_FEASIBLE_PRELIMINARY
+COUNTEROFFER_NOT_FEASIBLE_PRELIMINARY
+</code></pre>
+<p>and matching <code>exposure_treatment_path</code> values such as <code>COUNTEROFFER_FEASIBLE</code> and <code>COUNTEROFFER_NOT_FEASIBLE</code>. fileciteturn200file11</p>
+<p>The core feasibility math should stay the same. Option C should not create a special aggressive feasibility formula. The whole point is:</p>
+<pre><code class="language-text">Selective strategy:
+    fewer rows enter counteroffer feasibility testing
+
+Aggressive strategy:
+    more rows enter counteroffer feasibility testing
+
+Both strategies:
+    use the same governed Section 8 feasibility framework
+</code></pre>
+<p>That keeps the comparison clean and analytically defensible.</p>
+<hr>
+<h1>3. Section 8 changes recommended</h1>
+<h2>Summary</h2>
+<pre><code class="language-text">Section 8 core feasibility math: no change
+Section 8 headers/comments: update
+Section 8 preflight: update
+Section 8 gatekeepers: add Option C check
+Section 8 diagnostics: add Option C feasibility diagnostics
+Section 8 readiness summary: add aggressive override feasibility fields
+</code></pre>
+<hr>
+<h1>Change 1 — Update Section 8 header with Option C boundary</h1>
+<h2>Add this block after “WHY PRELIMINARY COUNTEROFFER DOES NOT GUARANTEE A VIABLE COUNTEROFFER”</h2>
+<pre><code class="language-sql">OPTION C COUNTEROFFER STRATEGY SPLIT FEASIBILITY NOTE:
+    Section 8 does not branch directly on strategy_name.
+
+    The selective-versus-aggressive counteroffer posture was resolved upstream:
+
+        Section 2:
+            creates Option C strategy controls.
+
+        Section 3:
+            validates those controls.
+
+        Section 6:
+            converts those controls into counteroffer trigger evidence.
+
+        Section 7:
+            routes counteroffer candidates into preliminary COUNTEROFFER.
+
+    Section 8 receives preliminary COUNTEROFFER rows and applies the same governed feasibility
+    framework to all of them.
+
+    This means:
+
+        SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+            tests ordinary governed counteroffer candidates.
+
+        AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+            tests ordinary candidates plus governed aggressive requested-structure override
+            candidates.
+
+    Important:
+        Aggressive expansion does not bypass feasibility.
+
+        Aggressive override rows must still satisfy:
+            product maximum approved amount,
+            product minimum approved amount,
+            minimum counteroffer percent,
+            maximum exposure reduction,
+            approved PTI target,
+            approved Expected Loss cap,
+            and product rounding rules.
+
+    Interpretation:
+        If aggressive override rows fail feasibility, that is not a Section 8 error.
+
+        It means the aggressive strategy intentionally sent more severe requested-structure rows
+        into feasibility testing, and Section 8 determined which of those rows could support a
+        governed reduced-exposure treatment.
+</code></pre>
+<p>This locks the most important Option C interpretation: Section 8 does not make the aggressive strategy “easier”; it only tests the additional rows that Section 6/7 routed into feasibility.</p>
+<hr>
+<h1>Change 2 — Update Section 8 SQL purpose list</h1>
+<h2>Before</h2>
+<pre><code class="language-sql">    5. Evaluate reduced-exposure counteroffer feasibility for preliminary COUNTEROFFER rows.
+</code></pre>
+<h2>After</h2>
+<pre><code class="language-sql">    5. Evaluate reduced-exposure counteroffer feasibility for preliminary COUNTEROFFER rows,
+       including ordinary counteroffer candidates and Option C aggressive override candidates.
+</code></pre>
+<h2>Also add this after current item 9</h2>
+<pre><code class="language-sql">    10. Validate that Option C aggressive override preliminary COUNTEROFFER rows were evaluated
+        through the same counteroffer feasibility framework.
+</code></pre>
+<p>Then renumber the existing final-decision/reason-code boundary item if desired.</p>
+<hr>
+<h1>Change 3 — Update Section 8.0 preflight required fields</h1>
+<p>Section 8.0 should confirm that the Option C fields coming from Section 7 are present before exposure treatment starts.</p>
+<h2>Add these fields to the Section 8.0 required-input gap check</h2>
+<p>Add near the existing preliminary routing field checks:</p>
+<pre><code class="language-sql">       OR counteroffer_strategy_variant IS NULL
+       OR aggressive_counteroffer_expansion_enabled IS NULL
+       OR ordinary_counteroffer_candidate_flag IS NULL
+       OR aggressive_counteroffer_requested_structure_override_flag IS NULL
+</code></pre>
+<h2>Add this comment above those fields</h2>
+<pre><code class="language-sql">       /*
+       Option C counteroffer feasibility inputs.
+
+       Section 8 does not decide selective versus aggressive strategy posture.
+       It consumes the routing evidence created upstream.
+
+       These fields allow Section 8 diagnostics to distinguish:
+           ordinary counteroffer candidates
+           from aggressive requested-structure override candidates.
+       */
+</code></pre>
+<p>This is not changing feasibility behavior. It is making Section 8 fail clearly if the required Option C evidence is missing.</p>
+<hr>
+<h1>Change 4 — Add an Option C post-build gatekeeper in Section 8.3</h1>
+<p>The current Section 8.3 gatekeepers validate row count, grain, exposure-treatment completeness, route conventions, counteroffer pass/fail conventions, and absence of final fields. That is strong. fileciteturn200file11</p>
+<p>Add a specific gatekeeper confirming that aggressive override rows routed to preliminary <code>COUNTEROFFER</code> were evaluated by the counteroffer feasibility framework.</p>
+<h2>Add this variable to the Section 8.3 <code>DECLARE</code> block</h2>
+<pre><code class="language-sql">    v_aggressive_override_feasibility_gap_count BIGINT;
+</code></pre>
+<h2>Add this gatekeeper after the general preliminary COUNTEROFFER route evaluation check</h2>
+<pre><code class="language-sql">    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Option C aggressive override preliminary COUNTEROFFER rows must be feasibility-tested.
+
+    Business interpretation:
+        Section 7 routes aggressive counteroffer override rows to preliminary COUNTEROFFER so that
+        Section 8 can test whether the aggressive expansion posture can support a governed
+        reduced-exposure treatment.
+
+        Therefore, every aggressive override row that reaches preliminary COUNTEROFFER must have:
+            counteroffer_feasibility_evaluated_flag = TRUE
+            counteroffer_feasibility_pass_flag populated
+
+    Boundary:
+        This check does not require aggressive override rows to pass feasibility.
+
+        It requires only that they were evaluated.
+
+        Feasibility pass / fail is the evidence Section 9 will later use for final decision
+        resolution.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_aggressive_override_feasibility_gap_count
+    FROM tmp_m2_stage_5_exposure_treatment
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+      AND (
+            counteroffer_feasibility_evaluated_flag IS DISTINCT FROM TRUE
+         OR counteroffer_feasibility_pass_flag IS NULL
+      );
+
+    IF v_aggressive_override_feasibility_gap_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 8 failure: % aggressive counteroffer override row(s) reached preliminary COUNTEROFFER but were not feasibility-tested.&#39;,
+            v_aggressive_override_feasibility_gap_count;
+    END IF;
+</code></pre>
+<p>This is the key Section 8 logic hardening. It does not change calculations; it proves the new Option C aggressive route is actually evaluated.</p>
+<hr>
+<h1>Change 5 — Add Option C fields to the Section 8 readiness summary</h1>
+<p>The current Section 8 readiness summary includes exposure treatment gaps, counteroffer feasibility gaps, route-level convention gaps, and counts for preliminary approve/counteroffer/manual review/decline rows. fileciteturn200file15</p>
+<p>Add these fields to the <code>exposure_treatment_summary</code> CTE.</p>
+<pre><code class="language-sql">        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+        ) AS aggressive_override_candidate_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+        ) AS aggressive_override_preliminary_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+              AND counteroffer_feasibility_evaluated_flag IS TRUE
+        ) AS aggressive_override_feasibility_evaluated_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+              AND counteroffer_feasibility_pass_flag IS TRUE
+        ) AS aggressive_override_feasible_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+              AND counteroffer_feasibility_pass_flag IS FALSE
+        ) AS aggressive_override_failed_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+              AND (
+                    counteroffer_feasibility_evaluated_flag IS DISTINCT FROM TRUE
+                 OR counteroffer_feasibility_pass_flag IS NULL
+              )
+        ) AS aggressive_override_feasibility_gap_rows,
+</code></pre>
+<p>Add them to the final <code>SELECT</code>:</p>
+<pre><code class="language-sql">    aggressive_override_candidate_rows,
+    aggressive_override_preliminary_counteroffer_rows,
+    aggressive_override_feasibility_evaluated_rows,
+    aggressive_override_feasible_counteroffer_rows,
+    aggressive_override_failed_counteroffer_rows,
+    aggressive_override_feasibility_gap_rows,
+</code></pre>
+<p>Add this to the readiness <code>CASE</code>:</p>
+<pre><code class="language-sql">         AND aggressive_override_feasibility_gap_rows = 0
+</code></pre>
+<h2>Updated readiness condition excerpt</h2>
+<pre><code class="language-sql">    CASE
+        WHEN stage5_row_count &gt; 0
+         AND stage5_row_count = distinct_application_id_count
+         AND exposure_treatment_gap_rows = 0
+         AND counteroffer_feasibility_gap_rows = 0
+         AND approve_amount_convention_gap_rows = 0
+         AND decline_zero_exposure_convention_gap_rows = 0
+         AND manual_review_unresolved_convention_gap_rows = 0
+         AND aggressive_override_feasibility_gap_rows = 0
+            THEN &#39;SECTION_8_EXPOSURE_TREATMENT_READY_FOR_FINAL_DECISION_RESOLUTION&#39;
+        ELSE &#39;REVIEW_SECTION_8_EXPOSURE_TREATMENT_BEFORE_FINAL_DECISION_RESOLUTION&#39;
+    END AS section_8_exposure_treatment_status
+</code></pre>
+<p>This gives the one-row readiness summary a direct Option C signal.</p>
+<hr>
+<h1>Change 6 — Add Section 8.4 Option C diagnostic</h1>
+<p>Add this after the existing counteroffer feasibility diagnostics, ideally after the product/failure-reason and constraint-count diagnostics. The existing Section 8 diagnostics already summarize feasible counteroffers by product, failure reasons, and constraint-count distributions. fileciteturn200file18</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+8.4.X Option C aggressive counteroffer override feasibility diagnostic.
+
+Purpose:
+    Show whether aggressive override rows are passing or failing Section 8 counteroffer feasibility.
+
+Why this matters:
+    AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY is designed to send more severe requested-structure
+    rows into feasibility testing.
+
+    This query shows whether those additional rows become feasible reduced-exposure treatments or
+    fail the governed feasibility framework.
+
+Interpretation:
+    A high failure rate is not automatically a defect.
+
+    It may mean the aggressive strategy is intentionally testing harder requested-structure cases
+    and Section 8 is correctly enforcing:
+        product cap,
+        product minimum,
+        minimum counteroffer percentage,
+        maximum exposure reduction,
+        approved PTI target,
+        and approved Expected Loss cap.
+
+Boundary:
+    This is a feasibility diagnostic only.
+
+    It is not final decision validation.
+    It is not reason-code validation.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+
+    product_type_policy_key,
+    score_band_policy_key,
+
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_failure_reason,
+
+    COUNT(*) AS aggressive_override_rows,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(counteroffer_raw_max_feasible_amount) AS avg_counteroffer_raw_max_feasible_amount,
+    AVG(counteroffer_min_viable_amount) AS avg_counteroffer_min_viable_amount,
+    AVG(counteroffer_rounded_amount) AS avg_counteroffer_rounded_amount,
+
+    AVG(approved_amount_preliminary) AS avg_approved_amount_preliminary,
+    AVG(exposure_reduction_pct_preliminary) AS avg_exposure_reduction_pct_preliminary,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio_preliminary) AS avg_approved_payment_to_income_ratio_preliminary,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount_preliminary) AS avg_approved_expected_loss_amount_preliminary,
+
+    AVG(counteroffer_feasibility_constraint_count) AS avg_counteroffer_feasibility_constraint_count
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+  AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+
+GROUP BY
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+    product_type_policy_key,
+    score_band_policy_key,
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_failure_reason
+
+ORDER BY
+    strategy_name,
+    product_type_policy_key,
+    score_band_policy_key,
+    counteroffer_feasibility_pass_flag DESC,
+    aggressive_override_rows DESC,
+    counteroffer_feasibility_failure_reason;
+</code></pre>
+<p>This is the main review query for the aggressive strategy.</p>
+<hr>
+<h1>Change 7 — Add a simpler aggregate Option C diagnostic</h1>
+<p>The prior query is detailed. I also recommend one simple aggregate view because it will be easier to use during campaign QA.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+8.4.X Option C aggressive counteroffer override feasibility rollup.
+
+Purpose:
+    Provide a compact rollup of aggressive override feasibility behavior.
+
+Expected:
+    SELECTIVE_FEASIBILITY should generally show zero aggressive override rows.
+
+    AGGRESSIVE_EXPANSION may show aggressive override rows, with those rows split between:
+        feasible reduced-exposure treatments
+        and failed feasibility cases.
+
+Boundary:
+    This is Section 8 exposure-treatment evidence only.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+    ) AS aggressive_override_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+    ) AS aggressive_override_preliminary_counteroffer_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    ) AS aggressive_override_feasible_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND counteroffer_feasibility_pass_flag IS FALSE
+    ) AS aggressive_override_failed_rows,
+
+    ROUND(
+        AVG(CASE WHEN aggressive_counteroffer_requested_structure_override_flag THEN 1 ELSE 0 END)::NUMERIC
+    ,4) AS pct_aggressive_override_rows,
+
+    ROUND(
+        AVG(CASE
+                WHEN aggressive_counteroffer_requested_structure_override_flag IS TRUE
+                 AND counteroffer_feasibility_pass_flag IS TRUE
+                    THEN 1
+                WHEN aggressive_counteroffer_requested_structure_override_flag IS TRUE
+                 AND counteroffer_feasibility_pass_flag IS FALSE
+                    THEN 0
+                ELSE NULL
+            END)::NUMERIC
+    ,4) AS aggressive_override_feasibility_pass_rate,
+
+    AVG(exposure_reduction_pct_preliminary) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    ) AS avg_exposure_reduction_pct_for_feasible_aggressive_override_rows,
+
+    AVG(approved_payment_to_income_ratio_preliminary) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    ) AS avg_approved_pti_for_feasible_aggressive_override_rows,
+
+    AVG(approved_expected_loss_amount_preliminary) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    ) AS avg_approved_el_for_feasible_aggressive_override_rows
+
+FROM tmp_m2_stage_5_exposure_treatment
+
+GROUP BY
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled
+
+ORDER BY
+    strategy_name;
+</code></pre>
+<p>This is likely the most useful Section 8 review output for the Option C campaign.</p>
+<hr>
+<h1>Change 8 — Update Section 8 end-of-section summary</h1>
+<p>Add these items to the “If execution reaches this point” list:</p>
+<pre><code class="language-sql">    29. Option C aggressive override preliminary COUNTEROFFER rows were feasibility-tested.
+    30. Aggressive override feasibility pass / fail behavior is visible in Section 8 diagnostics.
+</code></pre>
+<p>Add this to “Section 8 established”:</p>
+<pre><code class="language-sql">    Option C aggressive override feasibility evidence.
+</code></pre>
+<p>Add this boundary note near the end:</p>
+<pre><code class="language-sql">Option C note:
+    AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY may send more severe requested-structure rows into
+    Section 8 feasibility testing.
+
+    Section 8 does not automatically pass those rows.
+
+    It applies the same product cap, PTI, approved Expected Loss, minimum counteroffer, maximum
+    exposure-reduction, and rounding constraints used for all preliminary COUNTEROFFER rows.
+
+    This allows the campaign to distinguish:
+        increased feasibility testing
+        from actual feasible counteroffer expansion.
+</code></pre>
+<hr>
+<h1>Final Section 8 recommendation</h1>
+<p>Make these Section 8 changes:</p>
+<pre><code class="language-text">1. Add Option C feasibility boundary commentary.
+2. Update the SQL purpose list to mention ordinary + aggressive preliminary COUNTEROFFER rows.
+3. Add Option C fields to Section 8.0 required-input validation.
+4. Add a post-build gatekeeper proving aggressive override preliminary COUNTEROFFER rows were feasibility-tested.
+5. Add aggressive override fields to the Section 8 readiness summary.
+6. Add detailed and compact Option C feasibility diagnostics.
+7. Update the end-of-section summary.
+</code></pre>
+<p>No core feasibility math change is recommended.</p>
+<p>The key principle is:</p>
+<pre><code class="language-text">Section 7 increases the population sent to feasibility testing under AGGRESSIVE_EXPANSION.
+Section 8 applies the same feasibility discipline to those rows.
+Section 9 decides what to do with feasible or infeasible results.
+</code></pre>
+<p>After Section 8 is patched, the next section to review will be <strong>Section 9</strong>, because Section 9 will need to ensure failed aggressive expansion counteroffers still resolve through the governed <code>failed_counteroffer_resolution</code> convention rather than creating any hidden aggressive-strategy exception.</p>
+</div></article><article id="c034-m00997" class="message user"><div class="role">Andrew</div><p class="meta">C034-M00997 · 2026-05-15T15:49:43.741000-04:00 · active path</p><div class="body"><p>review section 8 logic/headers/comments one final time following changes.  review section 9 logic/headers/comments for potential needed changes (current section 9 attached).</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(193).txt</code>, <code>Pasted text (2)(6).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c034-m01002" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C034-M01002 · 2026-05-15T15:54:45.138740-04:00 · active path</p><div class="body"><p>According to a document from <strong>2026-05-15</strong>, Section 8 is now <strong>accepted</strong>. The latest Section 8 version has the Option C feasibility narrative, input validation for <code>counteroffer_strategy_variant</code>, <code>aggressive_counteroffer_expansion_enabled</code>, <code>ordinary_counteroffer_candidate_flag</code>, and <code>aggressive_counteroffer_requested_structure_override_flag</code>, a post-build gatekeeper proving aggressive override rows that reach preliminary <code>COUNTEROFFER</code> are feasibility-tested, and detailed / compact Option C feasibility diagnostics. fileciteturn202file6 fileciteturn204file0 fileciteturn204file4</p>
+<p>Section 9 is structurally strong and does <strong>not</strong> need a core final-decision algorithm change. It already resolves preliminary <code>COUNTEROFFER</code> rows using <code>counteroffer_feasibility_pass_flag</code> and the governed <code>failed_counteroffer_resolution</code> parameter, and it already validates that failed counteroffers resolve according to that parameter. fileciteturn205file8 fileciteturn205file2</p>
+<p>What Section 9 needs now is <strong>Option C narrative / validation alignment</strong>, not a rewrite.</p>
+<h1>Final verdict</h1>
+<pre><code class="language-text">Section 8 logic: accepted
+Section 8 headers/comments: accepted
+Section 8 remaining blockers: none found
+
+Section 9 core logic: keep
+Section 9 headers/comments: needs Option C alignment
+Section 9 gatekeepers: add targeted Option C final-resolution validation
+Section 9 diagnostics: add targeted Option C final-resolution diagnostics
+Next section after Section 9: Section 10
+</code></pre>
+<hr>
+<h1>Section 8 final assessment</h1>
+<p>Section 8 now does exactly what it should do under Option C:</p>
+<pre><code class="language-text">SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+    sends ordinary governed counteroffer candidates into feasibility testing.
+
+AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+    sends ordinary candidates plus governed aggressive requested-structure override candidates into feasibility testing.
+
+Section 8 applies the same feasibility framework to both.
+</code></pre>
+<p>That is the right design. It keeps the strategic contrast clean:</p>
+<pre><code class="language-text">Section 6/7 changes who reaches feasibility testing.
+Section 8 uses the same feasibility discipline for everyone.
+</code></pre>
+<p>The latest Section 8 also correctly preserves its boundary: it creates preliminary exposure-treatment economics and counteroffer feasibility evidence, but it does <strong>not</strong> create final <code>decision_outcome</code>, final flags, final approved-exposure fields, reason-code fields, latest-run output, or archive logic. fileciteturn203file3</p>
+<p>No further Section 8 changes are needed.</p>
+<hr>
+<h1>Section 9 recommended changes</h1>
+<h2>Change 1 — Add Option C final-resolution note to the Section 9 header</h2>
+<h3>Placement</h3>
+<p>Add this after:</p>
+<pre><code class="language-sql">WHY SECTION 8 EXPOSURE FEASIBILITY IS REQUIRED BEFORE FINAL COUNTEROFFER RESOLUTION:
+</code></pre>
+<p>or immediately after:</p>
+<pre><code class="language-sql">WHY FAILED COUNTEROFFERS USE A GOVERNED RESOLUTION PARAMETER:
+</code></pre>
+<h3>Add this block</h3>
+<pre><code class="language-sql">OPTION C COUNTEROFFER STRATEGY SPLIT FINAL-RESOLUTION NOTE:
+    Section 9 does not branch directly on strategy_name.
+
+    The selective-versus-aggressive counteroffer posture was resolved upstream:
+
+        Section 2:
+            creates Option C strategy controls.
+
+        Section 3:
+            validates those controls.
+
+        Section 6:
+            converts those controls into ordinary and aggressive counteroffer trigger evidence.
+
+        Section 7:
+            routes counteroffer candidates into preliminary COUNTEROFFER.
+
+        Section 8:
+            applies the same governed feasibility framework to ordinary and aggressive
+            counteroffer candidates.
+
+    Section 9 receives the result of that feasibility test.
+
+    This means:
+
+        Aggressive override rows that passed Section 8 feasibility
+            resolve to final COUNTEROFFER.
+
+        Aggressive override rows that failed Section 8 feasibility
+            resolve according to failed_counteroffer_resolution:
+                MANUAL_REVIEW
+                or
+                DECLINE
+
+    Important:
+        AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY does not receive a special final-resolution
+        shortcut.
+
+        It can increase the number of rows tested for counteroffer feasibility, but once those rows
+        reach Section 9, the final outcome is governed by the same pass / fail / resolution framework
+        used for all preliminary COUNTEROFFER rows.
+
+    Interpretation:
+        This preserves a clean strategy comparison:
+
+            Selective feasibility:
+                fewer severe requested-structure rows enter counteroffer feasibility testing.
+
+            Aggressive expansion:
+                more severe requested-structure rows enter counteroffer feasibility testing.
+
+            Both:
+                use the same Section 8 feasibility rules and the same Section 9 final-resolution
+                conventions.
+</code></pre>
+<p>This keeps the narrative aligned with Option C.</p>
+<hr>
+<h2>Change 2 — Add Option C fields to Section 9.0 required input validation</h2>
+<h3>Why</h3>
+<p>Section 9 preserves prior fields via <code>SELECT *</code>, and the latest Section 8 output should carry Option C evidence forward. Section 9 should fail clearly if those fields are missing before final decision resolution.</p>
+<h3>Placement</h3>
+<p>In Section 9.0, inside the required Stage 5 field gap check, add the Option C fields near the preliminary routing / counteroffer feasibility fields.</p>
+<h3>Add this to the <code>WHERE</code> clause</h3>
+<pre><code class="language-sql">       /*
+       Option C final-resolution inputs.
+
+       Section 9 does not decide selective versus aggressive posture.
+       It consumes the trigger, routing, and feasibility evidence created upstream.
+
+       These fields allow Section 9 diagnostics to distinguish:
+           ordinary counteroffer candidates
+           from aggressive requested-structure override candidates.
+       */
+       OR counteroffer_strategy_variant IS NULL
+       OR aggressive_counteroffer_expansion_enabled IS NULL
+       OR ordinary_counteroffer_candidate_flag IS NULL
+       OR aggressive_counteroffer_requested_structure_override_flag IS NULL
+</code></pre>
+<p>This is a safety check only. It does not change final-decision logic.</p>
+<hr>
+<h2>Change 3 — Add Option C final-resolution gatekeeper</h2>
+<h3>Why</h3>
+<p>Section 9 already has a generic failed-counteroffer resolution gatekeeper. That is good and should stay. It confirms failed preliminary <code>COUNTEROFFER</code> rows resolve to <code>MANUAL_REVIEW</code> or <code>DECLINE</code> according to <code>failed_counteroffer_resolution</code>. fileciteturn205file2</p>
+<p>Now add a targeted Option C gatekeeper so the new aggressive override population is explicitly validated.</p>
+<h3>Add this variable to Section 9.3 <code>DECLARE</code></h3>
+<pre><code class="language-sql">    v_aggressive_override_final_resolution_gap_count BIGINT;
+</code></pre>
+<h3>Placement</h3>
+<p>Add the following after the existing failed-counteroffer resolution gatekeeper and before the forbidden reason-code field check.</p>
+<pre><code class="language-sql">    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Option C aggressive override rows must resolve through standard final-decision rules.
+
+    Business interpretation:
+        AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY may route more severe requested-structure rows
+        into counteroffer feasibility testing.
+
+        Section 9 should not create a special aggressive-strategy final outcome shortcut.
+
+        Expected behavior:
+            - if the aggressive override row passed Section 8 feasibility,
+              it should resolve to final COUNTEROFFER.
+
+            - if the aggressive override row failed Section 8 feasibility and
+              failed_counteroffer_resolution = MANUAL_REVIEW,
+              it should resolve to final MANUAL_REVIEW.
+
+            - if the aggressive override row failed Section 8 feasibility and
+              failed_counteroffer_resolution = DECLINE,
+              it should resolve to final DECLINE.
+
+    Boundary:
+        This validates final outcome routing only.
+
+        It does not assign reason codes.
+        It does not validate latest-run output.
+        It does not validate archive persistence.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_aggressive_override_final_resolution_gap_count
+    FROM tmp_m2_stage_6_final_decision_resolution
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+      AND (
+            (
+                counteroffer_feasibility_pass_flag IS TRUE
+                AND NOT (
+                    decision_outcome = &#39;COUNTEROFFER&#39;
+                    AND decision_path = &#39;COUNTEROFFER_FEASIBLE&#39;
+                    AND decision_resolution_source = &#39;COUNTEROFFER_FEASIBILITY_PASSED&#39;
+                    AND counteroffer_flag IS TRUE
+                    AND simulated_offer_exposure_flag IS TRUE
+                )
+            )
+         OR (
+                counteroffer_feasibility_pass_flag IS FALSE
+                AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                AND NOT (
+                    decision_outcome = &#39;MANUAL_REVIEW&#39;
+                    AND decision_path = &#39;COUNTEROFFER_NOT_FEASIBLE_REVIEW&#39;
+                    AND decision_resolution_source = &#39;COUNTEROFFER_FEASIBILITY_FAILED_TO_REVIEW&#39;
+                    AND manual_review_flag IS TRUE
+                    AND simulated_offer_exposure_flag IS FALSE
+                )
+            )
+         OR (
+                counteroffer_feasibility_pass_flag IS FALSE
+                AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+                AND NOT (
+                    decision_outcome = &#39;DECLINE&#39;
+                    AND decision_path = &#39;COUNTEROFFER_NOT_FEASIBLE_DECLINE&#39;
+                    AND decision_resolution_source = &#39;COUNTEROFFER_FEASIBILITY_FAILED_TO_DECLINE&#39;
+                    AND decline_flag IS TRUE
+                    AND simulated_offer_exposure_flag IS FALSE
+                )
+            )
+         OR counteroffer_feasibility_pass_flag IS NULL
+      );
+
+    IF v_aggressive_override_final_resolution_gap_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: % aggressive counteroffer override row(s) did not resolve through standard final-decision rules.&#39;,
+            v_aggressive_override_final_resolution_gap_count;
+    END IF;
+</code></pre>
+<p>This protects the Option C story without changing core logic.</p>
+<hr>
+<h2>Change 4 — Add Option C fields to the compact readiness summary</h2>
+<h3>Placement</h3>
+<p>In Section 9.4’s compact readiness summary CTE, add these fields.</p>
+<h3>Add to <code>final_resolution_summary</code></h3>
+<pre><code class="language-sql">        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+        ) AS aggressive_override_candidate_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+        ) AS aggressive_override_preliminary_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND counteroffer_feasibility_pass_flag IS TRUE
+              AND decision_outcome = &#39;COUNTEROFFER&#39;
+        ) AS aggressive_override_final_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND counteroffer_feasibility_pass_flag IS FALSE
+              AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+              AND decision_outcome = &#39;MANUAL_REVIEW&#39;
+        ) AS aggressive_override_failed_to_manual_review_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND counteroffer_feasibility_pass_flag IS FALSE
+              AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+              AND decision_outcome = &#39;DECLINE&#39;
+        ) AS aggressive_override_failed_to_decline_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+              AND (
+                    (
+                        counteroffer_feasibility_pass_flag IS TRUE
+                        AND decision_outcome &lt;&gt; &#39;COUNTEROFFER&#39;
+                    )
+                 OR (
+                        counteroffer_feasibility_pass_flag IS FALSE
+                        AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                        AND decision_outcome &lt;&gt; &#39;MANUAL_REVIEW&#39;
+                    )
+                 OR (
+                        counteroffer_feasibility_pass_flag IS FALSE
+                        AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+                        AND decision_outcome &lt;&gt; &#39;DECLINE&#39;
+                    )
+                 OR counteroffer_feasibility_pass_flag IS NULL
+              )
+        ) AS aggressive_override_final_resolution_gap_rows,
+</code></pre>
+<h3>Add these to the final <code>SELECT</code></h3>
+<pre><code class="language-sql">    aggressive_override_candidate_rows,
+    aggressive_override_preliminary_counteroffer_rows,
+    aggressive_override_final_counteroffer_rows,
+    aggressive_override_failed_to_manual_review_rows,
+    aggressive_override_failed_to_decline_rows,
+    aggressive_override_final_resolution_gap_rows,
+</code></pre>
+<h3>Add this to the readiness <code>CASE</code></h3>
+<pre><code class="language-sql">         AND aggressive_override_final_resolution_gap_rows = 0
+</code></pre>
+<h3>Updated readiness condition excerpt</h3>
+<pre><code class="language-sql">    CASE
+        WHEN stage6_row_count &gt; 0
+         AND stage6_row_count = distinct_application_id_count
+         AND final_decision_gap_rows = 0
+         AND final_flag_reconciliation_gap_rows = 0
+         AND simulated_offer_exposure_flag_gap_rows = 0
+         AND approve_amount_convention_gap_rows = 0
+         AND counteroffer_convention_gap_rows = 0
+         AND manual_review_unresolved_convention_gap_rows = 0
+         AND decline_zero_exposure_convention_gap_rows = 0
+         AND failed_counteroffer_to_review_gap_rows = 0
+         AND failed_counteroffer_to_decline_gap_rows = 0
+         AND aggressive_override_final_resolution_gap_rows = 0
+            THEN &#39;SECTION_9_FINAL_DECISION_RESOLUTION_READY_FOR_REASON_CODE_ASSIGNMENT&#39;
+        ELSE &#39;REVIEW_SECTION_9_FINAL_DECISION_RESOLUTION_BEFORE_REASON_CODE_ASSIGNMENT&#39;
+    END AS section_9_final_decision_resolution_status
+</code></pre>
+<p>This makes the one-row Section 9 readiness summary reflect Option C.</p>
+<hr>
+<h2>Change 5 — Add Section 9.4 Option C final-resolution diagnostic</h2>
+<h3>Placement</h3>
+<p>Add this after the existing failed-counteroffer resolution diagnostic, or near the <code>Counteroffer feasibility pass flag × final decision outcome</code> diagnostic.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+9.4.X Option C aggressive counteroffer override final-resolution diagnostic.
+
+Purpose:
+    Show how aggressive override rows resolved after Section 8 feasibility testing.
+
+Why this matters:
+    AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY may send more severe requested-structure rows into
+    counteroffer feasibility testing.
+
+    Section 9 determines whether those rows became:
+        final COUNTEROFFER,
+        final MANUAL_REVIEW,
+        or final DECLINE.
+
+Interpretation:
+    Feasible aggressive override rows should resolve to final COUNTEROFFER.
+
+    Infeasible aggressive override rows should resolve according to failed_counteroffer_resolution.
+
+Boundary:
+    This is final decision-resolution evidence only.
+
+    It is not simulated reason-code validation.
+    It is not latest-run output validation.
+    It is not archive validation.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+
+    failed_counteroffer_resolution,
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_failure_reason,
+
+    decision_outcome,
+    decision_path,
+    decision_resolution_source,
+
+    COUNT(*) AS aggressive_override_rows,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount) AS avg_approved_amount,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) AS avg_approved_payment_to_income_ratio,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount) AS avg_approved_expected_loss_amount,
+
+    AVG(exposure_reduction_pct) AS avg_exposure_reduction_pct
+
+FROM tmp_m2_stage_6_final_decision_resolution
+
+WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+  AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+
+GROUP BY
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+    failed_counteroffer_resolution,
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_failure_reason,
+    decision_outcome,
+    decision_path,
+    decision_resolution_source
+
+ORDER BY
+    strategy_name,
+    counteroffer_feasibility_pass_flag DESC,
+    decision_outcome,
+    aggressive_override_rows DESC,
+    counteroffer_feasibility_failure_reason;
+</code></pre>
+<p>This will be very useful after the new aggressive runs.</p>
+<hr>
+<h2>Change 6 — Add a compact Option C final-resolution rollup</h2>
+<p>The detailed diagnostic above is useful for root-cause analysis. This compact version is better for quick campaign review.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+9.4.X Option C aggressive counteroffer override final-resolution rollup.
+
+Purpose:
+    Provide a compact summary of how aggressive override rows resolved.
+
+Expected:
+    SELECTIVE_FEASIBILITY should generally show zero aggressive override rows.
+
+    AGGRESSIVE_EXPANSION may show aggressive override rows split between:
+        final COUNTEROFFER,
+        final MANUAL_REVIEW,
+        and possibly final DECLINE if failed_counteroffer_resolution = DECLINE.
+
+Boundary:
+    This is Section 9 final-resolution evidence only.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+    ) AS aggressive_override_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND counteroffer_feasibility_pass_flag IS TRUE
+    ) AS aggressive_override_feasible_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND counteroffer_feasibility_pass_flag IS FALSE
+    ) AS aggressive_override_failed_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;COUNTEROFFER&#39;
+    ) AS aggressive_override_final_counteroffer_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;MANUAL_REVIEW&#39;
+    ) AS aggressive_override_final_manual_review_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;DECLINE&#39;
+    ) AS aggressive_override_final_decline_rows,
+
+    ROUND(
+        AVG(CASE
+                WHEN aggressive_counteroffer_requested_structure_override_flag IS TRUE
+                 AND decision_outcome = &#39;COUNTEROFFER&#39;
+                    THEN 1
+                WHEN aggressive_counteroffer_requested_structure_override_flag IS TRUE
+                    THEN 0
+                ELSE NULL
+            END)::NUMERIC
+    ,4) AS aggressive_override_final_counteroffer_rate,
+
+    AVG(exposure_reduction_pct) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;COUNTEROFFER&#39;
+    ) AS avg_exposure_reduction_pct_for_aggressive_override_counteroffers,
+
+    AVG(approved_payment_to_income_ratio) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;COUNTEROFFER&#39;
+    ) AS avg_approved_pti_for_aggressive_override_counteroffers,
+
+    AVG(approved_expected_loss_amount) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;COUNTEROFFER&#39;
+    ) AS avg_approved_el_for_aggressive_override_counteroffers
+
+FROM tmp_m2_stage_6_final_decision_resolution
+
+GROUP BY
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled
+
+ORDER BY
+    strategy_name;
+</code></pre>
+<hr>
+<h2>Change 7 — Update Section 9 end-of-section summary</h2>
+<h3>Add to “If execution reaches this point”</h3>
+<pre><code class="language-sql">    26. Option C aggressive override final-resolution behavior was validated.
+    27. Aggressive override final COUNTEROFFER / MANUAL_REVIEW / DECLINE outcomes are visible in
+        Section 9 diagnostics.
+</code></pre>
+<h3>Add to “Section 9 established”</h3>
+<pre><code class="language-sql">    11. Option C aggressive override final-resolution evidence.
+</code></pre>
+<h3>Add boundary note</h3>
+<pre><code class="language-sql">Option C note:
+    AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY may create more preliminary COUNTEROFFER rows through
+    aggressive requested-structure override routing.
+
+    Section 9 does not give those rows a special final outcome.
+
+    It resolves them through the same final decision framework:
+        feasible counteroffer rows become final COUNTEROFFER;
+        infeasible counteroffer rows follow failed_counteroffer_resolution.
+
+    This preserves the distinction between:
+        increased counteroffer feasibility testing
+        and actual final counteroffer expansion.
+</code></pre>
+<hr>
+<h1>Why Section 9 does not need core logic changes</h1>
+<p>The current <code>decision_core</code> already has the correct generic rule:</p>
+<pre><code class="language-text">preliminary APPROVE → final APPROVE
+preliminary COUNTEROFFER + feasibility pass → final COUNTEROFFER
+preliminary COUNTEROFFER + feasibility fail + failed_counteroffer_resolution = MANUAL_REVIEW → final MANUAL_REVIEW
+preliminary COUNTEROFFER + feasibility fail + failed_counteroffer_resolution = DECLINE → final DECLINE
+preliminary MANUAL_REVIEW → final MANUAL_REVIEW
+preliminary DECLINE → final DECLINE
+</code></pre>
+<p>That is exactly what Option C should use. fileciteturn205file8</p>
+<p>Option C should <strong>not</strong> create a separate final outcome branch such as:</p>
+<pre><code class="language-sql">WHEN aggressive_counteroffer_requested_structure_override_flag THEN ...
+</code></pre>
+<p>That would weaken the architecture. The better design is:</p>
+<pre><code class="language-text">Section 6/7: affect who reaches counteroffer feasibility.
+Section 8: determines who passes feasibility.
+Section 9: resolves pass/fail using the same final convention.
+</code></pre>
+<hr>
+<h1>Final recommendation</h1>
+<p>Proceed as follows:</p>
+<pre><code class="language-text">1. Accept Section 8 as final for Option C.
+2. Patch Section 9 with Option C commentary, input validation, final-resolution gatekeeper, diagnostics, and readiness summary fields.
+3. Do not change Section 9 core decision_core logic.
+4. Move next to Section 10 after Section 9 is patched.
+</code></pre>
+<p>The next section after this will be <strong>Section 10</strong>, because reason-code assignment should explicitly distinguish:</p>
+<pre><code class="language-text">aggressive override final COUNTEROFFER
+aggressive override failed-to-review
+aggressive override failed-to-decline
+</code></pre>
+<p>without treating those codes as adverse-action or customer-notice logic.</p>
+</div></article><article id="c034-m01004" class="message user"><div class="role">Andrew</div><p class="meta">C034-M01004 · 2026-05-15T16:03:58.893000-04:00 · active path</p><div class="body"><p>review section 9 logic/headers/comments one final time following changes.  review section 10 logic/headers/comments for potential changes needed (current section 10 code attached).</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(194).txt</code>, <code>Pasted text (2)(7).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c034-m01013" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C034-M01013 · 2026-05-15T16:09:10.942667-04:00 · active path</p><div class="body"><p>According to a document from 2026-05-15, <strong>Section 9 is accepted</strong>. I do not see a remaining logic blocker in the updated Section 9. The final decision-resolution logic now correctly resolves preliminary routes plus Section 8 feasibility, uses <code>failed_counteroffer_resolution</code>, preserves the four-outcome taxonomy, validates final exposure conventions, and includes Option C aggressive override final-resolution checks and diagnostics. fileciteturn209file0 fileciteturn209file3</p>
+<p>Section 10 is structurally strong, but it should receive a targeted Option C update before we move to Section 11. The current Section 10 already uses the right candidate → deduplicate → rank → pivot pattern and has strong reason-code boundary language, but it does not yet explicitly explain or tag aggressive override outcomes. fileciteturn210file12 fileciteturn208file17</p>
+<h1>Final Section 9 review</h1>
+<h2>Verdict</h2>
+<pre><code class="language-text">Section 9 logic: accepted
+Section 9 headers/comments: accepted
+Section 9 gatekeepers: accepted
+Section 9 diagnostics: accepted
+Remaining blockers: none found
+Next section requiring updates: Section 10
+</code></pre>
+<p>The Section 9 <code>decision_core</code> uses the correct final-resolution pattern:</p>
+<pre><code class="language-text">preliminary APPROVE → final APPROVE
+preliminary COUNTEROFFER + feasibility passed → final COUNTEROFFER
+preliminary COUNTEROFFER + feasibility failed + failed_counteroffer_resolution = MANUAL_REVIEW → final MANUAL_REVIEW
+preliminary COUNTEROFFER + feasibility failed + failed_counteroffer_resolution = DECLINE → final DECLINE
+preliminary MANUAL_REVIEW → final MANUAL_REVIEW
+preliminary DECLINE → final DECLINE
+</code></pre>
+<p>The current code also uses <code>decision_resolution_source</code> labels such as:</p>
+<pre><code class="language-text">PRELIMINARY_APPROVE_ROUTE
+COUNTEROFFER_FEASIBILITY_PASSED
+COUNTEROFFER_FEASIBILITY_FAILED_TO_REVIEW
+COUNTEROFFER_FEASIBILITY_FAILED_TO_DECLINE
+PRELIMINARY_MANUAL_REVIEW_ROUTE
+PRELIMINARY_DECLINE_ROUTE
+FINAL_RESOLUTION_FALLBACK_TO_REVIEW
+</code></pre>
+<p>Those labels are coherent and should be used exactly by downstream Section 10 reason logic. fileciteturn209file0</p>
+<p>The Option C final-resolution gatekeeper is also correctly placed and correctly bounded. It checks that aggressive override rows that passed feasibility resolve to final <code>COUNTEROFFER</code>, and that failed aggressive override rows resolve according to <code>failed_counteroffer_resolution</code>. fileciteturn208file6</p>
+<p>No Section 9 code changes are needed.</p>
+<hr>
+<h1>Section 10 review</h1>
+<h2>Verdict</h2>
+<pre><code class="language-text">Section 10 core architecture: strong
+Section 10 candidate/rank/pivot logic: keep
+Section 10 reason-code boundary language: strong
+Section 10 Option C alignment: needs targeted patch
+Section 10 core rewrite needed: no
+</code></pre>
+<p>The current Section 10 candidate logic is already strong for normal reason-code assignment. It preserves Section 9 output, creates candidate reasons, deduplicates, ranks, pivots, and preserves the triggered reason list. fileciteturn210file12</p>
+<p>The current counteroffer reason candidates also already capture product cap, affordability, Expected Loss, synthetic-risk, multiple-constraint, and feasible reduced-exposure drivers. fileciteturn210file10</p>
+<p>The missing piece is Option C explanation visibility:</p>
+<pre><code class="language-text">AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+→ aggressive override row
+→ feasibility passed / failed
+→ final COUNTEROFFER / MANUAL_REVIEW / DECLINE
+→ reason-code layer should preserve that strategy-path explanation
+</code></pre>
+<p>Do not make Option C the primary reason ahead of product cap, affordability, Expected Loss, or hard policy-stop reasons. Option C is a <strong>routing posture</strong>, not the economic constraint itself. It should generally be a secondary or tertiary explanatory code unless no more specific reason exists.</p>
+<hr>
+<h1>Recommended Section 10 changes</h1>
+<h2>Change 1 — Add Option C note to Section 10 header</h2>
+<h3>Placement</h3>
+<p>Add this after the existing <code>COUNTEROFFER FEASIBILITY FAILURE BOUNDARY</code> block or after the <code>COUNTEROFFER REASON BOUNDARY</code> block.</p>
+<pre><code class="language-sql">OPTION C COUNTEROFFER STRATEGY SPLIT REASON-CODE NOTE:
+    Section 10 does not branch directly on strategy_name to assign final outcomes.
+
+    Final outcomes were already resolved in Section 9.
+
+    However, Section 10 should preserve whether a final COUNTEROFFER, MANUAL_REVIEW, or DECLINE row
+    was influenced by the Option C aggressive counteroffer expansion path.
+
+    The key field is:
+
+        aggressive_counteroffer_requested_structure_override_flag
+
+    Interpretation:
+        If this flag is TRUE, the row entered counteroffer feasibility testing because the active
+        strategy used the aggressive counteroffer expansion posture.
+
+    Reason-code boundary:
+        Option C reason codes are simulated strategy explanation codes only.
+
+        They explain the route by which the row entered feasibility testing.
+
+        They do not imply:
+            customer communication,
+            adverse-action logic,
+            regulatory notice logic,
+            production underwriting treatment,
+            booked exposure,
+            or real applicant treatment.
+
+    Priority principle:
+        Specific economic constraints should generally rank ahead of generic Option C path labels.
+
+        For example:
+            COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+            COUNTEROFFER_AFFORDABILITY_ADJUSTMENT
+            COUNTEROFFER_EXPECTED_LOSS_LIMIT
+
+        should normally rank ahead of:
+
+            COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE
+
+        because the former explain the constraint that shaped the reduced exposure, while the latter
+        explains how the row entered the feasibility path.
+</code></pre>
+<hr>
+<h2>Change 2 — Add Option C fields to Section 10.0 dependency preflight</h2>
+<h3>Placement</h3>
+<p>In the Section 10.0 required field gap check, add these fields near the final decision / counteroffer feasibility fields.</p>
+<pre><code class="language-sql">       /*
+       Option C reason-code inputs.
+
+       Section 10 uses these fields to preserve whether a final outcome was influenced by the
+       aggressive counteroffer expansion path.
+
+       They are explanation inputs only.
+
+       They do not change final decision_outcome.
+       They do not change approved exposure.
+       */
+       OR counteroffer_strategy_variant IS NULL
+       OR aggressive_counteroffer_expansion_enabled IS NULL
+       OR ordinary_counteroffer_candidate_flag IS NULL
+       OR aggressive_counteroffer_requested_structure_override_flag IS NULL
+</code></pre>
+<p>This makes Section 10 fail cleanly if a partial rerun skipped the updated Section 6–9 chain.</p>
+<hr>
+<h2>Change 3 — Add a COUNTEROFFER candidate for aggressive expansion path</h2>
+<h3>Placement</h3>
+<p>Add this after <code>COUNTEROFFER_ELEVATED_SYNTHETIC_RISK</code> and before <code>COUNTEROFFER_MULTIPLE_CONSTRAINTS</code>.</p>
+<p>This keeps product, affordability, Expected Loss, and risk drivers ranked ahead of the Option C path label.</p>
+<pre><code class="language-sql">    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE&#39;,
+        &#39;COUNTEROFFER&#39;,
+        585,
+        &#39;aggressive_counteroffer_requested_structure_override&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+      AND aggressive_counteroffer_requested_structure_override_flag IS TRUE
+</code></pre>
+<h2>Why rank 585</h2>
+<p>The current counteroffer range is 500–599. Existing key drivers use 500, 510, 520, and 530, while <code>COUNTEROFFER_MULTIPLE_CONSTRAINTS</code> is 590 and <code>COUNTEROFFER_FEASIBLE_REDUCED_EXPOSURE</code> is 599. fileciteturn210file10</p>
+<p>Rank 585 means:</p>
+<pre><code class="language-text">specific economic drivers still win;
+Option C path is preserved;
+generic multiple-constraint / fallback-style reasons remain lower priority.
+</code></pre>
+<hr>
+<h2>Change 4 — Add a MANUAL_REVIEW candidate for failed aggressive override</h2>
+<h3>Placement</h3>
+<p>Add this after <code>MANUAL_REVIEW_FAILED_COUNTEROFFER</code> and before <code>MANUAL_REVIEW_SEVERE_REQUESTED_STRUCTURE</code>.</p>
+<p>Current manual-review reasons start with <code>MANUAL_REVIEW_FAILED_COUNTEROFFER</code> at rank 300, then severe requested structure at 310, synthetic-risk review at 320, affordability review at 330, DTI review at 340, Expected Loss review at 350, mixed signal at 360, borderline at 370, high utilization at 380, low score at 385, and residual at 399. fileciteturn211file0 fileciteturn211file5</p>
+<pre><code class="language-sql">    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        305,
+        &#39;aggressive_override_counteroffer_failed_to_review&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+      AND counteroffer_feasibility_pass_flag IS FALSE
+      AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+</code></pre>
+<h2>Why rank 305</h2>
+<p>This keeps the generic failed-counteroffer reason at 300 as the primary when applicable, while preserving the aggressive-expansion path as the next diagnostic. It will help Section 17 / post-campaign QA distinguish:</p>
+<pre><code class="language-text">ordinary failed counteroffers routed to review
+vs
+aggressive expansion override rows routed to review after failing feasibility
+</code></pre>
+<hr>
+<h2>Change 5 — Add a POLICY_STOP candidate for failed aggressive override to decline</h2>
+<h3>Placement</h3>
+<p>Add this after <code>POLICY_STOP_FAILED_COUNTEROFFER</code> and before requested PTI / requested EL / exposure policy reasons.</p>
+<p>Current decline reasons include bankruptcy, major derogatory, severe delinquency, severe synthetic risk, severe DTI, failed counteroffer, requested PTI, requested EL, exposure policy, and no-offer fallback. fileciteturn210file2</p>
+<pre><code class="language-sql">    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE&#39;,
+        &#39;POLICY_STOP&#39;,
+        155,
+        &#39;aggressive_override_counteroffer_failed_to_decline&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+      AND counteroffer_feasibility_pass_flag IS FALSE
+      AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+</code></pre>
+<h2>Why rank 155</h2>
+<p>This keeps the generic failed-counteroffer policy-stop reason at 150 as the primary explanation, while preserving the aggressive-expansion path immediately after it.</p>
+<hr>
+<h2>Change 6 — Strengthen the requested PTI decline condition</h2>
+<h3>Current issue</h3>
+<p>Current Section 10 has:</p>
+<pre><code class="language-sql">POLICY_STOP_REQUESTED_PTI_SEVERE
+</code></pre>
+<p>driven by <code>requested_pti_decline_trigger_flag</code>. fileciteturn210file2</p>
+<p>That is acceptable. However, if a counteroffer fails because PTI still exceeds target and the strategy resolves the failed counteroffer to <code>DECLINE</code>, the PTI-specific reason may not fire unless <code>requested_pti_decline_trigger_flag</code> is also true.</p>
+<h3>Replace the condition</h3>
+<pre><code class="language-sql">WHERE decision_outcome = &#39;DECLINE&#39;
+  AND requested_pti_decline_trigger_flag IS TRUE
+</code></pre>
+<h3>With</h3>
+<pre><code class="language-sql">WHERE decision_outcome = &#39;DECLINE&#39;
+  AND (
+        requested_pti_decline_trigger_flag IS TRUE
+     OR (
+            preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+        AND counteroffer_feasibility_pass_flag IS FALSE
+        AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+        AND counteroffer_feasibility_failure_reason = &#39;COUNTEROFFER_PTI_STILL_ABOVE_TARGET&#39;
+     )
+  )
+</code></pre>
+<p>You can keep the existing reason code name <code>POLICY_STOP_REQUESTED_PTI_SEVERE</code>, or rename it to <code>POLICY_STOP_HIGH_REQUESTED_PTI</code>. I would <strong>not</strong> rename it right now unless we are prepared to update downstream QA names. The current label is acceptable and remains family-aligned.</p>
+<hr>
+<h2>Change 7 — Add Option C reason-code gatekeeper</h2>
+<h3>Add variable to Section 10.3 <code>DECLARE</code></h3>
+<pre><code class="language-sql">    v_option_c_reason_code_gap_count BIGINT;
+</code></pre>
+<h3>Add this gatekeeper after the outcome-family reason checks</h3>
+<pre><code class="language-sql">    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Option C aggressive override rows should retain path-specific explanation codes.
+
+    Business interpretation:
+        The aggressive counteroffer expansion path is a strategy-routing posture.
+
+        It should remain visible in triggered_reason_code_list so Section 11 latest-run output,
+        Section 13 matched comparison, Section 14 QA, and Section 17 campaign evidence can explain
+        how aggressive override rows behaved.
+
+    Expected:
+        Final COUNTEROFFER aggressive override rows should include:
+            COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE
+
+        Final MANUAL_REVIEW aggressive override rows that failed feasibility should include:
+            MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE
+
+        Final DECLINE aggressive override rows that failed feasibility should include:
+            POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE
+
+    Boundary:
+        This validates reason-code traceability only.
+
+        It does not change decision_outcome.
+        It does not change approved exposure.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_option_c_reason_code_gap_count
+    FROM tmp_m2_stage_7_reason_code_assignment
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND (
+            (
+                decision_outcome = &#39;COUNTEROFFER&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%&#39;
+            )
+         OR (
+                decision_outcome = &#39;MANUAL_REVIEW&#39;
+                AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+                AND counteroffer_feasibility_pass_flag IS FALSE
+                AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+            )
+         OR (
+                decision_outcome = &#39;DECLINE&#39;
+                AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+                AND counteroffer_feasibility_pass_flag IS FALSE
+                AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+            )
+      );
+
+    IF v_option_c_reason_code_gap_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: % aggressive counteroffer override row(s) are missing Option C path-specific reason-code evidence.&#39;,
+            v_option_c_reason_code_gap_count;
+    END IF;
+</code></pre>
+<p>This is the most important Section 10 logic patch for Option C.</p>
+<hr>
+<h2>Change 8 — Add Option C reason-code diagnostic</h2>
+<h3>Placement</h3>
+<p>Add this in Section 10.4 local sanity checks after the existing reason-code distribution summaries.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+10.4.X Option C aggressive counteroffer override reason-code diagnostic.
+
+Purpose:
+    Show how aggressive counteroffer override rows were explained after final decision resolution.
+
+Why this matters:
+    Option C splits counteroffer strategy into:
+        selective feasibility
+        and aggressive expansion.
+
+    This diagnostic confirms whether aggressive override rows are visible in the simulated reason-code
+    layer.
+
+Boundary:
+    These are simulated strategy explanation codes only.
+
+    They are not customer communications.
+    They are not adverse-action notices.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code,
+    secondary_reason_code,
+    tertiary_reason_code,
+
+    COUNT(*) AS aggressive_override_rows,
+
+    COUNT(*) FILTER (
+        WHERE triggered_reason_code_list LIKE &#39;%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%&#39;
+    ) AS rows_with_counteroffer_aggressive_override_reason,
+
+    COUNT(*) FILTER (
+        WHERE triggered_reason_code_list LIKE &#39;%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+    ) AS rows_with_manual_review_aggressive_failure_reason,
+
+    COUNT(*) FILTER (
+        WHERE triggered_reason_code_list LIKE &#39;%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+    ) AS rows_with_policy_stop_aggressive_failure_reason,
+
+    AVG(reason_code_count) AS avg_reason_code_count
+
+FROM tmp_m2_stage_7_reason_code_assignment
+WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+
+GROUP BY
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code,
+    secondary_reason_code,
+    tertiary_reason_code
+
+ORDER BY
+    strategy_name,
+    decision_outcome,
+    aggressive_override_rows DESC,
+    primary_reason_code;
+</code></pre>
+<hr>
+<h2>Change 9 — Add Option C counts to Section 10 readiness summary</h2>
+<p>If Section 10 has a compact readiness/status summary, add:</p>
+<pre><code class="language-sql">COUNT(*) FILTER (
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+) AS aggressive_override_rows,
+
+COUNT(*) FILTER (
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND triggered_reason_code_list LIKE &#39;%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%&#39;
+) AS aggressive_override_counteroffer_reason_rows,
+
+COUNT(*) FILTER (
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND triggered_reason_code_list LIKE &#39;%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+) AS aggressive_override_manual_review_reason_rows,
+
+COUNT(*) FILTER (
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND triggered_reason_code_list LIKE &#39;%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+) AS aggressive_override_decline_reason_rows
+</code></pre>
+<p>Then include a gap count:</p>
+<pre><code class="language-sql">COUNT(*) FILTER (
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND (
+            (
+                decision_outcome = &#39;COUNTEROFFER&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%&#39;
+            )
+         OR (
+                decision_outcome = &#39;MANUAL_REVIEW&#39;
+                AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+                AND counteroffer_feasibility_pass_flag IS FALSE
+                AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+            )
+         OR (
+                decision_outcome = &#39;DECLINE&#39;
+                AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+                AND counteroffer_feasibility_pass_flag IS FALSE
+                AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+            )
+      )
+) AS aggressive_override_reason_code_gap_rows
+</code></pre>
+<p>Add this to the readiness <code>CASE</code> if present:</p>
+<pre><code class="language-sql">AND aggressive_override_reason_code_gap_rows = 0
+</code></pre>
+<hr>
+<h2>Change 10 — Update Section 10 end-of-section summary</h2>
+<p>Add to “If execution reaches this point”:</p>
+<pre><code class="language-sql">    23. Option C aggressive override rows retain path-specific reason-code evidence where applicable.
+    24. Aggressive override reason-code diagnostics are available for review.
+</code></pre>
+<p>Add to “Section 10 established”:</p>
+<pre><code class="language-sql">    8. Option C aggressive override explanation-code evidence.
+</code></pre>
+<p>Add this boundary note:</p>
+<pre><code class="language-sql">Option C note:
+    AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY may create more rows that enter counteroffer
+    feasibility testing.
+
+    Section 10 does not reinterpret those rows as customer-facing reasons.
+
+    It only preserves whether the row’s final simulated outcome was influenced by the aggressive
+    counteroffer expansion path.
+
+    This allows later campaign QA to distinguish:
+        economic constraint drivers
+        from strategy-routing posture.
+</code></pre>
+<hr>
+<h1>Why I recommend these changes</h1>
+<p>Without these Section 10 patches, the new aggressive strategy can still work mathematically, but the reason-code layer may under-explain it.</p>
+<p>The issue is not final decision correctness. Sections 7, 8, and 9 already handle routing, feasibility, and final resolution. Section 10’s job is to make the final outcome <strong>explainable</strong>.</p>
+<p>After Option C, we need to preserve both:</p>
+<pre><code class="language-text">What economic constraint shaped the outcome?
+</code></pre>
+<p>and:</p>
+<pre><code class="language-text">Did the row reach that path through ordinary candidacy or aggressive expansion override?
+</code></pre>
+<p>The proposed changes do that without changing final outcomes or approved exposure.</p>
+<hr>
+<h1>Final recommendation</h1>
+<p>Proceed as follows:</p>
+<pre><code class="language-text">1. Accept Section 9 as final.
+2. Patch Section 10 with Option C reason-code visibility.
+3. Do not change Section 10 candidate/rank/pivot architecture.
+4. Do not make Option C reason codes outrank product, affordability, Expected Loss, severe risk, or failed-counteroffer reasons.
+5. Move to Section 11 after Section 10 is patched.
+</code></pre>
+<p>Section 11 will need review next because it must carry the new Option C fields and the new Option C reason-code outputs into the permanent latest-run table.</p>
+</div></article><article id="c034-m01015" class="message user"><div class="role">Andrew</div><p class="meta">C034-M01015 · 2026-05-15T16:31:28.644000-04:00 · active path</p><div class="body"><p>review section 10 logic/headers/comments one final time following changes. review section 11 logic/headers/comments for potential needed changes (current section 11 code attached).</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(195).txt</code>, <code>Pasted text (2)(8).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c034-m01023" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C034-M01023 · 2026-05-15T16:36:08.130171-04:00 · active path</p><div class="body"><p>According to a document from <strong>2026-05-15</strong>, Section 10 is now <strong>accepted</strong>. Section 11 is directionally strong, but it needs a targeted Option C carry-forward patch before we move to Section 12.</p>
+<h2>Final Section 10 review</h2>
+<p>Section 10 now does what we need.</p>
+<p>It correctly keeps reason codes as <strong>simulated strategy explanation codes</strong>, not customer communications, regulatory notices, adverse-action notices, production compliance determinations, fair-lending conclusions, or real applicant explanations. It also now includes the Option C reason-code boundary: <code>aggressive_counteroffer_requested_structure_override_flag</code> explains how the row entered counteroffer feasibility testing, while specific economic constraints should still generally rank ahead of the generic aggressive-expansion path label. fileciteturn215file11</p>
+<p>The Option C reason-code logic is aligned:</p>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Option C path evidence</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Final <code>COUNTEROFFER</code></td>
+<td><code>COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE</code></td>
+</tr>
+<tr>
+<td>Final <code>MANUAL_REVIEW</code> after failed aggressive override</td>
+<td><code>MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE</code></td>
+</tr>
+<tr>
+<td>Final <code>DECLINE</code> after failed aggressive override</td>
+<td><code>POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE</code></td>
+</tr>
+</tbody></table>
+<p>The current Section 10 also includes a gatekeeper requiring aggressive override rows to retain path-specific explanation-code evidence in <code>triggered_reason_code_list</code>, which is exactly what we wanted for downstream Section 11 latest-run output, Section 13 matched comparison, Section 14 QA, and Section 17 campaign evidence. fileciteturn215file6</p>
+<p>I also like that the decline reason block keeps the generic failed-counteroffer policy-stop reason at rank 150, then adds the aggressive failed-counteroffer policy-stop reason at rank 155, followed by requested PTI and requested Expected Loss / exposure policy reasons. That preserves the correct priority discipline: economic and final-resolution reasons remain primary, while Option C path evidence remains traceable. fileciteturn215file7</p>
+<p>The Section 10 readiness summary now includes aggressive override counts and gap logic, including rows with aggressive override reason-code coverage. That closes the loop. fileciteturn215file13</p>
+<h3>Section 10 verdict</h3>
+<pre><code class="language-text">Section 10 logic: accepted
+Section 10 headers/comments: accepted
+Section 10 Option C reason-code visibility: accepted
+Section 10 blockers: none found
+Next section needing changes: Section 11
+</code></pre>
+<p>One note: the current <code>POLICY_STOP_REQUESTED_EL_SEVERE</code> label is acceptable. I would not rename it now unless we are prepared to update downstream Section 14 / 16 / 17 evidence labels. It is family-aligned, readable, and still distinguishes requested-exposure Expected Loss from approved-exposure Expected Loss through the underlying trigger.</p>
+<hr>
+<h1>Section 11 review</h1>
+<p>Section 11 is the right materialization layer: it consumes <code>tmp_m2_stage_7_reason_code_assignment</code>, creates <code>credit_decisioning_sim.strategy_decisions</code>, uses an explicit SELECT list, preserves final decision / exposure / reason-code fields, adds <code>latest_output_created_ts</code>, builds practical indexes, and validates latest-run output before archive persistence. fileciteturn213file1</p>
+<p>The issue is that Option C now creates new evidence fields that must survive into the permanent latest-run table. If Section 11 does not explicitly carry them, the latest-run output, archive, Section 13 comparison, Section 14 QA, Section 16 evidence capture, and Section 17 campaign diagnostics will lose the exact row-level signal that explains the selective vs aggressive counteroffer split.</p>
+<h2>Section 11 required changes</h2>
+<pre><code class="language-text">Section 11 core materialization logic: keep
+Section 11 explicit SELECT list: patch
+Section 11 preflight: patch
+Section 11 gatekeepers: patch
+Section 11 diagnostics: patch
+Section 11 indexes: patch recommended
+</code></pre>
+<hr>
+<h1>Change 1 — Add Option C note to Section 11 header</h1>
+<h2>Placement</h2>
+<p>Add this after the <code>SIMULATED REASON-CODE BOUNDARY</code> block or before <code>LATEST_OUTPUT_CREATED_TS BOUNDARY</code>.</p>
+<pre><code class="language-sql">OPTION C COUNTEROFFER STRATEGY SPLIT LATEST-RUN OUTPUT NOTE:
+    Section 11 must preserve the Option C counteroffer strategy split evidence created upstream.
+
+    The latest-run output should allow reviewers to distinguish:
+
+        SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+            ordinary governed counteroffer candidates only.
+
+        AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+            ordinary candidates plus governed aggressive requested-structure override candidates.
+
+    The key latest-run fields are:
+        counteroffer_strategy_variant
+        aggressive_counteroffer_expansion_enabled
+        severe_requested_structure_counteroffer_override_enabled
+        exposure_extreme_counteroffer_override_enabled
+        exposure_policy_stop_counteroffer_override_enabled
+        requested_pti_decline_counteroffer_override_enabled
+        requested_el_decline_counteroffer_override_enabled
+        ordinary_counteroffer_candidate_flag
+        aggressive_counteroffer_requested_structure_override_flag
+
+    Why this matters:
+        Section 11 is the permanent latest-run output surface.
+
+        If these fields are not carried into credit_decisioning_sim.strategy_decisions, downstream
+        archive persistence, matched comparison, QA, frontier analysis, and evidence capture cannot
+        explain whether a final COUNTEROFFER, MANUAL_REVIEW, or DECLINE came through the ordinary
+        counteroffer path or the aggressive expansion path.
+
+    Boundary:
+        These fields are strategy-simulation diagnostics.
+
+        They do not imply production underwriting rules, customer treatment, adverse-action logic,
+        booked exposure, or operational account creation.
+</code></pre>
+<hr>
+<h1>Change 2 — Update Section 11 SQL purpose list</h1>
+<h2>Before</h2>
+<pre><code class="language-sql">    8. Preserve strategy segmentation, rule-trigger, preliminary routing, exposure-treatment,
+       counteroffer feasibility, final decision, final exposure, and simulated reason-code fields.
+</code></pre>
+<h2>After</h2>
+<pre><code class="language-sql">    8. Preserve strategy segmentation, rule-trigger, Option C counteroffer split, preliminary routing,
+       exposure-treatment, counteroffer feasibility, final decision, final exposure, and simulated
+       reason-code fields.
+</code></pre>
+<p>Add one more item after the latest-run timestamp item:</p>
+<pre><code class="language-sql">    10. Preserve Option C ordinary / aggressive counteroffer path evidence for archive, comparison,
+        QA, frontier, and evidence-capture use.
+</code></pre>
+<p>Then renumber the remaining SQL purpose items if desired.</p>
+<hr>
+<h1>Change 3 — Add Option C fields to Section 11.0 dependency preflight</h1>
+<h2>Add variable to the Section 11.0 <code>DECLARE</code> block</h2>
+<pre><code class="language-sql">    v_option_c_required_field_gap_count BIGINT;
+</code></pre>
+<h2>Add this gatekeeper after the existing required-field checks</h2>
+<pre><code class="language-sql">    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Option C counteroffer split fields must exist in Section 10 staging.
+
+    Business interpretation:
+        Section 11 materializes the permanent latest-run output.
+
+        Because Option C strategy analysis depends on row-level ordinary vs aggressive counteroffer
+        path evidence, Section 11 should fail before materialization if those fields are missing
+        from tmp_m2_stage_7_reason_code_assignment.
+
+    Boundary:
+        This check validates field availability only.
+
+        It does not recalculate decisions, exposure treatment, feasibility, or reason codes.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_option_c_required_field_gap_count
+    FROM tmp_m2_stage_7_reason_code_assignment
+    WHERE counteroffer_strategy_variant IS NULL
+       OR aggressive_counteroffer_expansion_enabled IS NULL
+       OR severe_requested_structure_counteroffer_override_enabled IS NULL
+       OR exposure_extreme_counteroffer_override_enabled IS NULL
+       OR exposure_policy_stop_counteroffer_override_enabled IS NULL
+       OR requested_pti_decline_counteroffer_override_enabled IS NULL
+       OR requested_el_decline_counteroffer_override_enabled IS NULL
+       OR ordinary_counteroffer_candidate_flag IS NULL
+       OR aggressive_counteroffer_requested_structure_override_flag IS NULL;
+
+    IF v_option_c_required_field_gap_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 11 failure: % Section 10 row(s) are missing Option C counteroffer split fields required for latest-run output.&#39;,
+            v_option_c_required_field_gap_count;
+    END IF;
+</code></pre>
+<hr>
+<h1>Change 4 — Add Option C fields to the explicit Section 11 SELECT list</h1>
+<h2>Placement</h2>
+<p>Add these fields inside the explicit <code>CREATE TABLE credit_decisioning_sim.strategy_decisions AS SELECT ...</code> list.</p>
+<p>Recommended placement: after strategy metadata / archive controls and before the large rule-trigger diagnostics, or inside the rule-trigger diagnostics family.</p>
+<pre><code class="language-sql">    /*
+    Option C counteroffer strategy split controls and row-level path evidence.
+
+    These fields preserve whether the selected strategy used the selective or aggressive
+    counteroffer posture and whether the row entered counteroffer feasibility through the aggressive
+    requested-structure override.
+
+    They are required for:
+        archive persistence,
+        matched strategy comparison,
+        Section 14 validation,
+        Section 15 frontier analysis,
+        Section 16 evidence capture,
+        and Section 17 post-campaign diagnostics.
+    */
+    r.counteroffer_strategy_variant,
+    r.aggressive_counteroffer_expansion_enabled,
+    r.severe_requested_structure_counteroffer_override_enabled,
+    r.exposure_extreme_counteroffer_override_enabled,
+    r.exposure_policy_stop_counteroffer_override_enabled,
+    r.requested_pti_decline_counteroffer_override_enabled,
+    r.requested_el_decline_counteroffer_override_enabled,
+    r.ordinary_counteroffer_candidate_flag,
+    r.aggressive_counteroffer_requested_structure_override_flag,
+</code></pre>
+<p>Use the correct table alias from your Section 11 <code>FROM</code> clause. If the staging table alias is not <code>r</code>, replace <code>r.</code> with the actual alias. The important point is that these fields must be explicitly selected into <code>credit_decisioning_sim.strategy_decisions</code>.</p>
+<hr>
+<h1>Change 5 — Add latest-run Option C gatekeeper</h1>
+<h2>Add variables to the Section 11 local gatekeeper <code>DECLARE</code> block</h2>
+<pre><code class="language-sql">    v_option_c_latest_run_gap_count BIGINT;
+    v_option_c_reason_trace_gap_count BIGINT;
+</code></pre>
+<h2>Add this after the metadata / lineage gatekeeper</h2>
+<pre><code class="language-sql">    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Option C counteroffer split fields must be populated in latest-run output.
+
+    Business interpretation:
+        credit_decisioning_sim.strategy_decisions is the current permanent output surface.
+
+        It must preserve the Option C selective/aggressive evidence created upstream so downstream
+        archive, comparison, QA, frontier, and evidence-capture sections can explain the strategy
+        split.
+
+    Expected:
+        These fields should be non-null for every latest-run row.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_option_c_latest_run_gap_count
+    FROM credit_decisioning_sim.strategy_decisions
+    WHERE counteroffer_strategy_variant IS NULL
+       OR aggressive_counteroffer_expansion_enabled IS NULL
+       OR severe_requested_structure_counteroffer_override_enabled IS NULL
+       OR exposure_extreme_counteroffer_override_enabled IS NULL
+       OR exposure_policy_stop_counteroffer_override_enabled IS NULL
+       OR requested_pti_decline_counteroffer_override_enabled IS NULL
+       OR requested_el_decline_counteroffer_override_enabled IS NULL
+       OR ordinary_counteroffer_candidate_flag IS NULL
+       OR aggressive_counteroffer_requested_structure_override_flag IS NULL;
+
+    IF v_option_c_latest_run_gap_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 11 failure: % latest-run row(s) are missing Option C counteroffer split fields.&#39;,
+            v_option_c_latest_run_gap_count;
+    END IF;
+</code></pre>
+<h2>Add this after the reason-code integrity gatekeeper</h2>
+<pre><code class="language-sql">    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Option C aggressive override reason-code traceability must survive latest-run
+    materialization.
+
+    Business interpretation:
+        Section 10 already validated that aggressive override rows retained path-specific simulated
+        explanation-code evidence.
+
+        Section 11 should confirm that materializing the latest-run table did not drop or distort
+        that evidence.
+
+    Expected:
+        Final COUNTEROFFER aggressive override rows should include:
+            COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE
+
+        Final MANUAL_REVIEW aggressive override rows that failed feasibility should include:
+            MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE
+
+        Final DECLINE aggressive override rows that failed feasibility should include:
+            POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_option_c_reason_trace_gap_count
+    FROM credit_decisioning_sim.strategy_decisions
+    WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+      AND (
+            (
+                decision_outcome = &#39;COUNTEROFFER&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%&#39;
+            )
+         OR (
+                decision_outcome = &#39;MANUAL_REVIEW&#39;
+                AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+                AND counteroffer_feasibility_pass_flag IS FALSE
+                AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+            )
+         OR (
+                decision_outcome = &#39;DECLINE&#39;
+                AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+                AND counteroffer_feasibility_pass_flag IS FALSE
+                AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+                AND triggered_reason_code_list NOT LIKE &#39;%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+            )
+      );
+
+    IF v_option_c_reason_trace_gap_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 11 failure: % aggressive override latest-run row(s) are missing Option C path-specific reason-code evidence.&#39;,
+            v_option_c_reason_trace_gap_count;
+    END IF;
+</code></pre>
+<hr>
+<h1>Change 6 — Add latest-run Option C diagnostic</h1>
+<h2>Placement</h2>
+<p>Add this in Section 11 local diagnostics, near the decision outcome / reason-code diagnostics.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+11.X Option C counteroffer strategy split latest-run diagnostic.
+
+Purpose:
+    Show how the latest-run output preserved ordinary versus aggressive counteroffer path evidence.
+
+Why this matters:
+    Option C introduces two counteroffer postures:
+
+        SELECTIVE_FEASIBILITY
+            ordinary governed counteroffer candidates only.
+
+        AGGRESSIVE_EXPANSION
+            ordinary candidates plus governed aggressive requested-structure override candidates.
+
+    This diagnostic confirms whether the latest-run table preserves that evidence after permanent
+    materialization.
+
+Boundary:
+    This is latest-run output diagnostics only.
+
+    It is not archive validation.
+    It is not matched comparison.
+    It is not full QA.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code,
+
+    COUNT(*) AS latest_run_rows,
+
+    COUNT(*) FILTER (
+        WHERE ordinary_counteroffer_candidate_flag IS TRUE
+    ) AS ordinary_counteroffer_candidate_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+    ) AS aggressive_override_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;COUNTEROFFER&#39;
+    ) AS aggressive_override_final_counteroffer_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;MANUAL_REVIEW&#39;
+    ) AS aggressive_override_final_manual_review_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND decision_outcome = &#39;DECLINE&#39;
+    ) AS aggressive_override_final_decline_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND triggered_reason_code_list LIKE &#39;%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%&#39;
+    ) AS aggressive_override_counteroffer_reason_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND triggered_reason_code_list LIKE &#39;%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+    ) AS aggressive_override_manual_review_reason_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND triggered_reason_code_list LIKE &#39;%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+    ) AS aggressive_override_decline_reason_rows
+
+FROM credit_decisioning_sim.strategy_decisions
+GROUP BY
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled,
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code
+ORDER BY
+    strategy_name,
+    decision_outcome,
+    latest_run_rows DESC,
+    primary_reason_code;
+</code></pre>
+<hr>
+<h1>Change 7 — Add indexes for Option C review</h1>
+<h2>Placement</h2>
+<p>Add these to the Section 11 index block.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+Option C counteroffer split review indexes.
+
+Purpose:
+    Support QA, comparison, and campaign evidence review of selective versus aggressive
+    counteroffer behavior.
+
+These indexes are not required for correctness, but they make downstream diagnostics faster and more
+reviewable.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_option_c_variant
+ON credit_decisioning_sim.strategy_decisions (
+    strategy_name,
+    counteroffer_strategy_variant,
+    aggressive_counteroffer_expansion_enabled
+);
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_aggressive_override_outcome
+ON credit_decisioning_sim.strategy_decisions (
+    aggressive_counteroffer_requested_structure_override_flag,
+    decision_outcome
+);
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_option_c_reason
+ON credit_decisioning_sim.strategy_decisions (
+    aggressive_counteroffer_requested_structure_override_flag,
+    primary_reason_code
+);
+</code></pre>
+<hr>
+<h1>Change 8 — Update Section 11 end-of-section summary</h1>
+<p>Add these to “If execution reaches this point”:</p>
+<pre><code class="language-sql">    26. Option C counteroffer split fields are preserved in latest-run output.
+    27. Aggressive override path-specific reason-code evidence survived latest-run materialization.
+</code></pre>
+<p>Add this to “Section 11 established”:</p>
+<pre><code class="language-sql">    11. Option C selective/aggressive counteroffer split latest-run output evidence.
+</code></pre>
+<p>Add this boundary note:</p>
+<pre><code class="language-sql">Option C note:
+    credit_decisioning_sim.strategy_decisions now preserves the ordinary versus aggressive
+    counteroffer path evidence needed to compare:
+
+        SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+        against
+        AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+
+    This allows later sections to distinguish:
+        strategy-routing posture
+        from economic feasibility constraints
+        from final reason-code explanation.
+
+    Section 11 does not interpret the strategy split.
+    It materializes the completed Section 10 output so archive, comparison, QA, frontier, and evidence
+    sections can consume it.
+</code></pre>
+<hr>
+<h1>Final recommendation</h1>
+<p>Proceed as follows:</p>
+<pre><code class="language-text">1. Accept Section 10 as final.
+2. Patch Section 11 to carry Option C fields into credit_decisioning_sim.strategy_decisions.
+3. Add Section 11 latest-run gatekeepers proving those fields and reason-code traces survived materialization.
+4. Add a compact Section 11 Option C diagnostic and practical indexes.
+5. Then move to Section 12.
+</code></pre>
+<p>The key principle is simple:</p>
+<pre><code class="language-text">Section 10 makes Option C explainable.
+Section 11 must make that explanation permanent in the latest-run output.
+</code></pre>
+<p>No Section 11 final-decision logic change is needed. This is a materialization, auditability, and downstream-evidence patch.</p>
+</div></article><article id="c034-m01024" class="message user"><div class="role">Andrew</div><p class="meta">C034-M01024 · 2026-05-15T16:53:11.381000-04:00 · active path</p><div class="body"><p>you didn&#39;t suggest section 11 readiness changes.  is that intentional or a miss?  also your suggestions for the end of section summary start at 26/27 but the last list ended at 24.</p>
+</div></article><article id="c034-m01029" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C034-M01029 · 2026-05-15T16:56:07.828211-04:00 · active path</p><div class="body"><p>According to a document from <strong>2026-05-15</strong>, yes — that was a <strong>miss</strong>, not intentional.</p>
+<p>Section 11 has a local latest-run sanity-check framework that explicitly includes “one compact readiness row,” so the Option C carry-forward should also update the <strong>Section 11 readiness summary</strong>, not only the field selection, gatekeepers, indexes, diagnostics, and end summary. fileciteturn221file9</p>
+<p>You are also right on the numbering. If the current end-of-section list ends at <strong>24</strong>, then my prior suggested additions should not start at <strong>26/27</strong>. The correct numbering is either:</p>
+<pre><code class="language-text">25 and 26
+</code></pre>
+<p>if we add only the two items I previously suggested, or:</p>
+<pre><code class="language-text">25, 26, and 27
+</code></pre>
+<p>if we also add the readiness-summary item below.</p>
+<p>Because we should add the readiness-summary item, I recommend using <strong>25–27</strong>.</p>
+<hr>
+<h1>1. Section 11 readiness-summary patch</h1>
+<h2>Why this should be added</h2>
+<p>Section 10 now preserves Option C reason-code evidence, including aggressive override explanation-code visibility. The Section 10 end summary already confirms that aggressive override rows retain path-specific reason-code evidence and that aggressive override reason-code diagnostics are available. fileciteturn220file17</p>
+<p>Section 11 then materializes the latest-run output. Since Section 11 is the permanent current-run output surface, its compact readiness row should confirm that the Option C fields and aggressive override reason-code traces survived materialization. Section 11’s current purpose is to materialize the completed Section 10 staging layer into <code>credit_decisioning_sim.strategy_decisions</code>, and its local diagnostics are explicitly meant to inspect the latest-run output before archive persistence. fileciteturn219file1</p>
+<hr>
+<h2>Add this to the Section 11 compact readiness CTE</h2>
+<p>Place this inside the existing Section 11 readiness-summary CTE, where it calculates row counts, field gaps, flag gaps, convention gaps, and reason-code gaps.</p>
+<pre><code class="language-sql">        /*
+        Option C counteroffer split latest-run readiness checks.
+
+        Purpose:
+            Confirm the latest-run output preserved the ordinary-versus-aggressive
+            counteroffer path evidence created upstream.
+
+        Why this belongs in the readiness summary:
+            Section 11 is the permanent latest-run materialization layer.
+
+            If these fields are missing or if aggressive override reason-code traces are lost,
+            archive persistence and downstream campaign QA would no longer be able to explain the
+            selective versus aggressive counteroffer strategy split.
+        */
+        COUNT(*) FILTER (
+            WHERE counteroffer_strategy_variant IS NULL
+               OR aggressive_counteroffer_expansion_enabled IS NULL
+               OR severe_requested_structure_counteroffer_override_enabled IS NULL
+               OR exposure_extreme_counteroffer_override_enabled IS NULL
+               OR exposure_policy_stop_counteroffer_override_enabled IS NULL
+               OR requested_pti_decline_counteroffer_override_enabled IS NULL
+               OR requested_el_decline_counteroffer_override_enabled IS NULL
+               OR ordinary_counteroffer_candidate_flag IS NULL
+               OR aggressive_counteroffer_requested_structure_override_flag IS NULL
+        ) AS option_c_field_gap_rows,
+
+        COUNT(*) FILTER (
+            WHERE ordinary_counteroffer_candidate_flag IS TRUE
+        ) AS ordinary_counteroffer_candidate_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+        ) AS aggressive_override_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND decision_outcome = &#39;COUNTEROFFER&#39;
+        ) AS aggressive_override_final_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND decision_outcome = &#39;MANUAL_REVIEW&#39;
+        ) AS aggressive_override_final_manual_review_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND decision_outcome = &#39;DECLINE&#39;
+        ) AS aggressive_override_final_decline_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND decision_outcome = &#39;COUNTEROFFER&#39;
+              AND COALESCE(triggered_reason_code_list, &#39;&#39;) LIKE
+                    &#39;%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%&#39;
+        ) AS aggressive_override_counteroffer_reason_trace_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND decision_outcome = &#39;MANUAL_REVIEW&#39;
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+              AND counteroffer_feasibility_pass_flag IS FALSE
+              AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+              AND COALESCE(triggered_reason_code_list, &#39;&#39;) LIKE
+                    &#39;%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+        ) AS aggressive_override_manual_review_reason_trace_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND decision_outcome = &#39;DECLINE&#39;
+              AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+              AND counteroffer_feasibility_pass_flag IS FALSE
+              AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+              AND COALESCE(triggered_reason_code_list, &#39;&#39;) LIKE
+                    &#39;%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+        ) AS aggressive_override_decline_reason_trace_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+              AND (
+                    (
+                        decision_outcome = &#39;COUNTEROFFER&#39;
+                        AND COALESCE(triggered_reason_code_list, &#39;&#39;) NOT LIKE
+                            &#39;%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%&#39;
+                    )
+                 OR (
+                        decision_outcome = &#39;MANUAL_REVIEW&#39;
+                        AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+                        AND counteroffer_feasibility_pass_flag IS FALSE
+                        AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                        AND COALESCE(triggered_reason_code_list, &#39;&#39;) NOT LIKE
+                            &#39;%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+                    )
+                 OR (
+                        decision_outcome = &#39;DECLINE&#39;
+                        AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+                        AND counteroffer_feasibility_pass_flag IS FALSE
+                        AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+                        AND COALESCE(triggered_reason_code_list, &#39;&#39;) NOT LIKE
+                            &#39;%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%&#39;
+                    )
+              )
+        ) AS aggressive_override_reason_trace_gap_rows,
+</code></pre>
+<hr>
+<h2>Add these fields to the final readiness SELECT</h2>
+<p>Place these near the other readiness-count outputs.</p>
+<pre><code class="language-sql">    option_c_field_gap_rows,
+    ordinary_counteroffer_candidate_rows,
+    aggressive_override_rows,
+    aggressive_override_final_counteroffer_rows,
+    aggressive_override_final_manual_review_rows,
+    aggressive_override_final_decline_rows,
+    aggressive_override_counteroffer_reason_trace_rows,
+    aggressive_override_manual_review_reason_trace_rows,
+    aggressive_override_decline_reason_trace_rows,
+    aggressive_override_reason_trace_gap_rows,
+</code></pre>
+<hr>
+<h2>Add these conditions to the readiness CASE</h2>
+<p>Keep the existing readiness status string. Just add these two conditions to the <code>CASE</code> that produces the compact Section 11 readiness status.</p>
+<pre><code class="language-sql">         AND option_c_field_gap_rows = 0
+         AND aggressive_override_reason_trace_gap_rows = 0
+</code></pre>
+<p>For example, the readiness condition should now include the Option C checks along with the existing row-count, application-grain, metadata, decision, flag, amount, Expected Loss, and reason-code conditions:</p>
+<pre><code class="language-sql">    CASE
+        WHEN latest_run_row_count &gt; 0
+         AND latest_run_row_count = distinct_application_id_count
+         AND required_metadata_gap_rows = 0
+         AND final_decision_gap_rows = 0
+         AND final_flag_reconciliation_gap_rows = 0
+         AND simulated_offer_exposure_flag_gap_rows = 0
+         AND approved_amount_convention_gap_rows = 0
+         AND approved_expected_loss_convention_gap_rows = 0
+         AND reason_code_gap_rows = 0
+         AND reason_family_alignment_gap_rows = 0
+         AND option_c_field_gap_rows = 0
+         AND aggressive_override_reason_trace_gap_rows = 0
+            THEN &#39;SECTION_11_LATEST_RUN_OUTPUT_READY_FOR_ARCHIVE_PERSISTENCE&#39;
+        ELSE &#39;REVIEW_SECTION_11_LATEST_RUN_OUTPUT_BEFORE_ARCHIVE_PERSISTENCE&#39;
+    END AS section_11_latest_run_output_status
+</code></pre>
+<p>Use the exact existing field names from your current readiness CTE for:</p>
+<pre><code class="language-sql">latest_run_row_count
+distinct_application_id_count
+required_metadata_gap_rows
+final_decision_gap_rows
+final_flag_reconciliation_gap_rows
+simulated_offer_exposure_flag_gap_rows
+approved_amount_convention_gap_rows
+approved_expected_loss_convention_gap_rows
+reason_code_gap_rows
+reason_family_alignment_gap_rows
+</code></pre>
+<p>If your current readiness CTE uses slightly different names, do not rename them. Add only the Option C fields and conditions.</p>
+<hr>
+<h1>2. Section 11 readiness-summary commentary patch</h1>
+<p>Add this to the Section 11 compact readiness summary comment.</p>
+<pre><code class="language-sql">    Option C readiness interpretation:
+        The compact readiness row also confirms that the latest-run output preserved:
+
+            ordinary_counteroffer_candidate_flag
+            aggressive_counteroffer_requested_structure_override_flag
+            counteroffer_strategy_variant
+            aggressive_counteroffer_expansion_enabled
+
+        and that aggressive override rows retain the expected path-specific simulated reason-code
+        evidence.
+
+        This matters because downstream archive persistence, matched comparison, QA, frontier
+        analysis, and evidence capture need to distinguish:
+
+            ordinary counteroffer candidacy
+            from
+            aggressive counteroffer expansion override candidacy.
+
+        These checks do not reinterpret the strategy result.
+        They only confirm that Section 11 preserved the completed Section 10 evidence.
+</code></pre>
+<hr>
+<h1>3. Corrected end-of-section summary numbering</h1>
+<p>You are right: if the current “If execution reaches this point” list ends at <strong>24</strong>, the next items must start at <strong>25</strong>.</p>
+<p>Because we are adding the readiness-summary item too, I recommend this version:</p>
+<pre><code class="language-sql">    25. Option C counteroffer split fields are preserved in latest-run output.
+    26. Aggressive override path-specific reason-code evidence survived latest-run materialization.
+    27. Section 11 compact readiness summary includes Option C field and reason-trace checks.
+</code></pre>
+<h2>Corrected “Section 11 established” addition</h2>
+<p>Add this as the next item after the current final item in the “Section 11 established” list:</p>
+<pre><code class="language-sql">    11. Option C selective/aggressive counteroffer split latest-run output evidence.
+</code></pre>
+<p>If that list currently ends at a different number, use the next sequential number. The important point is that the latest-run table now preserves the fields needed to compare:</p>
+<pre><code class="language-text">SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+vs
+AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+</code></pre>
+<hr>
+<h1>4. My corrected Section 11 recommendation</h1>
+<p>The Section 11 patch set should be:</p>
+<pre><code class="language-text">1. Header / SQL purpose update for Option C latest-run output.
+2. Section 11.0 preflight check for Option C fields.
+3. Explicit SELECT-list carry-forward of Option C fields.
+4. Latest-run gatekeeper confirming Option C fields are populated.
+5. Latest-run gatekeeper confirming aggressive override reason-code traces survived materialization.
+6. Section 11 readiness-summary update for Option C field gaps and reason-trace gaps.
+7. Option C latest-run diagnostic query.
+8. Option C review indexes.
+9. End-of-section summary numbering corrected to 25, 26, and 27.
+</code></pre>
+<p>So yes: <strong>readiness changes should be included</strong>, and the prior numbering should be corrected.</p>
+</div></article><article id="c034-m01030" class="message user"><div class="role">Andrew</div><p class="meta">C034-M01030 · 2026-05-15T17:06:38.468000-04:00 · active path</p><div class="body"><p>review section 11 logic, headers, comments one final time following changes.  review section 12 logic, headers, comments for potential needed changes (current section 12 code attached).</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(196).txt</code>, <code>Pasted text (2)(9).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>
