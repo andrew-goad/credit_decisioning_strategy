@@ -1,0 +1,4091 @@
+# Module 1 BRD / Validation Documentation
+
+## Part 12
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_11.md) · [Next](Part_13.md)
+
+<a id="c037-m00598"></a>
+
+### C037-M00598
+
+**ChatGPT** · 2026-05-06T13:35:29.506713-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00598 -->
+## Evaluation of the seventh response
+
+ChatGPT’s seventh response is **strong and ready to advance**. It built Section 8 at the right level: approved exposure and counteroffer feasibility are calculated as **preliminary exposure-treatment outputs**, not final strategy outcomes. It also preserved the key boundaries: no final `decision_outcome`, no reason codes, no final output table, no archive insert logic, and no full QA framework. That sequencing is exactly right. fileciteturn56file0
+
+The recommended next step — **Section 9: Final Decision Resolution Layer** — is correct. At this point, the engine has enough information to resolve final outcomes because Section 7 created preliminary routing and Section 8 tested counteroffer feasibility. The one design issue I would lock before Section 9 is how failed counteroffers resolve. My recommendation is to add a small governed parameter: default failed counteroffer handling should route to `MANUAL_REVIEW`, not automatic `DECLINE`, unless the strategy explicitly chooses otherwise. That preserves auditability and avoids over-hardcoding a policy assumption.
+
+Below is the full copy-paste response I would send to the Module 2 chat.
+
+---
+
+```text
+This is strong. I agree with the Section 8 Approved Exposure and Counteroffer Feasibility Layer.
+
+Section 8 correctly:
+- consumes tmp_m2_stage_4_preliminary_decision_routing
+- creates tmp_m2_stage_5_exposure_treatment
+- preserves Module 1 lineage and Module 2 strategy metadata
+- preserves preliminary routing fields
+- calculates preliminary approved exposure treatment
+- evaluates counteroffer feasibility
+- distinguishes requested exposure from preliminary approved exposure
+- calculates preliminary approved payment, approved PTI, and approved Expected Loss
+- keeps manual review unresolved
+- keeps failed counteroffers unresolved for later final decision resolution
+- does not create final decision_outcome
+- does not create final decision_path
+- does not create final decision flags
+- does not create simulated_offer_exposure_flag
+- does not assign reason codes
+- does not create latest-run output
+- does not insert archive rows
+- does not build full QA
+
+Treat Section 8 as accepted.
+
+Do not rewrite Sections 0–8 unless a later dependency issue is found.
+
+================================================================================
+1. NEXT BUILD SCOPE: SECTION 9 ONLY
+================================================================================
+
+Please now build only:
+
+SECTION 9 — FINAL DECISION RESOLUTION LAYER
+
+Recommended staged table:
+
+tmp_m2_stage_6_final_decision_resolution
+
+Section 9 should consume:
+
+tmp_m2_stage_5_exposure_treatment
+
+Section 9 should convert preliminary routing plus Section 8 exposure feasibility into final simulated strategy outcomes.
+
+Do not build:
+- primary_reason_code
+- secondary_reason_code
+- tertiary_reason_code
+- triggered_reason_code_list
+- reason_priority_rank
+- final latest-run output table
+- archive insert logic
+- full QA framework
+
+Those belong to later sections.
+
+================================================================================
+2. SECTION 9 OBJECTIVE
+================================================================================
+
+Section 9 should answer:
+
+“Given preliminary routing and exposure-treatment feasibility, what is the final simulated strategy outcome for this synthetic applicant?”
+
+Section 9 should create final outcome fields and final exposure economics.
+
+Section 9 should not assign simulated reason codes yet.
+
+Reason-code assignment should remain a separate later layer because reason-code prioritization should use the final outcome, final decision path, preliminary routing diagnostics, and exposure-treatment diagnostics.
+
+================================================================================
+3. TARGETED PARAMETER PATCH BEFORE SECTION 9
+================================================================================
+
+Before writing Section 9, please add one governed strategy parameter if it does not already exist:
+
+failed_counteroffer_resolution
+
+Recommended default:
+MANUAL_REVIEW
+
+Allowed values:
+- MANUAL_REVIEW
+- DECLINE
+
+Purpose:
+Defines how preliminary COUNTEROFFER routes should resolve when Section 8 determines that no viable counteroffer exists.
+
+Default interpretation:
+A failed counteroffer is routed to MANUAL_REVIEW by default because:
+- higher-priority hard policy stops already route to DECLINE
+- severe synthetic estimated-risk already routes to DECLINE
+- severe DTI already routes to DECLINE
+- a failed counteroffer often reflects unresolved exposure / affordability / EL feasibility rather than an automatic policy stop
+- manual review preserves auditability and avoids silently converting all infeasible reduced-exposure cases to declines
+
+Boundary:
+This is a simulated strategy-control parameter, not production underwriting policy.
+
+Please add the corresponding Section 3 gatekeeper:
+- failed_counteroffer_resolution is non-null
+- failed_counteroffer_resolution IN ('MANUAL_REVIEW', 'DECLINE')
+
+If you believe this parameter already exists under another name, identify it and use the existing field rather than adding a duplicate.
+
+================================================================================
+4. REQUIRED SECTION 9 OUTPUT FIELDS
+================================================================================
+
+Section 9 should preserve all fields from tmp_m2_stage_5_exposure_treatment and add final decision-resolution fields.
+
+Final decision fields:
+- decision_outcome
+- decision_path
+- decision_priority_rank
+- decision_resolution_source
+
+Final decision flags:
+- approval_flag
+- counteroffer_flag
+- manual_review_flag
+- decline_flag
+- simulated_offer_exposure_flag
+
+Final exposure fields:
+- approved_amount
+- counteroffer_amount
+- exposure_reduction_flag
+- exposure_reduction_amount
+- exposure_reduction_pct
+
+Final affordability fields:
+- approved_monthly_payment_proxy
+- approved_payment_to_income_ratio
+
+Final economics fields:
+- approved_expected_loss_amount
+- approved_el_reduction_amount
+- approved_el_reduction_pct
+
+Do not add reason-code fields yet.
+
+Do not create final output table yet.
+
+================================================================================
+5. FINAL DECISION RESOLUTION LOGIC
+================================================================================
+
+Use the following final decision resolution hierarchy.
+
+1. Preliminary DECLINE
+
+If preliminary_decision_outcome = 'DECLINE':
+
+- decision_outcome = 'DECLINE'
+- decision_path = preliminary_decision_path
+- decision_priority_rank = preliminary_decision_priority_rank
+- decision_resolution_source = 'PRELIMINARY_DECLINE_CONFIRMED'
+
+Final exposure convention:
+- approved_amount = 0
+- counteroffer_amount = NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount = requested_amount
+- exposure_reduction_pct = 1.0
+- approved_monthly_payment_proxy = 0
+- approved_payment_to_income_ratio = 0
+- approved_expected_loss_amount = 0
+- approved_el_reduction_amount = requested_expected_loss_amount
+- approved_el_reduction_pct = 1.0 when requested_expected_loss_amount > 0, else 0
+- simulated_offer_exposure_flag = FALSE
+
+2. Preliminary MANUAL_REVIEW
+
+If preliminary_decision_outcome = 'MANUAL_REVIEW':
+
+- decision_outcome = 'MANUAL_REVIEW'
+- decision_path = preliminary_decision_path
+- decision_priority_rank = preliminary_decision_priority_rank
+- decision_resolution_source = 'PRELIMINARY_MANUAL_REVIEW_CONFIRMED'
+
+Final exposure convention:
+- approved_amount = NULL
+- counteroffer_amount = NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount = NULL
+- exposure_reduction_pct = NULL
+- approved_monthly_payment_proxy = NULL
+- approved_payment_to_income_ratio = NULL
+- approved_expected_loss_amount = NULL
+- approved_el_reduction_amount = NULL
+- approved_el_reduction_pct = NULL
+- simulated_offer_exposure_flag = FALSE
+
+Manual review remains unresolved by design.
+
+3. Preliminary APPROVE
+
+If preliminary_decision_outcome = 'APPROVE':
+
+- decision_outcome = 'APPROVE'
+- decision_path = 'APPROVED_AS_REQUESTED'
+- decision_priority_rank = preliminary_decision_priority_rank
+- decision_resolution_source = 'PRELIMINARY_APPROVE_CONFIRMED'
+
+Final exposure convention:
+- approved_amount = requested_amount
+- counteroffer_amount = NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount = 0
+- exposure_reduction_pct = 0
+- approved_monthly_payment_proxy = requested_monthly_payment_proxy
+- approved_payment_to_income_ratio = requested_payment_to_income_ratio
+- approved_expected_loss_amount = requested_expected_loss_amount
+- approved_el_reduction_amount = 0
+- approved_el_reduction_pct = 0
+- simulated_offer_exposure_flag = TRUE
+
+4. Preliminary COUNTEROFFER with feasible counteroffer
+
+If preliminary_decision_outcome = 'COUNTEROFFER'
+and counteroffer_feasibility_pass_flag = TRUE:
+
+- decision_outcome = 'COUNTEROFFER'
+- decision_path = 'COUNTEROFFER_FEASIBLE'
+- decision_priority_rank = preliminary_decision_priority_rank
+- decision_resolution_source = 'COUNTEROFFER_FEASIBILITY_CONFIRMED'
+
+Final exposure convention:
+- approved_amount = approved_amount_preliminary
+- counteroffer_amount = counteroffer_amount_preliminary
+- exposure_reduction_flag = TRUE
+- exposure_reduction_amount = exposure_reduction_amount_preliminary
+- exposure_reduction_pct = exposure_reduction_pct_preliminary
+- approved_monthly_payment_proxy = approved_monthly_payment_proxy_preliminary
+- approved_payment_to_income_ratio = approved_payment_to_income_ratio_preliminary
+- approved_expected_loss_amount = approved_expected_loss_amount_preliminary
+- approved_el_reduction_amount = approved_el_reduction_amount_preliminary
+- approved_el_reduction_pct = approved_el_reduction_pct_preliminary
+- simulated_offer_exposure_flag = TRUE
+
+5. Preliminary COUNTEROFFER with infeasible counteroffer
+
+If preliminary_decision_outcome = 'COUNTEROFFER'
+and counteroffer_feasibility_pass_flag = FALSE
+and failed_counteroffer_resolution = 'MANUAL_REVIEW':
+
+- decision_outcome = 'MANUAL_REVIEW'
+- decision_path = 'COUNTEROFFER_NOT_FEASIBLE_REVIEW'
+- decision_priority_rank = preliminary_decision_priority_rank
+- decision_resolution_source = 'COUNTEROFFER_FEASIBILITY_FAILED_TO_REVIEW'
+
+Final exposure convention:
+- approved_amount = NULL
+- counteroffer_amount = NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount = NULL
+- exposure_reduction_pct = NULL
+- approved_monthly_payment_proxy = NULL
+- approved_payment_to_income_ratio = NULL
+- approved_expected_loss_amount = NULL
+- approved_el_reduction_amount = NULL
+- approved_el_reduction_pct = NULL
+- simulated_offer_exposure_flag = FALSE
+
+If preliminary_decision_outcome = 'COUNTEROFFER'
+and counteroffer_feasibility_pass_flag = FALSE
+and failed_counteroffer_resolution = 'DECLINE':
+
+- decision_outcome = 'DECLINE'
+- decision_path = 'COUNTEROFFER_NOT_FEASIBLE_DECLINE'
+- decision_priority_rank = preliminary_decision_priority_rank
+- decision_resolution_source = 'COUNTEROFFER_FEASIBILITY_FAILED_TO_DECLINE'
+
+Final exposure convention:
+- approved_amount = 0
+- counteroffer_amount = NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount = requested_amount
+- exposure_reduction_pct = 1.0
+- approved_monthly_payment_proxy = 0
+- approved_payment_to_income_ratio = 0
+- approved_expected_loss_amount = 0
+- approved_el_reduction_amount = requested_expected_loss_amount
+- approved_el_reduction_pct = 1.0 when requested_expected_loss_amount > 0, else 0
+- simulated_offer_exposure_flag = FALSE
+
+6. Residual fallback
+
+If no final outcome can be assigned:
+
+- decision_outcome = 'MANUAL_REVIEW'
+- decision_path = 'FINAL_RESIDUAL_STRATEGY_REVIEW'
+- decision_priority_rank = 99
+- decision_resolution_source = 'FINAL_RESIDUAL_FALLBACK'
+
+Final exposure convention:
+- approved_amount = NULL
+- counteroffer_amount = NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount = NULL
+- exposure_reduction_pct = NULL
+- approved_monthly_payment_proxy = NULL
+- approved_payment_to_income_ratio = NULL
+- approved_expected_loss_amount = NULL
+- approved_el_reduction_amount = NULL
+- approved_el_reduction_pct = NULL
+- simulated_offer_exposure_flag = FALSE
+
+================================================================================
+6. FINAL FLAG CONVENTIONS
+================================================================================
+
+Section 9 should create final flags using decision_outcome.
+
+Required reconciliation:
+
+APPROVE:
+- approval_flag = TRUE
+- counteroffer_flag = FALSE
+- manual_review_flag = FALSE
+- decline_flag = FALSE
+- simulated_offer_exposure_flag = TRUE
+
+COUNTEROFFER:
+- approval_flag = FALSE
+- counteroffer_flag = TRUE
+- manual_review_flag = FALSE
+- decline_flag = FALSE
+- simulated_offer_exposure_flag = TRUE
+
+MANUAL_REVIEW:
+- approval_flag = FALSE
+- counteroffer_flag = FALSE
+- manual_review_flag = TRUE
+- decline_flag = FALSE
+- simulated_offer_exposure_flag = FALSE
+
+DECLINE:
+- approval_flag = FALSE
+- counteroffer_flag = FALSE
+- manual_review_flag = FALSE
+- decline_flag = TRUE
+- simulated_offer_exposure_flag = FALSE
+
+Exactly one of approval_flag, counteroffer_flag, manual_review_flag, and decline_flag must be TRUE per row.
+
+================================================================================
+7. PRESERVE PRELIMINARY AND FEASIBILITY DIAGNOSTICS
+================================================================================
+
+Do not discard prior-stage diagnostic fields.
+
+Section 9 should preserve:
+
+Preliminary routing diagnostics:
+- preliminary_decision_outcome
+- preliminary_decision_path
+- preliminary_decision_priority_rank
+- preliminary_route_reason_family
+- preliminary flags
+
+Section 8 exposure-treatment diagnostics:
+- exposure_treatment_status
+- exposure_treatment_path
+- counteroffer_feasibility_evaluated_flag
+- counteroffer_feasibility_pass_flag
+- counteroffer_feasibility_failure_reason
+- counteroffer_feasibility_constraint_count
+- counteroffer_product_cap_amount
+- counteroffer_pti_target_amount
+- counteroffer_el_cap_amount
+- counteroffer_raw_max_feasible_amount
+- counteroffer_min_viable_amount
+- counteroffer_rounded_amount
+
+Reason:
+Final decision outcomes should remain auditable back to routing and feasibility diagnostics.
+
+================================================================================
+8. NO REASON CODES YET
+================================================================================
+
+Do not create:
+- primary_reason_code
+- secondary_reason_code
+- tertiary_reason_code
+- triggered_reason_code_list
+- reason_priority_rank
+- primary_reason_family
+
+Reason-code assignment belongs to the next section after final decision outcomes are locked.
+
+Section 9 may create decision_path and decision_resolution_source, but those are final routing / outcome fields, not reason-code fields.
+
+================================================================================
+9. SECTION 9 LOCAL GATEKEEPERS
+================================================================================
+
+At the end of Section 9, include local fail-fast checks.
+
+Validate:
+
+General:
+- row count is unchanged from tmp_m2_stage_5_exposure_treatment
+- application_id remains unique
+- decision_outcome is non-null for every row
+- decision_outcome IN ('APPROVE', 'COUNTEROFFER', 'MANUAL_REVIEW', 'DECLINE')
+- decision_path is non-null for every row
+- decision_priority_rank is non-null for every row
+- decision_resolution_source is non-null for every row
+
+Flag reconciliation:
+- exactly one of approval_flag, counteroffer_flag, manual_review_flag, decline_flag is TRUE per row
+- approval_flag reconciles to decision_outcome = 'APPROVE'
+- counteroffer_flag reconciles to decision_outcome = 'COUNTEROFFER'
+- manual_review_flag reconciles to decision_outcome = 'MANUAL_REVIEW'
+- decline_flag reconciles to decision_outcome = 'DECLINE'
+- simulated_offer_exposure_flag = TRUE only for APPROVE and COUNTEROFFER
+- simulated_offer_exposure_flag = FALSE for MANUAL_REVIEW and DECLINE
+
+APPROVE convention:
+- approved_amount = requested_amount
+- counteroffer_amount IS NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount = 0
+- exposure_reduction_pct = 0
+- approved_monthly_payment_proxy = requested_monthly_payment_proxy
+- approved_payment_to_income_ratio = requested_payment_to_income_ratio
+- approved_expected_loss_amount = requested_expected_loss_amount
+- approved_el_reduction_amount = 0
+- approved_el_reduction_pct = 0
+
+COUNTEROFFER convention:
+- counteroffer_feasibility_pass_flag = TRUE
+- approved_amount > 0
+- approved_amount < requested_amount
+- counteroffer_amount = approved_amount
+- exposure_reduction_flag = TRUE
+- exposure_reduction_amount > 0
+- exposure_reduction_pct > 0
+- approved_amount >= product_min_approved_amount
+- approved_amount <= product_max_approved_amount
+- approved_payment_to_income_ratio <= counteroffer_target_pti
+- approved_expected_loss_amount <= product_approved_el_cap
+
+MANUAL_REVIEW convention:
+- approved_amount IS NULL
+- counteroffer_amount IS NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount IS NULL
+- exposure_reduction_pct IS NULL
+- approved_monthly_payment_proxy IS NULL
+- approved_payment_to_income_ratio IS NULL
+- approved_expected_loss_amount IS NULL
+- approved_el_reduction_amount IS NULL
+- approved_el_reduction_pct IS NULL
+
+DECLINE convention:
+- approved_amount = 0
+- counteroffer_amount IS NULL
+- exposure_reduction_flag = FALSE
+- exposure_reduction_amount = requested_amount
+- exposure_reduction_pct = 1.0
+- approved_monthly_payment_proxy = 0
+- approved_payment_to_income_ratio = 0
+- approved_expected_loss_amount = 0
+- approved_el_reduction_amount = requested_expected_loss_amount
+- approved_el_reduction_pct = 1.0 when requested_expected_loss_amount > 0, else 0
+
+Failed counteroffer resolution:
+- preliminary_decision_outcome = 'COUNTEROFFER'
+  and counteroffer_feasibility_pass_flag = FALSE
+  should resolve according to failed_counteroffer_resolution
+- if failed_counteroffer_resolution = 'MANUAL_REVIEW', final decision_outcome must be MANUAL_REVIEW
+- if failed_counteroffer_resolution = 'DECLINE', final decision_outcome must be DECLINE
+
+Forbidden fields:
+- no reason-code columns exist yet
+- no final latest-run strategy_decisions table exists yet
+- no strategy_decisions_archive rows are inserted
+
+These are Section 9 local staging gatekeepers only, not full Module 2 QA.
+
+================================================================================
+10. SECTION 9 LOCAL SANITY CHECKS
+================================================================================
+
+After local gatekeepers, include lightweight staging diagnostics.
+
+Suggested checks:
+
+1. Count by final decision_outcome
+2. Count by final decision_path
+3. Count by decision_resolution_source
+4. Product × final decision_outcome
+5. Score band × final decision_outcome
+6. Requested PTI bucket × final decision_outcome
+7. Strategy risk tier × final decision_outcome
+8. Preliminary decision_outcome × final decision_outcome transition matrix
+9. Exposure treatment status × final decision_outcome
+10. Counteroffer feasibility pass flag × final decision_outcome
+11. Counteroffer failure reason × final decision_outcome
+12. Average requested_amount vs approved_amount by final decision_outcome
+13. Average requested_payment_to_income_ratio vs approved_payment_to_income_ratio by final decision_outcome
+14. Average requested_expected_loss_amount vs approved_expected_loss_amount by final decision_outcome
+15. Average exposure_reduction_pct by product for final COUNTEROFFER rows
+16. simulated_offer_exposure_flag count by final decision_outcome
+
+These are staging diagnostics only.
+They should not be interpreted as full Module 2 validation yet.
+
+================================================================================
+11. SECTION 9 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard.
+
+Section 9 comments should explain:
+
+- why final decision resolution occurs after exposure feasibility
+- why final outcomes are now assigned
+- why failed counteroffers use a governed resolution parameter
+- why default failed counteroffers route to manual review
+- why final decision_path is not the same as a regulatory reason code
+- why reason codes are still deferred
+- why approved amount and approved Expected Loss are now finalized for simulated offer outcomes
+- why manual review remains unresolved
+- why decline uses the locked zero-exposure convention
+- why simulated_offer_exposure_flag does not imply real account booking
+
+================================================================================
+12. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Targeted Section 2 / Section 3 patch for failed_counteroffer_resolution, if needed.
+
+2. Section 9 SQL only:
+   FINAL DECISION RESOLUTION LAYER.
+
+3. A short explanation of what Section 9 establishes.
+
+4. A short explanation of what Section 9 intentionally does not build.
+
+5. The recommended next build step after Section 9.
+
+Do not write Section 10+ yet.
+```
+
+This should keep the next step clean: Section 9 locks final outcomes, while Section 10 can later handle reason-code assignment using those final outcomes plus all preserved diagnostics.
+<!-- END_MESSAGE C037-M00598 -->
+
+
+---
+
+<a id="c037-m00600"></a>
+
+### C037-M00600
+
+**Andrew** · 2026-05-06T13:57:12.237000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00600 -->
+evaluate the eighth follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00600 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_eighth_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00605"></a>
+
+### C037-M00605
+
+**ChatGPT** · 2026-05-06T14:01:20.739074-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00605 -->
+## Evaluation of the eighth response
+
+ChatGPT’s eighth response is **strong and ready to advance**. It correctly built **Section 9 — Final Decision Resolution Layer**, including the `failed_counteroffer_resolution` governance patch, final outcome assignment, final decision flags, simulated offer-exposure flag, final approved exposure fields, approved payment / PTI fields, and approved Expected Loss fields. It also correctly deferred reason-code assignment, latest-run output creation, archive insert logic, and full QA. fileciteturn56file0
+
+The recommended next step — **Section 10: Simulated Reason-Code Assignment Layer** — is exactly right. At this point, the engine now has enough context to assign reason codes because final `decision_outcome`, `decision_path`, `decision_resolution_source`, preliminary routing diagnostics, rule flags, and counteroffer feasibility diagnostics all exist.
+
+I do **not** see a material Section 9 correction needed before moving forward. The next instruction should keep reason codes separate from final outcome assignment and prevent the new chat from accidentally treating reason codes as regulatory adverse-action reasons.
+
+Here is the copy-paste response I would send.
+
+---
+
+```text
+This is strong. I agree with the Section 9 Final Decision Resolution Layer.
+
+Section 9 correctly:
+- adds the governed failed_counteroffer_resolution parameter
+- resolves preliminary routing plus Section 8 exposure feasibility into final simulated strategy outcomes
+- creates final decision_outcome
+- creates final decision_path
+- creates decision_priority_rank
+- creates decision_resolution_source
+- creates final approval_flag, counteroffer_flag, manual_review_flag, and decline_flag
+- creates simulated_offer_exposure_flag
+- creates final approved_amount and counteroffer_amount
+- creates final approved_monthly_payment_proxy and approved_payment_to_income_ratio
+- creates final approved_expected_loss_amount
+- preserves requested_expected_loss_amount as requested-exposure Expected Loss
+- preserves preliminary routing diagnostics
+- preserves counteroffer feasibility diagnostics
+- keeps MANUAL_REVIEW unresolved
+- uses the locked zero-exposure convention for DECLINE
+- does not assign reason codes
+- does not create the final latest-run output table
+- does not insert archive rows
+- does not build the full QA framework
+
+Treat Section 9 as accepted.
+
+Do not rewrite Sections 0–9 unless a later dependency issue is found.
+
+================================================================================
+1. NEXT BUILD SCOPE: SECTION 10 ONLY
+================================================================================
+
+Please now build only:
+
+SECTION 10 — SIMULATED REASON-CODE ASSIGNMENT LAYER
+
+Recommended staged table:
+
+tmp_m2_stage_7_reason_code_assignment
+
+Section 10 should consume:
+
+tmp_m2_stage_6_final_decision_resolution
+
+Do not build:
+- final latest-run strategy_decisions table
+- archive insert logic
+- full QA framework
+- matched strategy comparison queries
+- BRD or Validation Summary documentation
+
+Those belong to later sections.
+
+================================================================================
+2. SECTION 10 OBJECTIVE
+================================================================================
+
+Section 10 should assign simulated strategy explanation codes based on:
+
+- final decision_outcome
+- final decision_path
+- decision_resolution_source
+- preliminary routing diagnostics
+- Section 6 rule-trigger flags
+- Section 8 counteroffer feasibility diagnostics
+- exposure-treatment diagnostics
+- mixed-signal diagnostics
+- borderline diagnostics
+
+Section 10 should answer:
+
+“Why did this synthetic applicant receive this simulated strategy outcome?”
+
+Section 10 should not answer:
+
+“Was this a regulatory adverse-action reason?”
+
+Reason codes in Module 2 are simulated strategy explanation codes only.
+
+================================================================================
+3. REASON-CODE BOUNDARY
+================================================================================
+
+Reason codes are NOT:
+- adverse-action reasons
+- regulatory decision notices
+- compliance-approved reason codes
+- production customer communications
+- fair lending conclusions
+- final underwriting explanations for real applicants
+
+Reason codes ARE:
+- simulated strategy explanation codes
+- audit and QA aids
+- decision-path transparency fields
+- segmentation and portfolio interpretation fields
+- synthetic policy-simulation diagnostics
+
+Please use neutral language throughout Section 10.
+
+Preferred terms:
+- simulated reason code
+- strategy explanation code
+- policy stop reason
+- review trigger reason
+- counteroffer reason
+- approval explanation code
+
+Avoid:
+- adverse action
+- regulatory reason
+- customer notice
+- compliance reason
+- real customer treatment
+
+================================================================================
+4. REQUIRED SECTION 10 OUTPUT FIELDS
+================================================================================
+
+Section 10 should preserve all fields from tmp_m2_stage_6_final_decision_resolution and add:
+
+- primary_reason_code
+- secondary_reason_code
+- tertiary_reason_code
+- primary_reason_family
+- triggered_reason_code_list
+- reason_priority_rank
+- reason_code_count
+
+The reason-code fields should be deterministic and auditable.
+
+Do not create final latest-run output yet.
+
+Do not insert archive rows yet.
+
+================================================================================
+5. REASON-CODE IMPLEMENTATION PATTERN
+================================================================================
+
+Please avoid one giant opaque CASE block if possible.
+
+Recommended implementation pattern:
+
+1. reason_candidate_base
+   Preserve the Section 9 final decision record.
+
+2. reason_candidates
+   Create one row per application_id per candidate simulated reason code.
+
+   Suggested fields:
+   - application_id
+   - candidate_reason_code
+   - candidate_reason_family
+   - candidate_reason_priority_rank
+   - candidate_reason_source
+
+3. ranked_reasons
+   Use ROW_NUMBER() over each application_id ordered by:
+   - candidate_reason_priority_rank
+   - candidate_reason_code
+
+4. reason_pivot
+   Pivot the ranked candidate reasons into:
+   - primary_reason_code
+   - secondary_reason_code
+   - tertiary_reason_code
+   - primary_reason_family
+   - reason_priority_rank
+   - triggered_reason_code_list
+   - reason_code_count
+
+5. final reason-code assignment table
+   Join reason_pivot back to tmp_m2_stage_6_final_decision_resolution.
+
+Reason:
+This pattern keeps reason-code assignment transparent, auditable, and extensible.
+
+================================================================================
+6. APPROVE REASON-CODE CONVENTION
+================================================================================
+
+For final decision_outcome = APPROVE:
+
+Required primary reason:
+- APPROVED_AS_REQUESTED
+
+Recommended family:
+- APPROVAL
+
+Recommended priority rank:
+- 900
+
+Expected behavior:
+- primary_reason_code = APPROVED_AS_REQUESTED
+- primary_reason_family = APPROVAL
+- secondary_reason_code may be NULL
+- tertiary_reason_code may be NULL
+- triggered_reason_code_list should include APPROVED_AS_REQUESTED
+- reason_code_count should be at least 1
+
+APPROVE rows should not receive decline, counteroffer, or manual-review reason codes.
+
+================================================================================
+7. COUNTEROFFER REASON-CODE CONVENTION
+================================================================================
+
+For final decision_outcome = COUNTEROFFER:
+
+Primary reason should explain the main driver of reduced-exposure treatment.
+
+Recommended candidate reason codes, in priority order:
+
+1. COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+   Use when exposure_counteroffer_candidate_flag = TRUE
+   or requested_exposure_above_product_cap_flag = TRUE
+   or exposure_treatment_status / path indicates product-cap constraint.
+
+2. COUNTEROFFER_AFFORDABILITY_ADJUSTMENT
+   Use when counteroffer_affordability_candidate_flag = TRUE
+   or requested_pti_counteroffer_candidate_flag = TRUE
+   or approved exposure was reduced to satisfy counteroffer_target_pti.
+
+3. COUNTEROFFER_EXPECTED_LOSS_LIMIT
+   Use when counteroffer_expected_loss_candidate_flag = TRUE
+   or approved exposure was reduced to satisfy product_approved_el_cap.
+
+4. COUNTEROFFER_SYNTHETIC_RISK_EXPOSURE_LIMIT
+   Use when counteroffer_risk_band_eligible_flag = TRUE
+   or the counteroffer route was driven by elevated synthetic estimated-risk but not severe-risk decline.
+
+5. COUNTEROFFER_MULTIPLE_CONSTRAINTS
+   Use when multiple counteroffer candidate families are active and no single higher-priority driver dominates.
+
+Recommended family:
+- COUNTEROFFER
+
+COUNTEROFFER rows should not receive approval or decline primary reason codes.
+
+================================================================================
+8. MANUAL REVIEW REASON-CODE CONVENTION
+================================================================================
+
+For final decision_outcome = MANUAL_REVIEW:
+
+Primary reason should explain why the record remains unresolved.
+
+Recommended candidate reason codes, in priority order:
+
+1. MANUAL_REVIEW_COUNTEROFFER_NOT_FEASIBLE
+   Use when preliminary_decision_outcome = COUNTEROFFER
+   and counteroffer_feasibility_pass_flag = FALSE
+   and failed_counteroffer_resolution = MANUAL_REVIEW.
+
+2. MANUAL_REVIEW_COUNTEROFFER_EXCEEDS_TARGET_PTI
+   Use when counteroffer_feasibility_failure_reason = COUNTEROFFER_EXCEEDS_TARGET_PTI.
+
+3. MANUAL_REVIEW_COUNTEROFFER_EXCEEDS_APPROVED_EL_CAP
+   Use when counteroffer_feasibility_failure_reason = COUNTEROFFER_EXCEEDS_APPROVED_EL_CAP.
+
+4. MANUAL_REVIEW_COUNTEROFFER_BELOW_MINIMUM_OFFER
+   Use when failure reason indicates:
+   - COUNTEROFFER_BELOW_PRODUCT_MINIMUM
+   - COUNTEROFFER_BELOW_MINIMUM_REQUEST_PERCENT
+   - COUNTEROFFER_EXCEEDS_MAX_REDUCTION
+   - COUNTEROFFER_NO_POSITIVE_FEASIBLE_AMOUNT
+
+5. MANUAL_REVIEW_BORDERLINE_SYNTHETIC_RISK
+   Use when manual_review_borderline_trigger_flag = TRUE
+   or borderline_profile_flag = TRUE and strategy_risk_tier is elevated / high.
+
+6. MANUAL_REVIEW_BORDERLINE_AFFORDABILITY
+   Use when borderline_profile_flag = TRUE and requested_pti_bucket is elevated / high.
+
+7. MANUAL_REVIEW_MIXED_SIGNAL_PROFILE
+   Use when manual_review_mixed_signal_trigger_flag = TRUE
+   or mixed_signal_profile_type is not NO_MIXED_SIGNAL_PROFILE.
+
+8. MANUAL_REVIEW_REQUESTED_STRUCTURE
+   Use when severe_requested_structure_trigger_flag = TRUE
+   or requested exposure / requested PTI / requested EL structure is elevated but not a hard stop.
+
+9. MANUAL_REVIEW_ELEVATED_SYNTHETIC_RISK
+   Use when manual_review_risk_trigger_flag = TRUE.
+
+10. MANUAL_REVIEW_ELEVATED_DTI
+   Use when manual_review_dti_trigger_flag = TRUE.
+
+11. MANUAL_REVIEW_EXPECTED_LOSS
+   Use when manual_review_expected_loss_trigger_flag = TRUE.
+
+12. MANUAL_REVIEW_RESIDUAL_STRATEGY_REVIEW
+   Use for residual manual-review fallback rows.
+
+Recommended family:
+- MANUAL_REVIEW
+
+MANUAL_REVIEW rows should not receive approval or counteroffer primary reason codes.
+
+================================================================================
+9. DECLINE REASON-CODE CONVENTION
+================================================================================
+
+For final decision_outcome = DECLINE:
+
+Primary reason should explain the simulated policy stop or final no-offer path.
+
+Recommended candidate reason codes, in priority order:
+
+1. POLICY_STOP_BANKRUPTCY_FLAG
+   Use when bankruptcy_policy_stop_flag = TRUE.
+
+2. POLICY_STOP_MAJOR_DEROGATORY
+   Use when major_derogatory_policy_stop_flag = TRUE.
+
+3. POLICY_STOP_RECENT_DELINQUENCY
+   Use when severe_delinquency_policy_stop_flag = TRUE.
+
+4. POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+   Use when synthetic_risk_decline_trigger_flag = TRUE.
+
+5. POLICY_STOP_HIGH_DTI
+   Use when dti_decline_trigger_flag = TRUE.
+
+6. POLICY_STOP_HIGH_REQUESTED_PTI
+   Use when requested_pti_decline_trigger_flag = TRUE.
+
+7. POLICY_STOP_HIGH_REQUESTED_EXPECTED_LOSS
+   Use when requested_el_decline_trigger_flag = TRUE.
+
+8. POLICY_STOP_EXPOSURE_LIMIT_UNRESOLVED
+   Use when exposure_policy_stop_candidate_flag = TRUE
+   or requested_exposure_extreme_flag = TRUE.
+
+9. POLICY_STOP_COUNTEROFFER_NOT_FEASIBLE
+   Use when preliminary_decision_outcome = COUNTEROFFER
+   and counteroffer_feasibility_pass_flag = FALSE
+   and failed_counteroffer_resolution = DECLINE.
+
+10. POLICY_STOP_RESIDUAL_DECLINE
+   Use only as a fallback when final decision_outcome = DECLINE and no more specific reason candidate exists.
+
+Recommended family:
+- POLICY_STOP
+
+DECLINE rows should not receive approval or counteroffer primary reason codes.
+
+================================================================================
+10. SECONDARY AND TERTIARY REASON CODES
+================================================================================
+
+Secondary and tertiary reason codes should be populated from the next-highest-ranked applicable candidate reason codes.
+
+Conventions:
+- primary_reason_code = top-ranked applicable candidate
+- secondary_reason_code = second-ranked applicable candidate, if any
+- tertiary_reason_code = third-ranked applicable candidate, if any
+- no duplicate reason codes across primary / secondary / tertiary
+- if fewer than three reasons exist, remaining fields should be NULL
+
+The triggered_reason_code_list should include all applicable candidate reason codes in deterministic priority order.
+
+================================================================================
+11. PRIORITY RANK CONVENTION
+================================================================================
+
+Use lower numbers for stronger / higher-priority reasons.
+
+Suggested rank bands:
+
+Policy stop:
+- 10–99
+
+Counteroffer:
+- 100–199
+
+Manual review:
+- 200–299
+
+Approval:
+- 900
+
+Fallback:
+- 999
+
+The reason_priority_rank field should represent the rank of the primary_reason_code.
+
+================================================================================
+12. REASON FAMILY CONVENTION
+================================================================================
+
+Allowed primary_reason_family values:
+
+- APPROVAL
+- COUNTEROFFER
+- MANUAL_REVIEW
+- POLICY_STOP
+
+The primary_reason_family should reconcile to final decision_outcome:
+
+APPROVE:
+- primary_reason_family = APPROVAL
+
+COUNTEROFFER:
+- primary_reason_family = COUNTEROFFER
+
+MANUAL_REVIEW:
+- primary_reason_family = MANUAL_REVIEW
+
+DECLINE:
+- primary_reason_family = POLICY_STOP
+
+================================================================================
+13. SECTION 10 LOCAL GATEKEEPERS
+================================================================================
+
+At the end of Section 10, include local fail-fast checks.
+
+Validate:
+
+General:
+- row count is unchanged from tmp_m2_stage_6_final_decision_resolution
+- application_id remains unique
+- decision_outcome remains non-null and unchanged
+- decision_path remains non-null and unchanged
+- primary_reason_code is non-null for every row
+- primary_reason_family is non-null for every row
+- reason_priority_rank is non-null and positive for every row
+- triggered_reason_code_list is non-null for every row
+- reason_code_count >= 1 for every row
+
+Reason family reconciliation:
+- APPROVE rows have primary_reason_family = APPROVAL
+- COUNTEROFFER rows have primary_reason_family = COUNTEROFFER
+- MANUAL_REVIEW rows have primary_reason_family = MANUAL_REVIEW
+- DECLINE rows have primary_reason_family = POLICY_STOP
+
+Primary reason reconciliation:
+- APPROVE rows have primary_reason_code = APPROVED_AS_REQUESTED
+- COUNTEROFFER rows have primary_reason_code beginning with COUNTEROFFER_
+- MANUAL_REVIEW rows have primary_reason_code beginning with MANUAL_REVIEW_
+- DECLINE rows have primary_reason_code beginning with POLICY_STOP_
+
+Reason-code uniqueness:
+- secondary_reason_code is either NULL or different from primary_reason_code
+- tertiary_reason_code is either NULL or different from primary_reason_code and secondary_reason_code
+
+Boundary controls:
+- no reason code should contain ADVERSE_ACTION
+- no reason code should contain REGULATORY
+- no reason code should contain CUSTOMER_NOTICE
+- no reason code should contain FAIR_LENDING
+
+Output boundary:
+- no final latest-run strategy_decisions table is created
+- no archive rows are inserted
+- full QA framework is not built yet
+
+================================================================================
+14. SECTION 10 LOCAL SANITY CHECKS
+================================================================================
+
+After local gatekeepers, include lightweight staging diagnostics.
+
+Suggested checks:
+
+1. Count by decision_outcome × primary_reason_code
+2. Count by primary_reason_family
+3. Count by primary_reason_code
+4. Count by secondary_reason_code
+5. Count by tertiary_reason_code
+6. Count by reason_code_count
+7. Product × primary_reason_code
+8. Score band × primary_reason_code
+9. Strategy risk tier × primary_reason_code
+10. Requested PTI bucket × primary_reason_code
+11. Mixed-signal profile × primary_reason_code
+12. Counteroffer feasibility failure reason × primary_reason_code
+13. Decision path × primary_reason_code
+14. Decision resolution source × primary_reason_code
+
+These are staging diagnostics only.
+They should not be interpreted as full Module 2 validation yet.
+
+================================================================================
+15. SECTION 10 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard.
+
+Section 10 comments should explain:
+
+- why reason codes are assigned after final decision resolution
+- why reason codes are simulated strategy explanation codes
+- why reason codes are not adverse-action reasons
+- why primary / secondary / tertiary reason codes are prioritized deterministically
+- why every row receives a primary reason code
+- why APPROVE receives APPROVED_AS_REQUESTED
+- why COUNTEROFFER reasons explain reduced-exposure treatment
+- why MANUAL_REVIEW reasons explain unresolved review triggers
+- why DECLINE reasons explain simulated policy-stop behavior
+- why triggered_reason_code_list supports auditability
+- why final output and archive persistence are still deferred
+
+================================================================================
+16. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Section 10 SQL only:
+   SIMULATED REASON-CODE ASSIGNMENT LAYER.
+
+2. A short explanation of what Section 10 establishes.
+
+3. A short explanation of what Section 10 intentionally does not build.
+
+4. The recommended next build step after Section 10.
+
+Do not write Section 11+ yet.
+```
+
+This keeps the build moving in the right order. Section 10 should explain the outcomes that Section 9 already finalized; it should not alter those outcomes or create the final output/archive layer yet.
+<!-- END_MESSAGE C037-M00605 -->
+
+
+---
+
+<a id="c037-m00606"></a>
+
+### C037-M00606
+
+**Andrew** · 2026-05-06T14:20:33.628000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00606 -->
+evaluate the nineth follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00606 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_nineth_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00611"></a>
+
+### C037-M00611
+
+**ChatGPT** · 2026-05-06T14:23:54.641041-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00611 -->
+## Evaluation of the ninth response
+
+ChatGPT’s ninth response is **strong and ready to advance**, with two small targeted patches before building the latest-run output table.
+
+It correctly built **Section 10 — Simulated Reason-Code Assignment Layer** as a separate staging layer after final decision resolution. That is the right architecture. It preserved the separation between final decision outcomes and simulated reason-code assignment, used a transparent candidate → ranking → pivot pattern, avoided adverse-action framing, populated primary / secondary / tertiary simulated reason codes, and did not create the final output table or archive table. fileciteturn56file0
+
+The recommended next step — **Section 11: Latest-Run Strategy Decision Output Table** — is correct. At this point, the engine has final outcomes, final exposure economics, and reason codes. It is appropriate to materialize the latest-run output table next.
+
+Before doing that, I would ask for two targeted Section 10 patches:
+
+1. **Counteroffer product-cap binding condition**: one condition appears directionally inverted. Since `counteroffer_raw_max_feasible_amount` is the `LEAST(...)` of feasible amounts, the product cap is binding when `counteroffer_product_cap_amount = counteroffer_raw_max_feasible_amount`, not when it is less than the raw max feasible amount.
+
+2. **Missing / inconsistent decline reason label for high requested PTI**: Section 10 should include a decline-family reason candidate for high requested PTI, especially when a counteroffer fails because PTI remains above target. This keeps the decline reason taxonomy aligned with the prior locked design.
+
+Below is the full copy-paste response I would send.
+
+---
+
+```text
+This is strong. I agree with the Section 10 Simulated Reason-Code Assignment Layer.
+
+Section 10 correctly:
+- consumes tmp_m2_stage_6_final_decision_resolution
+- creates tmp_m2_stage_7_reason_code_assignment
+- assigns simulated strategy explanation codes after final decision resolution
+- preserves final decision_outcome, final decision_path, and decision_resolution_source
+- uses a candidate → rank → pivot pattern rather than one opaque CASE block
+- creates primary_reason_code, secondary_reason_code, tertiary_reason_code
+- creates primary_reason_family
+- creates triggered_reason_code_list
+- creates reason_priority_rank
+- creates reason_code_count
+- gives APPROVE rows APPROVED_AS_REQUESTED
+- keeps reason codes outcome-family aligned
+- avoids adverse-action / regulatory / customer-notice framing
+- does not create the final latest-run strategy_decisions table
+- does not insert archive rows
+- does not build the full QA framework
+
+Before we move to Section 11, please make two targeted Section 10 patches.
+
+Do not rewrite Sections 0–10 in full unless necessary.
+
+================================================================================
+1. TARGETED SECTION 10 PATCH — COUNTEROFFER PRODUCT-CAP BINDING CONDITION
+================================================================================
+
+In the COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT candidate logic, please revise the product-cap binding condition.
+
+Current logic appears to test something directionally like:
+
+counteroffer_product_cap_amount < counteroffer_raw_max_feasible_amount
+
+That is not the right binding test because:
+
+counteroffer_raw_max_feasible_amount =
+    LEAST(requested_amount,
+          counteroffer_product_cap_amount,
+          counteroffer_pti_target_amount,
+          counteroffer_el_cap_amount)
+
+Therefore, counteroffer_raw_max_feasible_amount should not exceed counteroffer_product_cap_amount.
+
+The product cap is binding when:
+
+counteroffer_product_cap_amount = counteroffer_raw_max_feasible_amount
+
+Recommended patch:
+
+Use:
+
+counteroffer_product_cap_amount IS NOT NULL
+AND counteroffer_raw_max_feasible_amount IS NOT NULL
+AND counteroffer_product_cap_amount = counteroffer_raw_max_feasible_amount
+AND requested_amount > product_max_approved_amount
+
+This preserves the intended logic:
+- requested amount exceeds the product approval cap; and
+- the product cap is one of the binding feasibility constraints.
+
+If multiple constraints are equal and binding, multiple candidate reason codes may remain active. That is acceptable because Section 10 ranks and preserves secondary / tertiary reasons.
+
+================================================================================
+2. TARGETED SECTION 10 PATCH — DECLINE REASON FOR HIGH REQUESTED PTI
+================================================================================
+
+Please add a DECLINE / POLICY_STOP candidate reason for high requested PTI.
+
+Reason code:
+
+POLICY_STOP_HIGH_REQUESTED_PTI
+
+Recommended family:
+
+POLICY_STOP
+
+Recommended priority rank:
+
+145
+
+Recommended condition:
+
+decision_outcome = 'DECLINE'
+AND (
+    requested_pti_decline_trigger_flag IS TRUE
+    OR (
+        preliminary_decision_outcome = 'COUNTEROFFER'
+        AND counteroffer_feasibility_pass_flag IS FALSE
+        AND failed_counteroffer_resolution = 'DECLINE'
+        AND counteroffer_feasibility_failure_reason = 'COUNTEROFFER_PTI_STILL_ABOVE_TARGET'
+    )
+)
+
+Reason:
+- High requested PTI is one of the locked affordability stop / stress reasons.
+- If a counteroffer fails because approved PTI still exceeds target and the strategy resolves failed counteroffers to DECLINE, the final no-offer path should be able to explain the affordability constraint directly.
+- This remains a simulated strategy explanation code, not an adverse-action reason.
+
+Place it after POLICY_STOP_HIGH_DTI or near the other affordability-related policy stop reasons.
+
+Do not remove POLICY_STOP_COUNTEROFFER_NOT_FEASIBLE.
+That reason can still appear as a secondary or tertiary diagnostic reason when applicable.
+
+================================================================================
+3. OPTIONAL LABEL ALIGNMENT PATCH — REQUESTED EXPECTED LOSS DECLINE REASON
+================================================================================
+
+If the current Section 10 code uses:
+
+POLICY_STOP_EXPECTED_LOSS_UNRESOLVED
+
+for requested_el_decline_trigger_flag, please consider renaming it to:
+
+POLICY_STOP_HIGH_REQUESTED_EXPECTED_LOSS
+
+Reason:
+This more directly aligns with the locked reason-code taxonomy and distinguishes requested-exposure Expected Loss from approved-exposure Expected Loss.
+
+If you believe the existing label is better, explain why before keeping it.
+
+Either way, ensure the code and commentary are internally consistent.
+
+================================================================================
+4. SECTION 10 ACCEPTANCE CRITERIA
+================================================================================
+
+After these targeted patches, treat Section 10 as accepted if it establishes:
+
+- tmp_m2_stage_7_reason_code_assignment exists
+- row count is unchanged from tmp_m2_stage_6_final_decision_resolution
+- application_id remains unique
+- final decision_outcome is preserved
+- final decision_path is preserved
+- primary_reason_code is populated for every row
+- primary_reason_family is populated for every row
+- reason_priority_rank is populated for every row
+- triggered_reason_code_list is populated for every row
+- reason_code_count is positive for every row
+- APPROVE rows use APPROVED_AS_REQUESTED
+- COUNTEROFFER rows use COUNTEROFFER-family primary reasons
+- MANUAL_REVIEW rows use MANUAL_REVIEW-family primary reasons
+- DECLINE rows use POLICY_STOP-family primary reasons
+- reason-code family aligns to final decision_outcome
+- secondary_reason_code and tertiary_reason_code are populated only when additional outcome-family-aligned diagnostics exist
+- no reason-code field uses adverse-action, regulatory, customer-notice, or fair-lending language
+- no final latest-run output table is created
+- no archive rows are inserted
+- no full QA framework is created
+
+================================================================================
+5. NEXT BUILD SCOPE: SECTION 11 ONLY
+================================================================================
+
+After the targeted Section 10 patches, please build only:
+
+SECTION 11 — LATEST-RUN STRATEGY DECISION OUTPUT TABLE
+
+Final latest-run table:
+
+credit_decisioning_sim.strategy_decisions
+
+Section 11 should consume:
+
+tmp_m2_stage_7_reason_code_assignment
+
+Do not build:
+- strategy_decisions_archive insert logic
+- archive reset / replacement logic
+- matched strategy comparison queries
+- full QA framework
+- BRD or Validation Summary documentation
+
+Those belong to later sections.
+
+================================================================================
+6. SECTION 11 OBJECTIVE
+================================================================================
+
+Section 11 should materialize the final latest-run Module 2 strategy output table.
+
+Section 11 should answer:
+
+“What is the current final simulated strategy output for the selected Module 1 source population / scenario and active Module 2 strategy?”
+
+Section 11 should not answer:
+
+“How do archived strategy runs compare over time?”
+
+Archive persistence and matched strategy comparison should remain separate later sections.
+
+================================================================================
+7. LATEST-RUN TABLE DESIGN
+================================================================================
+
+Create or replace:
+
+credit_decisioning_sim.strategy_decisions
+
+Recommended grain:
+
+one row per application_id for the selected Module 1 source scenario / population and active Module 2 strategy.
+
+This is the current latest-run output only.
+
+It should not preserve prior runs.
+Prior runs should be preserved later in the archive table.
+
+================================================================================
+8. EXPLICIT FIELD SELECTION REQUIREMENT
+================================================================================
+
+Please use an explicit SELECT list when creating credit_decisioning_sim.strategy_decisions.
+
+Do not use SELECT * for the permanent latest-run output table.
+
+Reason:
+The final table schema should be governed, reviewable, and stable.
+Temporary staging tables can carry many diagnostics, but the final latest-run table should intentionally expose the fields needed for downstream QA, archive persistence, reporting, and documentation.
+
+================================================================================
+9. REQUIRED FIELD FAMILIES FOR STRATEGY_DECISIONS
+================================================================================
+
+The latest-run table should include the following field families.
+
+1. Module 2 strategy metadata
+- module2_model_version
+- strategy_set_name
+- strategy_name
+- strategy_version
+- strategy_run_id
+- strategy_run_ts
+- module1_input_source
+- module1_source_table_name
+
+2. Module 1 lineage
+- module1_model_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+- anchor_date
+
+3. Application lineage
+- application_seq
+- application_id
+- applicant_id
+- application_date
+
+4. Product and score segmentation
+- product_type
+- product_type_policy_key
+- score_band
+- score_band_policy_key
+- credit_score
+- product_score_policy_segment
+
+5. Borrower and behavioral profile
+- annual_income
+- debt_to_income_ratio
+- utilization_rate
+- tradeline_count
+- months_since_oldest_trade
+- recent_inquiry_count
+- delinquency_count_12m
+- major_derogatory_flag
+- bankruptcy_flag
+- prequalified_flag
+- returning_customer_flag
+
+If prequalified_flag or returning_customer_flag were optional source fields and are not available, preserve them as nullable fields if already staged.
+
+6. Requested structure and requested-exposure economics
+- requested_amount
+- loan_term_months
+- base_apr_for_payment_calc
+- requested_monthly_payment_proxy
+- requested_payment_to_income_ratio
+- amount_to_income_ratio
+- estimated_pd
+- estimated_lgd
+- requested_expected_loss_amount
+
+Important commentary:
+- estimated_pd remains the finalized Module 1 SQL field and is interpreted as the synthetic estimated-PD proxy.
+- requested_expected_loss_amount is the Module 2 alias for Module 1 requested-exposure Expected Loss.
+
+7. Strategy segmentation diagnostics
+- strategy_risk_tier
+- requested_pti_bucket
+- dti_bucket
+- requested_exposure_tier
+- requested_expected_loss_tier
+- mixed_signal_profile_type
+- mixed_signal_condition_count
+- borderline_profile_flag
+
+8. Rule-trigger diagnostics
+Include the major rule flag and count fields needed for audit review, including:
+- hard_policy_stop_flag
+- hard_policy_stop_count
+- synthetic_risk_decline_trigger_flag
+- requested_pti_decline_trigger_flag
+- dti_decline_trigger_flag
+- requested_el_decline_trigger_flag
+- requested_exposure_extreme_flag
+- exposure_policy_stop_candidate_flag
+- counteroffer_candidate_flag
+- manual_review_candidate_flag
+- clean_approval_candidate_flag
+- total_rule_trigger_count
+
+If other trigger fields are important for reason-code traceability, include them as well.
+
+9. Preliminary routing diagnostics
+- preliminary_decision_outcome
+- preliminary_decision_path
+- preliminary_decision_priority_rank
+- preliminary_route_reason_family
+- preliminary_route_trigger_count
+- requires_counteroffer_feasibility_flag
+- requires_approved_exposure_calculation_flag
+
+10. Exposure treatment and counteroffer diagnostics
+- exposure_treatment_status
+- exposure_treatment_path
+- counteroffer_feasibility_evaluated_flag
+- counteroffer_feasibility_pass_flag
+- counteroffer_feasibility_failure_reason
+- counteroffer_feasibility_constraint_count
+- counteroffer_product_cap_amount
+- counteroffer_pti_target_amount
+- counteroffer_el_cap_amount
+- counteroffer_raw_max_feasible_amount
+- counteroffer_min_viable_amount
+- counteroffer_rounded_amount
+
+11. Final decision outcome fields
+- decision_outcome
+- decision_path
+- decision_priority_rank
+- decision_resolution_source
+
+12. Final decision flags
+- approval_flag
+- counteroffer_flag
+- manual_review_flag
+- decline_flag
+- simulated_offer_exposure_flag
+
+13. Final approved exposure and economics
+- approved_amount
+- counteroffer_amount
+- exposure_reduction_flag
+- exposure_reduction_amount
+- exposure_reduction_pct
+- approved_monthly_payment_proxy
+- approved_payment_to_income_ratio
+- approved_expected_loss_amount
+- approved_el_reduction_amount
+- approved_el_reduction_pct
+
+14. Simulated reason-code fields
+- primary_reason_code
+- secondary_reason_code
+- tertiary_reason_code
+- primary_reason_family
+- triggered_reason_code_list
+- reason_priority_rank
+- reason_code_count
+
+15. Output audit fields
+- latest_output_created_ts
+
+Use CURRENT_TIMESTAMP for latest_output_created_ts.
+
+Commentary should state:
+- latest_output_created_ts is audit metadata
+- it should not be used for deterministic outcome comparison
+- deterministic comparison should focus on business, strategy, decision, and economics fields
+
+================================================================================
+10. LATEST-RUN OUTPUT CONVENTIONS
+================================================================================
+
+Section 11 should preserve the locked interpretation:
+
+- APPROVE and COUNTEROFFER are simulated positive offer-exposure outcomes.
+- MANUAL_REVIEW is unresolved by design.
+- DECLINE follows the zero-exposure convention.
+- simulated_offer_exposure_flag does not imply real booking, funded exposure, or customer treatment.
+- approved_expected_loss_amount is a simulated approved-exposure Expected Loss measure, not a production loss forecast.
+- reason codes are simulated strategy explanation codes, not adverse-action reasons.
+
+================================================================================
+11. SECTION 11 LOCAL GATEKEEPERS
+================================================================================
+
+At the end of Section 11, include local fail-fast checks.
+
+Validate:
+
+General table integrity:
+- credit_decisioning_sim.strategy_decisions exists
+- row count matches tmp_m2_stage_7_reason_code_assignment
+- application_id remains unique
+- strategy metadata is non-null
+- Module 1 lineage is non-null
+- final decision fields are non-null
+- final reason-code fields are non-null
+- latest_output_created_ts is non-null
+
+Decision and flag integrity:
+- decision_outcome IN ('APPROVE', 'COUNTEROFFER', 'MANUAL_REVIEW', 'DECLINE')
+- exactly one of approval_flag, counteroffer_flag, manual_review_flag, decline_flag is TRUE per row
+- simulated_offer_exposure_flag = TRUE only for APPROVE and COUNTEROFFER
+- simulated_offer_exposure_flag = FALSE for MANUAL_REVIEW and DECLINE
+
+Amount / exposure integrity:
+- approved_amount is not negative
+- approved_amount <= requested_amount where approved_amount is not null
+- APPROVE rows have approved_amount = requested_amount
+- COUNTEROFFER rows have approved_amount < requested_amount
+- MANUAL_REVIEW rows have approved_amount IS NULL
+- DECLINE rows have approved_amount = 0
+
+Expected Loss integrity:
+- requested_expected_loss_amount is non-null
+- approved_expected_loss_amount is non-negative where populated
+- APPROVE rows have approved_expected_loss_amount = requested_expected_loss_amount
+- COUNTEROFFER rows have approved_expected_loss_amount <= requested_expected_loss_amount
+- MANUAL_REVIEW rows have approved_expected_loss_amount IS NULL
+- DECLINE rows have approved_expected_loss_amount = 0
+
+Reason-code integrity:
+- primary_reason_code is non-null
+- primary_reason_family aligns to decision_outcome
+- reason_code_count >= 1
+- triggered_reason_code_list is non-null
+- no reason code includes ADVERSE_ACTION, REGULATORY, CUSTOMER_NOTICE, or FAIR_LENDING
+
+Archive boundary:
+- no strategy_decisions_archive insert occurs in Section 11
+- archive persistence remains deferred
+
+================================================================================
+12. SECTION 11 INDEXES
+================================================================================
+
+Create practical indexes for latest-run QA and review.
+
+Recommended indexes:
+- application_id
+- strategy_set_name, strategy_name, strategy_version
+- module1_scenario_set_name, module1_scenario_name, population_id
+- decision_outcome
+- product_type_policy_key, decision_outcome
+- score_band_policy_key, decision_outcome
+- primary_reason_code
+- simulated_offer_exposure_flag
+
+These indexes support QA, reporting, and later archive comparison logic.
+
+================================================================================
+13. SECTION 11 LOCAL SANITY CHECKS
+================================================================================
+
+After local gatekeepers, include lightweight latest-run diagnostics.
+
+Suggested checks:
+
+1. Latest-run row count and distinct application_id count
+2. Count by decision_outcome
+3. Count by decision_path
+4. Count by primary_reason_code
+5. Product × decision_outcome
+6. Score band × decision_outcome
+7. Product × primary_reason_code
+8. Score band × primary_reason_code
+9. Strategy risk tier × decision_outcome
+10. Requested PTI bucket × decision_outcome
+11. Mixed-signal profile × decision_outcome
+12. Average requested_amount vs approved_amount by decision_outcome
+13. Average requested_payment_to_income_ratio vs approved_payment_to_income_ratio by decision_outcome
+14. Average requested_expected_loss_amount vs approved_expected_loss_amount by decision_outcome
+15. Simulated offer-exposure profile:
+    - row count
+    - total approved_amount
+    - average estimated_pd
+    - average approved_expected_loss_amount
+    - grouped by simulated_offer_exposure_flag
+
+These are latest-run output diagnostics.
+They are still not the full Module 2 QA framework.
+
+================================================================================
+14. SECTION 11 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard.
+
+Section 11 comments should explain:
+
+- why latest-run output is separated from staging tables
+- why latest-run output is replaced each run
+- why archive persistence is deferred
+- why explicit output-field selection is used instead of SELECT *
+- why requested_expected_loss_amount and approved_expected_loss_amount are both preserved
+- why estimated_pd remains the synthetic estimated-PD proxy field
+- why simulated_offer_exposure_flag does not imply booked exposure
+- why reason codes are simulated strategy explanation codes
+- why latest_output_created_ts is audit metadata, not deterministic comparison evidence
+
+================================================================================
+15. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Targeted Section 10 patches only:
+   - counteroffer product-cap binding condition
+   - POLICY_STOP_HIGH_REQUESTED_PTI candidate reason
+   - optional requested Expected Loss reason-code label alignment, if needed
+
+2. Section 11 SQL only:
+   LATEST-RUN STRATEGY DECISION OUTPUT TABLE.
+
+3. A short explanation of what Section 11 establishes.
+
+4. A short explanation of what Section 11 intentionally does not build.
+
+5. The recommended next build step after Section 11.
+
+Do not write Section 12+ yet.
+```
+
+This keeps the project moving cleanly: Section 10 explains final outcomes; Section 11 materializes the latest-run output; Section 12 can then handle archive persistence and replacement logic.
+<!-- END_MESSAGE C037-M00611 -->
+
+
+---
+
+<a id="c037-m00612"></a>
+
+### C037-M00612
+
+**Andrew** · 2026-05-06T14:45:38.829000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00612 -->
+evaluate the tenth follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00612 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_tenth_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00616"></a>
+
+### C037-M00616
+
+**ChatGPT** · 2026-05-06T14:49:40.735670-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00616 -->
+## Evaluation of the tenth response
+
+ChatGPT’s tenth response is **strong and ready to advance**, with two small targeted Section 11 refinements before building the archive layer.
+
+It correctly applied the Section 10 patches, including the counteroffer product-cap binding correction, the high-requested-PTI policy-stop reason, requested Expected Loss label alignment, exact counteroffer failure label alignment, and the manual-review counteroffer-not-reduced reason. It then built **Section 11 — Latest-Run Strategy Decision Output Table** using an explicit SELECT list, preserved lineage and diagnostics, created `credit_decisioning_sim.strategy_decisions`, added practical indexes, and included latest-run gatekeepers and diagnostics. It also correctly deferred archive persistence, matched strategy comparison, and the full QA framework. fileciteturn56file0
+
+The next step should be **Section 12 — Strategy Decision Archive Persistence Layer**. Before that, I would ask for two targeted Section 11 patches:
+
+1. Add `archive_run_flag` and `strategy_archive_reset_mode` to the latest-run output for audit traceability.
+2. Tighten the “exactly one final flag” gatekeeper from “greater than 1” to “not equal to 1.” The existing outcome-specific reconciliation likely catches all-zero cases, but the direct count check should say exactly what we mean.
+
+Here is the full copy-paste response I would send to the Module 2 chat.
+
+---
+
+```text
+This is strong. I agree with the Section 10 targeted patches and the Section 11 Latest-Run Strategy Decision Output Table.
+
+Section 11 correctly:
+- consumes tmp_m2_stage_7_reason_code_assignment
+- creates credit_decisioning_sim.strategy_decisions
+- uses an explicit SELECT list instead of SELECT *
+- preserves Module 2 strategy metadata
+- preserves Module 1 lineage
+- preserves application lineage
+- preserves borrower, product, requested-structure, affordability, estimated-risk, LGD, and requested Expected Loss fields
+- preserves strategy segmentation diagnostics
+- preserves rule-trigger diagnostics
+- preserves preliminary routing diagnostics
+- preserves exposure treatment and counteroffer feasibility diagnostics
+- creates final decision outcome fields
+- creates final decision flags
+- creates final approved exposure and approved economics fields
+- creates simulated reason-code fields
+- adds latest_output_created_ts as audit metadata
+- creates practical indexes
+- includes latest-run local gatekeepers and sanity checks
+- does not insert archive rows
+- does not build matched strategy comparison
+- does not build the full Module 2 QA framework
+
+Treat Section 11 as accepted, subject to the two targeted patches below.
+
+Do not rewrite Sections 0–11 in full unless necessary.
+
+================================================================================
+1. TARGETED SECTION 11 PATCH — ADD ARCHIVE CONTROL FIELDS TO LATEST-RUN OUTPUT
+================================================================================
+
+Please add the following fields to credit_decisioning_sim.strategy_decisions:
+
+- archive_run_flag
+- strategy_archive_reset_mode
+
+Recommended placement:
+Add them within the Module 2 strategy metadata field family, near:
+
+- module2_model_version
+- strategy_set_name
+- strategy_name
+- strategy_version
+- strategy_run_id
+- strategy_run_ts
+- failed_counteroffer_resolution
+- module1_input_source
+- module1_source_table_name
+
+Reason:
+These fields are strategy run controls. Including them in the latest-run output improves audit traceability and makes Section 12 archive persistence easier to validate.
+
+Interpretation:
+- archive_run_flag indicates whether the active strategy run is intended to be archived
+- strategy_archive_reset_mode indicates how archive replacement / cleanup should be handled
+- neither field is part of the row-level application grain
+- neither field replaces the locked archive replacement / rerun key
+
+Please also add a local gatekeeper to Section 11 confirming:
+- archive_run_flag is not null
+- strategy_archive_reset_mode is non-null and one of:
+  NONE
+  STRATEGY_SCENARIO_ONLY
+  STRATEGY_SET_ONLY
+  ALL
+
+================================================================================
+2. TARGETED SECTION 11 PATCH — EXACTLY ONE FINAL FLAG CHECK
+================================================================================
+
+Please tighten the final decision-flag gatekeeper.
+
+Current logic appears to fail when the sum of final flags is greater than 1.
+
+Please revise the count test so it fails whenever the sum of final decision flags is not exactly 1.
+
+Required logic:
+
+Exactly one of the following must be TRUE for every row:
+- approval_flag
+- counteroffer_flag
+- manual_review_flag
+- decline_flag
+
+Recommended condition:
+
+COALESCE(approval_flag::INT, 0)
++ COALESCE(counteroffer_flag::INT, 0)
++ COALESCE(manual_review_flag::INT, 0)
++ COALESCE(decline_flag::INT, 0) <> 1
+
+Reason:
+The locked taxonomy requires exactly one final simulated strategy outcome per row. The existing outcome-specific reconciliation is helpful, but the direct flag-count test should explicitly enforce exactly one final flag.
+
+================================================================================
+3. SECTION 11 ACCEPTANCE CRITERIA
+================================================================================
+
+After the two targeted patches, treat Section 11 as accepted if:
+
+- credit_decisioning_sim.strategy_decisions exists
+- row count matches tmp_m2_stage_7_reason_code_assignment
+- application_id remains unique
+- Module 2 strategy metadata is populated
+- archive_run_flag and strategy_archive_reset_mode are populated
+- Module 1 lineage is populated
+- final decision_outcome is populated
+- final decision flags reconcile to decision_outcome
+- exactly one final decision flag is TRUE per row
+- simulated_offer_exposure_flag is TRUE only for APPROVE and COUNTEROFFER
+- simulated_offer_exposure_flag is FALSE for MANUAL_REVIEW and DECLINE
+- approved_amount conventions hold by decision_outcome
+- approved_expected_loss_amount conventions hold by decision_outcome
+- primary_reason_code is populated for every row
+- primary_reason_family aligns to decision_outcome
+- no prohibited reason-code language appears
+- latest_output_created_ts is populated
+- no archive rows are inserted
+- no matched strategy comparison logic is created
+- no full QA framework is created
+
+================================================================================
+4. NEXT BUILD SCOPE: SECTION 12 ONLY
+================================================================================
+
+After the targeted Section 11 patches, please build only:
+
+SECTION 12 — STRATEGY DECISION ARCHIVE PERSISTENCE LAYER
+
+Archive table:
+
+credit_decisioning_sim.strategy_decisions_archive
+
+Section 12 should consume:
+
+credit_decisioning_sim.strategy_decisions
+
+Do not build:
+- matched strategy comparison queries
+- full Module 2 QA framework
+- BRD documentation
+- Validation Summary documentation
+- dashboard or reporting artifacts
+
+Those belong to later sections.
+
+================================================================================
+5. SECTION 12 OBJECTIVE
+================================================================================
+
+Section 12 should persist completed latest-run strategy outputs into a governed archive table.
+
+Section 12 should answer:
+
+“Should this completed Module 2 strategy run be archived, and if so, how should existing archive rows be handled before inserting the current latest-run output?”
+
+Section 12 should not answer:
+
+“How do two archived strategies compare?”
+
+Matched strategy comparison belongs to a later section.
+
+================================================================================
+6. ARCHIVE GRAIN AND REPLACEMENT KEY
+================================================================================
+
+Preserve the locked archive grain:
+
+one row per application × Module 1 scenario × Module 2 strategy version
+
+Archive grain fields:
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+- application_id
+
+Archive replacement / rerun key:
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+The row-level archive grain additionally includes:
+- application_id
+
+Do not use strategy_run_ts or archive timestamp as the archive replacement key.
+
+strategy_run_id and strategy_run_ts are audit metadata only.
+
+================================================================================
+7. ARCHIVE TABLE DESIGN
+================================================================================
+
+Create the archive table if it does not already exist.
+
+Recommended structure:
+- all fields from credit_decisioning_sim.strategy_decisions
+- plus archive_inserted_ts
+
+Suggested archive timestamp field:
+- archive_inserted_ts
+
+Interpretation:
+- latest_output_created_ts identifies when the latest-run output table was materialized
+- archive_inserted_ts identifies when that latest-run output was persisted to archive
+- neither timestamp should be used as the archive replacement / rerun key
+- deterministic strategy comparison should exclude timestamp fields unless specifically validating run metadata
+
+Use explicit column handling where practical.
+
+If using CREATE TABLE AS for initial archive creation, ensure the archive schema includes archive_inserted_ts.
+
+================================================================================
+8. ARCHIVE CONTROL LOGIC
+================================================================================
+
+Section 12 should read archive controls from the active strategy metadata / latest-run output:
+
+- archive_run_flag
+- strategy_archive_reset_mode
+
+Allowed strategy_archive_reset_mode values:
+- NONE
+- STRATEGY_SCENARIO_ONLY
+- STRATEGY_SET_ONLY
+- ALL
+
+Recommended behavior:
+
+1. archive_run_flag = FALSE
+
+- Do not insert archive rows.
+- Do not delete archive rows.
+- Leave existing archive untouched.
+- Emit a lightweight diagnostic showing that archive persistence was skipped.
+
+2. archive_run_flag = TRUE and strategy_archive_reset_mode = STRATEGY_SCENARIO_ONLY
+
+Before inserting current latest-run rows, delete existing archive rows matching the full archive replacement / rerun key:
+
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+Then insert one archive row per application_id from credit_decisioning_sim.strategy_decisions.
+
+This should be the default ordinary rerun behavior.
+
+3. archive_run_flag = TRUE and strategy_archive_reset_mode = STRATEGY_SET_ONLY
+
+Before inserting current latest-run rows, delete existing archive rows matching:
+
+- strategy_set_name
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+This clears all strategy_name / strategy_version outputs within the same strategy set for the selected Module 1 scenario and population.
+
+Do not delete unrelated Module 1 scenarios or unrelated populations.
+
+4. archive_run_flag = TRUE and strategy_archive_reset_mode = ALL
+
+Delete all rows from credit_decisioning_sim.strategy_decisions_archive before inserting current latest-run rows.
+
+Commentary should clearly state that ALL is a broad reset option and should be used intentionally.
+
+5. archive_run_flag = TRUE and strategy_archive_reset_mode = NONE
+
+Do not delete existing archive rows.
+
+Before insert, check whether rows already exist for the full archive replacement / rerun key.
+
+If existing rows are found for the same replacement key, fail fast rather than creating duplicate archive-grain rows.
+
+Reason:
+NONE should preserve archive history, but it should not silently create duplicate rows for the same application × Module 1 scenario × Module 2 strategy version grain.
+
+================================================================================
+9. ARCHIVE INSERT REQUIREMENTS
+================================================================================
+
+When archive_run_flag = TRUE, insert the current latest-run output into:
+
+credit_decisioning_sim.strategy_decisions_archive
+
+Insert:
+- all fields from credit_decisioning_sim.strategy_decisions
+- archive_inserted_ts = CURRENT_TIMESTAMP
+
+The inserted archive slice should have exactly the same row count as the latest-run table.
+
+Do not change business fields during archive insert.
+
+Do not recalculate decision outcomes.
+
+Do not recalculate reason codes.
+
+Do not recalculate approved exposure or approved Expected Loss.
+
+Archive persistence should be a storage step, not a modeling step.
+
+================================================================================
+10. ARCHIVE INDEXES
+================================================================================
+
+Create practical archive indexes.
+
+Recommended:
+
+1. Unique archive grain index:
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+- application_id
+
+2. Archive replacement / retrieval index:
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+3. Strategy set comparison index:
+- strategy_set_name
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+4. Decision outcome index:
+- decision_outcome
+
+5. Product × decision index:
+- product_type_policy_key
+- decision_outcome
+
+6. Score × decision index:
+- score_band_policy_key
+- decision_outcome
+
+7. Reason-code index:
+- primary_reason_code
+
+8. Offer-exposure index:
+- simulated_offer_exposure_flag
+
+Use IF NOT EXISTS where appropriate.
+
+================================================================================
+11. SECTION 12 LOCAL GATEKEEPERS
+================================================================================
+
+At the end of Section 12, include local fail-fast checks.
+
+If archive_run_flag = FALSE:
+- confirm no archive insert was attempted
+- emit a diagnostic showing archive persistence was skipped
+- do not fail solely because archive rows were not inserted
+
+If archive_run_flag = TRUE:
+Validate:
+
+General:
+- credit_decisioning_sim.strategy_decisions exists
+- credit_decisioning_sim.strategy_decisions row count > 0
+- credit_decisioning_sim.strategy_decisions_archive exists
+- latest-run table has exactly one strategy / Module 1 scenario / population combination
+- archive_inserted_ts is populated for inserted rows
+
+Inserted slice:
+- archive row count for the current replacement key equals latest-run row count
+- distinct application_id count for the current replacement key equals latest-run row count
+- no duplicate application_id rows exist within the current replacement key
+- all archive grain fields are non-null
+- final decision_outcome is populated
+- primary_reason_code is populated
+- approved exposure conventions remain intact
+- reason-code family alignment remains intact
+- simulated_offer_exposure_flag conventions remain intact
+
+Replacement behavior:
+- STRATEGY_SCENARIO_ONLY results in exactly one archived slice for the current replacement key
+- STRATEGY_SET_ONLY removes prior rows for the selected strategy_set_name + Module 1 scenario + population before inserting current rows
+- ALL clears the archive before inserting current rows
+- NONE fails if the current replacement key already exists before insert
+
+================================================================================
+12. SECTION 12 LOCAL SANITY CHECKS
+================================================================================
+
+After local gatekeepers, include lightweight archive diagnostics.
+
+Suggested checks:
+
+1. Archive inventory by:
+   - strategy_set_name
+   - strategy_name
+   - strategy_version
+   - module1_scenario_set_name
+   - module1_scenario_name
+   - population_id
+
+2. Current archived slice row count and distinct application_id count
+
+3. Current archived slice count by decision_outcome
+
+4. Current archived slice count by primary_reason_code
+
+5. Current archived slice product × decision_outcome
+
+6. Current archived slice score band × decision_outcome
+
+7. Current archived slice simulated_offer_exposure_flag profile
+
+8. Current archived slice requested_amount vs approved_amount by decision_outcome
+
+9. Current archived slice requested_expected_loss_amount vs approved_expected_loss_amount by decision_outcome
+
+10. Archive timestamp summary:
+    - min archive_inserted_ts
+    - max archive_inserted_ts
+    for the current replacement key
+
+These are archive diagnostics only.
+They are not the full Module 2 QA framework and not matched strategy comparison.
+
+================================================================================
+13. SECTION 12 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard.
+
+Section 12 comments should explain:
+
+- why latest-run output and archive persistence are separate
+- why archive persistence should not recalculate outcomes
+- why archive grain includes application_id
+- why archive replacement key excludes application_id
+- why strategy_run_id and strategy_run_ts are audit metadata, not replacement keys
+- why archive_inserted_ts is audit metadata, not deterministic comparison evidence
+- why NONE mode should fail if the same replacement key already exists
+- why STRATEGY_SCENARIO_ONLY is the ordinary rerun mode
+- why STRATEGY_SET_ONLY is broader and should be used intentionally
+- why ALL is the broadest reset mode and should be used cautiously
+- why matched strategy comparison is deferred to a later section
+
+================================================================================
+14. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Targeted Section 11 patches only:
+   - add archive_run_flag and strategy_archive_reset_mode to the latest-run output
+   - tighten the final decision-flag count gatekeeper to exactly one TRUE flag
+
+2. Section 12 SQL only:
+   STRATEGY DECISION ARCHIVE PERSISTENCE LAYER.
+
+3. A short explanation of what Section 12 establishes.
+
+4. A short explanation of what Section 12 intentionally does not build.
+
+5. The recommended next build step after Section 12.
+
+Do not write Section 13+ yet.
+```
+
+This keeps the next step precise: Section 12 should persist the latest-run strategy output, not compare strategies or validate the full module yet.
+<!-- END_MESSAGE C037-M00616 -->
+
+
+---
+
+<a id="c037-m00618"></a>
+
+### C037-M00618
+
+**Andrew** · 2026-05-06T15:40:55.043000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00618 -->
+evaluate the eleventh follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00618 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_eleventh_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00624"></a>
+
+### C037-M00624
+
+**ChatGPT** · 2026-05-06T15:45:23.489357-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00624 -->
+## Evaluation of the eleventh response
+
+ChatGPT’s eleventh response is **strong and directionally correct**. It built the archive layer with the right separation: latest-run output remains replaceable, archive output becomes the governed history layer, archive persistence does not recalculate outcomes, and matched strategy comparison is deferred to the next section. The response also correctly implemented archive reset modes, row-level archive grain, replacement key logic, archive diagnostics, practical indexes, and local archive persistence checks. fileciteturn56file0
+
+I would treat **Section 12 as accepted with two targeted hardening patches** before moving to Section 13:
+
+1. Add a schema **data-type alignment check**, not just a missing-column check.  
+2. Expand the archive persistence mismatch check to include the full reason-code and economics fields that are important for audit traceability.
+
+The recommended next step — **Section 13: Archive Inventory and Matched Strategy Comparison Framework** — is exactly right. The main caution is that Section 13 should be a **read-only comparison framework**, not a blocking gatekeeper that prevents normal single-strategy execution.
+
+---
+
+# Full copy-paste response for the Module 2 chat
+
+```text
+This is strong. I agree with the Section 11 patches and the Section 12 Strategy Decision Archive Persistence Layer.
+
+Section 12 correctly:
+- consumes credit_decisioning_sim.strategy_decisions
+- creates or reuses credit_decisioning_sim.strategy_decisions_archive
+- preserves latest-run output as replaceable
+- preserves archive output as governed history
+- uses the locked archive grain:
+  strategy_set_name
+  strategy_name
+  strategy_version
+  module1_scenario_set_name
+  module1_scenario_name
+  population_id
+  application_id
+- uses the locked archive replacement / rerun key:
+  strategy_set_name
+  strategy_name
+  strategy_version
+  module1_scenario_set_name
+  module1_scenario_name
+  population_id
+- correctly excludes application_id from the replacement key
+- treats strategy_run_id, strategy_run_ts, latest_output_created_ts, and archive_inserted_ts as audit metadata
+- supports archive_run_flag = FALSE without inserting or deleting archive rows
+- supports strategy_archive_reset_mode values:
+  NONE
+  STRATEGY_SCENARIO_ONLY
+  STRATEGY_SET_ONLY
+  ALL
+- fails in NONE mode when the same replacement key already exists
+- inserts latest-run rows without recalculating decisions, reasons, approved exposure, or approved Expected Loss
+- creates archive indexes
+- provides local archive diagnostics
+- does not build matched strategy comparison
+- does not build full Module 2 QA
+- does not draft BRD or Validation Summary documentation
+
+Treat Section 12 as accepted, subject to the two targeted hardening patches below.
+
+Do not rewrite Sections 0–12 in full unless necessary.
+
+================================================================================
+1. TARGETED SECTION 12 PATCH — ARCHIVE SCHEMA DATA-TYPE ALIGNMENT
+================================================================================
+
+Section 12 already checks whether the archive table is missing latest-run columns.
+
+Please add a targeted schema data-type alignment check for common columns between:
+
+credit_decisioning_sim.strategy_decisions
+
+and
+
+credit_decisioning_sim.strategy_decisions_archive
+
+Purpose:
+If the archive table already existed from an earlier build, it may contain the same column names but incompatible data types. Missing-column checks alone do not catch that.
+
+Patch objective:
+Fail clearly if any common latest-run column and archive column have incompatible data types.
+
+Recommended check:
+Compare information_schema.columns for both tables on column_name and validate at least:
+- data_type
+- numeric_precision where applicable
+- numeric_scale where applicable
+- character_maximum_length where applicable
+- datetime_precision where applicable
+
+Exclude archive_inserted_ts from the latest-run-to-archive comparison because it exists only on the archive table.
+
+Commentary should explain:
+- the archive table may pre-exist from an earlier implementation version
+- Section 12 should not silently insert into a misaligned archive schema
+- this is a schema governance check, not a modeling check
+
+================================================================================
+2. TARGETED SECTION 12 PATCH — EXPAND PERSISTENCE MISMATCH CHECK
+================================================================================
+
+Section 12 already validates that archived rows match latest-run rows for key final outputs.
+
+Please expand the persistence mismatch check to include the full set of core decision, exposure, economics, and reason-code fields needed for audit traceability.
+
+At minimum, include comparisons for:
+
+Decision fields:
+- decision_outcome
+- decision_path
+- decision_priority_rank
+- decision_resolution_source
+
+Decision flags:
+- approval_flag
+- counteroffer_flag
+- manual_review_flag
+- decline_flag
+- simulated_offer_exposure_flag
+
+Exposure fields:
+- approved_amount
+- counteroffer_amount
+- exposure_reduction_flag
+- exposure_reduction_amount
+- exposure_reduction_pct
+
+Affordability fields:
+- approved_monthly_payment_proxy
+- approved_payment_to_income_ratio
+
+Expected Loss fields:
+- requested_expected_loss_amount
+- approved_expected_loss_amount
+- approved_el_reduction_amount
+- approved_el_reduction_pct
+
+Reason-code fields:
+- primary_reason_code
+- secondary_reason_code
+- tertiary_reason_code
+- primary_reason_family
+- triggered_reason_code_list
+- reason_priority_rank
+- reason_code_count
+
+Use IS DISTINCT FROM for comparisons so NULL handling remains explicit and safe.
+
+Reason:
+Archive persistence should prove that Section 12 persisted the already-materialized latest-run output without changing final decision, exposure, economics, or reason-code values.
+
+================================================================================
+3. SECTION 12 ACCEPTANCE CRITERIA
+================================================================================
+
+After the two targeted patches, treat Section 12 as accepted if:
+
+- credit_decisioning_sim.strategy_decisions_archive exists
+- archive_inserted_ts exists
+- archive table contains all latest-run columns plus archive_inserted_ts
+- common latest-run / archive columns have aligned data types
+- archive_run_flag = FALSE skips insert/delete behavior without changing archive rows
+- NONE mode fails if the current replacement key already exists
+- STRATEGY_SCENARIO_ONLY replaces only the current strategy / Module 1 scenario / population slice
+- STRATEGY_SET_ONLY replaces all strategy_name / strategy_version outputs within the selected strategy_set_name + Module 1 scenario + population
+- ALL clears the archive before inserting the latest-run output
+- archive grain is unique at:
+  strategy_set_name
+  strategy_name
+  strategy_version
+  module1_scenario_set_name
+  module1_scenario_name
+  population_id
+  application_id
+- archive replacement key excludes application_id
+- latest-run row count equals current archived slice row count when archive_run_flag = TRUE
+- current archived slice has no duplicate application_id values
+- archived core decision / exposure / economics / reason-code fields match latest-run values
+- no outcomes are recalculated
+- no reason codes are recalculated
+- no approved exposure or approved Expected Loss is recalculated
+- no matched strategy comparison is built yet
+- no full Module 2 QA framework is built yet
+
+================================================================================
+4. NEXT BUILD SCOPE: SECTION 13 ONLY
+================================================================================
+
+After the targeted Section 12 patches, please build only:
+
+SECTION 13 — ARCHIVE INVENTORY AND MATCHED STRATEGY COMPARISON FRAMEWORK
+
+Section 13 should consume:
+
+credit_decisioning_sim.strategy_decisions_archive
+
+Do not build:
+- full Module 2 QA framework
+- final Validation Summary
+- BRD documentation
+- dashboards
+- production reporting layer
+
+Those belong later.
+
+================================================================================
+5. SECTION 13 OBJECTIVE
+================================================================================
+
+Section 13 should provide read-only archive inventory and matched strategy comparison queries.
+
+Section 13 should answer:
+
+“How do two archived Module 2 strategy runs differ when applied to the same Module 1 scenario and population?”
+
+Section 13 should not answer:
+
+“Is the full Module 2 system validated?”
+
+Full validation comes later after the complete SQL module is assembled and executed.
+
+================================================================================
+6. SECTION 13 DESIGN BOUNDARY
+================================================================================
+
+Section 13 should be read-only.
+
+It should not:
+- insert rows
+- delete rows
+- update rows
+- create or replace final output tables
+- modify archive rows
+- recalculate decision outcomes
+- recalculate reason codes
+- recalculate approved exposure
+- recalculate approved Expected Loss
+
+It should only inspect archived strategy outputs.
+
+Important:
+Section 13 should not be a blocking gatekeeper for ordinary single-strategy execution.
+
+If only one strategy is archived, Section 13 should still provide archive inventory and clearly show that matched comparison requires two selected archived strategy slices.
+
+================================================================================
+7. COMPARISON PARAMETER DESIGN
+================================================================================
+
+Please create a temporary comparison parameter structure or clearly documented CTE.
+
+Recommended temporary table:
+
+tmp_m2_strategy_comparison_params
+
+Recommended fields:
+
+- comparison_set_name
+- baseline_strategy_set_name
+- baseline_strategy_name
+- baseline_strategy_version
+- challenger_strategy_set_name
+- challenger_strategy_name
+- challenger_strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+Recommended default values can be placeholders, but the commentary should explain that users must set them to archived strategy slices that exist.
+
+Do not overload Module 1 scenario fields.
+Do not compare across different Module 1 scenarios in v1.0 unless explicitly designed later.
+
+For v1.0, matched strategy comparison should require:
+- same module1_scenario_set_name
+- same module1_scenario_name
+- same population_id
+- different strategy_name and/or strategy_version
+
+================================================================================
+8. SECTION 13 COMPARISON READINESS CHECK
+================================================================================
+
+Create a non-mutating comparison readiness query.
+
+This should report:
+- baseline archived row count
+- challenger archived row count
+- baseline distinct application_id count
+- challenger distinct application_id count
+- matched application_id count
+- baseline-only application_id count
+- challenger-only application_id count
+- readiness_status
+
+Suggested readiness_status values:
+- READY_FOR_MATCHED_COMPARISON
+- BASELINE_SLICE_NOT_FOUND
+- CHALLENGER_SLICE_NOT_FOUND
+- ROW_COUNT_MISMATCH
+- APPLICATION_ID_MISMATCH
+- NOT_READY
+
+This should be a diagnostic query, not a RAISE EXCEPTION block.
+
+Reason:
+Section 13 should be usable as a comparison framework without breaking the full script when a challenger strategy has not yet been archived.
+
+================================================================================
+9. REQUIRED SECTION 13 QUERY SET
+================================================================================
+
+Please include the following read-only comparison queries.
+
+1. Archive inventory
+
+Show archive slices by:
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+- row count
+- distinct application_id count
+- min archive_inserted_ts
+- max archive_inserted_ts
+
+2. Comparison readiness
+
+Use tmp_m2_strategy_comparison_params to confirm whether selected baseline and challenger slices can be compared.
+
+3. Portfolio-level strategy summary
+
+For baseline and challenger:
+- row count
+- approval rate
+- counteroffer rate
+- manual review rate
+- decline rate
+- simulated offer-exposure rate
+- total approved_amount
+- average approved_amount
+- average estimated_pd
+- average requested_expected_loss_amount
+- average approved_expected_loss_amount
+- total approved_expected_loss_amount
+- average approved_payment_to_income_ratio
+
+4. Portfolio-level delta summary
+
+Compare challenger minus baseline for:
+- approval rate
+- counteroffer rate
+- manual review rate
+- decline rate
+- simulated offer-exposure rate
+- total approved_amount
+- average approved_amount
+- average approved_expected_loss_amount
+- total approved_expected_loss_amount
+
+5. Decision transition matrix
+
+Show baseline decision_outcome × challenger decision_outcome:
+- row count
+- percent of matched population
+- average baseline approved_amount
+- average challenger approved_amount
+- average approved amount delta
+- average baseline approved_expected_loss_amount
+- average challenger approved_expected_loss_amount
+- average approved Expected Loss delta
+
+6. Product-level strategy comparison
+
+Group by product_type_policy_key and strategy role:
+- decision outcome counts / rates
+- approved amount metrics
+- approved Expected Loss metrics
+- primary reason distribution summary if practical
+
+7. Score-band strategy comparison
+
+Group by score_band_policy_key and strategy role:
+- decision outcome counts / rates
+- approved amount metrics
+- approved Expected Loss metrics
+
+8. Product × score-band strategy comparison
+
+Group by:
+- product_type_policy_key
+- score_band_policy_key
+- strategy role
+
+Show:
+- approval rate
+- counteroffer rate
+- manual review rate
+- decline rate
+- simulated offer-exposure rate
+- average approved_amount
+- average approved_expected_loss_amount
+
+9. Reason-code distribution comparison
+
+Compare baseline and challenger by:
+- primary_reason_family
+- primary_reason_code
+- decision_outcome
+
+Show:
+- row count
+- percent of strategy population
+- challenger minus baseline count
+- challenger minus baseline percentage point movement where practical
+
+10. Matched row-level delta summary
+
+At the application_id level, compare baseline vs challenger:
+- decision_outcome changed flag
+- decision_path changed flag
+- primary_reason_code changed flag
+- approved_amount delta
+- approved_payment_to_income_ratio delta
+- approved_expected_loss_amount delta
+- simulated_offer_exposure_flag changed flag
+
+Aggregate:
+- count of rows with decision outcome change
+- count of rows with offer-exposure flag change
+- count of rows with approved amount increase
+- count of rows with approved amount decrease
+- count of rows with approved Expected Loss increase
+- count of rows with approved Expected Loss decrease
+
+11. Matched row-level transition sample
+
+Return a limited sample of rows showing:
+- application_id
+- product_type_policy_key
+- score_band_policy_key
+- estimated_pd
+- requested_payment_to_income_ratio
+- requested_expected_loss_amount
+- baseline decision_outcome
+- challenger decision_outcome
+- baseline primary_reason_code
+- challenger primary_reason_code
+- baseline approved_amount
+- challenger approved_amount
+- approved amount delta
+- baseline approved_expected_loss_amount
+- challenger approved_expected_loss_amount
+- approved Expected Loss delta
+
+Order by most material movement, such as:
+- decision outcome changed first
+- largest absolute approved amount delta
+- largest absolute approved Expected Loss delta
+
+================================================================================
+10. STRATEGY ROLE NAMING
+================================================================================
+
+Use a clear strategy role label in comparison outputs:
+
+- BASELINE
+- CHALLENGER
+
+Do not call the challenger “stress” unless the strategy itself is explicitly a stress strategy.
+
+Reason:
+Module 1 scenarios describe upstream risk environment.
+Module 2 strategies describe downstream decision policy simulation.
+
+Keep scenario and strategy language distinct.
+
+================================================================================
+11. MATCHED COMPARISON JOIN LOGIC
+================================================================================
+
+Matched row comparison should join baseline and challenger on:
+
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+- application_id
+
+Strategy identity should be filtered separately for baseline and challenger using comparison parameters.
+
+Do not join on:
+- strategy_run_id
+- strategy_run_ts
+- latest_output_created_ts
+- archive_inserted_ts
+
+Those are audit metadata, not comparison keys.
+
+================================================================================
+12. SECTION 13 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard.
+
+Section 13 comments should explain:
+
+- why archive inventory comes before matched comparison
+- why matched comparison requires same Module 1 scenario and population
+- why strategy comparison uses application_id matching
+- why Module 1 scenario metadata and Module 2 strategy metadata remain separate
+- why timestamp fields are excluded from comparison keys
+- why Section 13 is read-only
+- why Section 13 is not the full QA framework
+- why decision deltas should be interpreted as simulated strategy effects, not production decision changes
+- why approved amount and approved Expected Loss deltas are simulation outputs, not real exposure or forecasted loss changes
+
+================================================================================
+13. SECTION 13 OUTPUT BOUNDARY
+================================================================================
+
+Section 13 should not create permanent output tables.
+
+If temporary objects are useful, they should be temporary only, such as:
+- tmp_m2_strategy_comparison_params
+- tmp_m2_strategy_comparison_matched_rows
+
+Do not insert into archive.
+Do not modify archive.
+Do not create a reporting mart.
+
+================================================================================
+14. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Targeted Section 12 patches only:
+   - archive schema data-type alignment check
+   - expanded persistence mismatch check for core decision / exposure / economics / reason-code fields
+
+2. Section 13 SQL only:
+   ARCHIVE INVENTORY AND MATCHED STRATEGY COMPARISON FRAMEWORK.
+
+3. A short explanation of what Section 13 establishes.
+
+4. A short explanation of what Section 13 intentionally does not build.
+
+5. The recommended next build step after Section 13.
+
+Do not write Section 14+ yet.
+```
+
+This keeps the project moving in the correct order: archive persistence first, matched strategy comparison second, full QA later. The most important guardrail is that Section 13 should compare archived strategies without mutating anything or becoming the full validation framework.
+<!-- END_MESSAGE C037-M00624 -->
+
+
+---
+
+<a id="c037-m00625"></a>
+
+### C037-M00625
+
+**Andrew** · 2026-05-06T16:14:38.207000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00625 -->
+evaluate the twelfth follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00625 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_twelfth_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00632"></a>
+
+### C037-M00632
+
+**ChatGPT** · 2026-05-06T16:17:51.483426-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00632 -->
+## Evaluation of the twelfth response
+
+ChatGPT’s twelfth response is **strong and directionally correct**. It handled the Section 12 hardening patches well, especially the archive schema data-type alignment check, expanded persistence mismatch check, and additional unique archive grain enforcement. It then built **Section 13 — Archive Inventory and Matched Strategy Comparison Framework** as a read-only comparison layer, which is the correct next architectural move after archive persistence. fileciteturn56file0
+
+The response also preserved the right boundaries: Section 13 does not mutate archive rows, does not recalculate decisions, does not recalculate approved exposure or Expected Loss, does not assign reason codes, and does not become the full Module 2 QA framework. Its final recommendation that the next build step should be **Section 14 — Module 2 Validation, QA, and Strategy Tuning Pass** is exactly right. fileciteturn56file0
+
+I would accept Section 13, but I recommend **one targeted hardening patch** before Section 14: add a matched source-field consistency diagnostic. The existing readiness framework checks row counts and matched application IDs, but an elite matched-comparison framework should also confirm that immutable Module 1 source fields did not drift between the baseline and challenger strategy slices.
+
+Below is the full copy-paste response I would send to the Module 2 chat.
+
+---
+
+```text
+This is strong. I agree with the Section 12 hardening patches and the Section 13 Archive Inventory and Matched Strategy Comparison Framework.
+
+Section 12 is now stronger because it adds:
+- archive schema data-type alignment validation
+- expanded latest-run vs archive persistence mismatch checks
+- unique archive grain enforcement before unique-index creation
+- clearer archive persistence safeguards
+
+Section 13 correctly:
+- consumes credit_decisioning_sim.strategy_decisions_archive
+- remains read-only
+- creates comparison parameters
+- provides archive inventory
+- provides comparison readiness diagnostics
+- compares baseline vs challenger strategy slices
+- preserves Module 1 scenario lineage separately from Module 2 strategy identity
+- joins matched rows by Module 1 scenario, population_id, and application_id
+- excludes timestamp / audit fields from comparison keys
+- provides portfolio-level summaries
+- provides portfolio-level deltas
+- provides decision migration matrix
+- provides matched row-level delta diagnostics
+- provides product, score-band, product × score-band, reason-code, and offer-exposure comparisons
+- provides unmatched row diagnostics
+- does not insert, delete, update, or recalculate archive rows
+- does not build the full Module 2 QA framework
+- does not draft BRD or Validation Summary documentation
+
+Treat Section 13 as accepted, subject to one targeted hardening patch below.
+
+Do not rewrite Sections 0–13 in full unless necessary.
+
+================================================================================
+1. TARGETED SECTION 13 PATCH — MATCHED SOURCE-FIELD CONSISTENCY DIAGNOSTIC
+================================================================================
+
+Please add one targeted Section 13 diagnostic to confirm that matched baseline and challenger strategy slices share the same immutable Module 1 source fields.
+
+Reason:
+Section 13 already confirms matched application_id coverage. However, for elite matched strategy comparison, we should also confirm that the baseline and challenger rows are comparing the same underlying synthetic applicant and Module 1 risk profile.
+
+Because Module 2 strategies should not change Module 1 source attributes, the following fields should match across baseline and challenger for each matched application_id:
+
+Recommended source-stability fields:
+- product_type_policy_key
+- score_band_policy_key
+- credit_score
+- annual_income
+- requested_amount
+- requested_monthly_payment_proxy
+- requested_payment_to_income_ratio
+- amount_to_income_ratio
+- estimated_pd
+- estimated_lgd
+- requested_expected_loss_amount
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+Please add a read-only diagnostic query that reports:
+
+- matched_application_count
+- source_field_mismatch_count
+- product_type_mismatch_count
+- score_band_mismatch_count
+- credit_score_mismatch_count
+- annual_income_mismatch_count
+- requested_amount_mismatch_count
+- requested_payment_mismatch_count
+- requested_pti_mismatch_count
+- estimated_pd_mismatch_count
+- estimated_lgd_mismatch_count
+- requested_expected_loss_mismatch_count
+- source_consistency_status
+
+Suggested source_consistency_status values:
+- SOURCE_FIELDS_MATCH
+- SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED
+- NOT_APPLICABLE_NOT_READY_FOR_MATCHED_COMPARISON
+
+Use IS DISTINCT FROM so NULL handling remains explicit and safe.
+
+This should be a diagnostic query, not a mutating operation.
+
+Optional:
+If you think this should be incorporated into comparison_readiness_status, add a status such as:
+
+SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED
+
+But do not make Section 13 fail execution solely because the placeholder comparison parameters are not ready.
+
+================================================================================
+2. SECTION 13 ACCEPTANCE CRITERIA
+================================================================================
+
+After the targeted source-field consistency diagnostic, treat Section 13 as accepted if it establishes:
+
+- archive inventory by strategy, Module 1 scenario, and population
+- comparison parameter structure
+- comparison readiness diagnostics
+- matched-row comparison framework
+- baseline vs challenger portfolio-level summaries
+- baseline vs challenger portfolio-level deltas
+- decision transition matrix
+- product-level strategy comparison
+- score-band strategy comparison
+- product × score-band strategy comparison
+- reason-code distribution comparison
+- matched row-level delta summary
+- matched row-level movement sample
+- offer-exposure comparison
+- unmatched row diagnostic
+- source-field consistency diagnostic for matched rows
+- read-only behavior
+- no archive mutation
+- no decision recalculation
+- no reason-code recalculation
+- no approved exposure recalculation
+- no approved Expected Loss recalculation
+- no full QA framework yet
+
+================================================================================
+3. NEXT BUILD SCOPE: SECTION 14 ONLY
+================================================================================
+
+After the targeted Section 13 patch, please build only:
+
+SECTION 14 — MODULE 2 VALIDATION, QA, AND STRATEGY TUNING PASS
+
+Section 14 should consume:
+- credit_decisioning_sim.strategy_decisions
+- credit_decisioning_sim.strategy_decisions_archive
+- tmp_m2_strategy_comparison_params where applicable
+- Section 13 comparison outputs or logic where applicable
+
+Do not build:
+- BRD documentation
+- Validation Summary documentation
+- dashboards
+- production reporting layer
+- new strategy logic
+- new decision rules
+- new reason-code logic
+- new archive mutation logic
+
+Section 14 should be SQL validation and QA only.
+
+================================================================================
+4. SECTION 14 OBJECTIVE
+================================================================================
+
+Section 14 should validate the completed Module 2 SQL pipeline end-to-end.
+
+Section 14 should answer:
+
+“Did Module 2 produce structurally complete, internally consistent, explainable, and strategy-comparable simulated decision outcomes?”
+
+Section 14 should not answer:
+
+“Are these production underwriting decisions?”
+
+Section 14 should not tune parameters automatically.
+
+It may identify strategy-tuning observations, but it should not modify thresholds, product policy parameters, decision rules, reason codes, approved exposure logic, or archive rows.
+
+================================================================================
+5. SECTION 14 VALIDATION DESIGN
+================================================================================
+
+Please separate Section 14 into two classes of validation:
+
+1. Critical structural validation
+   These are hard integrity checks. They may use fail-fast logic because failure means the output is structurally invalid.
+
+2. Diagnostic strategy validation
+   These are QA and strategy-tuning diagnostics. They should not fail the script merely because the strategy mix is aggressive, conservative, or unusual. They should surface interpretation and tuning signals.
+
+This distinction is important.
+
+Examples of critical structural validation:
+- row count integrity
+- one row per application_id
+- exactly one final decision_outcome per row
+- flag reconciliation
+- reason-code coverage
+- approved exposure convention integrity
+- archive-grain uniqueness
+
+Examples of diagnostic strategy validation:
+- approval rate level
+- counteroffer rate level
+- decline rate level
+- product-level mix of outcomes
+- score-band risk ordering
+- reason-code concentration
+- manual review volume
+- counteroffer feasibility rate
+- matched strategy movement
+
+================================================================================
+6. RECOMMENDED SECTION 14 STRUCTURE
+================================================================================
+
+Please structure Section 14 as follows.
+
+SECTION 14.1 — Validation Scope and Boundary
+Explain:
+- Section 14 validates Module 2 simulated strategy outputs.
+- Section 14 does not validate production underwriting.
+- Section 14 does not perform fair lending, compliance, or adverse-action validation.
+- Section 14 does not recalibrate estimated_pd.
+- Section 14 does not modify strategy parameters.
+- Section 14 does not mutate archive rows.
+
+SECTION 14.2 — Critical Structural Gatekeepers
+Use fail-fast checks for critical output integrity.
+
+SECTION 14.3 — Latest-Run Output Integrity QA
+Validate credit_decisioning_sim.strategy_decisions.
+
+SECTION 14.4 — Decision Outcome Distribution QA
+Review approval / counteroffer / manual review / decline distribution.
+
+SECTION 14.5 — Product-Level Strategy QA
+Review decisions, approved exposure, approved Expected Loss, and reason codes by product.
+
+SECTION 14.6 — Score-Band Strategy QA
+Review decisions, approved exposure, approved Expected Loss, and reason codes by score band.
+
+SECTION 14.7 — Product × Score Strategy Matrix
+Review cross-segment decision behavior.
+
+SECTION 14.8 — Synthetic Risk Ordering QA
+Validate that estimated_pd behaves directionally across final decision outcomes and offer-exposure outcomes.
+
+SECTION 14.9 — Affordability Sensitivity QA
+Validate that requested PTI and approved PTI behave coherently across outcomes.
+
+SECTION 14.10 — Approved Exposure and Expected Loss QA
+Validate approved amount, approved payment, approved PTI, and approved Expected Loss conventions.
+
+SECTION 14.11 — Counteroffer QA
+Validate counteroffer feasibility, exposure reduction, PTI improvement, and approved Expected Loss behavior.
+
+SECTION 14.12 — Manual Review QA
+Validate unresolved manual review treatment and manual-review reason-code patterns.
+
+SECTION 14.13 — Decline / Policy Stop QA
+Validate zero-exposure decline treatment and policy-stop reason-code patterns.
+
+SECTION 14.14 — Reason-Code Coverage and Concentration QA
+Validate reason-code completeness, family alignment, distribution, and concentration risk.
+
+SECTION 14.15 — Mixed-Signal and Edge-Case QA
+Validate strong-credit/high-PTI, weak-credit/low-PTI, large-exposure/low-risk, high-risk/low-exposure, and borderline cases.
+
+SECTION 14.16 — Archive Persistence QA
+Validate archive inventory, archive grain, archive replacement behavior, and current archived slice integrity.
+
+SECTION 14.17 — Matched Strategy Comparison QA
+Use Section 13 comparison framework if comparison parameters are ready.
+
+SECTION 14.18 — Strategy Tuning Diagnostics
+Summarize potential tuning observations without changing parameters.
+
+SECTION 14.19 — Validation Acceptance Summary
+Create a compact validation-status summary table or query.
+
+================================================================================
+7. CRITICAL STRUCTURAL GATEKEEPERS
+================================================================================
+
+Section 14 should include fail-fast checks for critical structural failures.
+
+Validate latest-run output:
+
+- credit_decisioning_sim.strategy_decisions exists
+- row count > 0
+- application_id is unique
+- strategy metadata is populated
+- Module 1 lineage is populated
+- decision_outcome is populated
+- decision_outcome is one of:
+  APPROVE
+  COUNTEROFFER
+  MANUAL_REVIEW
+  DECLINE
+
+- exactly one of the final outcome flags is TRUE per row:
+  approval_flag
+  counteroffer_flag
+  manual_review_flag
+  decline_flag
+
+- simulated_offer_exposure_flag reconciles to decision_outcome
+- primary_reason_code is populated
+- primary_reason_family aligns to decision_outcome
+- reason_code_count >= 1
+- triggered_reason_code_list is populated
+- no reason-code field contains adverse-action, regulatory, customer-notice, or fair-lending language
+
+Validate exposure and economics:
+
+- approved_amount is not negative where populated
+- approved_amount <= requested_amount where approved_amount is populated
+- APPROVE rows have approved_amount = requested_amount
+- COUNTEROFFER rows have approved_amount < requested_amount
+- MANUAL_REVIEW rows have approved_amount IS NULL
+- DECLINE rows have approved_amount = 0
+- requested_expected_loss_amount is populated
+- APPROVE rows have approved_expected_loss_amount = requested_expected_loss_amount
+- COUNTEROFFER rows have approved_expected_loss_amount <= requested_expected_loss_amount
+- MANUAL_REVIEW rows have approved_expected_loss_amount IS NULL
+- DECLINE rows have approved_expected_loss_amount = 0
+
+Validate archive where archive_run_flag = TRUE:
+
+- strategy_decisions_archive exists
+- archive_inserted_ts exists
+- current archive slice row count equals latest-run row count
+- archive grain is unique
+- current archived slice matches latest-run core decision / exposure / economics / reason-code fields
+
+These gatekeepers should fail fast if violated.
+
+================================================================================
+8. DIAGNOSTIC QA QUERIES
+================================================================================
+
+After critical gatekeepers, include read-only diagnostic QA queries.
+
+The diagnostic QA should include, at minimum:
+
+1. Latest-run decision distribution
+- count and percentage by decision_outcome
+- count and percentage by simulated_offer_exposure_flag
+
+2. Product-level decision distribution
+- product_type_policy_key × decision_outcome
+- approval rate
+- counteroffer rate
+- manual review rate
+- decline rate
+- simulated offer-exposure rate
+
+3. Score-band decision distribution
+- score_band_policy_key × decision_outcome
+- approval rate
+- counteroffer rate
+- manual review rate
+- decline rate
+
+4. Product × score-band matrix
+- product_type_policy_key
+- score_band_policy_key
+- decision_outcome rates
+- average estimated_pd
+- average requested_payment_to_income_ratio
+- average approved_payment_to_income_ratio
+- average requested_expected_loss_amount
+- average approved_expected_loss_amount
+
+5. Synthetic risk ordering
+Show average estimated_pd by:
+- decision_outcome
+- simulated_offer_exposure_flag
+- strategy_risk_tier
+- score_band_policy_key
+
+Interpretation:
+This is directional QA, not empirical PD calibration.
+
+6. Affordability sensitivity
+Show:
+- requested_pti_bucket × decision_outcome
+- average requested_payment_to_income_ratio by decision_outcome
+- average approved_payment_to_income_ratio by decision_outcome
+- requested vs approved PTI for COUNTEROFFER rows
+
+7. Approved exposure and Expected Loss
+Show by decision_outcome:
+- average requested_amount
+- average approved_amount
+- total approved_amount
+- average requested_expected_loss_amount
+- average approved_expected_loss_amount
+- total approved_expected_loss_amount
+- average exposure_reduction_pct
+
+8. Counteroffer QA
+Show:
+- counteroffer count
+- counteroffer feasibility pass rate
+- average exposure_reduction_pct
+- average requested PTI vs approved PTI
+- average requested Expected Loss vs approved Expected Loss
+- counteroffer reason-code distribution
+- counteroffer feasibility failure distribution for non-final counteroffer paths if relevant
+
+9. Manual review QA
+Show:
+- manual review count and rate
+- manual review primary_reason_code distribution
+- manual review by product
+- manual review by score band
+- manual review by mixed_signal_profile_type
+- manual review by borderline_profile_flag
+
+10. Decline / policy stop QA
+Show:
+- decline count and rate
+- policy-stop reason distribution
+- decline by product
+- decline by score band
+- average estimated_pd for declined population
+- average requested_payment_to_income_ratio for declined population
+
+11. Reason-code QA
+Show:
+- primary_reason_family distribution
+- primary_reason_code distribution
+- reason_code_count distribution
+- product × primary_reason_code
+- score band × primary_reason_code
+- high-concentration reason codes
+
+12. Mixed-signal and edge-case QA
+Show specific counts and samples for:
+- STRONG_CREDIT_HIGH_PTI
+- WEAK_CREDIT_LOW_PTI
+- LARGE_EXPOSURE_LOW_RISK
+- HIGH_RISK_LOW_EXPOSURE
+- HIGH_DTI_LOW_REQUESTED_PTI
+- MULTIPLE_MIXED_SIGNALS
+- borderline_profile_flag = TRUE
+
+13. Archive QA
+Show:
+- archive inventory
+- current archived slice row count
+- current archived slice decision distribution
+- current archived slice reason distribution
+- current archived slice product × decision outcome
+
+14. Matched strategy comparison QA
+If comparison readiness = READY_FOR_MATCHED_COMPARISON, show:
+- portfolio-level delta
+- decision transition matrix
+- product-level strategy comparison
+- score-band strategy comparison
+- product × score strategy comparison
+- reason-code movement
+- offer-exposure movement
+- matched row-level delta summary
+
+If comparison readiness is not ready, show readiness status and do not fail.
+
+================================================================================
+9. VALIDATION STATUS SUMMARY TABLE
+================================================================================
+
+Please create a temporary validation summary table or CTE.
+
+Recommended name:
+
+tmp_m2_validation_status_summary
+
+Suggested fields:
+- validation_area
+- validation_test_name
+- validation_category
+- validation_status
+- observed_value
+- expected_behavior
+- interpretation
+
+Suggested validation_status values:
+- PASS
+- REVIEW
+- NOT_APPLICABLE
+
+Use PASS only where the observed result satisfies a defined structural or diagnostic expectation.
+
+Use REVIEW for diagnostic patterns that may be acceptable but should be interpreted, such as:
+- high manual review rate
+- high counteroffer concentration
+- high reason-code concentration
+- unexpected product-level decision skew
+- strategy comparison not ready
+- unusual but explainable mixed-signal concentration
+
+Use NOT_APPLICABLE where a test depends on unavailable comparison parameters or archive slices.
+
+Do not use FAIL for ordinary strategy diagnostics unless a critical structural gatekeeper fails.
+
+================================================================================
+10. STRATEGY TUNING DIAGNOSTICS
+================================================================================
+
+Section 14 may identify potential strategy tuning observations.
+
+Examples:
+- approval rate appears materially high or low
+- counteroffer rate appears concentrated in one product
+- manual review rate may be too high for operational interpretation
+- decline population appears unexpectedly low-risk
+- approval population appears unexpectedly high-risk
+- counteroffer exposure reductions are too severe
+- one primary reason code dominates excessively
+- product × score behavior suggests thresholds may be too tight or too loose
+
+But Section 14 must not change parameters.
+
+Any tuning observation should be phrased as:
+
+“Review recommended”
+
+not:
+
+“Automatically adjust threshold”
+
+================================================================================
+11. SECTION 14 COMMENTARY QUALITY
+================================================================================
+
+Please maintain the elite commentary standard.
+
+Section 14 comments should explain:
+
+- why full QA is separated from local staging gatekeepers
+- why critical structural checks may fail fast
+- why strategy diagnostics are review-oriented rather than automatically failing
+- why estimated_pd remains a synthetic estimated-PD proxy
+- why approved_expected_loss_amount is a simulated approved-exposure metric
+- why reason codes are simulated strategy explanation codes
+- why simulated_offer_exposure_flag does not imply booked exposure
+- why matched strategy comparison requires the same Module 1 scenario and population
+- why comparison results represent simulated strategy effects, not production decision changes
+- why Section 14 supports future BRD and Validation Summary evidence but does not draft those artifacts yet
+
+================================================================================
+12. SECTION 14 OUTPUT BOUNDARY
+================================================================================
+
+Section 14 should not:
+- modify strategy parameters
+- modify product policy parameters
+- modify latest-run strategy_decisions rows
+- modify archive rows
+- create production reporting tables
+- create dashboard outputs
+- draft the BRD
+- draft the Validation Summary
+
+Temporary QA tables or CTEs are acceptable.
+
+Permanent data mutation is not.
+
+================================================================================
+13. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Targeted Section 13 patch only:
+   - matched source-field consistency diagnostic
+
+2. Section 14 SQL only:
+   MODULE 2 VALIDATION, QA, AND STRATEGY TUNING PASS.
+
+3. A short explanation of what Section 14 establishes.
+
+4. A short explanation of what Section 14 intentionally does not build.
+
+5. The recommended next build step after Section 14.
+
+Do not write Section 15+ yet.
+```
+
+This keeps the project moving in the correct order. Section 14 should now become the full QA evidence layer for the completed Module 2 pipeline, just as Module 1 had a rigorous validation framework after the core engine was built.
+<!-- END_MESSAGE C037-M00632 -->
+
+
+---
+
+<a id="c037-m00633"></a>
+
+### C037-M00633
+
+**Andrew** · 2026-05-06T16:45:15.053000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00633 -->
+evaluate the thirteenth follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.  also, I need to gather the full code from ChatGPT.  so far I've just interacted with ChatGPT and have not copied any code out.  anyway we can make that easy and fullproof, would be helpful.  i don't want to lose any of the good work ChatGPT has done (for example, don't want to lose logic or commentary).
+<!-- END_MESSAGE C037-M00633 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_thirteenth_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00639"></a>
+
+### C037-M00639
+
+**ChatGPT** · 2026-05-06T16:48:57.476589-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00639 -->
+## Evaluation of the thirteenth response
+
+ChatGPT’s thirteenth response is **strong and directionally correct**. It kept Section 14 as a read-only QA and validation diagnostics layer, preserved the Module 2 boundaries, and correctly recommended the next step as a **full-script assembly and execution pass** rather than more design expansion. That is the right move now. fileciteturn56file0
+
+The response also added useful Section 13 refinements around denominator handling, simulated-offer terminology, and reason-code movement. However, I see **two items to tighten before you gather the full code**:
+
+1. The prior requested **matched source-field consistency diagnostic** should be explicitly added to Section 13. The response added several Section 13 patches, but I do not see that specific diagnostic clearly represented.
+
+2. Section 14 should include a compact **validation status summary table / CTE**. The response provides strong QA queries, but the final module would benefit from a single summarized PASS / REVIEW / NOT_APPLICABLE layer that can later feed the Module 2 Validation Summary.
+
+After those two patches, the right next step is to ask ChatGPT to assemble the **full canonical SQL script in controlled chunks**. Do not rely on scrolling back through the chat. Make ChatGPT regenerate the final integrated script with all patches applied and clear continuation markers.
+
+---
+
+# Copy-paste response for the Module 2 chat
+
+```text
+This is strong. I agree with the Section 13 refinements and the Section 14 Module 2 Validation, QA, and Strategy Outcome Diagnostics layer.
+
+Section 14 correctly:
+- remains read-only
+- validates the completed latest-run Module 2 output
+- preserves Module 1 estimated_pd as the synthetic estimated-PD proxy
+- preserves requested_expected_loss_amount as requested-exposure Expected Loss
+- validates decision distribution
+- validates product, score-band, product × score-band, risk-tier, PTI, DTI, exposure, counteroffer, manual review, decline, reason-code, simulated-offer exposure, and edge-case behavior
+- includes archive and comparison readiness diagnostics
+- avoids modifying strategy parameters
+- avoids modifying product policy parameters
+- avoids recalculating decisions
+- avoids recalculating reason codes
+- avoids recalculating approved exposure
+- avoids recalculating approved Expected Loss
+- avoids modifying latest-run or archive rows
+- avoids drafting the BRD or Validation Summary
+
+Treat Section 14 as accepted, subject to the two targeted patches below.
+
+Do not rewrite Sections 0–14 in full yet.
+
+================================================================================
+1. TARGETED SECTION 13 PATCH — MATCHED SOURCE-FIELD CONSISTENCY DIAGNOSTIC
+================================================================================
+
+Please add a targeted Section 13 diagnostic to confirm that matched baseline and challenger strategy slices share the same immutable Module 1 source fields.
+
+Reason:
+Matched strategy comparison should isolate Module 2 strategy effects. If Module 1 source fields differ between baseline and challenger rows, the comparison may reflect population or source drift rather than strategy movement.
+
+This diagnostic should be read-only.
+
+For matched baseline and challenger rows, compare at least:
+
+- product_type_policy_key
+- score_band_policy_key
+- credit_score
+- annual_income
+- requested_amount
+- requested_monthly_payment_proxy
+- requested_payment_to_income_ratio
+- amount_to_income_ratio
+- estimated_pd
+- estimated_lgd
+- requested_expected_loss_amount
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+Use IS DISTINCT FROM so NULL handling remains explicit and safe.
+
+The diagnostic query should report:
+
+- matched_application_count
+- source_field_mismatch_count
+- product_type_mismatch_count
+- score_band_mismatch_count
+- credit_score_mismatch_count
+- annual_income_mismatch_count
+- requested_amount_mismatch_count
+- requested_payment_mismatch_count
+- requested_pti_mismatch_count
+- estimated_pd_mismatch_count
+- estimated_lgd_mismatch_count
+- requested_expected_loss_mismatch_count
+- source_consistency_status
+
+Suggested source_consistency_status values:
+
+- SOURCE_FIELDS_MATCH
+- SOURCE_FIELD_MISMATCH_REVIEW_REQUIRED
+- NOT_APPLICABLE_NOT_READY_FOR_MATCHED_COMPARISON
+
+This should not mutate archive rows.
+This should not recalculate any decisions.
+This should not fail execution solely because the placeholder comparison parameters are not ready.
+
+================================================================================
+2. TARGETED SECTION 14 PATCH — VALIDATION STATUS SUMMARY
+================================================================================
+
+Please add a compact validation status summary table or CTE near the end of Section 14.
+
+Recommended name:
+
+tmp_m2_validation_status_summary
+
+Suggested fields:
+
+- validation_area
+- validation_test_name
+- validation_category
+- validation_status
+- observed_value
+- expected_behavior
+- interpretation
+
+Suggested validation_status values:
+
+- PASS
+- REVIEW
+- NOT_APPLICABLE
+
+Use PASS for structural or diagnostic expectations that are satisfied.
+
+Use REVIEW for diagnostic patterns that may be acceptable but should be interpreted, such as:
+- high manual review rate
+- high counteroffer concentration
+- high reason-code concentration
+- unusual product-level decision skew
+- comparison not ready
+- source-field mismatch review required
+- unusual but explainable mixed-signal concentration
+
+Use NOT_APPLICABLE where the test depends on unavailable archive slices, unavailable comparison parameters, or non-ready matched comparison setup.
+
+Do not use FAIL for ordinary diagnostic strategy patterns. Critical structural failures should already be handled by fail-fast gatekeepers.
+
+The validation summary should include at least these validation areas:
+
+1. Latest-run structural integrity
+2. Decision outcome completeness
+3. Final flag reconciliation
+4. Simulated offer-exposure convention
+5. Approved amount convention
+6. Approved Expected Loss convention
+7. Reason-code completeness
+8. Reason-code family alignment
+9. Prohibited terminology check
+10. Product-level strategy distribution
+11. Score-band strategy distribution
+12. Synthetic risk ordering
+13. Affordability sensitivity
+14. Counteroffer diagnostics
+15. Manual-review diagnostics
+16. Decline / policy-stop diagnostics
+17. Mixed-signal and edge-case diagnostics
+18. Archive persistence readiness
+19. Matched strategy comparison readiness
+20. Matched source-field consistency
+
+This table / CTE should be read-only or temporary only.
+It should not modify latest-run output.
+It should not modify archive output.
+It should not change thresholds or strategy parameters.
+
+================================================================================
+3. SECTION 14 ACCEPTANCE CRITERIA
+================================================================================
+
+After the targeted Section 13 and Section 14 patches, treat Section 14 as accepted if:
+
+- Section 14 remains read-only
+- latest-run structural integrity is validated
+- decision outcomes are summarized
+- product-level outcomes are summarized
+- score-band outcomes are summarized
+- product × score outcomes are summarized
+- synthetic estimated-risk ordering is reviewed
+- affordability sensitivity is reviewed
+- approved exposure and Expected Loss behavior is reviewed
+- counteroffer behavior is reviewed
+- manual review behavior is reviewed
+- decline / policy-stop behavior is reviewed
+- reason-code coverage and concentration are reviewed
+- simulated-offer exposure profile is reviewed
+- mixed-signal and edge-case examples are available
+- archive readiness is reviewed
+- matched strategy comparison readiness is reviewed
+- matched source-field consistency is reviewed
+- tmp_m2_validation_status_summary is created or clearly produced as a final Section 14 validation summary output
+- no strategy parameters are modified
+- no product policy parameters are modified
+- no latest-run rows are modified
+- no archive rows are modified
+- no decisions, reason codes, approved exposure, or Expected Loss values are recalculated
+
+================================================================================
+4. NEXT STEP — FULL CANONICAL SQL CODE CAPTURE
+================================================================================
+
+After applying the two targeted patches above, we need to capture the full canonical Module 2 SQL script.
+
+This is now the highest-priority next step.
+
+I have not copied the earlier code out of the chat yet, so please do not assume I can reconstruct it from prior snippets.
+
+Please enter FULL CODE CAPTURE MODE.
+
+The goal is to produce the final integrated SQL script exactly as it should be saved as:
+
+module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+
+================================================================================
+5. FULL CODE CAPTURE RULES
+================================================================================
+
+Please follow these rules exactly:
+
+1. Produce the full integrated SQL script from Section 0 through Section 14.
+
+2. Include every section and every patch that has been accepted so far.
+
+3. Preserve the valuable commentary and teaching notes from all prior section builds.
+
+4. Do not summarize code.
+
+5. Do not omit any section.
+
+6. Do not use placeholders such as:
+   - same as above
+   - insert prior code here
+   - previously defined
+   - unchanged
+   - omitted for brevity
+   - etc.
+
+7. Do not use ellipses.
+
+8. Do not remove governance comments.
+
+9. Do not remove boundary language.
+
+10. Do not simplify the SQL unless required for internal consistency.
+
+11. If you discover a naming inconsistency while assembling, do not silently change logic. Call it out as an “Assembly Reconciliation Note” before the relevant code part and then provide the corrected integrated version.
+
+12. The final integrated code must include all sections:
+
+- Section 0 — Executive Purpose, Module 2 Boundaries, and SQL Section Map
+- Section 1 — Schema Setup / Clean Rerun Reset
+- Section 2 — Strategy Parameter Framework and Product Policy Parameter Framework
+- Section 3 — Fail-Fast Strategy Parameter Gatekeeper
+- Section 4 — Module 1 Source Selection and Lineage Normalization
+- Section 5 — Derived Strategy Segmentation Layer
+- Section 6 — Rule Flag Construction Layer
+- Section 7 — Preliminary Decision Routing Layer
+- Section 8 — Approved Exposure and Counteroffer Feasibility Layer
+- Section 9 — Final Decision Resolution Layer
+- Section 10 — Simulated Reason-Code Assignment Layer
+- Section 11 — Latest-Run Strategy Decision Output Table
+- Section 12 — Strategy Decision Archive Persistence Layer
+- Section 13 — Archive Inventory and Matched Strategy Comparison Framework
+- Section 14 — Module 2 Validation, QA, and Strategy Outcome Diagnostics
+
+================================================================================
+6. CHUNKING PROTOCOL TO AVOID LOSING CODE
+================================================================================
+
+Because the full script is long, do not try to force the entire file into one response if it risks truncation.
+
+Use this exact chunking approach:
+
+PART 1:
+- Section 0
+- Section 1
+- Section 2
+- Section 3
+
+PART 2:
+- Section 4
+
+PART 3:
+- Section 5
+- Section 6
+
+PART 4:
+- Section 7
+- Section 8
+
+PART 5:
+- Section 9
+- Section 10
+
+PART 6:
+- Section 11
+- Section 12
+
+PART 7:
+- Section 13
+- Section 14
+
+Each part must begin with:
+
+-- >>> MODULE 2 FULL SQL CODE CAPTURE — PART X OF 7 START
+
+Each part must end with:
+
+-- <<< MODULE 2 FULL SQL CODE CAPTURE — PART X OF 7 END
+
+At the end of each part, also write:
+
+Ready for next part: say CONTINUE FULL CODE PART X+1
+
+Do not skip ahead.
+
+Do not include non-SQL prose inside the SQL code block except SQL comments.
+
+================================================================================
+7. START CODE CAPTURE NOW
+================================================================================
+
+Please now provide:
+
+1. The two targeted patches:
+   - Section 13 matched source-field consistency diagnostic
+   - Section 14 validation status summary
+
+2. Then begin FULL CODE CAPTURE PART 1 OF 7 only.
+
+PART 1 should include:
+- Section 0
+- Section 1
+- Section 2
+- Section 3
+
+Do not provide Parts 2–7 until I ask for them.
+
+Do not draft the Module 2 BRD or Validation Summary yet.
+```
+
+---
+
+## Why this is the safest next move
+
+This avoids the biggest risk right now: losing assembled SQL logic across many fragmented chat responses. The response above forces ChatGPT to produce a canonical, patched, section-by-section script with continuation markers. It also creates a clean audit trail: each chunk can be copied into the same `.sql` file in order, without relying on memory or prior snippets.
+<!-- END_MESSAGE C037-M00639 -->
+
+
+---
+
+<a id="c037-m00641"></a>
+
+### C037-M00641
+
+**Andrew** · 2026-05-06T18:28:29.947000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00641 -->
+Here is the fourteenth follow-up response that ChatGPT just responded back with.  Notice it gave a quick section 14 update and then started providing the Canonical SQL file.  It successfully gave me PART 1 through PART 6.  When trying to give me PART 7 it kept erroring.  Please advise on what to do next. (Code PARTS 1-6 attached).
+<!-- END_MESSAGE C037-M00641 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_fourteenth_follow-up_prompt.pdf`, `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00644"></a>
+
+### C037-M00644
+
+**ChatGPT** · 2026-05-06T18:32:33.157185-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00644 -->
+Yes — this looks like a **UI / response-size failure**, not a project-direction problem. ChatGPT successfully produced Parts 1–6 and then the interface failed when trying to render Part 7. The attached response shows Part 6 ending cleanly at Section 12 and then repeated “Unable to display this message due to an error” attempts when asking for Part 7. fileciteturn56file0
+
+I inspected the attached SQL file as well. It ends cleanly after:
+
+```sql
+-- <<< MODULE 2 FULL SQL CODE CAPTURE — PART 6 OF 7 END
+```
+
+So you are in a good position. **Do not ask it to regenerate Parts 1–6.** The safest move is to ask ChatGPT to produce the missing Part 7 as smaller subparts: Section 13 in multiple chunks and Section 14 in multiple chunks.
+
+The likely issue is that **Part 7 is too long** because it contains both:
+
+- Section 13 — Archive Inventory and Matched Strategy Comparison Framework
+- Section 14 — Module 2 Validation, QA, and Strategy Outcome Diagnostics
+
+That is too much for one response. Break it into 6 smaller subparts.
+
+---
+
+## Recommended next move
+
+Send the Module 2 chat the prompt below. It tells ChatGPT to abandon the single Part 7 attempt and produce **Part 7A only** first. Then you will continue with 7B, 7C, etc.
+
+---
+
+```text
+The prior FULL CODE CAPTURE worked through PART 6, ending cleanly at Section 12.
+
+The attempt to provide PART 7 errored multiple times due to response-size / display limits.
+
+Do not regenerate Parts 1–6.
+
+Do not summarize prior sections.
+
+Do not rewrite Section 0 through Section 12.
+
+We need to continue from the exact end of PART 6 and capture the missing final code only.
+
+The existing canonical SQL file currently ends at:
+
+-- <<< MODULE 2 FULL SQL CODE CAPTURE — PART 6 OF 7 END
+
+================================================================================
+REVISED PART 7 CAPTURE PROTOCOL
+================================================================================
+
+Instead of trying to provide one large PART 7, split the missing final code into smaller subparts.
+
+Use this revised structure:
+
+PART 7A:
+- Section 13 header
+- Section 13.0 comparison parameter setup
+- Section 13.1 archive inventory
+- Section 13.2 comparison readiness
+
+PART 7B:
+- Section 13.3 portfolio-level archived strategy summary
+- Section 13.4 portfolio-level delta summary
+- Section 13.5 decision migration matrix
+- Section 13.6 matched applicant-level delta sample
+
+PART 7C:
+- Section 13.7 product / score / product × score strategy comparison
+- Section 13.8 reason-code movement summary
+- Section 13.9 simulated offer-exposure comparison
+- Section 13.10 unmatched row diagnostic
+- Section 13.11 matched source-field consistency diagnostic
+- End of Section 13
+
+PART 7D:
+- Section 14 header
+- Section 14.1 validation scope and boundary
+- Section 14.2 latest-run structural integrity summary
+- Section 14.3 decision outcome distribution
+- Section 14.4 product-level strategy QA
+- Section 14.5 score-band strategy QA
+
+PART 7E:
+- Section 14.6 product × score decision matrix
+- Section 14.7 synthetic risk ordering QA
+- Section 14.8 requested PTI / affordability sensitivity QA
+- Section 14.9 DTI capacity QA
+- Section 14.10 approved exposure and Expected Loss QA
+- Section 14.11 counteroffer validation diagnostics
+- Section 14.12 manual review validation diagnostics
+- Section 14.13 decline / policy-stop validation diagnostics
+
+PART 7F:
+- Section 14.14 reason-code coverage and alignment
+- Section 14.15 simulated offer-exposure profile
+- Section 14.16 mixed-signal and edge-case review
+- Section 14.17 final output convention validation
+- Section 14.18 archive and comparison readiness recap
+- Section 14.19 validation status summary table / CTE
+- End of Section 14
+- End of full canonical Module 2 SQL script
+
+If any one subpart is still too long, split that subpart again into smaller chunks, such as PART 7D-1 and PART 7D-2.
+
+Do not compress, omit, summarize, or replace code with placeholders.
+
+================================================================================
+OUTPUT RULES
+================================================================================
+
+For each subpart:
+
+1. Output SQL only.
+2. Preserve all commentary and teaching notes.
+3. Preserve all boundary language.
+4. Preserve all accepted logic and patches.
+5. Do not include prose outside the SQL code block except the final continuation instruction.
+6. Do not include markdown tables.
+7. Do not use placeholders such as:
+   - same as above
+   - insert prior code here
+   - unchanged
+   - omitted for brevity
+   - etc.
+8. Do not use ellipses.
+9. Do not regenerate Parts 1–6.
+10. Do not draft the BRD or Validation Summary.
+
+Each subpart must begin with the exact marker:
+
+-- >>> MODULE 2 FULL SQL CODE CAPTURE — PART 7A OF 7F START
+
+For later subparts, increment the marker accordingly:
+-- >>> MODULE 2 FULL SQL CODE CAPTURE — PART 7B OF 7F START
+-- >>> MODULE 2 FULL SQL CODE CAPTURE — PART 7C OF 7F START
+etc.
+
+Each subpart must end with the exact marker:
+
+-- <<< MODULE 2 FULL SQL CODE CAPTURE — PART 7A OF 7F END
+
+For later subparts, increment the marker accordingly.
+
+At the end of each response, write only:
+
+Ready for next part: say CONTINUE FULL CODE PART 7B
+
+For PART 7F, write:
+
+FULL CANONICAL MODULE 2 SQL CODE CAPTURE COMPLETE.
+
+================================================================================
+START NOW
+================================================================================
+
+Please provide only:
+
+PART 7A OF 7F
+
+Do not provide PART 7B until I ask for it.
+```
+
+---
+
+## What to do after each successful chunk
+
+After Part 7A succeeds, reply:
+
+```text
+CONTINUE FULL CODE PART 7B
+```
+
+Then continue:
+
+```text
+CONTINUE FULL CODE PART 7C
+```
+
+and so on through 7F.
+
+Append each chunk directly after the current Part 6 end marker in your SQL file.
+
+---
+
+## If it errors again
+
+Use this smaller recovery prompt:
+
+```text
+That response errored again.
+
+Please reduce the chunk size further.
+
+Provide only the next smallest SQL subsection, no more than approximately 150–200 lines.
+
+Do not regenerate prior code.
+
+Do not summarize.
+
+Continue from the last successfully delivered marker.
+```
+
+---
+
+## After Part 7F is captured
+
+Do **not** immediately move to BRD or Validation Summary. The next step should be a full assembly review:
+
+```text
+Now that the full canonical SQL has been captured, please perform a full-script assembly review.
+
+Do not rewrite the code yet.
+
+Review for:
+- duplicate section numbers
+- missing section markers
+- missing temp table dependencies
+- inconsistent column names
+- references to columns not created earlier
+- references to tables not created earlier
+- archive/latest-run naming consistency
+- estimated-PD proxy terminology
+- simulated reason-code terminology
+- any remaining booked/account/adverse-action language
+- any placeholders, ellipses, or omitted logic
+
+Provide a targeted patch list only.
+```
+
+Then, after the assembly review, run the SQL. If it errors, give ChatGPT the **first runtime error only**, with the line number and surrounding SQL. That will keep debugging controlled and avoid destabilizing the module.
+<!-- END_MESSAGE C037-M00644 -->
+
+
+---
+
+<a id="c037-m00645"></a>
+
+### C037-M00645
+
+**Andrew** · 2026-05-06T19:08:19.507000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00645 -->
+this worked, but the comments/header in the code are not nearly at the elite teaching and explanatory level that we had in module 1 V2.0.  (see full module 2 and prior module 1 V2.0 attached).  please help me craft a follow-up to our Module 2 chat to begin elevating this to the elite level it needs to be at.  Also, we need a strategy for testing this.
+<!-- END_MESSAGE C037-M00645 -->
+
+
+**Attachments in export:** `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0(1).sql`, `module1_synthetic_application_risk_engine_v2.0(22).sql`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_11.md) · [Next](Part_13.md)

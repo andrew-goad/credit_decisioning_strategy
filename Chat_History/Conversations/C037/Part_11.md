@@ -1,0 +1,3641 @@
+# Module 1 BRD / Validation Documentation
+
+## Part 11
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_10.md) · [Next](Part_12.md)
+
+<a id="c037-m00540"></a>
+
+### C037-M00540
+
+**ChatGPT** · 2026-05-06T10:12:49.447799-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00540 -->
+Yes — this refined follow-up is **very strong and ready to send**. It gives the new Module 2 chat the right “lock the architecture before SQL” checkpoint, and it corrects the main risk from the first response: moving too quickly into build mode before conventions, thresholds, gatekeepers, and output logic are fully governed. fileciteturn55file0
+
+I would make **three small final edits** before sending.
+
+## Final edits I recommend
+
+### 1. Replace one remaining “risk recalibration” phrase
+
+In Section 3, the pasted version still says:
+
+> future post-decision risk recalibration layer
+
+Change to:
+
+> future post-decision risk adjustment layer
+
+That keeps the language aligned with Module 1’s non-calibrated estimated-PD proxy boundary. The final Module 1 BRD is explicit that `estimated_pd` is a governed proxy, not a calibrated production PD, and the Validation Summary reinforces directional coherence rather than calibration. fileciteturn55file8turn55file11
+
+### 2. Use `NULLIF` in exposure reduction percentage
+
+In Section 5, the truncated/alternate copy shows:
+
+> exposure_reduction_pct = exposure_reduction_amount / requested_amount
+
+Change to:
+
+> exposure_reduction_pct = exposure_reduction_amount / NULLIF(requested_amount, 0)
+
+Your newer copy already does this in some places. Keep it consistent.
+
+### 3. Add the missing source-control ending if the pasted file is truncated
+
+The visible file ends mid-sentence under source-input gatekeepers:
+
+> selected Module 1 source has no duplicate application...
+
+Make sure the final version completes that block as:
+
+```text
+- selected Module 1 source has no duplicate application_id values for the selected population / scenario
+- required Module 1 input fields are non-null where required
+- if using the Module 1 scenario archive, exactly one Module 1 scenario is selected unless multi-scenario processing is explicitly designed
+```
+
+That source-control block is important because Module 2 depends on Module 1 lineage integrity.
+
+---
+
+# Full updated refined follow-up to paste
+
+```text
+I agree with the overall Module 2 architecture direction.
+
+Before we move to SQL, please lock the following design decisions and then restate the final Module 2 architecture briefly.
+
+Do not write full code yet.
+
+================================================================================
+1. ARCHITECTURE
+================================================================================
+
+Use the latest-run strategy decision table plus strategy decision archive table.
+
+This should mirror the Module 1 pattern:
+- latest-run table for current strategy output and QA
+- archive table for preserving completed strategy runs and enabling matched comparison
+
+Archive grain should be:
+
+one row per application × Module 1 scenario × Module 2 strategy version
+
+In practical terms, the archive grain should include:
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+- application_id
+
+Please also explicitly define the archive replacement / rerun key as:
+
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+The row-level archive grain should additionally include application_id.
+
+================================================================================
+2. NAMING
+================================================================================
+
+Preserve Module 1 scenario fields as upstream lineage:
+
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+Use Module 2 strategy fields for downstream strategy:
+
+- strategy_set_name
+- strategy_name
+- strategy_version
+
+Do not overload scenario_name.
+
+Module 1 scenario metadata describes the synthetic population and upstream risk environment.
+Module 2 strategy metadata describes the simulated decision strategy applied to that population.
+
+================================================================================
+3. ESTIMATED-PD PROXY BOUNDARY
+================================================================================
+
+Module 2 should not recalculate the synthetic estimated-PD proxy in the initial v1.0 build.
+
+Module 2 should consume the Module 1 field:
+
+- estimated_pd
+
+as the finalized Module 1 synthetic estimated-PD proxy input.
+
+The SQL column name may remain estimated_pd because that is the finalized Module 1 output field. However, comments, documentation, and interpretation should refer to it as the synthetic estimated-PD proxy.
+
+Module 2 may calculate:
+- approved_amount
+- approved_monthly_payment_proxy
+- approved_pti
+- approved_expected_loss_amount
+
+But Module 2 should not create a new post-decision PD model unless we explicitly design a future post-decision risk adjustment layer.
+
+================================================================================
+4. DECISION OUTCOME TAXONOMY
+================================================================================
+
+Use exactly four primary decision_outcome values:
+
+- APPROVE
+- COUNTEROFFER
+- MANUAL_REVIEW
+- DECLINE
+
+Counteroffer should be a distinct decision_outcome.
+
+Detailed counteroffer type should be captured in decision_path.
+
+This allows reporting to separate:
+- clean approvals
+- counteroffers / partial approvals
+- manual reviews
+- declines
+
+Also include a positive_offer_flag if useful, where:
+- APPROVE = positive offer
+- COUNTEROFFER = positive offer
+- MANUAL_REVIEW = unresolved
+- DECLINE = no offer
+
+================================================================================
+5. AMOUNT AND EXPECTED LOSS CONVENTIONS
+================================================================================
+
+Please explicitly define the amount and Expected Loss convention for each outcome.
+
+APPROVE:
+- approved_amount = requested_amount
+- counteroffer_amount = NULL
+- approved_expected_loss_amount = approved_amount × estimated_pd × estimated_lgd
+
+COUNTEROFFER:
+- approved_amount < requested_amount
+- counteroffer_amount = approved_amount
+- approved_expected_loss_amount = approved_amount × estimated_pd × estimated_lgd
+- exposure_reduction_flag = TRUE
+- exposure_reduction_amount = requested_amount - approved_amount
+- exposure_reduction_pct = exposure_reduction_amount / NULLIF(requested_amount, 0)
+
+DECLINE:
+- approved_amount = 0
+- counteroffer_amount = NULL
+- approved_expected_loss_amount = 0
+- do not treat decline as booked exposure
+
+MANUAL_REVIEW:
+- approved_amount = NULL
+- counteroffer_amount = NULL
+- approved_expected_loss_amount = NULL
+- do not treat manual review as booked or approved exposure
+
+Manual review is unresolved by design.
+
+================================================================================
+6. MANUAL REVIEW DIAGNOSTICS
+================================================================================
+
+If useful, propose optional diagnostic fields such as:
+
+- review_path
+- review_reason_family
+- review_recommended_amount
+- review_priority_tier
+
+But do not include them unless they add clear value to Module 2 v1.0.
+
+The default should be to keep Module 2 v1.0 focused and audit-readable.
+
+================================================================================
+7. APPROVED PAYMENT AND APPROVED PTI PROXY
+================================================================================
+
+If using proportional scaling, define:
+
+approved_monthly_payment_proxy =
+    monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)
+
+Document this as a strategy-simulation proxy, not a recalculated contractual payment schedule.
+
+Also define:
+
+approved_payment_to_income_ratio =
+    approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)
+
+where monthly income is derived from the Module 1 annual_income field.
+
+This is useful because counteroffers should reduce exposure and should generally improve approved-payment affordability relative to the original requested structure.
+
+Please explicitly preserve the distinction between:
+- original requested PTI from Module 1
+- approved PTI from Module 2 after exposure treatment
+
+================================================================================
+8. REASON-CODE CONVENTION
+================================================================================
+
+Use neutral simulation language.
+
+Do not use “adverse action” framing.
+
+Preferred language:
+- simulated reason code
+- simulated policy reason
+- strategy explanation code
+- decision-path reason
+- policy stop reason
+- review trigger reason
+- counteroffer reason
+
+Reason codes are not regulatory adverse-action reason codes.
+
+Before coding, please define the convention for approvals.
+
+My preference:
+- APPROVE rows receive primary_reason_code = APPROVED_AS_REQUESTED
+- COUNTEROFFER rows receive a counteroffer-related reason code
+- MANUAL_REVIEW rows receive a review-trigger reason code
+- DECLINE rows receive a policy-stop reason code
+
+This keeps every row explainable and makes QA easier.
+
+Please confirm whether you agree with that convention.
+
+================================================================================
+9. THRESHOLD HIERARCHY
+================================================================================
+
+Before coding, define exact threshold-ordering rules and proposed default thresholds for:
+
+- synthetic estimated-PD proxy thresholds
+- PTI thresholds
+- DTI thresholds
+- Expected Loss thresholds
+- product exposure caps
+- counteroffer minimum viable amount
+- manual review bands
+- approval bands
+- decline bands
+
+Please explain each threshold in business terms.
+
+For example:
+- what behavior it is intended to capture
+- why the value is plausible
+- how it relates to approval / review / decline
+- how it should be validated
+
+Do not silently embed thresholds in SQL without a parameter dictionary and commentary.
+
+================================================================================
+10. PARAMETER DICTIONARY
+================================================================================
+
+Before coding, provide a compact strategy parameter dictionary with:
+
+- parameter_name
+- data_type
+- default_value
+- allowed_range
+- parameter_scope
+- product_applicability
+- purpose
+- gatekeeper_rule
+- business_interpretation
+
+This should include parameters for:
+- strategy identity
+- source Module 1 scenario selection
+- archive controls
+- approval thresholds
+- manual review thresholds
+- decline thresholds
+- counteroffer thresholds
+- product-specific exposure rules
+- approved amount rules
+- approved Expected Loss rules
+
+================================================================================
+11. STRATEGY PARAMETER GATEKEEPER
+================================================================================
+
+Module 2 should include a fail-fast strategy parameter gatekeeper.
+
+At minimum, the gatekeeper should validate:
+
+- exactly one active strategy parameter row for a single strategy run
+- strategy_set_name is not null or blank
+- strategy_name is not null or blank
+- strategy_version is not null or blank
+- source Module 1 scenario fields are valid
+- archive reset mode is valid
+- threshold values are inside governed ranges
+- threshold ordering is coherent
+- counteroffer rules cannot create approved_amount greater than requested_amount
+- approved amount cannot be negative
+- approved Expected Loss cannot be negative
+- decision outcome conventions remain internally consistent
+
+================================================================================
+12. WORKSTREAM NAMING
+================================================================================
+
+Rename “Validation and calibration pass” to:
+
+Validation, QA, and Strategy Tuning Pass
+
+Avoid the word calibration unless we are explicitly discussing empirical calibration, which Module 2 is not doing.
+
+Module 2 should tune simulated strategy behavior, not calibrate real-world underwriting performance.
+
+================================================================================
+13. OUTPUT CONSISTENCY REQUIREMENTS
+================================================================================
+
+Before coding, lock the following output consistency rules:
+
+- every row must have exactly one primary decision_outcome
+- approval_flag, decline_flag, manual_review_flag, and counteroffer_flag must reconcile to decision_outcome
+- APPROVE and COUNTEROFFER should be distinguishable but can both feed positive_offer_flag
+- approved_amount must not exceed requested_amount unless explicitly designed
+- counteroffer_amount must equal approved_amount for COUNTEROFFER rows
+- DECLINE rows should have approved_amount = 0
+- MANUAL_REVIEW rows should have approved_amount = NULL
+- approved_expected_loss_amount should use approved exposure, not requested exposure
+- Module 1 expected_loss_amount should remain available as requested-exposure Expected Loss
+
+================================================================================
+14. ADDITIONAL OUTPUT AND SOURCE-CONTROL CONVENTIONS
+================================================================================
+
+Please also lock the following conventions before coding.
+
+1. Avoid recalibration language
+   Module 2 should not create a new post-decision risk model unless we explicitly design a future post-decision risk adjustment layer.
+   Avoid the phrase risk recalibration unless we are explicitly discussing empirical calibration, which Module 2 is not doing.
+
+2. Strategy run audit metadata
+   Include strategy_run_ts or strategy_run_id as audit metadata.
+   This should support run traceability but should not replace the archive replacement / rerun key.
+
+3. Approved-book inclusion flag
+   Include a simulated_offer_exposure_flag or booked_exposure_flag:
+   - APPROVE = TRUE
+   - COUNTEROFFER = TRUE
+   - MANUAL_REVIEW = FALSE / unresolved
+   - DECLINE = FALSE
+
+   This flag should be used for approved-book reporting and approved exposure summaries.
+
+4. Approved payment and approved PTI conventions
+   If approved_monthly_payment_proxy uses proportional scaling, define outcome-specific behavior:
+
+   APPROVE:
+   - approved_monthly_payment_proxy = monthly_payment_proxy
+   - approved_pti = payment_to_income_ratio
+
+   COUNTEROFFER:
+   - approved_monthly_payment_proxy = monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)
+   - approved_pti = approved_monthly_payment_proxy / monthly_income
+
+   DECLINE:
+   - approved_monthly_payment_proxy = 0
+   - approved_pti = 0
+
+   MANUAL_REVIEW:
+   - approved_monthly_payment_proxy = NULL
+   - approved_pti = NULL
+
+   Document this as a strategy-simulation proxy, not a recalculated contractual payment schedule.
+
+5. Source-input gatekeepers
+   The strategy parameter gatekeeper should also validate:
+   - selected Module 1 source table contains rows
+   - selected Module 1 source has no duplicate application_id values for the selected population / scenario
+   - required Module 1 input fields are non-null where required
+   - if using the Module 1 scenario archive, exactly one Module 1 scenario is selected unless multi-scenario processing is explicitly designed
+
+================================================================================
+15. NEXT STEP
+================================================================================
+
+After incorporating these clarifications, please:
+
+1. Briefly restate the locked Module 2 architecture.
+2. Provide the compact strategy parameter dictionary.
+3. Define the threshold hierarchy and default threshold recommendations.
+4. Propose the first SQL build step only.
+
+Do not write the full SQL module yet.
+```
+
+## Final judgment
+
+This is ready to send. It is precise, well-governed, and it will keep the new Module 2 chat from drifting into generic policy-rule SQL. The key strengths are the lineage grain, decision taxonomy, reason-code convention, approved-exposure conventions, and fail-fast gatekeeper expectations.
+<!-- END_MESSAGE C037-M00540 -->
+
+
+---
+
+<a id="c037-m00542"></a>
+
+### C037-M00542
+
+**Andrew** · 2026-05-06T10:19:21.323000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00542 -->
+i think what I sent you was misread by you.  let's try that again.  one more pass at this follow-up response: 
+<!-- END_MESSAGE C037-M00542 -->
+
+
+**Attachments in export:** `Pasted text(75).txt`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00544"></a>
+
+### C037-M00544
+
+**ChatGPT** · 2026-05-06T10:21:15.448066-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00544 -->
+I read the updated follow-up correctly this time. It is **very strong and ready to send**, with only a few precision refinements I would make before using it in the Module 2 chat. The structure is right: architecture → naming → estimated-PD proxy boundary → decision taxonomy → amount/loss conventions → reason codes → thresholds → parameter dictionary → gatekeepers → output consistency → source controls → next step. fileciteturn56file0
+
+The main refinements I recommend are:
+
+1. Replace **“post-decision PD model”** with **“post-decision risk model”** to avoid slipping back into PD-model framing.
+2. Consolidate the flag language. Instead of `positive_offer_flag`, `booked_exposure_flag`, or multiple alternatives, use one clean field: **`simulated_offer_exposure_flag`**.
+3. Standardize the approved PTI field name as **`approved_payment_to_income_ratio`** instead of switching between `approved_pti` and the longer name.
+4. Move the richer parameter dictionary fields into Section 10 so Section 14 does not need to repeat them.
+5. Add language that proposed thresholds are **initial simulation defaults**, not production underwriting policy.
+
+Below is the cleaned final version.
+
+```text
+I agree with the overall Module 2 architecture direction.
+
+Before we move to SQL, please lock the following design decisions and then restate the final Module 2 architecture briefly.
+
+Do not write full code yet.
+
+================================================================================
+1. ARCHITECTURE
+================================================================================
+
+Use the latest-run strategy decision table plus strategy decision archive table.
+
+This should mirror the Module 1 pattern:
+- latest-run table for current strategy output and QA
+- archive table for preserving completed strategy runs and enabling matched comparison
+
+Archive grain should be:
+
+one row per application × Module 1 scenario × Module 2 strategy version
+
+In practical terms, the archive grain should include:
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+- application_id
+
+Please also explicitly define the archive replacement / rerun key as:
+
+- strategy_set_name
+- strategy_name
+- strategy_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+The row-level archive grain should additionally include application_id.
+
+================================================================================
+2. NAMING
+================================================================================
+
+Preserve Module 1 scenario fields as upstream lineage:
+
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+
+Use Module 2 strategy fields for downstream strategy:
+
+- strategy_set_name
+- strategy_name
+- strategy_version
+
+Do not overload scenario_name.
+
+Module 1 scenario metadata describes the synthetic population and upstream risk environment.
+Module 2 strategy metadata describes the simulated decision strategy applied to that population.
+
+================================================================================
+3. ESTIMATED-PD PROXY BOUNDARY
+================================================================================
+
+Module 2 should not recalculate the synthetic estimated-PD proxy in the initial v1.0 build.
+
+Module 2 should consume the Module 1 field:
+
+- estimated_pd
+
+as the finalized Module 1 synthetic estimated-PD proxy input.
+
+The SQL column name may remain estimated_pd because that is the finalized Module 1 output field. However, comments, documentation, and interpretation should refer to it as the synthetic estimated-PD proxy.
+
+Module 2 may calculate:
+- approved_amount
+- approved_monthly_payment_proxy
+- approved_payment_to_income_ratio
+- approved_expected_loss_amount
+
+But Module 2 should not create a new post-decision risk model unless we explicitly design a future post-decision risk adjustment layer.
+
+================================================================================
+4. DECISION OUTCOME TAXONOMY
+================================================================================
+
+Use exactly four primary decision_outcome values:
+
+- APPROVE
+- COUNTEROFFER
+- MANUAL_REVIEW
+- DECLINE
+
+Counteroffer should be a distinct decision_outcome.
+
+Detailed counteroffer type should be captured in decision_path.
+
+This allows reporting to separate:
+- clean approvals
+- counteroffers / partial approvals
+- manual reviews
+- declines
+
+Also include a simulated_offer_exposure_flag, where:
+- APPROVE = TRUE
+- COUNTEROFFER = TRUE
+- MANUAL_REVIEW = FALSE / unresolved
+- DECLINE = FALSE
+
+This flag should support approved-book / offer-exposure reporting while preserving the boundary that these are simulated strategy outcomes, not real booked accounts.
+
+================================================================================
+5. AMOUNT AND EXPECTED LOSS CONVENTIONS
+================================================================================
+
+Please explicitly define the amount and Expected Loss convention for each outcome.
+
+APPROVE:
+- approved_amount = requested_amount
+- counteroffer_amount = NULL
+- approved_expected_loss_amount = approved_amount × estimated_pd × estimated_lgd
+
+COUNTEROFFER:
+- approved_amount < requested_amount
+- counteroffer_amount = approved_amount
+- approved_expected_loss_amount = approved_amount × estimated_pd × estimated_lgd
+- exposure_reduction_flag = TRUE
+- exposure_reduction_amount = requested_amount - approved_amount
+- exposure_reduction_pct = exposure_reduction_amount / NULLIF(requested_amount, 0)
+
+DECLINE:
+- approved_amount = 0
+- counteroffer_amount = NULL
+- approved_expected_loss_amount = 0
+- do not treat decline as booked exposure
+
+MANUAL_REVIEW:
+- approved_amount = NULL
+- counteroffer_amount = NULL
+- approved_expected_loss_amount = NULL
+- do not treat manual review as booked or approved exposure
+
+Manual review is unresolved by design.
+
+================================================================================
+6. MANUAL REVIEW DIAGNOSTICS
+================================================================================
+
+If useful, propose optional diagnostic fields such as:
+
+- review_path
+- review_reason_family
+- review_recommended_amount
+- review_priority_tier
+
+But do not include them unless they add clear value to Module 2 v1.0.
+
+The default should be to keep Module 2 v1.0 focused and audit-readable.
+
+================================================================================
+7. APPROVED PAYMENT AND APPROVED PTI PROXY
+================================================================================
+
+If using proportional scaling, define:
+
+approved_monthly_payment_proxy =
+    monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)
+
+Document this as a strategy-simulation proxy, not a recalculated contractual payment schedule.
+
+Also define:
+
+approved_payment_to_income_ratio =
+    approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)
+
+where monthly income is derived from the Module 1 annual_income field.
+
+This is useful because counteroffers should reduce exposure and should generally improve approved-payment affordability relative to the original requested structure.
+
+Please explicitly preserve the distinction between:
+- original requested PTI from Module 1
+- approved payment-to-income ratio from Module 2 after exposure treatment
+
+Outcome-specific convention:
+
+APPROVE:
+- approved_monthly_payment_proxy = monthly_payment_proxy
+- approved_payment_to_income_ratio = payment_to_income_ratio
+
+COUNTEROFFER:
+- approved_monthly_payment_proxy = monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)
+- approved_payment_to_income_ratio = approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)
+
+DECLINE:
+- approved_monthly_payment_proxy = 0
+- approved_payment_to_income_ratio = 0
+
+MANUAL_REVIEW:
+- approved_monthly_payment_proxy = NULL
+- approved_payment_to_income_ratio = NULL
+
+================================================================================
+8. REASON-CODE CONVENTION
+================================================================================
+
+Use neutral simulation language.
+
+Do not use “adverse action” framing.
+
+Preferred language:
+- simulated reason code
+- simulated policy reason
+- strategy explanation code
+- decision-path reason
+- policy stop reason
+- review trigger reason
+- counteroffer reason
+
+Reason codes are not regulatory adverse-action reason codes.
+
+Before coding, please define the convention for approvals.
+
+My preference:
+- APPROVE rows receive primary_reason_code = APPROVED_AS_REQUESTED
+- COUNTEROFFER rows receive a counteroffer-related reason code
+- MANUAL_REVIEW rows receive a review-trigger reason code
+- DECLINE rows receive a policy-stop reason code
+
+This keeps every row explainable and makes QA easier.
+
+Please confirm whether you agree with that convention.
+
+================================================================================
+9. THRESHOLD HIERARCHY
+================================================================================
+
+Before coding, define exact threshold-ordering rules and proposed default thresholds for:
+
+- synthetic estimated-PD proxy thresholds
+- PTI thresholds
+- DTI thresholds
+- Expected Loss thresholds
+- product exposure caps
+- counteroffer minimum viable amount
+- manual review bands
+- approval bands
+- decline bands
+
+Please explain each threshold in business terms.
+
+For example:
+- what behavior it is intended to capture
+- why the value is plausible
+- how it relates to approval / review / decline
+- how it should be validated
+
+These thresholds should be treated as initial simulated strategy defaults, not production underwriting policy.
+
+Do not silently embed thresholds in SQL without a parameter dictionary and commentary.
+
+================================================================================
+10. PARAMETER DICTIONARY
+================================================================================
+
+Before coding, provide a compact strategy parameter dictionary with:
+
+- parameter_name
+- data_type
+- default_value
+- allowed_range
+- parameter_scope
+- product_applicability
+- purpose
+- gatekeeper_rule
+- business_interpretation
+
+This should include parameters for:
+- strategy identity
+- source Module 1 scenario selection
+- archive controls
+- approval thresholds
+- manual review thresholds
+- decline thresholds
+- counteroffer thresholds
+- product-specific exposure rules
+- approved amount rules
+- approved Expected Loss rules
+
+================================================================================
+11. STRATEGY PARAMETER GATEKEEPER
+================================================================================
+
+Module 2 should include a fail-fast strategy parameter gatekeeper.
+
+At minimum, the gatekeeper should validate:
+
+- exactly one active strategy parameter row for a single strategy run
+- strategy_set_name is not null or blank
+- strategy_name is not null or blank
+- strategy_version is not null or blank
+- source Module 1 scenario fields are valid
+- archive reset mode is valid
+- threshold values are inside governed ranges
+- threshold ordering is coherent
+- counteroffer rules cannot create approved_amount greater than requested_amount
+- approved amount cannot be negative
+- approved Expected Loss cannot be negative
+- decision outcome conventions remain internally consistent
+
+================================================================================
+12. WORKSTREAM NAMING
+================================================================================
+
+Rename “Validation and calibration pass” to:
+
+Validation, QA, and Strategy Tuning Pass
+
+Avoid the word calibration unless we are explicitly discussing empirical calibration, which Module 2 is not doing.
+
+Module 2 should tune simulated strategy behavior, not calibrate real-world underwriting performance.
+
+================================================================================
+13. OUTPUT CONSISTENCY REQUIREMENTS
+================================================================================
+
+Before coding, lock the following output consistency rules:
+
+- every row must have exactly one primary decision_outcome
+- approval_flag, decline_flag, manual_review_flag, and counteroffer_flag must reconcile to decision_outcome
+- APPROVE and COUNTEROFFER should be distinguishable but can both feed simulated_offer_exposure_flag
+- approved_amount must not exceed requested_amount unless explicitly designed
+- counteroffer_amount must equal approved_amount for COUNTEROFFER rows
+- DECLINE rows should have approved_amount = 0
+- MANUAL_REVIEW rows should have approved_amount = NULL
+- approved_expected_loss_amount should use approved exposure, not requested exposure
+- Module 1 expected_loss_amount should remain available as requested-exposure Expected Loss
+- Module 1 expected_loss_amount should be renamed or aliased as requested_expected_loss_amount in Module 2 outputs to avoid ambiguity
+
+================================================================================
+14. ADDITIONAL OUTPUT AND SOURCE-CONTROL CONVENTIONS
+================================================================================
+
+Please also lock the following conventions before coding.
+
+1. Avoid recalibration language
+   Module 2 should not create a new post-decision risk model unless we explicitly design a future post-decision risk adjustment layer.
+   Avoid the phrase risk recalibration unless we are explicitly discussing empirical calibration, which Module 2 is not doing.
+
+2. Strategy run audit metadata
+   Include strategy_run_ts or strategy_run_id as audit metadata.
+   This should support run traceability but should not replace the archive replacement / rerun key.
+
+3. Approved-book / offer-exposure inclusion flag
+   Include simulated_offer_exposure_flag:
+   - APPROVE = TRUE
+   - COUNTEROFFER = TRUE
+   - MANUAL_REVIEW = FALSE / unresolved
+   - DECLINE = FALSE
+
+   This flag should be used for approved-book reporting and approved exposure summaries.
+   It should not imply real account booking.
+
+4. Source-input gatekeepers
+   The strategy parameter gatekeeper should also validate:
+   - selected Module 1 source table contains rows
+   - selected Module 1 source has no duplicate application_id values for the selected population / scenario
+   - required Module 1 input fields are non-null where required
+   - if using the Module 1 scenario archive, exactly one Module 1 scenario is selected unless multi-scenario processing is explicitly designed
+
+================================================================================
+15. NEXT STEP
+================================================================================
+
+After incorporating these clarifications, please:
+
+1. Briefly restate the locked Module 2 architecture.
+2. Provide the compact strategy parameter dictionary.
+3. Define the threshold hierarchy and default threshold recommendations.
+4. Propose the first SQL build step only.
+
+Do not write the full SQL module yet.
+```
+
+This version is ready. The biggest improvement versus the prior version is that it removes duplicated parameter-dictionary language, standardizes approved PTI naming, avoids “PD model” phrasing, and replaces ambiguous “booked” language with the safer **simulated_offer_exposure_flag** framing.
+<!-- END_MESSAGE C037-M00544 -->
+
+
+---
+
+<a id="c037-m00546"></a>
+
+### C037-M00546
+
+**Andrew** · 2026-05-06T10:23:02.569000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00546 -->
+you said, "Replace “post-decision PD model” with “post-decision risk model” to avoid slipping back into PD-model framing." - but that line actually reads But Module 2 should NOT create a new...  is that still a risk since it says should NOT in front of that ?
+<!-- END_MESSAGE C037-M00546 -->
+
+
+---
+
+<a id="c037-m00547"></a>
+
+### C037-M00547
+
+**ChatGPT** · 2026-05-06T10:23:48.526739-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00547 -->
+It is **less risky** because the sentence says “should not,” but I would still change it.
+
+The issue is not that the sentence allows a PD model. The issue is that the phrase **“post-decision PD model”** reintroduces a concept we have worked hard to avoid: treating Module 2 as if it might naturally have a PD-modeling layer. Since Module 1’s `estimated_pd` is deliberately framed as a **synthetic estimated-PD proxy**, and Module 2 is a **strategy outcome simulator**, the cleaner phrasing is:
+
+> Module 2 should not create a new post-decision **risk model** unless we explicitly design a future post-decision risk adjustment layer.
+
+That wording preserves your intent while staying broader and cleaner.
+
+I would also keep your later Section 14 wording, which already says:
+
+> Module 2 should not create a new post-decision risk model unless we explicitly design a future post-decision risk adjustment layer.
+
+So the only thing I would do is make Section 3 match Section 14. In the attached follow-up, Section 3 currently says “post-decision PD model,” while Section 14 correctly says “post-decision risk model.” fileciteturn56file0
+
+**Recommended final Section 3 sentence:**
+
+```text
+But Module 2 should not create a new post-decision risk model unless we explicitly design a future post-decision risk adjustment layer.
+```
+
+This is a small precision edit, not a major concern.
+<!-- END_MESSAGE C037-M00547 -->
+
+
+---
+
+<a id="c037-m00549"></a>
+
+### C037-M00549
+
+**Andrew** · 2026-05-06T10:47:47.710000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00549 -->
+evaluate the follow-up response that ChatGPT just responded back with.  help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00549 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_first_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00552"></a>
+
+### C037-M00552
+
+**ChatGPT** · 2026-05-06T10:51:30.866806-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00552 -->
+Yes — ChatGPT’s latest response is **strong and directionally correct**. It incorporated the follow-up well: architecture is locked, latest-run + archive table pattern is accepted, Module 1 scenario lineage is preserved separately from Module 2 strategy metadata, counteroffer is correctly treated as its own decision outcome, manual review remains unresolved, reason-code language is non-regulatory, and the first SQL build step is appropriately limited to Sections 0–3 rather than jumping into decision logic. fileciteturn56file0
+
+I would **not redirect the new chat**. The project is on track. The next step should be to authorize the first SQL build, but with a few precision constraints so the implementation starts cleanly.
+
+## Key refinements before SQL
+
+The response is good enough to proceed, but I would send one more steering message that:
+
+1. Confirms the locked architecture.
+2. Makes the first SQL build strictly **Sections 0–3 only**.
+3. Requires no decision logic yet.
+4. Requires `simulated_offer_exposure_flag`, not `booked_exposure_flag`.
+5. Requires exact gatekeepers for strategy params, product policy params, source selection, archive controls, and threshold ordering.
+6. Requires explicit equality handling for threshold boundaries.
+7. Requires the code to preserve Module 1 terminology and estimated-PD proxy boundaries.
+
+The biggest thing to avoid now is letting the SQL become too ambitious in the first build. The first build should create the governance foundation only.
+
+---
+
+# Full copy-paste response for the Module 2 chat
+
+```text
+This is directionally strong. I agree with the locked architecture, naming convention, decision outcome taxonomy, amount / Expected Loss conventions, reason-code framing, threshold hierarchy, parameter dictionary direction, and the recommendation that the first SQL build should be Sections 0–3 only.
+
+Let’s proceed to the first SQL build, but please follow the constraints below exactly.
+
+Do not build decision logic yet.
+
+================================================================================
+1. CONFIRMED LOCKED DESIGN
+================================================================================
+
+Please treat the following as locked for Module 2 v1.0:
+
+1. Physical architecture
+   - latest-run table:
+     credit_decisioning_sim.strategy_decisions
+
+   - archive table:
+     credit_decisioning_sim.strategy_decisions_archive
+
+2. Archive grain
+   one row per application × Module 1 scenario × Module 2 strategy version
+
+3. Archive grain fields
+   - strategy_set_name
+   - strategy_name
+   - strategy_version
+   - module1_scenario_set_name
+   - module1_scenario_name
+   - population_id
+   - application_id
+
+4. Archive replacement / rerun key
+   - strategy_set_name
+   - strategy_name
+   - strategy_version
+   - module1_scenario_set_name
+   - module1_scenario_name
+   - population_id
+
+   The row-level archive grain additionally includes application_id.
+
+5. Module 1 scenario metadata
+   - module1_scenario_set_name
+   - module1_scenario_name
+   - population_id
+
+6. Module 2 strategy metadata
+   - strategy_set_name
+   - strategy_name
+   - strategy_version
+   - strategy_run_id
+   - strategy_run_ts
+
+7. Decision outcome taxonomy
+   Use exactly:
+   - APPROVE
+   - COUNTEROFFER
+   - MANUAL_REVIEW
+   - DECLINE
+
+8. Counteroffer treatment
+   COUNTEROFFER is a distinct decision_outcome.
+   More detailed counteroffer type belongs in decision_path.
+
+9. Manual review treatment
+   MANUAL_REVIEW is unresolved by design:
+   - approved_amount = NULL
+   - approved_expected_loss_amount = NULL
+   - approved_monthly_payment_proxy = NULL
+   - approved_payment_to_income_ratio = NULL
+
+10. Estimated-PD proxy boundary
+    Module 2 consumes Module 1 estimated_pd as the finalized synthetic estimated-PD proxy.
+    Module 2 does not recalculate estimated_pd and does not create a new post-decision risk model in v1.0.
+
+================================================================================
+2. FIRST SQL BUILD SCOPE
+================================================================================
+
+Build only Module 2 SQL Sections 0–3.
+
+The first SQL build should include:
+
+Section 0:
+- Executive purpose header
+- Module 2 boundary notes
+- Estimated-PD proxy terminology note
+- Relationship to Module 1
+- High-level SQL section map
+
+Section 1:
+- Schema setup / schema reuse
+- Clean reset of temporary Module 2 objects
+- Drop latest-run output table only if appropriate for clean rerun
+- Do not create final decision output logic yet
+
+Section 2:
+- Strategy parameter framework
+- Product policy parameter framework
+- Strategy identity parameters
+- Module 1 source selection parameters
+- Archive control parameters
+- Threshold parameters
+- Product exposure / counteroffer parameters
+- Decision convention parameters
+
+Section 3:
+- Fail-fast strategy parameter gatekeeper
+- Parameter-cardinality validation
+- Source-input validation
+- Product-policy parameter validation
+- Threshold-ordering validation
+- Exposure / counteroffer validation
+- Archive-control validation
+- Output-convention validation
+
+Do not build:
+- Module 1 source-selection staging logic
+- derived strategy segments
+- rule flags
+- decision hierarchy
+- reason-code assignment
+- approved exposure calculation
+- approved Expected Loss calculation
+- latest-run final output table
+- archive insert logic
+- QA queries
+
+Those come later.
+
+================================================================================
+3. PARAMETER TABLE DESIGN
+================================================================================
+
+Use temporary parameter tables for the first build.
+
+Recommended parameter tables:
+
+1. tmp_module2_strategy_params
+   One active row for the selected strategy run.
+
+2. tmp_module2_product_policy_params
+   One row per supported product type.
+
+Use Module 1’s product set:
+- MORTGAGE
+- HELOC
+- AUTO_LOAN
+- UNSECURED_PERSONAL_LOAN
+- REVOLVING_LINE
+
+The first build should ensure the parameter structure is complete enough to support later strategy logic, even though decision logic is not built yet.
+
+================================================================================
+4. REQUIRED STRATEGY PARAMETER FIELDS
+================================================================================
+
+At minimum, tmp_module2_strategy_params should include:
+
+Strategy identity:
+- active_strategy_flag
+- module2_model_version
+- strategy_set_name
+- strategy_name
+- strategy_version
+- strategy_run_id
+- strategy_run_ts
+
+Module 1 source selection:
+- module1_input_source
+- source_module1_scenario_set_name
+- source_module1_scenario_name
+- source_population_id
+
+Archive controls:
+- archive_run_flag
+- strategy_archive_reset_mode
+
+Global estimated-risk thresholds:
+- approve_max_estimated_pd_proxy
+- counteroffer_max_estimated_pd_proxy
+- review_max_estimated_pd_proxy
+- decline_min_estimated_pd_proxy
+
+Global PTI thresholds:
+- global_approve_max_pti
+- global_review_max_pti
+- global_decline_min_pti
+
+DTI thresholds:
+- approve_max_dti
+- review_max_dti
+- decline_min_dti
+
+Decision convention controls:
+- approve_reason_code
+- reason_code_required_flag
+- simulated_offer_exposure_flag_enabled
+- manual_review_approved_amount_convention
+- decline_approved_amount_convention
+- approved_el_decline_convention
+- approved_el_manual_review_convention
+- allow_approved_amount_above_requested_flag
+
+================================================================================
+5. REQUIRED PRODUCT POLICY PARAMETER FIELDS
+================================================================================
+
+At minimum, tmp_module2_product_policy_params should include:
+
+Product identity:
+- product_type
+
+Product-specific PTI thresholds:
+- product_approve_max_pti
+- product_review_max_pti
+- product_decline_min_pti
+- counteroffer_target_pti
+
+Requested Expected Loss thresholds:
+- product_approve_max_requested_el
+- product_review_max_requested_el
+- product_decline_min_requested_el
+- product_approved_el_cap
+
+Approved exposure limits:
+- product_min_approved_amount
+- product_max_approved_amount
+
+Counteroffer controls:
+- counteroffer_allowed_flag
+- manual_review_allowed_flag
+- product_min_counteroffer_pct
+- product_max_exposure_reduction_pct
+- exposure_assignment_method
+
+Other:
+- approved_amount_rounding_increment
+
+================================================================================
+6. THRESHOLD EQUALITY RULES
+================================================================================
+
+Please explicitly document threshold equality handling in Section 3 comments.
+
+Use this convention unless you see a strong reason to recommend otherwise:
+
+Estimated-PD proxy:
+- APPROVE if estimated_pd <= approve_max_estimated_pd_proxy
+- COUNTEROFFER eligibility if estimated_pd > approve_max_estimated_pd_proxy
+  and estimated_pd <= counteroffer_max_estimated_pd_proxy
+- MANUAL_REVIEW if estimated_pd > counteroffer_max_estimated_pd_proxy
+  and estimated_pd < decline_min_estimated_pd_proxy
+- DECLINE if estimated_pd >= decline_min_estimated_pd_proxy
+
+PTI:
+- APPROVE if PTI <= product_approve_max_pti
+- COUNTEROFFER eligibility if PTI > product_approve_max_pti and counteroffer can reduce approved PTI to target
+- MANUAL_REVIEW if PTI > product_approve_max_pti and PTI < product_decline_min_pti where counteroffer is not cleanly viable
+- DECLINE if PTI >= product_decline_min_pti and no viable counteroffer or review path is intended
+
+DTI:
+- APPROVE if DTI <= approve_max_dti
+- MANUAL_REVIEW if DTI > approve_max_dti and DTI < decline_min_dti
+- DECLINE if DTI >= decline_min_dti
+
+Expected Loss:
+- clean approval must satisfy product_approve_max_requested_el
+- counteroffer may be considered when requested_expected_loss_amount exceeds clean approval tolerance but approved_expected_loss_amount can satisfy product_approved_el_cap
+- decline / review boundary should use product_decline_min_requested_el and strategy hierarchy
+
+This equality convention should be documented now so later CASE logic is not ambiguous.
+
+================================================================================
+7. DEFAULT THRESHOLDS
+================================================================================
+
+Use the default thresholds you recommended as initial simulated strategy defaults, not production policy.
+
+Please include comments that these are:
+- synthetic strategy defaults
+- intended for simulation
+- expected to be tuned through QA and validation
+- not production underwriting policy
+- not empirically calibrated cutoffs
+
+If you need to slightly adjust any recommended default for internal consistency, explain the adjustment before coding it.
+
+================================================================================
+8. SOURCE-INPUT GATEKEEPERS
+================================================================================
+
+Section 3 should validate source inputs before any decision logic is built.
+
+Gatekeepers should check:
+
+- module1_input_source is one of:
+  LATEST
+  ARCHIVE
+
+- if module1_input_source = LATEST:
+  credit_decisioning_sim.synthetic_applications exists
+  source table contains rows
+  required Module 1 fields are present
+  required Module 1 fields are non-null where required
+  no duplicate application_id values exist for the selected latest-run population / scenario
+
+- if module1_input_source = ARCHIVE:
+  credit_decisioning_sim.synthetic_applications_scenario_archive exists
+  source_module1_scenario_set_name is non-null and nonblank
+  source_module1_scenario_name is non-null and nonblank
+  source_population_id is non-null and nonblank
+  exactly one Module 1 scenario is selected unless multi-scenario processing is explicitly designed later
+  selected archive slice contains rows
+  selected archive slice has no duplicate application_id values
+  required Module 1 fields are present
+  required Module 1 fields are non-null where required
+
+Required Module 1 fields should include at least:
+- application_id
+- applicant_id
+- product_type
+- score_band
+- credit_score
+- requested_amount
+- annual_income
+- monthly_payment_proxy
+- payment_to_income_ratio
+- debt_to_income_ratio
+- estimated_pd
+- estimated_lgd
+- expected_loss_amount
+- population_id
+- scenario_set_name or module1_scenario_set_name
+- scenario_name or module1_scenario_name
+
+================================================================================
+9. PRODUCT-POLICY PARAMETER GATEKEEPERS
+================================================================================
+
+Section 3 should validate:
+
+- exactly one product policy row per supported product type
+- no unsupported product types
+- no duplicate product_type rows
+- all required product policy thresholds are non-null
+- product_min_approved_amount > 0
+- product_max_approved_amount > product_min_approved_amount
+- product_min_counteroffer_pct between 0 and 1
+- product_max_exposure_reduction_pct between 0 and 1
+- counteroffer_target_pti between 0 and 1.5
+- product_approve_max_pti < product_review_max_pti
+- product_review_max_pti <= product_decline_min_pti
+- requested Expected Loss thresholds are non-negative
+- product_approve_max_requested_el <= product_review_max_requested_el
+- product_review_max_requested_el <= product_decline_min_requested_el
+- product_approved_el_cap is non-negative
+- approved_amount_rounding_increment > 0
+
+================================================================================
+10. STRATEGY PARAMETER GATEKEEPERS
+================================================================================
+
+Section 3 should validate:
+
+- exactly one active strategy parameter row
+- strategy_set_name is non-null and nonblank
+- strategy_name is non-null and nonblank
+- strategy_version is non-null and nonblank
+- module2_model_version is non-null and nonblank
+- strategy_run_id is non-null and nonblank
+- strategy_run_ts is non-null
+- archive_run_flag is not null
+- strategy_archive_reset_mode is one of:
+  NONE
+  STRATEGY_SCENARIO_ONLY
+  STRATEGY_SET_ONLY
+  ALL
+
+Estimated-PD proxy thresholds:
+- all values between 0 and 1
+- approve_max_estimated_pd_proxy < counteroffer_max_estimated_pd_proxy
+- counteroffer_max_estimated_pd_proxy <= review_max_estimated_pd_proxy
+- review_max_estimated_pd_proxy <= decline_min_estimated_pd_proxy
+
+PTI thresholds:
+- all values between 0 and 1.5
+- global_approve_max_pti < global_review_max_pti
+- global_review_max_pti <= global_decline_min_pti
+
+DTI thresholds:
+- all values between 0 and 1
+- approve_max_dti < review_max_dti
+- review_max_dti <= decline_min_dti
+
+Decision convention controls:
+- allow_approved_amount_above_requested_flag = FALSE for Module 2 v1.0
+- decline_approved_amount_convention = ZERO
+- manual_review_approved_amount_convention = NULL_UNRESOLVED
+- approved_el_decline_convention = ZERO
+- approved_el_manual_review_convention = NULL_UNRESOLVED
+- reason_code_required_flag = TRUE
+
+================================================================================
+11. OUTPUT TERMINOLOGY TO PRESERVE
+================================================================================
+
+Even though the final output table will be built later, Section 0 / comments should lock these terminology conventions:
+
+Module 1 expected_loss_amount should be carried into Module 2 as:
+- requested_expected_loss_amount
+
+Module 2 calculated Expected Loss should be:
+- approved_expected_loss_amount
+
+Module 1 payment_to_income_ratio should remain the original requested-structure PTI.
+
+Module 2 calculated payment-to-income ratio should be:
+- approved_payment_to_income_ratio
+
+Use:
+- simulated_offer_exposure_flag
+
+Do not use:
+- booked_exposure_flag
+
+Reason:
+“booked” can imply real account booking, which is outside the Module 2 simulation boundary.
+
+================================================================================
+12. SQL COMMENTARY QUALITY
+================================================================================
+
+The SQL must match Module 1 commentary quality.
+
+Please include comments explaining:
+
+- business purpose
+- SQL purpose
+- why each parameter family exists
+- why each gatekeeper exists
+- what each threshold family controls
+- why Module 2 does not recalculate estimated_pd
+- why reason codes are simulated strategy explanation codes, not adverse-action reasons
+- why approved amount and approved Expected Loss are simulation outputs
+- why source selection must preserve Module 1 lineage
+
+No silent assumptions.
+No unexplained magic numbers.
+No generic comments.
+
+================================================================================
+13. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now write the first SQL build only:
+
+Module 2 Sections 0–3.
+
+Do not write Sections 4+ yet.
+
+The output should be a coherent SQL script section that can become the beginning of:
+
+module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+
+After the SQL, briefly list:
+- what this first build establishes
+- what it intentionally does not yet build
+- what the next build step should be
+```
+
+## Why this keeps the project on track
+
+This response accepts the good parts of the new chat’s work and moves the project into implementation without losing governance. It also prevents the most common Module 2 failure modes: overloaded scenario names, unclear archive grain, ambiguous threshold equality, premature decision logic, vague counteroffer math, accidental “booked account” language, and silent assumptions in SQL.
+<!-- END_MESSAGE C037-M00552 -->
+
+
+---
+
+<a id="c037-m00554"></a>
+
+### C037-M00554
+
+**Andrew** · 2026-05-06T11:12:34.148000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00554 -->
+evaluate the second follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00554 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_second_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00558"></a>
+
+### C037-M00558
+
+**ChatGPT** · 2026-05-06T11:15:46.519529-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00558 -->
+Yes — ChatGPT’s second follow-up response is **strong and on track**. It did what we wanted: it moved from conceptual architecture into a disciplined **Sections 0–3 SQL foundation** without jumping into decision logic. It also kept the right boundaries: Module 2 consumes Module 1 outputs, preserves Module 1 scenario lineage, treats `estimated_pd` as the synthetic estimated-PD proxy, uses neutral reason-code language, and avoids “booked account” framing. fileciteturn56file0
+
+The first SQL build is also directionally aligned with Module 1’s final BRD and Validation Summary, which establish Module 1 as deterministic, scenario-capable, boundary-aware, and governed around `population_id`, scenario metadata, and the estimated-PD proxy framework. fileciteturn55file5turn55file6
+
+The main thing now is to **avoid moving too far too fast**. Before building rule flags, decision hierarchy, reason codes, approved amount, or approved Expected Loss, the next chat should lock **Section 4 — Module 1 Source Selection and Lineage Normalization**. This is the bridge between Module 1 and Module 2. If this layer is sloppy, the whole downstream strategy engine becomes harder to govern.
+
+Below is the response I would paste into the Module 2 chat.
+
+---
+
+```text
+This is a strong first SQL build. I agree with the direction.
+
+Sections 0–3 establish the right foundation:
+- Module 2 purpose and boundary framing
+- latest-run + archive architecture
+- strategy parameter table
+- product policy parameter table
+- fail-fast gatekeeper logic
+- source-input validation
+- product-policy validation
+- threshold-ordering validation
+- archive-control validation
+- output-convention validation
+
+Before moving into decision logic, please treat Sections 0–3 as provisionally accepted, subject to the clarifications below.
+
+Do not build decision rules, reason codes, approved amount logic, approved Expected Loss, latest-run final output, archive insert logic, or QA sections yet.
+
+================================================================================
+1. SECTION 0–3 PRE-FLIGHT REVIEW
+================================================================================
+
+Before writing Section 4, please do a brief self-review of Sections 0–3 for:
+
+- PostgreSQL syntax consistency
+- temporary table names
+- parameter column names
+- product policy column names
+- gatekeeper references to those columns
+- source-input validation references
+- archive reset mode naming
+- estimated-PD proxy terminology
+- reason-code boundary language
+- approved exposure / approved Expected Loss convention language
+
+If you find any issue in Sections 0–3, provide a targeted BEFORE / AFTER patch first.
+
+Do not rewrite the full SQL unless a structural correction is needed.
+
+================================================================================
+2. LOCK AUDIT METADATA BOUNDARY
+================================================================================
+
+Please explicitly preserve this interpretation:
+
+strategy_run_id and strategy_run_ts are audit metadata.
+
+They should:
+- support run traceability
+- appear in latest-run and archive outputs later
+- not replace the archive replacement / rerun key
+- not be used as the grain for matched strategy comparison
+
+Because strategy_run_ts may change across reruns, deterministic validation of strategy outcomes should compare business fields and decision fields, excluding purely time-based audit fields unless the test is specifically validating run metadata.
+
+================================================================================
+3. PRODUCT TYPE NORMALIZATION REQUIREMENT
+================================================================================
+
+Before downstream product-policy joins are built, Section 4 must confirm that Module 1 product_type values align to Module 2 product policy parameter values.
+
+Module 2 product policy parameters currently use values such as:
+- MORTGAGE
+- HELOC
+- AUTO_LOAN
+- UNSECURED_PERSONAL_LOAN
+- REVOLVING_LINE
+
+Section 4 should preserve the original Module 1 product_type value and also create a normalized product policy key if needed.
+
+Recommended fields:
+- product_type
+- product_type_policy_key
+
+If Module 1 already outputs product_type values that exactly match the policy table, product_type_policy_key can simply equal product_type.
+
+If Module 1 uses display-style values, Section 4 should normalize them, for example:
+- Mortgage → MORTGAGE
+- HELOC → HELOC
+- Auto Loan → AUTO_LOAN
+- Unsecured Personal Loan → UNSECURED_PERSONAL_LOAN
+- Revolving Line → REVOLVING_LINE
+
+Do not modify Module 1.
+Normalize only inside the Module 2 source-staging layer.
+
+Section 4 should fail or clearly flag the issue if any Module 1 product_type cannot be mapped to a supported Module 2 product policy key.
+
+================================================================================
+4. NEXT BUILD SCOPE: SECTION 4 ONLY
+================================================================================
+
+The next SQL build should be:
+
+SECTION 4 — MODULE 1 SOURCE SELECTION AND LINEAGE NORMALIZATION
+
+Build only Section 4.
+
+Do not build:
+- derived strategy segments
+- risk tiers
+- affordability tiers
+- rule flags
+- hard decline logic
+- counteroffer logic
+- decision hierarchy
+- reason-code assignment
+- approved amount calculation
+- approved payment calculation
+- approved Expected Loss calculation
+- final latest-run output table
+- archive insert logic
+- QA queries
+
+Those belong to later sections.
+
+================================================================================
+5. SECTION 4 OBJECTIVE
+================================================================================
+
+Section 4 should safely consume either:
+
+1. Module 1 latest-run output:
+   credit_decisioning_sim.synthetic_applications
+
+or
+
+2. Module 1 scenario archive output:
+   credit_decisioning_sim.synthetic_applications_scenario_archive
+
+based on tmp_module2_strategy_params.module1_input_source.
+
+Section 4 should create a staged source table, recommended name:
+
+tmp_m2_stage_1_source_applications
+
+This table should be the clean Module 2 input foundation.
+
+================================================================================
+6. REQUIRED SECTION 4 OUTPUT FIELDS
+================================================================================
+
+The staged source table should carry forward and normalize the following fields.
+
+Module 1 lineage:
+- module1_model_version
+- module1_scenario_set_name
+- module1_scenario_name
+- population_id
+- anchor_date
+
+Application lineage:
+- application_seq
+- application_id
+- applicant_id
+- application_date
+
+Product / score:
+- product_type
+- product_type_policy_key
+- score_band
+- credit_score
+
+Borrower / behavioral fields:
+- annual_income
+- debt_to_income_ratio
+- utilization_rate
+- tradeline_count
+- months_since_oldest_trade
+- recent_inquiry_count
+- delinquency_count_12m
+- major_derogatory_flag
+- bankruptcy_flag
+
+Requested structure from Module 1:
+- requested_amount
+- loan_term_months
+- base_apr_for_payment_calc
+- monthly_payment_proxy
+- payment_to_income_ratio
+- amount_to_income_ratio
+
+Recommended Module 2 aliases for clarity:
+- requested_monthly_payment_proxy = monthly_payment_proxy
+- requested_payment_to_income_ratio = payment_to_income_ratio
+- requested_expected_loss_amount = expected_loss_amount
+
+Module 1 risk economics:
+- estimated_pd
+- estimated_lgd
+- expected_loss_amount
+
+Important interpretation:
+- estimated_pd remains the SQL field name from Module 1
+- comments must describe it as the synthetic estimated-PD proxy
+- expected_loss_amount from Module 1 should be treated as requested-exposure Expected Loss
+
+No Module 2 decision outputs should be created in Section 4.
+
+================================================================================
+7. SOURCE SELECTION LOGIC
+================================================================================
+
+If module1_input_source = 'LATEST':
+
+- Select from credit_decisioning_sim.synthetic_applications
+- Use the existing Module 1 scenario_set_name and scenario_name fields as upstream lineage
+- Alias them as:
+  - module1_scenario_set_name
+  - module1_scenario_name
+- Preserve population_id
+- Preserve application_id and applicant_id
+- Do not require source_module1_scenario_set_name or source_module1_scenario_name
+
+If module1_input_source = 'ARCHIVE':
+
+- Select from credit_decisioning_sim.synthetic_applications_scenario_archive
+- Filter to:
+  - source_module1_scenario_set_name
+  - source_module1_scenario_name
+  - source_population_id
+- Alias archive scenario fields as:
+  - module1_scenario_set_name
+  - module1_scenario_name
+- Preserve population_id
+- Preserve application_id and applicant_id
+
+The goal is that downstream Module 2 logic does not need to care whether the input came from latest-run or archive.
+
+================================================================================
+8. SECTION 4 JOIN TO PRODUCT POLICY PARAMETERS
+================================================================================
+
+Section 4 should join the staged Module 1 source to tmp_module2_product_policy_params using:
+
+product_type_policy_key = product_type in tmp_module2_product_policy_params
+
+However, Section 4 should not yet apply product policy rules.
+
+The purpose of this join is only to confirm that every staged source row has a valid product policy configuration available.
+
+If you prefer not to join yet, then create product_type_policy_key in Section 4 and defer the policy join to Section 5. Please recommend one approach.
+
+My preference:
+- create product_type_policy_key in Section 4
+- perform a lightweight validation join in Section 4
+- defer actual product policy logic to Section 5+
+
+================================================================================
+9. SECTION 4 LOCAL SANITY CHECKS
+================================================================================
+
+At the end of Section 4, include a small local sanity-check query block.
+
+This should not become the full QA framework yet.
+
+Suggested local checks:
+1. Row count of tmp_m2_stage_1_source_applications
+2. Count distinct application_id
+3. Count rows by module1_scenario_set_name, module1_scenario_name, population_id
+4. Count rows by product_type and product_type_policy_key
+5. Count rows with unmapped product_type_policy_key
+6. Count rows with null required source fields
+7. Confirm expected_loss_amount has been aliased to requested_expected_loss_amount
+8. Confirm payment_to_income_ratio has been aliased to requested_payment_to_income_ratio
+
+These are staging sanity checks only.
+
+================================================================================
+10. SECTION 4 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard as Module 1 and Sections 0–3.
+
+Section 4 comments should explain:
+- why Module 2 consumes Module 1 rather than rewriting Module 1
+- why latest-run and archive inputs are both supported
+- why Module 1 scenario lineage must be preserved
+- why product_type may need a policy key
+- why expected_loss_amount is aliased to requested_expected_loss_amount
+- why payment_to_income_ratio is aliased to requested_payment_to_income_ratio
+- why estimated_pd remains the column name but is interpreted as synthetic estimated-PD proxy
+- why no decision outcomes are created in Section 4
+
+================================================================================
+11. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Any necessary targeted patch to Sections 0–3, if your pre-flight review finds one.
+2. Section 4 SQL only:
+   MODULE 1 SOURCE SELECTION AND LINEAGE NORMALIZATION.
+3. A short explanation of what Section 4 establishes.
+4. A short explanation of what Section 4 intentionally does not build.
+5. The recommended next build step after Section 4.
+
+Do not write Sections 5+ yet.
+```
+
+## Why this is the right next move
+
+The second response did a good job building the governance foundation. The optimal next step is **not** to start policy rules yet; it is to make the Module 1 → Module 2 handoff clean, normalized, and audit-safe. That preserves the same standard we established in Module 1: deterministic inputs, explicit lineage, clear field interpretation, and no silent assumptions.
+<!-- END_MESSAGE C037-M00558 -->
+
+
+---
+
+<a id="c037-m00560"></a>
+
+### C037-M00560
+
+**Andrew** · 2026-05-06T11:41:40.334000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00560 -->
+evaluate the third follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00560 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_third_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00562"></a>
+
+### C037-M00562
+
+**ChatGPT** · 2026-05-06T11:44:47.530001-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00562 -->
+## Evaluation of ChatGPT’s third response
+
+ChatGPT’s third response is **strong and on track**. It did the right thing by keeping the build scoped to **Section 4 — Module 1 Source Selection and Lineage Normalization**, without jumping into decision logic, reason codes, approved amount, approved Expected Loss, archive insertion, or full QA. That discipline is important for preserving the elite build standard. fileciteturn56file0
+
+The Section 4 design is directionally correct. It creates a clean source staging layer, preserves Module 1 lineage, normalizes product type into a policy key, aliases Module 1 requested-exposure fields for Module 2 clarity, preserves `estimated_pd` as the SQL field while interpreting it as the synthetic estimated-PD proxy, and includes local fail-fast checks before downstream strategy logic consumes the data. fileciteturn56file0
+
+The recommended next build step — **Section 5: Derived Strategy Segmentation Layer** — is also correct. But before moving into Section 5, I would ask ChatGPT to make two small targeted patches to Section 4.
+
+The first is a wording fix: one implementation note appears to say Module 2 can consume the “Module 2 latest-run table,” but it should say **Module 1 latest-run table**. The second is an enhancement: Section 4 should carry forward Module 2 strategy metadata into the staged source table, not just Module 1 lineage. That will make later stages cleaner and make every row traceable from the start.
+
+Below is the full copy-paste response I would send.
+
+---
+
+```text
+This is strong. Section 4 is directionally correct and keeps the build appropriately scoped.
+
+I agree with the Section 4 architecture:
+- consume Module 1 latest-run or archive output
+- normalize Module 1 scenario lineage into Module 2 naming
+- preserve application and applicant identifiers
+- preserve borrower, product, affordability, and risk fields
+- alias requested-exposure economics for Module 2 clarity
+- create product_type_policy_key
+- validate product-policy configuration availability
+- avoid decision outcomes, reason codes, approved amount, approved Expected Loss, archive insert logic, and full QA
+
+Before we move to Section 5, please make two targeted Section 4 patches.
+
+Do not rewrite Sections 0–4 in full unless absolutely necessary.
+
+================================================================================
+1. TARGETED PATCH TO SECTION 4 COMMENTARY
+================================================================================
+
+In the Section 4 implementation note, please correct any wording that says Module 2 can consume the “Module 2 latest-run table.”
+
+It should say:
+
+Module 2 can consume either:
+- the Module 1 latest-run table; or
+- a selected Module 1 scenario archive slice.
+
+Reason:
+Section 4 is the Module 1 → Module 2 handoff layer. It should never imply that Module 2 is sourcing from a Module 2 latest-run table at this point.
+
+================================================================================
+2. TARGETED PATCH TO SECTION 4 STAGED OUTPUT
+================================================================================
+
+Please add Module 2 strategy metadata from tmp_module2_strategy_params into tmp_m2_stage_1_source_applications.
+
+The staged source table should include:
+
+- module2_model_version
+- strategy_set_name
+- strategy_name
+- strategy_version
+- strategy_run_id
+- strategy_run_ts
+
+These fields should come from the single active strategy parameter row.
+
+Reason:
+Every downstream Module 2 stage should carry both:
+- Module 1 source lineage; and
+- Module 2 strategy lineage.
+
+This keeps traceability clean and prevents later stages from needing to rejoin strategy metadata repeatedly.
+
+Important:
+strategy_run_id and strategy_run_ts are audit metadata.
+They should support run traceability but should not replace the archive replacement / rerun key.
+
+================================================================================
+3. SECTION 4 ACCEPTANCE CRITERIA
+================================================================================
+
+After the two targeted patches, Section 4 should be treated as accepted if it establishes:
+
+- one staged row per application_id
+- exactly one Module 1 scenario / population slice
+- preserved Module 1 scenario lineage
+- preserved Module 2 strategy metadata
+- preserved application and applicant identifiers
+- preserved borrower, product, requested-structure, affordability, and risk fields
+- product_type_policy_key created
+- every product_type maps to exactly one product policy row
+- expected_loss_amount aliased as requested_expected_loss_amount
+- monthly_payment_proxy aliased as requested_monthly_payment_proxy
+- payment_to_income_ratio aliased as requested_payment_to_income_ratio
+- estimated_pd preserved as the Module 1 SQL field and interpreted as the synthetic estimated-PD proxy
+- no decision outcomes created
+- no reason codes assigned
+- no approved amount calculated
+- no approved Expected Loss calculated
+- no final latest-run strategy output created
+- no archive rows inserted
+
+================================================================================
+4. NEXT BUILD SCOPE: SECTION 5 ONLY
+================================================================================
+
+After making the Section 4 patches, please build only:
+
+SECTION 5 — DERIVED STRATEGY SEGMENTATION LAYER
+
+Do not build:
+- rule flags
+- hard decline logic
+- counteroffer logic
+- decision hierarchy
+- reason-code assignment
+- approved amount calculation
+- approved payment calculation
+- approved Expected Loss calculation
+- final latest-run output table
+- archive insert logic
+- full QA framework
+
+Those belong to later sections.
+
+================================================================================
+5. SECTION 5 OBJECTIVE
+================================================================================
+
+Section 5 should create a non-decisioning segmentation layer that prepares the data for later strategy rules.
+
+Recommended staged table:
+
+tmp_m2_stage_2_strategy_segments
+
+Section 5 should derive interpretable strategy segmentation fields only.
+
+It should not assign decision outcomes.
+
+It should not create approval, decline, manual review, or counteroffer flags.
+
+It should not assign reason codes.
+
+================================================================================
+6. REQUIRED SECTION 5 INPUT
+================================================================================
+
+Section 5 should read from:
+
+tmp_m2_stage_1_source_applications
+
+It should preserve all Section 4 fields and add segmentation fields.
+
+It may join to:
+- tmp_module2_strategy_params
+- tmp_module2_product_policy_params
+
+Purpose of those joins:
+- attach threshold values needed for segmentation
+- expose product-specific policy context
+- support later rule logic
+
+Do not apply final policy outcomes yet.
+
+================================================================================
+7. REQUIRED SECTION 5 OUTPUT FIELDS
+================================================================================
+
+Please create the following derived segmentation fields.
+
+1. Synthetic estimated-risk tier
+
+Field:
+- strategy_risk_tier
+
+Suggested values:
+- LOW_SYNTHETIC_RISK
+- MODERATE_SYNTHETIC_RISK
+- ELEVATED_SYNTHETIC_RISK
+- HIGH_SYNTHETIC_RISK
+- SEVERE_SYNTHETIC_RISK
+
+This tier should use Module 1 estimated_pd as the synthetic estimated-PD proxy input.
+Do not recalculate estimated_pd.
+
+2. Requested PTI bucket
+
+Field:
+- requested_pti_bucket
+
+Suggested values:
+- LOW_REQUESTED_PTI
+- MODERATE_REQUESTED_PTI
+- ELEVATED_REQUESTED_PTI
+- HIGH_REQUESTED_PTI
+- SEVERE_REQUESTED_PTI
+
+This should use requested_payment_to_income_ratio from Section 4.
+
+3. DTI bucket
+
+Field:
+- dti_bucket
+
+Suggested values:
+- LOW_DTI
+- MODERATE_DTI
+- ELEVATED_DTI
+- HIGH_DTI
+- SEVERE_DTI
+
+This should use debt_to_income_ratio.
+
+4. Requested exposure tier
+
+Field:
+- requested_exposure_tier
+
+Suggested values:
+- BELOW_PRODUCT_MINIMUM
+- WITHIN_PRODUCT_LIMITS
+- ABOVE_PRODUCT_APPROVAL_CAP
+- EXTREME_REQUESTED_EXPOSURE
+
+This should use requested_amount and product-specific product_min_approved_amount / product_max_approved_amount.
+
+5. Requested Expected Loss tier
+
+Field:
+- requested_expected_loss_tier
+
+Suggested values:
+- LOW_REQUESTED_EL
+- MODERATE_REQUESTED_EL
+- ELEVATED_REQUESTED_EL
+- HIGH_REQUESTED_EL
+- SEVERE_REQUESTED_EL
+
+This should use requested_expected_loss_amount and product-specific Expected Loss thresholds.
+
+6. Product × score policy segment
+
+Field:
+- product_score_policy_segment
+
+Example construction:
+product_type_policy_key || '_' || score_band_normalized
+
+This is for reporting and later product × score strategy diagnostics.
+
+7. Mixed-signal profile type
+
+Field:
+- mixed_signal_profile_type
+
+Suggested values:
+- STRONG_CREDIT_HIGH_PTI
+- WEAK_CREDIT_LOW_PTI
+- LARGE_EXPOSURE_LOW_RISK
+- HIGH_RISK_LOW_EXPOSURE
+- HIGH_DTI_LOW_REQUESTED_PTI
+- NO_MIXED_SIGNAL_PROFILE
+
+This should be diagnostic only.
+It should not drive final decisions in Section 5.
+
+8. Borderline profile indicator
+
+Field:
+- borderline_profile_flag
+
+This should identify profiles close to strategy thresholds but should not assign manual review yet.
+
+================================================================================
+8. THRESHOLD ATTACHMENT REQUIREMENT
+================================================================================
+
+Section 5 should attach or carry forward the relevant threshold values used to create segmentation.
+
+This may include:
+
+Global thresholds:
+- approve_max_estimated_pd_proxy
+- counteroffer_max_estimated_pd_proxy
+- review_max_estimated_pd_proxy
+- decline_min_estimated_pd_proxy
+- global_approve_max_pti
+- global_review_max_pti
+- global_decline_min_pti
+- approve_max_dti
+- review_max_dti
+- decline_min_dti
+
+Product thresholds:
+- product_approve_max_pti
+- product_review_max_pti
+- product_decline_min_pti
+- counteroffer_target_pti
+- product_approve_max_requested_el
+- product_review_max_requested_el
+- product_decline_min_requested_el
+- product_approved_el_cap
+- product_min_approved_amount
+- product_max_approved_amount
+- counteroffer_allowed_flag
+- manual_review_allowed_flag
+- product_min_counteroffer_pct
+- product_max_exposure_reduction_pct
+- exposure_assignment_method
+- approved_amount_rounding_increment
+
+Reason:
+Later rule logic should be explainable because the thresholds used for segmentation and strategy rules are visible in the staged data.
+
+================================================================================
+9. SECTION 5 LOCAL GATEKEEPERS
+================================================================================
+
+At the end of Section 5, include local fail-fast checks.
+
+These should validate:
+
+- row count is unchanged from tmp_m2_stage_1_source_applications
+- application_id remains unique
+- no null strategy_risk_tier
+- no null requested_pti_bucket
+- no null dti_bucket
+- no null requested_exposure_tier
+- no null requested_expected_loss_tier
+- no null product_score_policy_segment
+- no null mixed_signal_profile_type
+- no null borderline_profile_flag
+- all rows still have product_type_policy_key
+- all rows still have exactly one matching product policy configuration
+- all required threshold values are available for every row
+
+Do not turn these into the full QA framework yet.
+These are Section 5 local staging gatekeepers only.
+
+================================================================================
+10. SECTION 5 LOCAL SANITY CHECKS
+================================================================================
+
+After local gatekeepers, include lightweight sanity-check queries.
+
+Suggested outputs:
+
+1. Row count and distinct application_id count
+2. Count by strategy_risk_tier
+3. Count by requested_pti_bucket
+4. Count by dti_bucket
+5. Count by requested_exposure_tier
+6. Count by requested_expected_loss_tier
+7. Count by product_score_policy_segment
+8. Count by mixed_signal_profile_type
+9. Count by borderline_profile_flag
+10. Product × strategy_risk_tier summary
+11. Score band × strategy_risk_tier summary
+12. PTI bucket × strategy_risk_tier summary
+
+These are staging diagnostics only.
+They should not be interpreted as final strategy validation.
+
+================================================================================
+11. SECTION 5 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard.
+
+Section 5 comments should explain:
+
+- why segmentation is separated from decision rules
+- why estimated_pd is used only as the synthetic estimated-PD proxy input
+- why PTI buckets use the requested structure from Module 1
+- why DTI remains a borrower-capacity signal rather than a counteroffer-adjustable field
+- why requested exposure and approved exposure are separate concepts
+- why requested_expected_loss_amount is used before approved_expected_loss_amount exists
+- why mixed-signal profiles are diagnostic and not automatic decisions
+- why threshold values are attached for transparency
+- why no decision outcomes are created in Section 5
+
+================================================================================
+12. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Targeted Section 4 patches only:
+   - commentary correction from “Module 2 latest-run table” to “Module 1 latest-run table”
+   - addition of Module 2 strategy metadata into tmp_m2_stage_1_source_applications
+
+2. Section 5 SQL only:
+   DERIVED STRATEGY SEGMENTATION LAYER.
+
+3. A short explanation of what Section 5 establishes.
+
+4. A short explanation of what Section 5 intentionally does not build.
+
+5. The recommended next build step after Section 5.
+
+Do not write Sections 6+ yet.
+```
+
+This keeps the Module 2 build moving in the right order: first governance, then source staging, then segmentation, then product limits / rule flags, then hierarchy, then reasons, then approved exposure, then approved Expected Loss, then QA.
+<!-- END_MESSAGE C037-M00562 -->
+
+
+---
+
+<a id="c037-m00564"></a>
+
+### C037-M00564
+
+**Andrew** · 2026-05-06T12:14:22.674000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00564 -->
+evaluate the fourth follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00564 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_fourth_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00571"></a>
+
+### C037-M00571
+
+**ChatGPT** · 2026-05-06T12:17:27.663460-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00571 -->
+Yes — ChatGPT’s fourth response is **strong and on track**. It correctly kept the build scoped to the requested stage: targeted Section 4 patches, a governed Section 2/3 patch for `borderline_threshold_buffer_pct`, and **Section 5 — Derived Strategy Segmentation Layer** only. It did not prematurely build decision outcomes, reason codes, approved amount, approved Expected Loss, final output, archive insert logic, or full QA. That is the right discipline. fileciteturn56file0
+
+The recommended next step — **Section 6: Rule Flag Construction Layer** — is also directionally correct. Before moving there, I would ask for **one targeted Section 5 patch**: the low/moderate requested Expected Loss split should be based on `product_approve_max_requested_el`, not `product_approved_el_cap`, because the former is a requested-exposure threshold while the latter is an approved-exposure cap used later after exposure treatment.
+
+Below is the full response I would paste into the Module 2 chat.
+
+---
+
+```text
+This is strong. The Section 4 patches and Section 5 segmentation layer are directionally correct and maintain the right build discipline.
+
+I agree with:
+- adding Module 2 strategy metadata into the Section 4 staged source table
+- preserving Module 1 scenario lineage separately from Module 2 strategy metadata
+- adding the governed borderline_threshold_buffer_pct parameter
+- creating tmp_m2_stage_2_strategy_segments
+- separating segmentation from decision rules
+- using estimated_pd only as the finalized Module 1 synthetic estimated-PD proxy input
+- preserving requested-structure economics before approved exposure exists
+- creating diagnostic-only mixed-signal and borderline fields
+- adding local Section 5 gatekeepers and staging sanity checks
+
+Before we move to Section 6, please make one targeted Section 5 patch.
+
+Do not rewrite Sections 0–5 in full unless necessary.
+
+================================================================================
+1. TARGETED SECTION 5 PATCH — REQUESTED EXPECTED LOSS LOW/MODERATE SPLIT
+================================================================================
+
+In the Section 5 threshold-support fields, please ensure the low/moderate split for requested Expected Loss is based on:
+
+product_approve_max_requested_el / 2.0
+
+not:
+
+product_approved_el_cap / 2.0
+
+Reason:
+- product_approve_max_requested_el governs requested-exposure Expected Loss classification.
+- product_approved_el_cap governs approved-exposure Expected Loss after exposure treatment.
+- Section 5 is still pre-decision and pre-approved-exposure.
+- approved_expected_loss_amount does not exist yet.
+
+The requested Expected Loss tier should therefore use requested-exposure thresholds only.
+
+Recommended patch:
+
+BEFORE:
+
+requested_el_low_moderate_split =
+    product_approved_el_cap / 2.0
+
+AFTER:
+
+requested_el_low_moderate_split =
+    product_approve_max_requested_el / 2.0
+
+Please apply this as a targeted patch only.
+
+================================================================================
+2. SECTION 5 ACCEPTANCE CRITERIA
+================================================================================
+
+After that patch, treat Section 5 as accepted if it establishes:
+
+- tmp_m2_stage_2_strategy_segments exists
+- row count is unchanged from tmp_m2_stage_1_source_applications
+- application_id remains unique
+- Module 1 lineage is preserved
+- Module 2 strategy metadata is preserved
+- product_type_policy_key remains available
+- product policy configuration remains exactly one row per staged application
+- estimated_pd is preserved as the Module 1 SQL field and interpreted as the synthetic estimated-PD proxy
+- requested_monthly_payment_proxy is preserved from Module 1 monthly_payment_proxy
+- requested_payment_to_income_ratio is preserved from Module 1 payment_to_income_ratio
+- requested_expected_loss_amount is preserved from Module 1 expected_loss_amount
+- strategy_risk_tier is populated
+- requested_pti_bucket is populated
+- dti_bucket is populated
+- requested_exposure_tier is populated
+- requested_expected_loss_tier is populated using requested-exposure thresholds
+- product_score_policy_segment is populated
+- mixed_signal_profile_type is populated
+- mixed_signal_condition_count is populated
+- borderline_profile_flag is populated using the governed borderline_threshold_buffer_pct parameter
+- no decision_outcome is assigned
+- no approval / decline / manual review / counteroffer flags are assigned
+- no reason codes are assigned
+- no approved_amount is calculated
+- no approved_monthly_payment_proxy is calculated
+- no approved_payment_to_income_ratio is calculated
+- no approved_expected_loss_amount is calculated
+- no final latest-run output table is created
+- no archive rows are inserted
+
+================================================================================
+3. NEXT BUILD SCOPE: SECTION 6 ONLY
+================================================================================
+
+After the targeted Section 5 patch, please build only:
+
+SECTION 6 — RULE FLAG CONSTRUCTION LAYER
+
+Do not build:
+- final decision hierarchy
+- decision_outcome
+- decision_path
+- primary / secondary / tertiary reason codes
+- approved_amount
+- counteroffer_amount
+- approved_monthly_payment_proxy
+- approved_payment_to_income_ratio
+- approved_expected_loss_amount
+- final latest-run output table
+- archive insert logic
+- full QA framework
+
+Those belong to later sections.
+
+================================================================================
+4. SECTION 6 OBJECTIVE
+================================================================================
+
+Section 6 should create deterministic, non-final rule trigger flags that prepare for the later decision hierarchy.
+
+Recommended staged table:
+
+tmp_m2_stage_3_rule_flags
+
+Section 6 should read from:
+
+tmp_m2_stage_2_strategy_segments
+
+Section 6 should preserve all prior fields and add transparent trigger flags.
+
+Important:
+Section 6 is not the decision hierarchy.
+A row may have multiple trigger flags.
+Final prioritization happens later.
+
+================================================================================
+5. PARAMETER PATCH BEFORE SECTION 6, IF NEEDED
+================================================================================
+
+If Section 6 requires new governed parameters, provide a targeted Section 2 / Section 3 patch before writing Section 6.
+
+Do not silently hard-code new policy controls.
+
+Recommended new rule-control parameters, if not already present:
+
+- bankruptcy_policy_stop_enabled
+- major_derogatory_policy_stop_enabled
+- severe_delinquency_policy_stop_enabled
+- severe_delinquency_count_threshold
+- high_utilization_review_enabled
+- high_utilization_review_threshold
+- low_score_review_enabled
+- low_score_review_threshold
+
+Suggested defaults:
+
+bankruptcy_policy_stop_enabled = TRUE
+major_derogatory_policy_stop_enabled = TRUE
+severe_delinquency_policy_stop_enabled = TRUE
+severe_delinquency_count_threshold = 4
+high_utilization_review_enabled = TRUE
+high_utilization_review_threshold = 0.85
+low_score_review_enabled = TRUE
+low_score_review_threshold = 580
+
+These are simulated strategy controls, not production underwriting policy.
+
+Gatekeepers should validate:
+- boolean rule controls are not null
+- severe_delinquency_count_threshold is a non-negative integer
+- high_utilization_review_threshold is between 0 and 1
+- low_score_review_threshold is within a plausible score range, such as 300 to 850
+
+================================================================================
+6. REQUIRED SECTION 6 RULE FLAG FAMILIES
+================================================================================
+
+Please create rule flags across these families.
+
+1. Hard simulated policy stop flags
+
+Suggested fields:
+- bankruptcy_policy_stop_flag
+- major_derogatory_policy_stop_flag
+- severe_delinquency_policy_stop_flag
+- hard_policy_stop_flag
+- hard_policy_stop_count
+
+Purpose:
+Identify severe policy-stop conditions before final decision hierarchy.
+
+Important:
+These are simulated policy stop flags, not production underwriting decisions.
+
+2. Synthetic estimated-risk flags
+
+Suggested fields:
+- synthetic_risk_clean_approval_band_flag
+- synthetic_risk_counteroffer_band_flag
+- synthetic_risk_review_band_flag
+- synthetic_risk_decline_trigger_flag
+
+Use Module 1 estimated_pd as the synthetic estimated-PD proxy input.
+Do not recalculate estimated_pd.
+
+3. Requested affordability flags
+
+Suggested fields:
+- requested_pti_clean_band_flag
+- requested_pti_counteroffer_candidate_flag
+- requested_pti_review_trigger_flag
+- requested_pti_decline_trigger_flag
+
+Use requested_payment_to_income_ratio and product-specific PTI thresholds.
+
+4. DTI capacity flags
+
+Suggested fields:
+- dti_clean_band_flag
+- dti_review_trigger_flag
+- dti_decline_trigger_flag
+
+DTI is an existing-obligation capacity signal.
+It should not be treated as directly fixed by counteroffer in Module 2 v1.0.
+
+5. Requested Expected Loss flags
+
+Suggested fields:
+- requested_el_clean_band_flag
+- requested_el_counteroffer_candidate_flag
+- requested_el_review_trigger_flag
+- requested_el_decline_trigger_flag
+
+Use requested_expected_loss_amount and product-specific requested-exposure EL thresholds.
+
+6. Exposure flags
+
+Suggested fields:
+- requested_exposure_within_product_limit_flag
+- requested_exposure_above_product_cap_flag
+- requested_exposure_extreme_flag
+- exposure_counteroffer_candidate_flag
+- exposure_policy_stop_candidate_flag
+
+Important:
+Above-cap exposure may be counteroffer-eligible.
+Extreme exposure may become a policy stop or unresolved review depending on later hierarchy.
+
+7. Counteroffer candidate flags
+
+Suggested fields:
+- counteroffer_allowed_by_product_flag
+- counteroffer_affordability_candidate_flag
+- counteroffer_exposure_candidate_flag
+- counteroffer_expected_loss_candidate_flag
+- counteroffer_risk_band_eligible_flag
+- counteroffer_candidate_flag
+
+Important:
+Section 6 should identify counteroffer candidates only.
+It should not calculate approved_amount yet.
+It should not decide that the counteroffer is viable yet.
+Final counteroffer feasibility belongs to the approved exposure / counteroffer calculation section.
+
+8. Manual review candidate flags
+
+Suggested fields:
+- manual_review_allowed_by_product_flag
+- manual_review_risk_trigger_flag
+- manual_review_affordability_trigger_flag
+- manual_review_dti_trigger_flag
+- manual_review_expected_loss_trigger_flag
+- manual_review_mixed_signal_trigger_flag
+- manual_review_borderline_trigger_flag
+- manual_review_candidate_flag
+
+Important:
+Section 6 can identify manual-review candidates, but it should not assign MANUAL_REVIEW as the final decision_outcome.
+
+9. Clean approval candidate diagnostic flag
+
+Suggested field:
+- clean_approval_candidate_flag
+
+This should be diagnostic only.
+
+It may identify rows that appear clean across all major dimensions, but it should not assign APPROVE.
+
+================================================================================
+7. RULE COUNT FIELDS
+================================================================================
+
+Please add transparent count fields that summarize how many trigger families were activated.
+
+Suggested fields:
+- hard_policy_stop_count
+- synthetic_risk_trigger_count
+- affordability_trigger_count
+- dti_trigger_count
+- requested_el_trigger_count
+- exposure_trigger_count
+- counteroffer_candidate_trigger_count
+- manual_review_candidate_trigger_count
+- total_rule_trigger_count
+
+These are diagnostic counts only.
+They do not assign outcomes.
+
+================================================================================
+8. NO REASON CODES YET
+================================================================================
+
+Do not assign:
+- primary_reason_code
+- secondary_reason_code
+- tertiary_reason_code
+- triggered_reason_code_list
+- reason_priority_rank
+
+Reason-code assignment belongs to a later section after decision hierarchy is built.
+
+If you want to create internal trigger labels for QA, keep them as diagnostic trigger fields only, not reason codes.
+
+================================================================================
+9. SECTION 6 LOCAL GATEKEEPERS
+================================================================================
+
+At the end of Section 6, include local fail-fast checks.
+
+Validate:
+
+- row count is unchanged from tmp_m2_stage_2_strategy_segments
+- application_id remains unique
+- all required rule flags are non-null
+- all rule count fields are non-null
+- all rule count fields are non-negative
+- clean_approval_candidate_flag is not simultaneously true with hard_policy_stop_flag
+- counteroffer_candidate_flag is not true when counteroffer_allowed_by_product_flag is false
+- manual_review_candidate_flag is not true when manual_review_allowed_by_product_flag is false
+- synthetic_risk_decline_trigger_flag is true when estimated_pd >= decline_min_estimated_pd_proxy
+- requested_pti_decline_trigger_flag is true when requested_payment_to_income_ratio >= product_decline_min_pti
+- dti_decline_trigger_flag is true when debt_to_income_ratio >= decline_min_dti
+- requested_el_decline_trigger_flag is true when requested_expected_loss_amount >= product_decline_min_requested_el
+- no decision_outcome exists yet
+- no approved_amount exists yet
+- no approved_expected_loss_amount exists yet
+
+These are Section 6 local staging gatekeepers only, not full Module 2 QA.
+
+================================================================================
+10. SECTION 6 LOCAL SANITY CHECKS
+================================================================================
+
+After local gatekeepers, include lightweight staging diagnostics.
+
+Suggested checks:
+
+1. Count by hard_policy_stop_flag
+2. Count by synthetic_risk_decline_trigger_flag
+3. Count by requested_pti_decline_trigger_flag
+4. Count by dti_decline_trigger_flag
+5. Count by requested_el_decline_trigger_flag
+6. Count by exposure_counteroffer_candidate_flag
+7. Count by counteroffer_candidate_flag
+8. Count by manual_review_candidate_flag
+9. Count by clean_approval_candidate_flag
+10. Product × hard_policy_stop_flag summary
+11. Product × counteroffer_candidate_flag summary
+12. Score band × synthetic_risk_trigger summary
+13. Requested PTI bucket × affordability trigger summary
+14. Mixed-signal profile × manual review candidate summary
+
+These are staging diagnostics only.
+They should not be interpreted as final decision validation.
+
+================================================================================
+11. SECTION 6 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard.
+
+Section 6 comments should explain:
+
+- why rule flags are separated from final decision hierarchy
+- why multiple rule flags may be true for the same row
+- why hard policy stop flags are simulated, not production underwriting rules
+- why estimated_pd remains a synthetic estimated-PD proxy input
+- why counteroffer candidate flags do not yet prove counteroffer viability
+- why manual review candidate flags do not yet assign MANUAL_REVIEW
+- why clean approval candidate is diagnostic only
+- why reason codes are not assigned yet
+- why approved exposure and approved Expected Loss are not calculated yet
+
+================================================================================
+12. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Targeted Section 5 patch for requested_el_low_moderate_split.
+2. Targeted Section 2 / Section 3 parameter patch if Section 6 needs new governed rule-control parameters.
+3. Section 6 SQL only:
+   RULE FLAG CONSTRUCTION LAYER.
+4. A short explanation of what Section 6 establishes.
+5. A short explanation of what Section 6 intentionally does not build.
+6. The recommended next build step after Section 6.
+
+Do not write Section 7+ yet.
+```
+
+## Why this is the right next instruction
+
+This keeps the build sequence clean:
+
+> governance → source staging → segmentation → rule flags → decision hierarchy → reason codes → approved exposure → approved Expected Loss → final output → archive → QA.
+
+It also prevents the most common Module 2 failure: collapsing rule flags, decision outcomes, and reason codes into one opaque CASE block. Section 6 should remain diagnostic and pre-decision.
+<!-- END_MESSAGE C037-M00571 -->
+
+
+---
+
+<a id="c037-m00572"></a>
+
+### C037-M00572
+
+**Andrew** · 2026-05-06T12:37:54.724000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00572 -->
+evaluate the fifth follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00572 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_fifth_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00583"></a>
+
+### C037-M00583
+
+**ChatGPT** · 2026-05-06T12:41:47.048335-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00583 -->
+## Evaluation of ChatGPT’s fifth response
+
+ChatGPT’s fifth response is **strong and mostly on track**. It correctly applied the targeted Section 5 patch, added governed Section 6 rule-control parameters, and built **Section 6 — Rule Flag Construction Layer** without prematurely assigning final decision outcomes, reason codes, approved amounts, approved payment, approved PTI, approved Expected Loss, final output, archive insert logic, or full QA. That is the right build discipline. fileciteturn56file0
+
+The response also preserves the right separation:
+
+> segmentation → rule flags → later hierarchy → later reason codes → later approved exposure → later approved Expected Loss.
+
+That is exactly how to avoid one giant opaque CASE block.
+
+The main refinement I would make is around the **recommended next step**. ChatGPT suggested:
+
+> Section 7 — Decision Hierarchy and Preliminary Outcome Assignment
+
+That is directionally right, but I would **not let Section 7 create the final `decision_outcome` yet**. Counteroffer feasibility still depends on approved exposure logic, approved payment logic, approved PTI, and approved Expected Loss, none of which exist yet. So Section 7 should create a **preliminary decision routing layer**, not the final decision outcome layer.
+
+The next message should guide ChatGPT to:
+
+1. accept Section 6 with a small local gatekeeper hardening patch;
+2. build **Section 7 only**;
+3. define **preliminary_decision_outcome**, not final `decision_outcome`;
+4. defer final outcome, reason codes, approved amount, approved payment, approved PTI, approved Expected Loss, and output creation.
+
+---
+
+# Full copy-paste response for the Module 2 chat
+
+```text
+This is strong. I agree with the Section 5 patch, the governed Section 6 rule-control parameter patch, and the Section 6 Rule Flag Construction Layer.
+
+Section 6 correctly:
+- converts Section 5 segmentation into transparent rule-trigger flags
+- preserves Module 1 estimated_pd as the synthetic estimated-PD proxy input
+- separates hard simulated policy stop triggers from later decision hierarchy
+- creates synthetic risk, affordability, DTI, requested Expected Loss, exposure, counteroffer, manual review, supplemental behavior, and clean-approval diagnostic flags
+- creates rule-trigger count fields
+- avoids final decision outcomes
+- avoids reason codes
+- avoids approved amount logic
+- avoids approved payment / approved PTI logic
+- avoids approved Expected Loss logic
+- avoids final output and archive logic
+
+Before we move forward, please make one small Section 6 hardening patch, then build Section 7 only.
+
+Do not rewrite Sections 0–6 in full unless necessary.
+
+================================================================================
+1. TARGETED SECTION 6 HARDENING PATCH
+================================================================================
+
+Please add a small local gatekeeper patch to Section 6 to confirm that certain true banding families are mutually exclusive and complete.
+
+Add diagnostic count fields or local gatekeeper logic for:
+
+1. Synthetic estimated-risk band coverage
+
+Exactly one of the following should be true for every row:
+- synthetic_risk_clean_approval_band_flag
+- synthetic_risk_counteroffer_band_flag
+- synthetic_risk_review_band_flag
+- synthetic_risk_decline_trigger_flag
+
+Add a local gatekeeper that fails if the count is not exactly 1.
+
+2. DTI band coverage
+
+Exactly one of the following should be true for every row:
+- dti_clean_band_flag
+- dti_review_trigger_flag
+- dti_decline_trigger_flag
+
+Add a local gatekeeper that fails if the count is not exactly 1.
+
+Important:
+Do not force mutual exclusivity across all rule-trigger families.
+
+For example:
+- counteroffer_candidate_flag may coexist with requested PTI pressure
+- manual_review_candidate_flag may coexist with borderline_profile_flag
+- hard_policy_stop_flag may coexist with other diagnostic triggers
+- requested affordability, requested Expected Loss, exposure, and mixed-signal triggers may overlap by design
+
+Section 6 is a rule-trigger layer, not a final decision hierarchy.
+
+================================================================================
+2. REFINEMENT TO NEXT BUILD STEP
+================================================================================
+
+I want to slightly refine your recommended next step.
+
+Section 7 should not create the final decision_outcome yet.
+
+Because counteroffer feasibility depends on approved exposure, approved payment, approved PTI, and approved Expected Loss logic that has not been built yet, Section 7 should create a preliminary routing layer.
+
+Build:
+
+SECTION 7 — PRELIMINARY DECISION ROUTING LAYER
+
+Recommended staged table:
+
+tmp_m2_stage_4_preliminary_decision_routing
+
+Section 7 should assign:
+- preliminary_decision_outcome
+- preliminary_decision_path
+- preliminary_decision_priority_rank
+- preliminary_decline_flag
+- preliminary_counteroffer_flag
+- preliminary_manual_review_flag
+- preliminary_approve_flag
+- requires_counteroffer_feasibility_flag
+- requires_approved_exposure_calculation_flag
+
+Do not create final:
+- decision_outcome
+- decision_path
+- approval_flag
+- decline_flag
+- manual_review_flag
+- counteroffer_flag
+- simulated_offer_exposure_flag
+
+Those final outcome fields should be created later after approved exposure and counteroffer feasibility are resolved.
+
+================================================================================
+3. SECTION 7 OBJECTIVE
+================================================================================
+
+Section 7 should consume:
+
+tmp_m2_stage_3_rule_flags
+
+and create a transparent preliminary routing layer that converts overlapping Section 6 triggers into one preliminary route.
+
+Section 7 should answer:
+
+“Based on current triggers, what path should this synthetic applicant be routed toward before approved exposure / counteroffer feasibility is calculated?”
+
+Section 7 should not answer:
+
+“What is the final strategy outcome?”
+
+================================================================================
+4. PRELIMINARY OUTCOME VALUES
+================================================================================
+
+Use the same four business outcome labels, but store them in:
+
+preliminary_decision_outcome
+
+Allowed values:
+- APPROVE
+- COUNTEROFFER
+- MANUAL_REVIEW
+- DECLINE
+
+Important:
+These are preliminary routing outcomes only.
+
+Final decision_outcome will be created later after approved exposure, approved PTI, approved Expected Loss, and counteroffer feasibility logic are complete.
+
+================================================================================
+5. PRELIMINARY ROUTING HIERARCHY
+================================================================================
+
+Please use a clear priority hierarchy.
+
+Recommended hierarchy:
+
+Priority 1 — Hard simulated policy stop route
+If hard_policy_stop_flag = TRUE:
+- preliminary_decision_outcome = DECLINE
+- preliminary_decision_path = HARD_POLICY_STOP
+- preliminary_decision_priority_rank = 1
+
+Examples:
+- bankruptcy policy stop
+- major derogatory policy stop
+- severe delinquency policy stop
+
+Priority 2 — Severe synthetic risk route
+If synthetic_risk_decline_trigger_flag = TRUE:
+- preliminary_decision_outcome = DECLINE
+- preliminary_decision_path = SEVERE_SYNTHETIC_RISK
+- preliminary_decision_priority_rank = 2
+
+Reason:
+Synthetic estimated-risk severity is not corrected through exposure reduction in Module 2 v1.0.
+
+Priority 3 — Severe DTI capacity route
+If dti_decline_trigger_flag = TRUE:
+- preliminary_decision_outcome = DECLINE
+- preliminary_decision_path = SEVERE_DTI_CAPACITY
+- preliminary_decision_priority_rank = 3
+
+Reason:
+DTI reflects existing-obligation capacity and is not directly solved through a counteroffer in Module 2 v1.0.
+
+Priority 4 — Counteroffer feasibility route
+If counteroffer_candidate_flag = TRUE and no higher-priority decline route has fired:
+- preliminary_decision_outcome = COUNTEROFFER
+- preliminary_decision_path = COUNTEROFFER_FEASIBILITY_CHECK
+- preliminary_decision_priority_rank = 4
+- requires_counteroffer_feasibility_flag = TRUE
+- requires_approved_exposure_calculation_flag = TRUE
+
+Important:
+This does not prove the counteroffer is viable.
+It only routes the row to later approved-exposure / counteroffer feasibility logic.
+
+Priority 5 — Manual review route
+If manual_review_candidate_flag = TRUE and no higher-priority route has fired:
+- preliminary_decision_outcome = MANUAL_REVIEW
+- preliminary_decision_path = MANUAL_REVIEW_CANDIDATE
+- preliminary_decision_priority_rank = 5
+
+Manual review remains unresolved.
+
+Priority 6 — Clean approval route
+If clean_approval_candidate_flag = TRUE and no higher-priority route has fired:
+- preliminary_decision_outcome = APPROVE
+- preliminary_decision_path = CLEAN_APPROVAL_CANDIDATE
+- preliminary_decision_priority_rank = 6
+- requires_approved_exposure_calculation_flag = TRUE
+
+Reason:
+Even clean approvals still need approved amount / approved Expected Loss fields populated later.
+
+Priority 7 — Residual review fallback
+If no route is assigned by the above:
+- preliminary_decision_outcome = MANUAL_REVIEW
+- preliminary_decision_path = RESIDUAL_STRATEGY_REVIEW
+- preliminary_decision_priority_rank = 7
+
+Reason:
+Unclassified synthetic profiles should not silently become approvals or declines.
+
+================================================================================
+6. SECTION 7 OUTPUT REQUIREMENTS
+================================================================================
+
+Section 7 should preserve all prior fields and add:
+
+- preliminary_decision_outcome
+- preliminary_decision_path
+- preliminary_decision_priority_rank
+
+Preliminary flags:
+- preliminary_decline_flag
+- preliminary_counteroffer_flag
+- preliminary_manual_review_flag
+- preliminary_approve_flag
+
+Exposure-routing flags:
+- requires_counteroffer_feasibility_flag
+- requires_approved_exposure_calculation_flag
+
+Optional diagnostic fields:
+- preliminary_route_reason_family
+- preliminary_route_trigger_count
+
+Do not add:
+- decision_outcome
+- decision_path
+- approval_flag
+- decline_flag
+- manual_review_flag
+- counteroffer_flag
+- simulated_offer_exposure_flag
+- primary_reason_code
+- secondary_reason_code
+- tertiary_reason_code
+- triggered_reason_code_list
+- approved_amount
+- counteroffer_amount
+- approved_monthly_payment_proxy
+- approved_payment_to_income_ratio
+- approved_expected_loss_amount
+
+================================================================================
+7. SECTION 7 LOCAL GATEKEEPERS
+================================================================================
+
+At the end of Section 7, include local fail-fast checks.
+
+Validate:
+
+- row count is unchanged from tmp_m2_stage_3_rule_flags
+- application_id remains unique
+- preliminary_decision_outcome is non-null for every row
+- preliminary_decision_outcome is one of:
+  APPROVE
+  COUNTEROFFER
+  MANUAL_REVIEW
+  DECLINE
+
+- preliminary_decision_path is non-null for every row
+- preliminary_decision_priority_rank is non-null and positive
+- exactly one preliminary flag is true per row:
+  preliminary_decline_flag
+  preliminary_counteroffer_flag
+  preliminary_manual_review_flag
+  preliminary_approve_flag
+
+- preliminary_decline_flag reconciles to preliminary_decision_outcome = DECLINE
+- preliminary_counteroffer_flag reconciles to preliminary_decision_outcome = COUNTEROFFER
+- preliminary_manual_review_flag reconciles to preliminary_decision_outcome = MANUAL_REVIEW
+- preliminary_approve_flag reconciles to preliminary_decision_outcome = APPROVE
+
+- hard_policy_stop_flag = TRUE always routes to preliminary_decision_outcome = DECLINE
+- synthetic_risk_decline_trigger_flag = TRUE always routes to DECLINE unless hard_policy_stop already routed it
+- dti_decline_trigger_flag = TRUE always routes to DECLINE unless a higher-priority route already applied
+- preliminary_decision_outcome = COUNTEROFFER only when counteroffer_candidate_flag = TRUE
+- preliminary_decision_outcome = APPROVE only when clean_approval_candidate_flag = TRUE
+- preliminary_decision_outcome = COUNTEROFFER requires requires_counteroffer_feasibility_flag = TRUE
+- preliminary_decision_outcome IN (APPROVE, COUNTEROFFER) requires requires_approved_exposure_calculation_flag = TRUE
+- preliminary_decision_outcome IN (DECLINE, MANUAL_REVIEW) does not require approved exposure calculation
+
+- no final decision_outcome column exists yet
+- no final decision flags exist yet
+- no reason-code columns exist yet
+- no approved amount fields exist yet
+- no approved Expected Loss fields exist yet
+
+These are Section 7 local staging gatekeepers only, not full Module 2 QA.
+
+================================================================================
+8. SECTION 7 LOCAL SANITY CHECKS
+================================================================================
+
+After local gatekeepers, include lightweight staging diagnostics.
+
+Suggested checks:
+
+1. Count by preliminary_decision_outcome
+2. Count by preliminary_decision_path
+3. Count by preliminary_decision_priority_rank
+4. Product × preliminary_decision_outcome
+5. Score band × preliminary_decision_outcome
+6. Requested PTI bucket × preliminary_decision_outcome
+7. Strategy risk tier × preliminary_decision_outcome
+8. Mixed-signal profile × preliminary_decision_outcome
+9. Hard policy stop flag × preliminary_decision_outcome
+10. Counteroffer candidate flag × preliminary_decision_outcome
+11. Manual review candidate flag × preliminary_decision_outcome
+12. Clean approval candidate flag × preliminary_decision_outcome
+
+These are staging diagnostics only.
+They should not be interpreted as final decision validation.
+
+================================================================================
+9. SECTION 7 COMMENTARY QUALITY
+================================================================================
+
+Please maintain the elite commentary standard.
+
+Section 7 comments should explain:
+
+- why this is preliminary routing, not final decisioning
+- why final decision_outcome is deferred
+- why counteroffer feasibility cannot be finalized before approved exposure logic
+- why hard simulated policy stops override other triggers
+- why severe synthetic estimated-risk is not solved by exposure reduction in Module 2 v1.0
+- why severe DTI is treated as an existing-obligation capacity issue
+- why manual review remains unresolved
+- why clean approval is still only preliminary before final approved amount and approved Expected Loss fields are populated
+- why residual unclassified cases route to manual review instead of silent approval
+- why no reason codes are assigned yet
+
+================================================================================
+10. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Targeted Section 6 hardening patch only:
+   - synthetic estimated-risk band coverage gatekeeper
+   - DTI band coverage gatekeeper
+
+2. Section 7 SQL only:
+   PRELIMINARY DECISION ROUTING LAYER.
+
+3. A short explanation of what Section 7 establishes.
+
+4. A short explanation of what Section 7 intentionally does not build.
+
+5. The recommended next build step after Section 7.
+
+Do not write Section 8+ yet.
+```
+
+## Why this is the right next instruction
+
+This keeps the project from overcommitting to final outcomes before counteroffer feasibility and approved-exposure logic exist. It also preserves the same build discipline that made Module 1 strong: staged logic, no silent assumptions, clear lineage, explainable thresholds, and separation between diagnostics, routing, final decisions, reasons, and economics.
+<!-- END_MESSAGE C037-M00583 -->
+
+
+---
+
+<a id="c037-m00584"></a>
+
+### C037-M00584
+
+**Andrew** · 2026-05-06T13:09:38.857000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00584 -->
+evaluate the sixth follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00584 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_sixth_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c037-m00592"></a>
+
+### C037-M00592
+
+**ChatGPT** · 2026-05-06T13:13:29.054609-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00592 -->
+## Evaluation of the sixth response
+
+ChatGPT’s sixth response is **strong and still on track**. It correctly delivered a narrow Section 6 hardening patch and then built **Section 7 — Preliminary Decision Routing Layer** without prematurely creating final `decision_outcome`, reason codes, approved exposure, approved payment, approved PTI, approved Expected Loss, final output, archive logic, or full QA. That is the right discipline for this project. fileciteturn56file0
+
+The most important positive: it treated Section 7 as **preliminary routing**, not final strategy outcome assignment. That protects the design from locking `COUNTEROFFER` too early before approved exposure and feasibility logic exist.
+
+I do **not** see a material Section 7 correction needed before moving forward. The next step should be **Section 8 — Approved Exposure and Counteroffer Feasibility Layer**, but it must remain pre-final: it should calculate preliminary exposure treatment and feasibility, not final outcomes or reason codes.
+
+Below is the copy-paste response I would send.
+
+---
+
+```text
+This is strong. I agree with the Section 6 hardening patch and the Section 7 Preliminary Decision Routing Layer.
+
+Section 7 correctly:
+- keeps routing preliminary rather than final
+- preserves all prior lineage, segmentation, threshold, and trigger fields
+- converts overlapping Section 6 rule flags into one preliminary route
+- uses exactly the locked preliminary outcome labels:
+  APPROVE
+  COUNTEROFFER
+  MANUAL_REVIEW
+  DECLINE
+- keeps COUNTEROFFER as a preliminary feasibility route, not a finalized counteroffer
+- keeps MANUAL_REVIEW unresolved
+- routes hard simulated policy stops, severe synthetic estimated-risk, and severe DTI ahead of counteroffer/review/approval paths
+- creates preliminary flags only
+- creates requires_counteroffer_feasibility_flag
+- creates requires_approved_exposure_calculation_flag
+- avoids final decision_outcome
+- avoids final decision_path
+- avoids final approval / decline / manual review / counteroffer flags
+- avoids simulated_offer_exposure_flag
+- avoids reason codes
+- avoids approved amount
+- avoids approved payment / approved PTI
+- avoids approved Expected Loss
+- avoids latest-run output and archive insert logic
+
+Treat Section 7 as accepted.
+
+Do not rewrite Sections 0–7 unless a later dependency issue is found.
+
+================================================================================
+1. NEXT BUILD SCOPE: SECTION 8 ONLY
+================================================================================
+
+Please now build only:
+
+SECTION 8 — APPROVED EXPOSURE AND COUNTEROFFER FEASIBILITY LAYER
+
+Recommended staged table:
+
+tmp_m2_stage_5_exposure_treatment
+
+Section 8 should consume:
+
+tmp_m2_stage_4_preliminary_decision_routing
+
+Do not build:
+- final decision_outcome
+- final decision_path
+- approval_flag
+- decline_flag
+- manual_review_flag
+- counteroffer_flag
+- simulated_offer_exposure_flag
+- primary_reason_code
+- secondary_reason_code
+- tertiary_reason_code
+- triggered_reason_code_list
+- reason_priority_rank
+- final latest-run output table
+- archive insert logic
+- full QA framework
+
+Those belong to later sections.
+
+================================================================================
+2. SECTION 8 OBJECTIVE
+================================================================================
+
+Section 8 should calculate preliminary approved-exposure economics and counteroffer feasibility.
+
+Section 8 should answer:
+
+“Given the preliminary route, what approved exposure treatment would be economically and structurally feasible?”
+
+Section 8 should not answer:
+
+“What is the final strategy outcome?”
+
+That final outcome should be resolved later, after counteroffer feasibility and exposure treatment are known.
+
+================================================================================
+3. CORE SECTION 8 OUTPUT FIELDS
+================================================================================
+
+Please preserve all fields from tmp_m2_stage_4_preliminary_decision_routing and add:
+
+Exposure treatment fields:
+- exposure_treatment_status
+- exposure_treatment_path
+- approved_amount_preliminary
+- counteroffer_amount_preliminary
+- exposure_reduction_flag_preliminary
+- exposure_reduction_amount_preliminary
+- exposure_reduction_pct_preliminary
+
+Approved affordability fields:
+- approved_monthly_payment_proxy_preliminary
+- approved_payment_to_income_ratio_preliminary
+
+Approved economics fields:
+- approved_expected_loss_amount_preliminary
+- approved_el_reduction_amount_preliminary
+- approved_el_reduction_pct_preliminary
+
+Counteroffer feasibility fields:
+- counteroffer_feasibility_evaluated_flag
+- counteroffer_feasibility_pass_flag
+- counteroffer_feasibility_failure_reason
+- counteroffer_feasibility_constraint_count
+
+Counteroffer calculation diagnostics:
+- counteroffer_product_cap_amount
+- counteroffer_pti_target_amount
+- counteroffer_el_cap_amount
+- counteroffer_raw_max_feasible_amount
+- counteroffer_min_viable_amount
+- counteroffer_rounded_amount
+
+Do not create final output fields yet.
+
+================================================================================
+4. APPROVE ROUTE CONVENTION
+================================================================================
+
+For preliminary_decision_outcome = APPROVE:
+
+- approved_amount_preliminary = requested_amount
+- counteroffer_amount_preliminary = NULL
+- exposure_reduction_flag_preliminary = FALSE
+- exposure_reduction_amount_preliminary = 0
+- exposure_reduction_pct_preliminary = 0
+- approved_monthly_payment_proxy_preliminary = requested_monthly_payment_proxy
+- approved_payment_to_income_ratio_preliminary = requested_payment_to_income_ratio
+- approved_expected_loss_amount_preliminary = requested_expected_loss_amount
+- approved_el_reduction_amount_preliminary = 0
+- approved_el_reduction_pct_preliminary = 0
+- counteroffer_feasibility_evaluated_flag = FALSE
+- counteroffer_feasibility_pass_flag = NULL
+- counteroffer_feasibility_failure_reason = NULL
+- exposure_treatment_status = APPROVED_AS_REQUESTED_PRELIMINARY
+
+Important:
+This remains preliminary. Final APPROVE is not assigned in Section 8.
+
+================================================================================
+5. DECLINE ROUTE CONVENTION
+================================================================================
+
+For preliminary_decision_outcome = DECLINE:
+
+- approved_amount_preliminary = 0
+- counteroffer_amount_preliminary = NULL
+- exposure_reduction_flag_preliminary = FALSE
+- exposure_reduction_amount_preliminary = requested_amount
+- exposure_reduction_pct_preliminary = 1.0
+- approved_monthly_payment_proxy_preliminary = 0
+- approved_payment_to_income_ratio_preliminary = 0
+- approved_expected_loss_amount_preliminary = 0
+- approved_el_reduction_amount_preliminary = requested_expected_loss_amount
+- approved_el_reduction_pct_preliminary = 1.0 where requested_expected_loss_amount > 0
+- counteroffer_feasibility_evaluated_flag = FALSE
+- counteroffer_feasibility_pass_flag = NULL
+- counteroffer_feasibility_failure_reason = NULL
+- exposure_treatment_status = NO_OFFER_PRELIMINARY_DECLINE
+
+Important:
+This follows the locked decline exposure convention, but final DECLINE is still not assigned in Section 8.
+
+================================================================================
+6. MANUAL REVIEW ROUTE CONVENTION
+================================================================================
+
+For preliminary_decision_outcome = MANUAL_REVIEW:
+
+- approved_amount_preliminary = NULL
+- counteroffer_amount_preliminary = NULL
+- exposure_reduction_flag_preliminary = FALSE
+- exposure_reduction_amount_preliminary = NULL
+- exposure_reduction_pct_preliminary = NULL
+- approved_monthly_payment_proxy_preliminary = NULL
+- approved_payment_to_income_ratio_preliminary = NULL
+- approved_expected_loss_amount_preliminary = NULL
+- approved_el_reduction_amount_preliminary = NULL
+- approved_el_reduction_pct_preliminary = NULL
+- counteroffer_feasibility_evaluated_flag = FALSE
+- counteroffer_feasibility_pass_flag = NULL
+- counteroffer_feasibility_failure_reason = NULL
+- exposure_treatment_status = UNRESOLVED_MANUAL_REVIEW
+
+Manual review remains unresolved by design.
+
+================================================================================
+7. COUNTEROFFER ROUTE CALCULATION
+================================================================================
+
+For preliminary_decision_outcome = COUNTEROFFER:
+
+Section 8 should evaluate whether a viable simulated counteroffer exists.
+
+Counteroffer feasibility should use product-specific controls from earlier stages:
+- counteroffer_allowed_flag
+- product_min_approved_amount
+- product_max_approved_amount
+- product_min_counteroffer_pct
+- product_max_exposure_reduction_pct
+- counteroffer_target_pti
+- product_approved_el_cap
+- approved_amount_rounding_increment
+
+Do not assume a counteroffer is feasible just because preliminary_decision_outcome = COUNTEROFFER.
+
+================================================================================
+8. COUNTEROFFER MAXIMUM FEASIBLE AMOUNT
+================================================================================
+
+Calculate the main counteroffer ceiling components.
+
+1. Product cap amount:
+
+counteroffer_product_cap_amount =
+    LEAST(requested_amount, product_max_approved_amount)
+
+2. PTI target amount:
+
+If requested_payment_to_income_ratio > 0:
+
+counteroffer_pti_target_amount =
+    requested_amount × counteroffer_target_pti / requested_payment_to_income_ratio
+
+Else:
+    requested_amount
+
+Interpretation:
+Because approved payment is initially scaled proportionally, this estimates the approved amount that would bring approved PTI to the target PTI.
+
+3. Approved Expected Loss cap amount:
+
+counteroffer_el_cap_amount =
+    product_approved_el_cap / NULLIF(estimated_pd × estimated_lgd, 0)
+
+Interpretation:
+This is the maximum approved exposure that can satisfy the approved Expected Loss cap.
+
+4. Raw maximum feasible amount:
+
+counteroffer_raw_max_feasible_amount =
+    LEAST(
+        requested_amount,
+        counteroffer_product_cap_amount,
+        counteroffer_pti_target_amount,
+        counteroffer_el_cap_amount
+    )
+
+================================================================================
+9. COUNTEROFFER MINIMUM VIABLE AMOUNT
+================================================================================
+
+Calculate the minimum viable amount that still represents a meaningful offer and respects the maximum reduction rule.
+
+counteroffer_min_viable_amount =
+    GREATEST(
+        product_min_approved_amount,
+        requested_amount × product_min_counteroffer_pct,
+        requested_amount × (1 - product_max_exposure_reduction_pct)
+    )
+
+Interpretation:
+The counteroffer must not fall below:
+- product minimum approved amount
+- minimum viable percentage of requested amount
+- the floor implied by maximum permitted exposure reduction
+
+================================================================================
+10. COUNTEROFFER ROUNDING CONVENTION
+================================================================================
+
+Apply approved amount rounding conservatively.
+
+Recommended:
+
+counteroffer_rounded_amount =
+    FLOOR(counteroffer_raw_max_feasible_amount / approved_amount_rounding_increment)
+    × approved_amount_rounding_increment
+
+Reason:
+Rounding down ensures the approved amount does not accidentally exceed product cap, PTI target, or approved Expected Loss cap.
+
+If rounding causes the amount to fall below counteroffer_min_viable_amount, the counteroffer should fail feasibility rather than silently increasing above a constraint.
+
+================================================================================
+11. COUNTEROFFER FEASIBILITY PASS RULE
+================================================================================
+
+A counteroffer should pass feasibility only if all of the following are true:
+
+- preliminary_decision_outcome = COUNTEROFFER
+- counteroffer_allowed_flag = TRUE
+- counteroffer_rounded_amount IS NOT NULL
+- counteroffer_rounded_amount > 0
+- counteroffer_rounded_amount < requested_amount
+- counteroffer_rounded_amount >= product_min_approved_amount
+- counteroffer_rounded_amount >= requested_amount × product_min_counteroffer_pct
+- counteroffer_rounded_amount >= requested_amount × (1 - product_max_exposure_reduction_pct)
+- counteroffer_rounded_amount <= product_max_approved_amount
+- approved_payment_to_income_ratio_preliminary <= counteroffer_target_pti
+- approved_expected_loss_amount_preliminary <= product_approved_el_cap
+
+If these conditions are satisfied:
+
+- approved_amount_preliminary = counteroffer_rounded_amount
+- counteroffer_amount_preliminary = approved_amount_preliminary
+- exposure_reduction_flag_preliminary = TRUE
+- exposure_reduction_amount_preliminary = requested_amount - approved_amount_preliminary
+- exposure_reduction_pct_preliminary = exposure_reduction_amount_preliminary / NULLIF(requested_amount, 0)
+- counteroffer_feasibility_pass_flag = TRUE
+- exposure_treatment_status = COUNTEROFFER_FEASIBLE_PRELIMINARY
+
+If feasibility fails:
+
+- approved_amount_preliminary = NULL
+- counteroffer_amount_preliminary = NULL
+- approved_monthly_payment_proxy_preliminary = NULL
+- approved_payment_to_income_ratio_preliminary = NULL
+- approved_expected_loss_amount_preliminary = NULL
+- counteroffer_feasibility_pass_flag = FALSE
+- exposure_treatment_status = COUNTEROFFER_NOT_FEASIBLE_PRELIMINARY
+
+Final handling of failed counteroffers should occur later in the final decision-resolution section.
+
+================================================================================
+12. COUNTEROFFER FAILURE REASON
+================================================================================
+
+Please populate a clear counteroffer_feasibility_failure_reason when preliminary_decision_outcome = COUNTEROFFER and feasibility fails.
+
+Suggested values:
+- COUNTEROFFER_NOT_ALLOWED_BY_PRODUCT
+- COUNTEROFFER_NO_POSITIVE_FEASIBLE_AMOUNT
+- COUNTEROFFER_NOT_BELOW_REQUESTED_AMOUNT
+- COUNTEROFFER_BELOW_PRODUCT_MINIMUM
+- COUNTEROFFER_BELOW_MINIMUM_REQUEST_PERCENT
+- COUNTEROFFER_EXCEEDS_MAX_REDUCTION
+- COUNTEROFFER_EXCEEDS_PRODUCT_CAP
+- COUNTEROFFER_EXCEEDS_TARGET_PTI
+- COUNTEROFFER_EXCEEDS_APPROVED_EL_CAP
+- COUNTEROFFER_UNKNOWN_FEASIBILITY_FAILURE
+
+For non-counteroffer routes:
+- counteroffer_feasibility_failure_reason = NULL
+
+These are feasibility diagnostics, not final reason codes.
+
+================================================================================
+13. APPROVED PAYMENT, PTI, AND EXPECTED LOSS FORMULAS
+================================================================================
+
+When approved_amount_preliminary is populated and greater than zero:
+
+approved_monthly_payment_proxy_preliminary =
+    requested_monthly_payment_proxy × approved_amount_preliminary / NULLIF(requested_amount, 0)
+
+approved_payment_to_income_ratio_preliminary =
+    approved_monthly_payment_proxy_preliminary / NULLIF((annual_income / 12.0), 0)
+
+approved_expected_loss_amount_preliminary =
+    approved_amount_preliminary × estimated_pd × estimated_lgd
+
+approved_el_reduction_amount_preliminary =
+    requested_expected_loss_amount - approved_expected_loss_amount_preliminary
+
+approved_el_reduction_pct_preliminary =
+    approved_el_reduction_amount_preliminary / NULLIF(requested_expected_loss_amount, 0)
+
+Commentary must state:
+- this is a strategy-simulation proxy
+- this is not a recalculated contractual payment schedule
+- estimated_pd remains the Module 1 synthetic estimated-PD proxy
+- approved_expected_loss_amount_preliminary is not a production loss forecast
+
+================================================================================
+14. SECTION 8 LOCAL GATEKEEPERS
+================================================================================
+
+At the end of Section 8, include local fail-fast checks.
+
+Validate:
+
+- row count is unchanged from tmp_m2_stage_4_preliminary_decision_routing
+- application_id remains unique
+- exposure_treatment_status is non-null for every row
+- preliminary_decision_outcome is preserved
+- no final decision_outcome exists yet
+- no final decision_path exists yet
+- no final approval_flag / decline_flag / manual_review_flag / counteroffer_flag exists yet
+- no simulated_offer_exposure_flag exists yet
+- no reason-code fields exist yet
+- no final output table exists yet
+- no archive rows are inserted
+
+For preliminary APPROVE:
+- approved_amount_preliminary = requested_amount
+- approved_monthly_payment_proxy_preliminary = requested_monthly_payment_proxy
+- approved_payment_to_income_ratio_preliminary = requested_payment_to_income_ratio
+- approved_expected_loss_amount_preliminary = requested_expected_loss_amount
+
+For preliminary DECLINE:
+- approved_amount_preliminary = 0
+- approved_expected_loss_amount_preliminary = 0
+- approved_payment_to_income_ratio_preliminary = 0
+
+For preliminary MANUAL_REVIEW:
+- approved_amount_preliminary IS NULL
+- approved_expected_loss_amount_preliminary IS NULL
+- approved_payment_to_income_ratio_preliminary IS NULL
+
+For preliminary COUNTEROFFER with counteroffer_feasibility_pass_flag = TRUE:
+- approved_amount_preliminary > 0
+- approved_amount_preliminary < requested_amount
+- counteroffer_amount_preliminary = approved_amount_preliminary
+- exposure_reduction_amount_preliminary > 0
+- exposure_reduction_pct_preliminary > 0
+- approved_amount_preliminary >= product_min_approved_amount
+- approved_amount_preliminary <= product_max_approved_amount
+- approved_payment_to_income_ratio_preliminary <= counteroffer_target_pti
+- approved_expected_loss_amount_preliminary <= product_approved_el_cap
+
+For preliminary COUNTEROFFER with counteroffer_feasibility_pass_flag = FALSE:
+- approved_amount_preliminary IS NULL
+- counteroffer_amount_preliminary IS NULL
+- counteroffer_feasibility_failure_reason IS NOT NULL
+
+These are Section 8 local staging gatekeepers only, not full Module 2 QA.
+
+================================================================================
+15. SECTION 8 LOCAL SANITY CHECKS
+================================================================================
+
+After local gatekeepers, include lightweight staging diagnostics.
+
+Suggested checks:
+
+1. Count by preliminary_decision_outcome × exposure_treatment_status
+2. Count by counteroffer_feasibility_pass_flag
+3. Count by counteroffer_feasibility_failure_reason
+4. Product × counteroffer_feasibility_pass_flag
+5. Score band × counteroffer_feasibility_pass_flag
+6. Requested PTI bucket × counteroffer_feasibility_pass_flag
+7. Strategy risk tier × counteroffer_feasibility_pass_flag
+8. Average requested_amount vs approved_amount_preliminary by exposure_treatment_status
+9. Average requested_payment_to_income_ratio vs approved_payment_to_income_ratio_preliminary by exposure_treatment_status
+10. Average requested_expected_loss_amount vs approved_expected_loss_amount_preliminary by exposure_treatment_status
+11. Average exposure_reduction_pct_preliminary by product for feasible counteroffers
+12. Count of counteroffer failures by product and failure reason
+
+These are staging diagnostics only.
+They should not be interpreted as final strategy validation.
+
+================================================================================
+16. SECTION 8 COMMENTARY QUALITY
+================================================================================
+
+Please keep the same elite commentary standard.
+
+Section 8 comments should explain:
+
+- why approved exposure treatment is separated from preliminary routing
+- why COUNTEROFFER requires feasibility testing
+- why preliminary COUNTEROFFER does not guarantee a viable counteroffer
+- why approved amount is still preliminary
+- why approved payment and approved PTI are strategy-simulation proxies
+- why approved Expected Loss is based on approved exposure
+- why failed counteroffers are not resolved into final outcomes yet
+- why reason codes are not assigned yet
+- why final decision_outcome is not created yet
+
+================================================================================
+17. DELIVERABLE FOR THIS NEXT STEP
+================================================================================
+
+Please now provide:
+
+1. Section 8 SQL only:
+   APPROVED EXPOSURE AND COUNTEROFFER FEASIBILITY LAYER.
+
+2. A short explanation of what Section 8 establishes.
+
+3. A short explanation of what Section 8 intentionally does not build.
+
+4. The recommended next build step after Section 8.
+
+Do not write Section 9+ yet.
+```
+
+This keeps the project moving cleanly into exposure treatment while preserving the elite architecture discipline: preliminary routing first, feasibility second, final outcome later.
+<!-- END_MESSAGE C037-M00592 -->
+
+
+---
+
+<a id="c037-m00593"></a>
+
+### C037-M00593
+
+**Andrew** · 2026-05-06T13:32:02.603000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C037-M00593 -->
+evaluate the seventh follow-up response that ChatGPT just responded back with. help craft a full copy-paste response to guide the optimal next steps and keep this project on track to maintain our elite portfolio level.
+<!-- END_MESSAGE C037-M00593 -->
+
+
+**Attachments in export:** `chatGPTs_reponse_to_our_seventh_follow-up_prompt.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_10.md) · [Next](Part_12.md)

@@ -1,0 +1,5540 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 1 BRD / Validation Documentation — Part 9</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 1 BRD / Validation Documentation</h1><p>Part 09 · C037</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_08.html">Previous</a><a href="Part_10.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c037-m00398" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C037-M00398 · 2026-05-05T00:27:16.668787-04:00 · active path</p><div class="body"><p>Yes — the V2.0 BRD is already <strong>substantially stronger than V1.0</strong>, but after comparing the current V2.0 working version against the V1.0 BRD, I do see a few important refinements that would make the BRD feel fully complete and matched to the elite level of the final Validation Summary.</p>
+<p>The short version:</p>
+<blockquote>
+<p><strong>The V2.0 BRD has the right architecture, tone, boundaries, and system narrative. The remaining opportunity is to reintroduce a few V1.0 elements as appendices / reference sections so the BRD remains both executive-readable and implementation-complete.</strong></p>
+</blockquote>
+<p>The V1.0 BRD included explicit design artifacts that were valuable: example scenario interpretations, rate environment modeling tables, base PD / multiplier tables, parameterization requirements, QA requirements, assumptions and limitations, future enhancements, and SQL implementation guidance. V2.0 covers most of these conceptually, but a few are now dispersed or not yet fully captured in a compact reference form. fileciteturn32file1</p>
+<hr>
+<h1>Overall evaluation</h1>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Current V2.0 BRD Status</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executive positioning</td>
+<td>Strong</td>
+<td>Board-ready</td>
+</tr>
+<tr>
+<td>Architecture narrative</td>
+<td>Strong</td>
+<td>Much stronger than V1.0</td>
+</tr>
+<tr>
+<td>Variable behavior detail</td>
+<td>Strong</td>
+<td>Section 7 is excellent</td>
+</tr>
+<tr>
+<td>Scenario architecture</td>
+<td>Strong</td>
+<td>V2.0 clearly improves V1.0</td>
+</tr>
+<tr>
+<td>Governance / boundaries</td>
+<td>Strong</td>
+<td>Well aligned to Validation Summary</td>
+</tr>
+<tr>
+<td>QA / diagnostic framework</td>
+<td>Strong</td>
+<td>Substantially enhanced</td>
+</tr>
+<tr>
+<td>Parameter governance</td>
+<td>Strong, but could use a compact default-parameter reference</td>
+<td>Add appendix / reference table</td>
+</tr>
+<tr>
+<td>Implementation guidance</td>
+<td>Partially implied, not yet compactly documented</td>
+<td>Add appendix / implementation map</td>
+</tr>
+<tr>
+<td>V1.0 scenario interpretation examples</td>
+<td>Mostly covered in Validation Summary, less explicit in BRD</td>
+<td>Add short BRD interpretation examples</td>
+</tr>
+<tr>
+<td>Requirements traceability</td>
+<td>Not yet formalized</td>
+<td>Add an RTM-style appendix or section</td>
+</tr>
+</tbody></table>
+<p>Current content quality is around <strong>9.1 / 10</strong>. With the enhancements below, it moves to <strong>9.5+ / 10</strong>.</p>
+<hr>
+<h1>Highest-priority issue: remove duplicate Section 10 content</h1>
+<p>Before adding anything, I would fix one structural issue in the current V2.0 BRD.</p>
+<p>In the V2.0 PDF, Section 10 appears to repeat. Page 39 begins <strong>“10. Validation, QA, and Diagnostic Governance Framework”</strong>, then page 40 repeats the same Section 10 heading and restarts <strong>10.1 Purpose</strong> and <strong>10.2 Design Objective</strong>. This looks like an accidental duplicate insertion rather than intentional content. fileciteturn32file0</p>
+<h2>Recommendation</h2>
+<p>Delete the duplicated Section 10 opening block so Section 10 flows only once:</p>
+<ul>
+<li>10.1 Purpose  </li>
+<li>10.2 Design Objective  </li>
+<li>10.3 QA Framework Principles  </li>
+<li>10.4 Core QA Layers  </li>
+<li>etc.</li>
+</ul>
+<p>This is the only item I would treat as a <strong>must-fix</strong> before finalization.</p>
+<hr>
+<h1>V1.0 → V2.0 content coverage review</h1>
+<h2>1. Default product mix requirement — covered, but correctly relocated</h2>
+<p>V1.0 included a clear default product mix table: Mortgage 30%, Revolving 25%, Auto 20%, Personal Loan 15%, HELOC 10%. fileciteturn32file1</p>
+<p>In V2.0, this appears appropriately in <strong>Section 11 — Parameter Governance &amp; Configuration Framework</strong>, which is the right location. Product mix is a governed assumption, not merely a product-behavior detail. Keep it there.</p>
+<h2>Status</h2>
+<p><strong>Covered well. No change needed.</strong></p>
+<hr>
+<h2>2. Rate Environment Modeling — covered conceptually, but missing a compact reference table</h2>
+<p>V1.0 had a standalone <strong>Rate Environment Modeling</strong> section with a small table describing <code>rate_shift_bps</code>, product base rates, and risk premium. That table was useful because it made the rate environment parameter immediately understandable to a reviewer. fileciteturn32file1</p>
+<p>V2.0 now discusses rate environment in several places:</p>
+<ul>
+<li>Section 7A.14 Base APR for Payment Calculation</li>
+<li>Section 8.11 Scenario Behavior and Rate Environment</li>
+<li>Section 9 Scenario Framework</li>
+<li>Section 11.7 Rate Environment Parameter</li>
+</ul>
+<p>That is conceptually strong, but a compact table like the V1.0 version would improve usability.</p>
+<h2>Recommended enhancement</h2>
+<p>Add this to <strong>Section 11.7 Rate Environment Parameter</strong> or as part of a new <strong>Appendix A — Default Parameter Reference</strong>:</p>
+<h3><strong>Rate Environment Parameter Reference</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Meaning</th>
+<th>Example / Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>rate_shift_bps</code></td>
+<td>Uniform basis-point shift applied to applicable APR assumptions</td>
+<td><code>0</code> = baseline; <code>+200</code> = 200bp rate-up scenario</td>
+</tr>
+<tr>
+<td>Product base APR assumptions</td>
+<td>Product-specific baseline rate structure before borrower risk adjustment</td>
+<td>Mortgage lower; revolving and unsecured higher</td>
+</tr>
+<tr>
+<td>Risk premium logic</td>
+<td>Borrower risk and behavioral factors influence APR pressure</td>
+<td>Weaker score / higher-risk profiles generally receive higher APR pressure</td>
+</tr>
+<tr>
+<td>Deterministic pricing noise</td>
+<td>Small deterministic dispersion prevents artificial clustering</td>
+<td>Preserves realistic within-segment pricing variation</td>
+</tr>
+</tbody></table>
+<p>This would recover the useful V1.0 concept while keeping V2.0 terminology and scenario framing.</p>
+<hr>
+<h2>3. Base PD and multiplier tables — most important missing V1.0 design artifact</h2>
+<p>V1.0 included explicit base PD by score band and behavioral / structural multiplier tables. Those tables were very useful because they made the risk framework auditable and concrete. fileciteturn32file1</p>
+<p>V2.0 explains the estimated-PD proxy framework very well in Section 7A.18 and Section 8.8 / 8.9, but it does not yet provide the same compact assumption-reference tables.</p>
+<p>Because the final Validation Summary carefully frames <code>estimated_pd</code> as an <strong>estimated-PD proxy</strong>, the V2.0 BRD should not reintroduce old “production PD” framing. But it should still include the <strong>default estimated-risk assumption tables</strong>.</p>
+<h2>Recommended enhancement</h2>
+<p>Add an appendix or reference subsection:</p>
+<h1><strong>Appendix A — Default Parameter &amp; Estimated-Risk Reference Tables</strong></h1>
+<p>Suggested contents:</p>
+<h3><strong>A.1 Base Estimated-PD Proxy by Score Band</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Score Band</th>
+<th align="right">Illustrative Score Range</th>
+<th align="right">Base Estimated-PD Proxy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Super Prime</td>
+<td align="right">760–850</td>
+<td align="right">[from V2.0 code]</td>
+</tr>
+<tr>
+<td>Prime</td>
+<td align="right">700–759</td>
+<td align="right">[from V2.0 code]</td>
+</tr>
+<tr>
+<td>Near Prime</td>
+<td align="right">640–699</td>
+<td align="right">[from V2.0 code]</td>
+</tr>
+<tr>
+<td>Subprime</td>
+<td align="right">580–639</td>
+<td align="right">[from V2.0 code]</td>
+</tr>
+<tr>
+<td>Deep Subprime</td>
+<td align="right">&lt;580</td>
+<td align="right">[from V2.0 code]</td>
+</tr>
+</tbody></table>
+<h3><strong>A.2 Behavioral Multipliers</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Driver</th>
+<th>Bucket</th>
+<th align="right">Multiplier</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Delinquency count</td>
+<td>0, 1, 2, 3, 4+</td>
+<td align="right">[V2.0 values]</td>
+<td>Recent repayment stress</td>
+</tr>
+<tr>
+<td>Utilization</td>
+<td>low / moderate / high / very high</td>
+<td align="right">[V2.0 values]</td>
+<td>Revolving credit pressure</td>
+</tr>
+<tr>
+<td>DTI</td>
+<td>lower / moderate / elevated / high</td>
+<td align="right">[V2.0 values]</td>
+<td>Existing obligation burden</td>
+</tr>
+<tr>
+<td>Major derogatory</td>
+<td>yes / no</td>
+<td align="right">[V2.0 values]</td>
+<td>Severe adverse history</td>
+</tr>
+<tr>
+<td>Bankruptcy</td>
+<td>yes / no</td>
+<td align="right">[V2.0 values]</td>
+<td>Extreme adverse history</td>
+</tr>
+<tr>
+<td>Recent inquiries</td>
+<td>low / moderate / high</td>
+<td align="right">[V2.0 values]</td>
+<td>Recent credit-seeking behavior</td>
+</tr>
+</tbody></table>
+<h3><strong>A.3 Credit Depth Multipliers</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Driver</th>
+<th>Bucket</th>
+<th align="right">Multiplier</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Tradeline count</td>
+<td>thin / moderate / mature / complex</td>
+<td align="right">[V2.0 values]</td>
+<td>Credit file depth</td>
+</tr>
+<tr>
+<td>Months since oldest trade</td>
+<td>young / seasoned / mature</td>
+<td align="right">[V2.0 values]</td>
+<td>Credit file age</td>
+</tr>
+</tbody></table>
+<h3><strong>A.4 Affordability and Product Multipliers</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Driver</th>
+<th>Bucket</th>
+<th align="right">Multiplier</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PTI</td>
+<td>low / moderate / elevated / high</td>
+<td align="right">[V2.0 values]</td>
+<td>New-payment burden</td>
+</tr>
+<tr>
+<td>Amount-to-income</td>
+<td>low / moderate / elevated / high</td>
+<td align="right">[V2.0 values]</td>
+<td>Exposure relative to capacity</td>
+</tr>
+<tr>
+<td>Product type</td>
+<td>product-specific</td>
+<td align="right">[V2.0 values]</td>
+<td>Product structure effect</td>
+</tr>
+</tbody></table>
+<h3><strong>A.5 V2.0 Soft-Saturation / Cap Governance</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter / Concept</th>
+<th>Purpose</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Raw estimated-PD proxy before saturation</td>
+<td>Captures pre-governance risk pressure</td>
+<td>Diagnostic, not final output</td>
+</tr>
+<tr>
+<td>Saturation zone</td>
+<td>Classifies observations by saturation region</td>
+<td>Supports cap-crowding review</td>
+</tr>
+<tr>
+<td>Saturation factor</td>
+<td>Dampens high-end risk pressure</td>
+<td>Reduces mechanical cap compression</td>
+</tr>
+<tr>
+<td>Governance cap</td>
+<td>Bounds final estimated-PD proxy</td>
+<td>Simulation guardrail, not calibrated default ceiling</td>
+</tr>
+</tbody></table>
+<p>This would be a major BRD enhancement because it brings back the V1.0 auditability of risk logic while using the V2.0 model-boundary language.</p>
+<hr>
+<h2>4. Example scenario interpretations — concept exists in Validation Summary, but BRD should include a short version</h2>
+<p>V1.0 included three very helpful scenario interpretation examples:</p>
+<ul>
+<li>Strong credit, high structural burden</li>
+<li>Weaker credit, managed affordability</li>
+<li>Large exposure, structured stability fileciteturn32file1</li>
+</ul>
+<p>V2.0 Validation Summary covers this thoroughly in mixed-signal realism, but the BRD itself would benefit from a short design-oriented interpretation section. This helps business readers understand how to interpret outputs before reading the Validation Summary.</p>
+<h2>Recommended enhancement</h2>
+<p>Add this near the end of <strong>Section 8</strong> or in <strong>Section 12 Output Interpretation Principles</strong>.</p>
+<h3><strong>Design Interpretation Examples</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Profile</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Strong credit, high affordability burden</strong></td>
+<td>Prime or Super Prime borrower with large mortgage or high requested exposure and elevated PTI</td>
+<td>Strong score does not eliminate affordability stress. Product structure and payment burden can still increase downstream estimated risk.</td>
+</tr>
+<tr>
+<td><strong>Weaker credit, manageable affordability</strong></td>
+<td>Subprime borrower with small requested amount and low PTI</td>
+<td>Weak credit history can coexist with manageable new-payment burden. Estimated risk remains elevated due to borrower risk signals, but affordability may remain stable.</td>
+</tr>
+<tr>
+<td><strong>Large exposure, structured stability</strong></td>
+<td>High-income, strong-score mortgage borrower with long amortization and manageable PTI</td>
+<td>Large exposure does not automatically imply high stress when income capacity, term structure, and pricing support affordability.</td>
+</tr>
+<tr>
+<td><strong>High APR, low exposure</strong></td>
+<td>Revolving or personal loan borrower with high APR but small balance</td>
+<td>High APR can increase payment pressure, but total affordability impact depends on exposure and payment method.</td>
+</tr>
+<tr>
+<td><strong>Low LGD, high Expected Loss</strong></td>
+<td>Mortgage borrower with low LGD but very large exposure</td>
+<td>Expected Loss reflects exposure × estimated-PD proxy × LGD; low LGD does not always mean low dollar loss.</td>
+</tr>
+</tbody></table>
+<p>This would add interpretive strength without duplicating the Validation Summary.</p>
+<hr>
+<h2>5. Expected Loss Framework — covered, but could use one compact “loss interpretation” table</h2>
+<p>V1.0 had a concise Expected Loss Framework section that explained Expected Loss = Requested Amount × PD × LGD and emphasized that high exposure or high LGD can drive loss. fileciteturn32file1</p>
+<p>V2.0 covers Expected Loss in Sections 8.10, 12, and 13. It is well explained. But a compact table in Section 8.10 or Section 12 could make it more immediately digestible.</p>
+<h2>Recommended addition</h2>
+<h3><strong>Expected Loss Interpretation Examples</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Example</th>
+<th align="right">Exposure</th>
+<th align="right">Estimated-PD Proxy</th>
+<th align="right">LGD</th>
+<th>Expected Loss Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Large secured mortgage</td>
+<td align="right">High</td>
+<td align="right">Moderate</td>
+<td align="right">Low</td>
+<td>Expected Loss can still be high due to exposure</td>
+</tr>
+<tr>
+<td>Small revolving line</td>
+<td align="right">Low</td>
+<td align="right">Moderate / high</td>
+<td align="right">High</td>
+<td>Expected Loss may remain moderate due to low exposure</td>
+</tr>
+<tr>
+<td>Unsecured personal loan</td>
+<td align="right">Moderate</td>
+<td align="right">Moderate</td>
+<td align="right">High</td>
+<td>Loss driven by unsecured severity and borrower risk</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">High</td>
+<td align="right">Moderate</td>
+<td align="right">Low / moderate</td>
+<td>Secured exposure creates intermediate loss behavior</td>
+</tr>
+</tbody></table>
+<p>This echoes the strong Validation Summary Section 6.7B interpretation and reinforces senior risk thinking.</p>
+<hr>
+<h2>6. Parameterization Requirements — covered well, but needs one compact default-configuration appendix</h2>
+<p>V1.0 included a specific <strong>Parameterization Requirements</strong> section listing parameter categories such as volume/timing, product mix, score mix, rate environment, boundaries, and reproducibility. fileciteturn32file1</p>
+<p>V2.0 Section 11 is much stronger and covers this at enterprise level. However, V2.0 is now long and narrative-heavy. A compact appendix would help.</p>
+<h2>Recommendation</h2>
+<p>Add <strong>Appendix A — Default Configuration Reference</strong>, including:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter Family</th>
+<th>Default / Current V2.0 Reference</th>
+<th>Governed Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Application count</td>
+<td>50,000</td>
+<td>Portfolio simulation scale</td>
+</tr>
+<tr>
+<td>Product mix</td>
+<td>30 / 25 / 20 / 15 / 10</td>
+<td>Diversified retail-bank portfolio</td>
+</tr>
+<tr>
+<td>Score mix</td>
+<td>V2.0 configured score-band weights</td>
+<td>Borrower risk composition</td>
+</tr>
+<tr>
+<td>Rate shift</td>
+<td>baseline <code>0</code>, stress example <code>+200bps</code></td>
+<td>Rate sensitivity</td>
+</tr>
+<tr>
+<td>Estimated-PD proxy cap</td>
+<td>45%</td>
+<td>Simulation guardrail</td>
+</tr>
+<tr>
+<td>LGD assumptions</td>
+<td>product-level LGD values</td>
+<td>Severity differentiation</td>
+</tr>
+<tr>
+<td>Mortgage amount bounds</td>
+<td>V2.0 configured bounds</td>
+<td>Exposure governance</td>
+</tr>
+<tr>
+<td>Revolving payment assumptions</td>
+<td>V2.0 APR-sensitive proxy</td>
+<td>Rate-to-payment sensitivity</td>
+</tr>
+<tr>
+<td>Scenario metadata</td>
+<td><code>scenario_set_name</code>, <code>scenario_name</code>, <code>population_id</code></td>
+<td>Comparability and attribution</td>
+</tr>
+</tbody></table>
+<p>This gives reviewers a quick parameter reference without searching the code.</p>
+<hr>
+<h2>7. QA Requirements — covered and improved</h2>
+<p>V1.0’s QA section listed record count, product mix, score distribution, income / DTI / utilization by score, delinquency / derogatory / bankruptcy by score, product amount / payment review, PTI review, PD review, Expected Loss review, and mixed-signal spot checks. fileciteturn32file1</p>
+<p>V2.0 Section 10 improves this substantially with:</p>
+<ul>
+<li>core QA layers,</li>
+<li>baseline QA checks,</li>
+<li>workstream-specific QA,</li>
+<li>tail-frequency QA,</li>
+<li>mixed-signal and edge-case QA,</li>
+<li>scenario QA,</li>
+<li>diagnostic field governance,</li>
+<li>acceptance criteria,</li>
+<li>QA workflow,</li>
+<li>boundary-aware interpretation.</li>
+</ul>
+<h2>Status</h2>
+<p><strong>Covered and improved. No substantive content gap.</strong></p>
+<h2>Minor issue</h2>
+<p>Fix the duplicated opening of Section 10 described earlier.</p>
+<hr>
+<h2>8. Assumptions and limitations — covered and improved</h2>
+<p>V1.0 included a simple assumptions/limitations list:</p>
+<ul>
+<li>synthetic learning / simulation engine, not production underwriting;</li>
+<li>directional realism, not calibration;</li>
+<li>PD proxy, not empirical default model;</li>
+<li>APR as pricing proxy, not production pricing;</li>
+<li>rate environment simplified;</li>
+<li>behavioral history compressed into point-in-time variables. fileciteturn32file1</li>
+</ul>
+<p>V2.0 Section 13 covers this much more rigorously, including estimated-PD proxy, Expected Loss, APR, revolving, scenario, synthetic data, fair lending, compliance, and production deployment boundaries.</p>
+<h2>Status</h2>
+<p><strong>Covered and improved. No major gap.</strong></p>
+<h2>Optional enhancement</h2>
+<p>Add a small summary table at the beginning of Section 13:</p>
+<table>
+<thead>
+<tr>
+<th>Boundary Area</th>
+<th>V2.0 Position</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Data</td>
+<td>Synthetic, not real customer data</td>
+</tr>
+<tr>
+<td>Estimated-PD proxy</td>
+<td>Directional synthetic proxy, not calibrated PD</td>
+</tr>
+<tr>
+<td>APR</td>
+<td>Burden-estimation proxy, not production pricing</td>
+</tr>
+<tr>
+<td>Expected Loss</td>
+<td>Comparative simulation metric, not forecast</td>
+</tr>
+<tr>
+<td>Revolving payment</td>
+<td>APR-sensitive proxy, not billing engine</td>
+</tr>
+<tr>
+<td>Scenario outputs</td>
+<td>Sensitivity analysis, not prediction</td>
+</tr>
+<tr>
+<td>Compliance</td>
+<td>Not fair lending / regulatory validation</td>
+</tr>
+</tbody></table>
+<p>This would make Section 13 easier to scan.</p>
+<hr>
+<h2>9. Future enhancements — covered and improved</h2>
+<p>V1.0 listed future enhancements like approval / decline layers, pricing strategy, overlays, vintage analysis, macro overlays, lifetime loss, and executive reporting. fileciteturn32file1</p>
+<p>V2.0 Section 14 covers these and adds a better modular expansion strategy:</p>
+<ul>
+<li>decision strategy simulator;</li>
+<li>exposure / line assignment;</li>
+<li>pricing strategy;</li>
+<li>LGD enhancement;</li>
+<li>macro sensitivity;</li>
+<li>revolving behavior enhancement;</li>
+<li>account lifecycle;</li>
+<li>empirical benchmarking;</li>
+<li>automated reporting;</li>
+<li>governance documentation;</li>
+<li>roadmap prioritization;</li>
+<li>roadmap governance.</li>
+</ul>
+<h2>Status</h2>
+<p><strong>Covered and improved. No major gap.</strong></p>
+<hr>
+<h2>10. Implementation Guidance for SQL Module 1 — partially missing</h2>
+<p>This is the most important V1.0 content that is not fully carried forward.</p>
+<p>V1.0 explicitly included <strong>Implementation Guidance for SQL Module 1</strong>, specifying that the SQL module should follow a strong job-aid header, dedicated schema, reset section, user parameters, fail-fast validation, deterministic seeds, staged CTEs, and integrated QA queries. It also included a section map for the SQL script. fileciteturn32file1</p>
+<p>V2.0 covers these ideas across the BRD, and the code itself now has an elite header, but the BRD should include a compact implementation guidance section or appendix.</p>
+<h2>Recommended enhancement</h2>
+<p>Add:</p>
+<h1><strong>Appendix B — SQL Implementation Guidance &amp; Section Map</strong></h1>
+<h3><strong>B.1 SQL Implementation Standards</strong></h3>
+<p>Module 1 SQL implementation should maintain:</p>
+<ul>
+<li>strong job-aid header;</li>
+<li>dedicated schema;</li>
+<li>clean reset / rerun section;</li>
+<li>centralized user-parameter layer;</li>
+<li>fail-fast validation gatekeepers;</li>
+<li>deterministic seed generation;</li>
+<li>staged CTE architecture;</li>
+<li>scenario archive controls;</li>
+<li>integrated QA queries;</li>
+<li>scenario comparison queries;</li>
+<li>and embedded commentary explaining modeling boundaries.</li>
+</ul>
+<h3><strong>B.2 Recommended SQL Section Map</strong></h3>
+<table>
+<thead>
+<tr>
+<th>SQL Section</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Section 0</td>
+<td>Schema setup</td>
+</tr>
+<tr>
+<td>Section 1</td>
+<td>Reset / drop prior objects</td>
+</tr>
+<tr>
+<td>Section 2</td>
+<td>User parameters and scenario configuration</td>
+</tr>
+<tr>
+<td>Section 3</td>
+<td>Validation gatekeepers</td>
+</tr>
+<tr>
+<td>Section 4</td>
+<td>Base application skeleton and deterministic seed generation</td>
+</tr>
+<tr>
+<td>Section 5</td>
+<td>Product assignment and structural field generation</td>
+</tr>
+<tr>
+<td>Section 6</td>
+<td>Borrower characteristic generation</td>
+</tr>
+<tr>
+<td>Section 7</td>
+<td>APR, payment, PTI, and affordability derivation</td>
+</tr>
+<tr>
+<td>Section 8</td>
+<td>Estimated-PD proxy, LGD, and Expected Loss calculation</td>
+</tr>
+<tr>
+<td>Section 9</td>
+<td>Single-run QA and validation queries</td>
+</tr>
+<tr>
+<td>Section 10</td>
+<td>Scenario comparison QA and matched-row analysis</td>
+</tr>
+</tbody></table>
+<h3><strong>B.3 Design Requirement</strong></h3>
+<p>The SQL implementation should remain readable as a teaching and audit artifact, not merely as executable code.</p>
+<p>This is worth adding because it explicitly ties the BRD to the actual code artifact.</p>
+<hr>
+<h1>Additional high-value enhancement: Requirements Traceability Matrix</h1>
+<p>The V2.0 BRD is excellent as a design narrative, but an enterprise BRD is often strengthened by a concise <strong>requirements traceability matrix</strong>.</p>
+<p>This was not explicitly in V1.0, but it would elevate V2.0.</p>
+<h2>Recommended addition</h2>
+<p>Add <strong>Appendix C — Requirements Traceability Matrix</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Requirement ID</th>
+<th>Requirement</th>
+<th>BRD Section</th>
+<th>Validation Evidence</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-01</td>
+<td>Generate deterministic synthetic application population</td>
+<td>Sections 3, 5, 7</td>
+<td>Validation Sections 3–4</td>
+</tr>
+<tr>
+<td>FR-02</td>
+<td>Assign product type using governed product mix</td>
+<td>Sections 6, 11</td>
+<td>Validation Section 3</td>
+</tr>
+<tr>
+<td>FR-03</td>
+<td>Generate borrower characteristics with realistic overlap</td>
+<td>Section 7</td>
+<td>Validation Sections 7, 10</td>
+</tr>
+<tr>
+<td>FR-04</td>
+<td>Generate APR proxy for payment calculation</td>
+<td>Sections 7, 8, 11</td>
+<td>Validation Sections 6, 8</td>
+</tr>
+<tr>
+<td>FR-05</td>
+<td>Generate product-specific monthly payment proxy</td>
+<td>Sections 8, 11</td>
+<td>Validation Sections 6, 8</td>
+</tr>
+<tr>
+<td>FR-06</td>
+<td>Calculate PTI as affordability bridge</td>
+<td>Sections 7, 8</td>
+<td>Validation Section 8</td>
+</tr>
+<tr>
+<td>FR-07</td>
+<td>Generate estimated-PD proxy using transparent framework</td>
+<td>Sections 7, 8, 11</td>
+<td>Validation Sections 7–9</td>
+</tr>
+<tr>
+<td>FR-08</td>
+<td>Calculate LGD and Expected Loss</td>
+<td>Sections 8, 12</td>
+<td>Validation Sections 6, 8</td>
+</tr>
+<tr>
+<td>FR-09</td>
+<td>Support scenario metadata and archive persistence</td>
+<td>Sections 9, 12</td>
+<td>Validation Section 4, 9</td>
+</tr>
+<tr>
+<td>FR-10</td>
+<td>Support matched row-level comparison</td>
+<td>Sections 9, 12</td>
+<td>Validation Section 4</td>
+</tr>
+<tr>
+<td>NFR-01</td>
+<td>Deterministic reproducibility</td>
+<td>Sections 3, 5, 11</td>
+<td>Validation Section 4</td>
+</tr>
+<tr>
+<td>NFR-02</td>
+<td>Auditability and diagnostic traceability</td>
+<td>Sections 10, 12</td>
+<td>Validation Sections 5, 9</td>
+</tr>
+<tr>
+<td>GOV-01</td>
+<td>Parameter governance and validation gatekeepers</td>
+<td>Section 11</td>
+<td>Validation Sections 2, 12</td>
+</tr>
+<tr>
+<td>BND-01</td>
+<td>Maintain model-use boundaries</td>
+<td>Section 13</td>
+<td>Validation Section 13</td>
+</tr>
+</tbody></table>
+<p>This would be an elite addition. It makes the BRD easier to review and makes the design-to-validation relationship explicit.</p>
+<hr>
+<h1>Another optional enhancement: V1.0 → V2.0 evolution summary</h1>
+<p>The Validation Summary already covers V2.0 evidence, but the BRD could benefit from a short design-evolution summary near the end or in an appendix.</p>
+<h2>Recommended addition</h2>
+<h1><strong>Appendix D — V1.0 to V2.0 Design Evolution Summary</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>V1.0 Design</th>
+<th>V2.0 Enhancement</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage realism</td>
+<td>Product-specific mortgage behavior</td>
+<td>Tail smoothing and PTI-aware affordability overlay</td>
+</tr>
+<tr>
+<td>Risk framework</td>
+<td>Transparent PD proxy framework</td>
+<td>Estimated-PD proxy with soft saturation and cap-crowding reduction</td>
+</tr>
+<tr>
+<td>Scenario support</td>
+<td>Static simulation output</td>
+<td>Scenario set/name, archive persistence, matched row comparison</td>
+</tr>
+<tr>
+<td>Revolving payment</td>
+<td>Fixed minimum-payment proxy</td>
+<td>APR-sensitive revolving payment proxy</td>
+</tr>
+<tr>
+<td>QA</td>
+<td>Static QA checks</td>
+<td>Workstream-specific QA, tail-frequency QA, scenario comparison QA</td>
+</tr>
+<tr>
+<td>Governance</td>
+<td>Parameterized assumptions</td>
+<td>Expanded parameter governance and output boundaries</td>
+</tr>
+</tbody></table>
+<p>This is not mandatory, but it would help readers quickly see why V2.0 is a direct evolution of V1.0.</p>
+<hr>
+<h1>Recommended final structure</h1>
+<p>Your current 15-section BRD is strong. I would <strong>not disrupt it</strong>. Instead, I recommend adding appendices after Section 15:</p>
+<h2>Existing main body</h2>
+<ol>
+<li>Executive Summary  </li>
+<li>Business Objective and Strategic Value  </li>
+<li>Design Principles  </li>
+<li>Scope  </li>
+<li>System Architecture Overview  </li>
+<li>Product Behavior Matrix  </li>
+<li>Variable Behavior Specifications  </li>
+<li>Payment, Affordability, and Risk Translation Framework  </li>
+<li>Scenario Framework &amp; Comparison Architecture  </li>
+<li>Validation, QA, and Diagnostic Governance Framework  </li>
+<li>Parameter Governance &amp; Configuration Framework  </li>
+<li>Output Data Model &amp; Consumption Framework  </li>
+<li>Model Boundaries, Intended Use &amp; Governance Guardrails  </li>
+<li>Future Enhancement Roadmap &amp; Modular Expansion Strategy  </li>
+<li>Final Design Statement</li>
+</ol>
+<h2>Add appendices</h2>
+<p><strong>Appendix A — Default Configuration &amp; Estimated-Risk Reference Tables</strong><br><strong>Appendix B — SQL Implementation Guidance &amp; Section Map</strong><br><strong>Appendix C — Requirements Traceability Matrix</strong><br><strong>Appendix D — V1.0 to V2.0 Design Evolution Summary</strong></p>
+<p>This preserves the clean executive flow while bringing back the detailed V1.0 artifacts that are useful for implementation and audit review.</p>
+<hr>
+<h1>Final recommendation priority</h1>
+<p>If time is limited, prioritize in this order:</p>
+<h2>Must fix</h2>
+<ol>
+<li><strong>Remove duplicate Section 10 opening / repeated content.</strong></li>
+</ol>
+<h2>Strongly recommended</h2>
+<ol start="2">
+<li>Add <strong>Appendix B — SQL Implementation Guidance &amp; Section Map</strong>.  </li>
+<li>Add <strong>Appendix C — Requirements Traceability Matrix</strong>.  </li>
+<li>Add <strong>Appendix A — Default Configuration &amp; Estimated-Risk Reference Tables</strong>.</li>
+</ol>
+<h2>Nice-to-have</h2>
+<ol start="5">
+<li>Add short <strong>Design Interpretation Examples</strong> table.  </li>
+<li>Add <strong>V1.0 → V2.0 Design Evolution Summary</strong> appendix.  </li>
+<li>Add Section 13 boundary summary table.</li>
+</ol>
+<hr>
+<h1>Bottom line</h1>
+<p>The V2.0 BRD is already much stronger than V1.0 in architecture, governance, scenario design, estimated-PD proxy discipline, and validation linkage. The main thing V1.0 still does better is provide a few compact implementation-reference artifacts, especially the explicit risk assumption tables and SQL implementation guidance. fileciteturn32file1</p>
+<p>The cleanest way to complete V2.0 is not to rewrite the main body. It is to add concise appendices that make the document fully auditable, implementation-ready, and traceable to the code and Validation Summary.</p>
+<p>That would bring the BRD to the same elite level as the final V2.0 Validation Summary.</p>
+</div></article><article id="c037-m00400" class="message user"><div class="role">Andrew</div><p class="meta">C037-M00400 · 2026-05-05T07:41:55.395000-04:00 · active path</p><div class="body"><p>In your recommendation above, Appendix A tables have many places that say [V2.0 values].  Please help me identify what should be placed in these spaces.  Take your time and review everything I&#39;ve provided.  Here is the full code again.</p>
+<p><strong>Attachments in export:</strong> <code>module1_synthetic_application_risk_engine_v2.0(9).sql</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c037-m00412" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C037-M00412 · 2026-05-05T07:47:44.528997-04:00 · active path</p><div class="body"><p>Yes — Appendix A should not contain placeholders. It should contain the actual <strong>V2.0 default configuration and estimated-risk reference values</strong> from the SQL. The key is to present them as <strong>implementation reference values</strong>, not universal credit-risk truths or calibrated production-model assumptions.</p>
+<p>I recommend naming the appendix:</p>
+<h1><strong>Appendix A — Default Configuration &amp; Estimated-Risk Reference Tables</strong></h1>
+<p>This appendix restores the useful compact-reference discipline from the V1.0 BRD while aligning with the V2.0 estimated-PD proxy framing and expanded governance structure. The current V2.0 BRD already defines the system architecture and parameter governance in detail; this appendix gives reviewers a fast reference to the actual default values used by the V2.0 implementation. fileciteturn35file0turn35file1</p>
+<hr>
+<h1><strong>Appendix A — Default Configuration &amp; Estimated-Risk Reference Tables</strong></h1>
+<h2><strong>A.1 Purpose</strong></h2>
+<p>This appendix summarizes the default configuration values and estimated-risk reference assumptions used in Module 1 V2.0.</p>
+<p>These values are included to support:</p>
+<ul>
+<li>implementation transparency;</li>
+<li>parameter governance;</li>
+<li>audit review;</li>
+<li>validation traceability;</li>
+<li>and controlled scenario interpretation.</li>
+</ul>
+<p>The values below are <strong>default V2.0 simulation assumptions</strong>. They are not universal credit-risk standards, production underwriting policy, calibrated default-rate estimates, or institution-specific model parameters.</p>
+<hr>
+<h1><strong>A.2 Default Run Configuration</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Configuration Item</th>
+<th align="right">V2.0 Default Value</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>scenario_set_name</code></td>
+<td align="right"><code>MODULE1_V2_BASELINE_SET</code></td>
+<td>Default scenario comparison family</td>
+</tr>
+<tr>
+<td><code>scenario_name</code></td>
+<td align="right"><code>BASELINE_V2</code></td>
+<td>Default baseline scenario label</td>
+</tr>
+<tr>
+<td><code>archive_run_flag</code></td>
+<td align="right"><code>TRUE</code></td>
+<td>Baseline run is archived for comparison</td>
+</tr>
+<tr>
+<td><code>archive_reset_mode</code></td>
+<td align="right"><code>SCENARIO_ONLY</code></td>
+<td>Replaces the same scenario within the same scenario set / population</td>
+</tr>
+<tr>
+<td><code>population_id</code></td>
+<td align="right"><code>BASE_POPULATION_V1</code></td>
+<td>Deterministic borrower population anchor</td>
+</tr>
+<tr>
+<td><code>application_count</code></td>
+<td align="right"><code>50,000</code></td>
+<td>Full validation-scale synthetic portfolio</td>
+</tr>
+<tr>
+<td><code>portfolio_start_date</code></td>
+<td align="right"><code>2025-01-01</code></td>
+<td>Start of simulated application window</td>
+</tr>
+<tr>
+<td><code>portfolio_end_date</code></td>
+<td align="right"><code>2025-12-31</code></td>
+<td>End of simulated application window</td>
+</tr>
+<tr>
+<td><code>anchor_date</code></td>
+<td align="right"><code>2025-12-31</code></td>
+<td>Reporting reference date</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>The default run configuration is designed for a full-scale, reproducible baseline scenario. The <code>population_id</code> should remain unchanged when comparing baseline and stress scenarios against the same synthetic borrower population.</p>
+<hr>
+<h1><strong>A.3 Default Product Mix</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">V2.0 Default Mix</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage</td>
+<td align="right">30%</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">25%</td>
+</tr>
+<tr>
+<td>Auto Loan</td>
+<td align="right">20%</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">15%</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">10%</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>The product mix is intended to represent a diversified consumer-retail bank portfolio for strategy simulation. It is not intended to represent a universal industry benchmark.</p>
+<hr>
+<h1><strong>A.4 Default Score-Band Mix</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Score Band</th>
+<th align="right">V2.0 Default Mix</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Super Prime</td>
+<td align="right">18%</td>
+</tr>
+<tr>
+<td>Prime</td>
+<td align="right">28%</td>
+</tr>
+<tr>
+<td>Near Prime</td>
+<td align="right">24%</td>
+</tr>
+<tr>
+<td>Subprime</td>
+<td align="right">18%</td>
+</tr>
+<tr>
+<td>Deep Subprime</td>
+<td align="right">12%</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>The default score mix is weighted toward prime and near-prime borrowers while preserving meaningful subprime and deep-subprime representation for estimated-risk and Expected Loss contrast.</p>
+<hr>
+<h1><strong>A.5 Core Hard Bounds</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th align="right">V2.0 Default Value</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Minimum credit score</td>
+<td align="right">500</td>
+<td>Lower modeled bureau-style score floor</td>
+</tr>
+<tr>
+<td>Maximum credit score</td>
+<td align="right">850</td>
+<td>Upper bureau-style score ceiling</td>
+</tr>
+<tr>
+<td>Minimum annual income</td>
+<td align="right">$20,000</td>
+<td>Entry-level but plausible borrower income floor</td>
+</tr>
+<tr>
+<td>Maximum annual income</td>
+<td align="right">$300,000</td>
+<td>High-income ceiling with affluent tail preserved</td>
+</tr>
+<tr>
+<td>Minimum DTI</td>
+<td align="right">5%</td>
+<td>Allows very low leverage without forcing zero-debt rows</td>
+</tr>
+<tr>
+<td>Maximum DTI</td>
+<td align="right">70%</td>
+<td>High-stress but bounded obligation ratio</td>
+</tr>
+<tr>
+<td>Minimum utilization</td>
+<td align="right">0%</td>
+<td>Allows unused revolving capacity</td>
+</tr>
+<tr>
+<td>Maximum utilization</td>
+<td align="right">95%</td>
+<td>Allows near-max utilization without forcing literal 100%</td>
+</tr>
+</tbody></table>
+<hr>
+<h1><strong>A.6 Credit Score Ranges</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Score Band</th>
+<th align="right">V2.0 Score Range</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Super Prime</td>
+<td align="right">760–850</td>
+</tr>
+<tr>
+<td>Prime</td>
+<td align="right">700–759</td>
+</tr>
+<tr>
+<td>Near Prime</td>
+<td align="right">640–699</td>
+</tr>
+<tr>
+<td>Subprime</td>
+<td align="right">580–639</td>
+</tr>
+<tr>
+<td>Deep Subprime</td>
+<td align="right">500–579</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>Score ranges anchor segmentation and base estimated-risk behavior. They also support downstream product, pricing, affordability, and estimated-PD proxy relationships.</p>
+<hr>
+<h1><strong>A.7 Product Amount Bounds</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Minimum Amount</th>
+<th align="right">Maximum Amount</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage</td>
+<td align="right">$75,000</td>
+<td align="right">$1,500,000</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">$1,000</td>
+<td align="right">$30,000</td>
+</tr>
+<tr>
+<td>Auto Loan</td>
+<td align="right">$5,000</td>
+<td align="right">$80,000</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">$1,000</td>
+<td align="right">$50,000</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">$10,000</td>
+<td align="right">$250,000</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>These bounds define the first-stage requested amount anchors by product. V2.0 mortgage requested amounts are further governed by mortgage tail smoothing and PTI-aware overlay logic before final output.</p>
+<hr>
+<h1><strong>A.8 Product Term Structures</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th>V2.0 Term Options</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage</td>
+<td>180, 240, 360 months</td>
+</tr>
+<tr>
+<td>Auto Loan</td>
+<td>36, 48, 60, 72, 84 months</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td>24, 36, 48, 60 months</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td>120, 180, 240 months</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td>Not applicable / no fixed amortizing term</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>Term structures are product-specific. Revolving products are handled through a payment proxy rather than a fixed amortizing term.</p>
+<hr>
+<h1><strong>A.9 Base APR Assumptions</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Base APR Proxy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage</td>
+<td align="right">6.00%</td>
+</tr>
+<tr>
+<td>Auto Loan</td>
+<td align="right">6.50%</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">11.00%</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">20.00%</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">8.00%</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>Base APR values are payment-burden anchors, not production pricing offers. Final APR used for payment calculation also reflects score-band risk premium, deterministic dispersion, rate environment shift, and product-specific floors / ceilings.</p>
+<hr>
+<h1><strong>A.10 APR Risk Premium by Score Band</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Score Band</th>
+<th align="right">V2.0 APR Risk Premium Range</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Super Prime</td>
+<td align="right">0.00% to 1.00%</td>
+</tr>
+<tr>
+<td>Prime</td>
+<td align="right">1.00% to 3.00%</td>
+</tr>
+<tr>
+<td>Near Prime</td>
+<td align="right">3.00% to 6.00%</td>
+</tr>
+<tr>
+<td>Subprime</td>
+<td align="right">6.00% to 10.00%</td>
+</tr>
+<tr>
+<td>Deep Subprime</td>
+<td align="right">10.00% to 15.00%</td>
+</tr>
+</tbody></table>
+<p>Additional APR dispersion:</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th align="right">V2.0 Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Deterministic pricing noise</td>
+<td align="right">Approximately ±1.00 percentage point</td>
+</tr>
+<tr>
+<td>Rate environment shift</td>
+<td align="right"><code>rate_shift_bps / 10,000</code></td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>APR increases directionally with weaker score bands while retaining within-band variation. The rate environment parameter allows scenario shifts such as <code>+200 bps</code>.</p>
+<hr>
+<h1><strong>A.11 Product APR Floors and Ceilings</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">APR Floor</th>
+<th align="right">APR Ceiling</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage</td>
+<td align="right">4.00%</td>
+<td align="right">10.00%</td>
+</tr>
+<tr>
+<td>Auto Loan</td>
+<td align="right">5.00%</td>
+<td align="right">22.00%</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">8.00%</td>
+<td align="right">35.00%</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">15.00%</td>
+<td align="right">35.00%</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">5.00%</td>
+<td align="right">15.00%</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>APR floors and ceilings prevent unrealistic pricing extremes. They are simulation bounds, not production pricing rules.</p>
+<hr>
+<h1><strong>A.12 Rate Environment Parameter</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th align="right">V2.0 Default</th>
+<th>Example Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>rate_shift_bps</code></td>
+<td align="right">0</td>
+<td>Baseline rate environment</td>
+</tr>
+<tr>
+<td><code>+100</code></td>
+<td align="right">N/A</td>
+<td>+1.00 percentage point rate shift</td>
+</tr>
+<tr>
+<td><code>+200</code></td>
+<td align="right">N/A</td>
+<td>+2.00 percentage point rate shift</td>
+</tr>
+<tr>
+<td><code>-100</code></td>
+<td align="right">N/A</td>
+<td>-1.00 percentage point rate shift</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p><code>rate_shift_bps</code> supports scenario sensitivity testing. It is not a macroeconomic forecast.</p>
+<hr>
+<h1><strong>A.13 Revolving Payment Parameters</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th align="right">V2.0 Default Value</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>revolving_base_min_payment_pct</code></td>
+<td align="right">2.00%</td>
+<td>Baseline monthly payment percentage applied to revolving requested amount</td>
+</tr>
+<tr>
+<td><code>revolving_interest_passthrough_factor</code></td>
+<td align="right">0.50</td>
+<td>Share of monthly APR pressure flowing into payment proxy</td>
+</tr>
+</tbody></table>
+<h3><strong>Conceptual Formula</strong></h3>
+<blockquote>
+<p><strong>Revolving payment proxy = requested amount × [base minimum-payment percentage + monthly APR pressure × passthrough factor]</strong></p>
+</blockquote>
+<p>Where:</p>
+<blockquote>
+<p><strong>monthly APR pressure = APR / 12</strong></p>
+</blockquote>
+<h3><strong>Interpretation</strong></h3>
+<p>This restores APR-sensitive revolving payment behavior while preserving the boundary that Module 1 is not a credit-card billing engine.</p>
+<hr>
+<h1><strong>A.14 Product LGD Assumptions</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">V2.0 LGD</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage</td>
+<td align="right">20%</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">25%</td>
+</tr>
+<tr>
+<td>Auto Loan</td>
+<td align="right">45%</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">70%</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">85%</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>LGD is intentionally product-level in Module 1. It supports secured versus unsecured severity contrast without introducing a full recovery model.</p>
+<hr>
+<h1><strong>A.15 Base Estimated-PD Proxy by Score Band</strong></h1>
+<table>
+<thead>
+<tr>
+<th>Score Band</th>
+<th align="right">Score Range</th>
+<th align="right">Base Estimated-PD Proxy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Super Prime</td>
+<td align="right">760–850</td>
+<td align="right">1.00%</td>
+</tr>
+<tr>
+<td>Prime</td>
+<td align="right">700–759</td>
+<td align="right">2.50%</td>
+</tr>
+<tr>
+<td>Near Prime</td>
+<td align="right">640–699</td>
+<td align="right">6.00%</td>
+</tr>
+<tr>
+<td>Subprime</td>
+<td align="right">580–639</td>
+<td align="right">14.00%</td>
+</tr>
+<tr>
+<td>Deep Subprime</td>
+<td align="right">500–579</td>
+<td align="right">26.00%</td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>These are base synthetic estimated-risk anchors before behavioral, affordability, product, and structural multipliers are applied. They are not calibrated production default probabilities.</p>
+<hr>
+<h1><strong>A.16 Behavioral Risk Multipliers</strong></h1>
+<h2><strong>A.16.1 Delinquency Count Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th align="right">Delinquency Count</th>
+<th align="right">Multiplier</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">0</td>
+<td align="right">1.00</td>
+</tr>
+<tr>
+<td align="right">1</td>
+<td align="right">1.20</td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td align="right">1.45</td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td align="right">1.75</td>
+</tr>
+<tr>
+<td align="right">4+</td>
+<td align="right">2.10</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.16.2 Major Derogatory and Bankruptcy Multipliers</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Driver</th>
+<th>Condition</th>
+<th align="right">Multiplier</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Major derogatory flag</td>
+<td>No</td>
+<td align="right">1.00</td>
+</tr>
+<tr>
+<td>Major derogatory flag</td>
+<td>Yes</td>
+<td align="right">1.60</td>
+</tr>
+<tr>
+<td>Bankruptcy flag</td>
+<td>No</td>
+<td align="right">1.00</td>
+</tr>
+<tr>
+<td>Bankruptcy flag</td>
+<td>Yes</td>
+<td align="right">1.85</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.16.3 Utilization Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Utilization Bucket</th>
+<th align="right">Multiplier</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&lt;10%</td>
+<td align="right">0.95</td>
+</tr>
+<tr>
+<td>10%–29%</td>
+<td align="right">1.00</td>
+</tr>
+<tr>
+<td>30%–49%</td>
+<td align="right">1.10</td>
+</tr>
+<tr>
+<td>50%–74%</td>
+<td align="right">1.25</td>
+</tr>
+<tr>
+<td>75%+</td>
+<td align="right">1.45</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.16.4 DTI Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th>DTI Bucket</th>
+<th align="right">Multiplier</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&lt;20%</td>
+<td align="right">0.95</td>
+</tr>
+<tr>
+<td>20%–34%</td>
+<td align="right">1.00</td>
+</tr>
+<tr>
+<td>35%–44%</td>
+<td align="right">1.10</td>
+</tr>
+<tr>
+<td>45%–54%</td>
+<td align="right">1.25</td>
+</tr>
+<tr>
+<td>55%+</td>
+<td align="right">1.45</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.16.5 Recent Inquiry Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th align="right">Recent Inquiry Count</th>
+<th align="right">Multiplier</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">0–1</td>
+<td align="right">1.00</td>
+</tr>
+<tr>
+<td align="right">2–3</td>
+<td align="right">1.05</td>
+</tr>
+<tr>
+<td align="right">4–5</td>
+<td align="right">1.12</td>
+</tr>
+<tr>
+<td align="right">6+</td>
+<td align="right">1.20</td>
+</tr>
+</tbody></table>
+<hr>
+<h1><strong>A.17 Credit Depth Multipliers</strong></h1>
+<h2><strong>A.17.1 Tradeline Count Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Tradeline Count</th>
+<th align="right">Multiplier</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1–2</td>
+<td align="right">1.12</td>
+<td>Thin-file / limited credit depth</td>
+</tr>
+<tr>
+<td>3–5</td>
+<td align="right">1.05</td>
+<td>Somewhat thin but acceptable</td>
+</tr>
+<tr>
+<td>6–12</td>
+<td align="right">1.00</td>
+<td>Neutral / mature baseline</td>
+</tr>
+<tr>
+<td>13–18</td>
+<td align="right">1.03</td>
+<td>Mild complexity</td>
+</tr>
+<tr>
+<td>19+</td>
+<td align="right">1.08</td>
+<td>Heavy file / complex account profile</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.17.2 Months Since Oldest Trade Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Months Since Oldest Trade</th>
+<th align="right">Multiplier</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&lt;12 months</td>
+<td align="right">1.18</td>
+<td>Very young file</td>
+</tr>
+<tr>
+<td>12–23 months</td>
+<td align="right">1.10</td>
+<td>Early-stage file</td>
+</tr>
+<tr>
+<td>24–59 months</td>
+<td align="right">1.05</td>
+<td>Moderately seasoned</td>
+</tr>
+<tr>
+<td>60+ months</td>
+<td align="right">1.00</td>
+<td>Fully seasoned baseline</td>
+</tr>
+</tbody></table>
+<hr>
+<h1><strong>A.18 Affordability and Product Multipliers</strong></h1>
+<h2><strong>A.18.1 PTI Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th>PTI Bucket</th>
+<th align="right">Multiplier</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&lt;5%</td>
+<td align="right">0.95</td>
+</tr>
+<tr>
+<td>5%–9%</td>
+<td align="right">1.00</td>
+</tr>
+<tr>
+<td>10%–14%</td>
+<td align="right">1.10</td>
+</tr>
+<tr>
+<td>15%–19%</td>
+<td align="right">1.25</td>
+</tr>
+<tr>
+<td>20%+</td>
+<td align="right">1.45</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.18.2 Amount-to-Income Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Amount-to-Income Bucket</th>
+<th align="right">Multiplier</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&lt;0.10</td>
+<td align="right">1.00</td>
+</tr>
+<tr>
+<td>0.10–0.29</td>
+<td align="right">1.03</td>
+</tr>
+<tr>
+<td>0.30–0.59</td>
+<td align="right">1.08</td>
+</tr>
+<tr>
+<td>0.60–0.99</td>
+<td align="right">1.15</td>
+</tr>
+<tr>
+<td>1.00+</td>
+<td align="right">1.25</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.18.3 Product Multiplier</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Multiplier</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mortgage</td>
+<td align="right">0.90</td>
+<td>Secured product; modest downward adjustment</td>
+</tr>
+<tr>
+<td>Auto Loan</td>
+<td align="right">1.00</td>
+<td>Baseline secured installment product</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">1.10</td>
+<td>Unsecured installment risk adjustment</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">1.12</td>
+<td>Behavior-sensitive unsecured revolving exposure</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">0.95</td>
+<td>Secured revolving exposure; mild downward adjustment</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.18.4 Deterministic Idiosyncratic Estimated-Risk Noise</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th align="right">V2.0 Range</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Deterministic risk noise factor</td>
+<td align="right">0.95 to 1.05</td>
+<td>Adds controlled row-level dispersion without stochastic instability</td>
+</tr>
+</tbody></table>
+<h3><strong>Implementation Concept</strong></h3>
+<blockquote>
+<p><strong>risk noise factor = 0.95 + deterministic uniform draw × 0.10</strong></p>
+</blockquote>
+<p>This prevents identical-looking rows from clustering too tightly while preserving deterministic reproducibility.</p>
+<hr>
+<h1><strong>A.19 Estimated-PD Proxy Soft-Saturation and Cap Governance</strong></h1>
+<h2><strong>A.19.1 Raw Estimated-PD Proxy Formula</strong></h2>
+<p>The raw estimated-PD proxy is calculated conceptually as:</p>
+<blockquote>
+<p><strong>raw estimated-PD proxy = base estimated-PD proxy × all applicable multipliers × deterministic risk noise</strong></p>
+</blockquote>
+<p>Where applicable multipliers include:</p>
+<ul>
+<li>delinquency count;</li>
+<li>major derogatory flag;</li>
+<li>bankruptcy flag;</li>
+<li>utilization;</li>
+<li>DTI;</li>
+<li>recent inquiries;</li>
+<li>tradeline count;</li>
+<li>file age;</li>
+<li>PTI;</li>
+<li>amount-to-income;</li>
+<li>product type;</li>
+<li>deterministic risk noise.</li>
+</ul>
+<hr>
+<h2><strong>A.19.2 Soft-Saturation Zones</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Raw Estimated-PD Proxy Zone</th>
+<th align="right">Threshold</th>
+<th>Saturation Zone</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Normal</td>
+<td align="right">≤30%</td>
+<td><code>NORMAL</code></td>
+</tr>
+<tr>
+<td>High</td>
+<td align="right">&gt;30% and ≤55%</td>
+<td><code>HIGH</code></td>
+</tr>
+<tr>
+<td>Extreme</td>
+<td align="right">&gt;55%</td>
+<td><code>EXTREME</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>A.19.3 Soft-Saturation Formula</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Raw Estimated-PD Proxy Range</th>
+<th>V2.0 Saturated Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>≤30%</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>&gt;30% and ≤55%</td>
+<td><code>0.30 + ((raw_pd - 0.30) × 0.50)</code></td>
+</tr>
+<tr>
+<td>&gt;55%</td>
+<td><code>0.425 + ((raw_pd - 0.55) × 0.15)</code></td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>V2.0 soft saturation reduces high-end compression before the final governance cap. It is designed to reduce excessive clustering near the 45% cap while preserving severe-risk differentiation.</p>
+<hr>
+<h2><strong>A.19.4 Final Estimated-PD Proxy Floor and Cap</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th align="right">V2.0 Value</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Floor</td>
+<td align="right">0.50%</td>
+<td>Prevents unrealistically tiny estimated-PD proxy values</td>
+</tr>
+<tr>
+<td>Cap</td>
+<td align="right">45.00%</td>
+<td>Simulation guardrail to prevent runaway tail values</td>
+</tr>
+</tbody></table>
+<h3><strong>Final Governance Concept</strong></h3>
+<blockquote>
+<p><strong>final estimated-PD proxy = min(45%, max(0.50%, saturated estimated-PD proxy))</strong></p>
+</blockquote>
+<h3><strong>Boundary</strong></h3>
+<p>The 45% cap is a simulation guardrail, not a calibrated production default-rate ceiling.</p>
+<hr>
+<h1><strong>A.20 Mortgage V2.0 Affordability Governance Reference</strong></h1>
+<p>Because Workstream A is a major V2.0 enhancement, I recommend including this as part of Appendix A as well.</p>
+<h2><strong>A.20.1 A2 Mortgage Amount-to-Income Tail Smoothing</strong></h2>
+<p>Let:</p>
+<blockquote>
+<p><strong>r = mortgage candidate amount ÷ annual income</strong></p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Mortgage Candidate Amount-to-Income Ratio</th>
+<th>Zone</th>
+<th>Smoothing Factor</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>r ≤ 3.75</td>
+<td><code>NORMAL</code></td>
+<td>1.00</td>
+</tr>
+<tr>
+<td>3.75 &lt; r ≤ 4.75</td>
+<td><code>UPPER_MID_TAIL</code></td>
+<td><code>1.00 - ((r - 3.75) × 0.08)</code></td>
+</tr>
+<tr>
+<td>r &gt; 4.75</td>
+<td><code>EXTREME_TAIL</code></td>
+<td><code>max(0.85, 0.92 - ((r - 4.75) × 0.04))</code></td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>This layer reduces unrealistic large-balance mortgage exposure relative to income while preserving valid high-capacity borrowers.</p>
+<hr>
+<h2><strong>A.20.2 A3 Mortgage PTI-Aware Dampener</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Provisional Mortgage PTI</th>
+<th>Zone</th>
+<th>Dampener Factor</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PTI ≤ 45%</td>
+<td><code>NORMAL</code></td>
+<td>1.00</td>
+</tr>
+<tr>
+<td>45% &lt; PTI ≤ 60%</td>
+<td><code>HOT</code></td>
+<td><code>1.00 - (((PTI - 0.45) / 0.15) × 0.03)</code></td>
+</tr>
+<tr>
+<td>PTI &gt; 60%</td>
+<td><code>EXTREME_HOT</code></td>
+<td><code>max(0.94, 0.97 - ((PTI - 0.60) × 0.05))</code></td>
+</tr>
+</tbody></table>
+<h3><strong>Interpretation</strong></h3>
+<p>This layer is intentionally light. It is designed to clean up the hottest mortgage affordability edge cases after the A2 amount-to-income smoothing layer has already governed the main exposure tail.</p>
+<hr>
+<h1><strong>A.21 Recommended Final Appendix A Note</strong></h1>
+<p>I would close Appendix A with this note:</p>
+<blockquote>
+<p>The values in Appendix A represent the default V2.0 configuration and estimated-risk reference assumptions used by Module 1. They are included for transparency, auditability, and implementation traceability. They should not be interpreted as production underwriting policy, empirical default calibration, pricing guidance, or institution-specific risk appetite. Any change to these assumptions should be treated as a governed parameter change and reviewed through the QA and validation framework described in Section 10.</p>
+</blockquote>
+<hr>
+<h2>What changed from my earlier placeholder recommendation</h2>
+<p>Here is how the <code>[V2.0 values]</code> placeholders resolve:</p>
+<table>
+<thead>
+<tr>
+<th>Placeholder Area</th>
+<th>Actual V2.0 Values Now Identified</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Base estimated-PD proxy by score band</td>
+<td>1.00%, 2.50%, 6.00%, 14.00%, 26.00%</td>
+</tr>
+<tr>
+<td>Delinquency multipliers</td>
+<td>1.00, 1.20, 1.45, 1.75, 2.10</td>
+</tr>
+<tr>
+<td>Utilization multipliers</td>
+<td>0.95, 1.00, 1.10, 1.25, 1.45</td>
+</tr>
+<tr>
+<td>DTI multipliers</td>
+<td>0.95, 1.00, 1.10, 1.25, 1.45</td>
+</tr>
+<tr>
+<td>Derogatory / bankruptcy multipliers</td>
+<td>1.60 and 1.85</td>
+</tr>
+<tr>
+<td>Inquiry multipliers</td>
+<td>1.00, 1.05, 1.12, 1.20</td>
+</tr>
+<tr>
+<td>Tradeline multipliers</td>
+<td>1.12, 1.05, 1.00, 1.03, 1.08</td>
+</tr>
+<tr>
+<td>File-age multipliers</td>
+<td>1.18, 1.10, 1.05, 1.00</td>
+</tr>
+<tr>
+<td>PTI multipliers</td>
+<td>0.95, 1.00, 1.10, 1.25, 1.45</td>
+</tr>
+<tr>
+<td>Amount-to-income multipliers</td>
+<td>1.00, 1.03, 1.08, 1.15, 1.25</td>
+</tr>
+<tr>
+<td>Product multipliers</td>
+<td>Mortgage 0.90, Auto 1.00, Personal 1.10, Revolving 1.12, HELOC 0.95</td>
+</tr>
+<tr>
+<td>Soft-saturation thresholds</td>
+<td>Normal ≤30%, High 30–55%, Extreme &gt;55%</td>
+</tr>
+<tr>
+<td>Soft-saturation slopes</td>
+<td>High-zone 0.50, Extreme-zone 0.15</td>
+</tr>
+<tr>
+<td>Final estimated-PD proxy floor/cap</td>
+<td>0.50% floor, 45.00% cap</td>
+</tr>
+<tr>
+<td>LGD assumptions</td>
+<td>Mortgage 20%, HELOC 25%, Auto 45%, Personal 70%, Revolving 85%</td>
+</tr>
+<tr>
+<td>Product mix</td>
+<td>30%, 25%, 20%, 15%, 10%</td>
+</tr>
+<tr>
+<td>Score mix</td>
+<td>18%, 28%, 24%, 18%, 12%</td>
+</tr>
+<tr>
+<td>Rate environment</td>
+<td>baseline 0 bps, scenario examples ±100 / +200 bps</td>
+</tr>
+<tr>
+<td>Revolving payment parameters</td>
+<td>2.00% base minimum-payment component, 0.50 APR passthrough factor</td>
+</tr>
+<tr>
+<td>Mortgage A2 thresholds</td>
+<td>3.75 and 4.75 amount-to-income zones</td>
+</tr>
+<tr>
+<td>Mortgage A3 thresholds</td>
+<td>45% and 60% provisional PTI zones</td>
+</tr>
+</tbody></table>
+</div></article><article id="c037-m00413" class="message user"><div class="role">Andrew</div><p class="meta">C037-M00413 · 2026-05-05T08:26:23.067000-04:00 · active path</p><div class="body"><p>Great detail! Provide the same elite level detail for Appendix B — SQL Implementation Guidance &amp; Section Map </p>
+</div></article><article id="c037-m00425" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C037-M00425 · 2026-05-05T08:32:07.849208-04:00 · active path</p><div class="body"><p>Below is a <strong>ready-to-paste Appendix B</strong> at the same level of detail as Appendix A.</p>
+<p>This appendix restores and elevates the useful V1.0 implementation-guidance concept while aligning it to the V2.0 architecture: staged materialization, deterministic generation, scenario archiving, workstream diagnostics, estimated-PD proxy framing, and Section 9 / Section 10 QA structure. The current V2.0 BRD already defines QA, parameter governance, scenario architecture, and output interpretation in the body; this appendix gives reviewers a compact implementation map tying the BRD to the SQL artifact. fileciteturn35file0turn35file1</p>
+<hr>
+<h1><strong>Appendix B — SQL Implementation Guidance &amp; Section Map</strong></h1>
+<h2><strong>B.1 Purpose</strong></h2>
+<p>This appendix documents the SQL implementation structure for Module 1 V2.0.</p>
+<p>The purpose is to make the SQL script reviewable as a governed system artifact, not merely as executable code. Module 1 is intentionally written as a <strong>teaching, audit, and implementation artifact</strong> with extensive commentary, staged transformations, deterministic controls, validation gates, scenario archiving, and embedded QA queries.</p>
+<p>This appendix supports:</p>
+<ul>
+<li>implementation transparency;</li>
+<li>reviewer onboarding;</li>
+<li>audit traceability;</li>
+<li>future maintenance;</li>
+<li>parameter-change governance;</li>
+<li>scenario comparison;</li>
+<li>and alignment between the SQL code, BRD, and Validation Summary.</li>
+</ul>
+<p>The SQL implementation is expected to remain readable, explainable, and directly traceable to the system design documented in this BRD.</p>
+<hr>
+<h2><strong>B.2 Implementation Philosophy</strong></h2>
+<p>The SQL implementation follows the same design principles as the broader Module 1 system.</p>
+<table>
+<thead>
+<tr>
+<th>Implementation Principle</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Parameterized over hard-coded</strong></td>
+<td>Core assumptions are centralized in the parameter table rather than embedded throughout downstream logic</td>
+</tr>
+<tr>
+<td><strong>Deterministic over stochastic</strong></td>
+<td>Synthetic randomness is generated through deterministic hash-based pseudo-random values, not session-level <code>random()</code></td>
+</tr>
+<tr>
+<td><strong>Staged over monolithic</strong></td>
+<td>The build is broken into clear temporary materialization stages rather than one opaque query</td>
+</tr>
+<tr>
+<td><strong>Product-aware over generic</strong></td>
+<td>Product structure drives amount, term, APR, payment, PTI, LGD, and downstream estimated-risk behavior</td>
+</tr>
+<tr>
+<td><strong>Diagnostic over opaque</strong></td>
+<td>Intermediate fields are surfaced to explain mortgage dampening, estimated-PD proxy saturation, and scenario movement</td>
+</tr>
+<tr>
+<td><strong>Scenario-comparable over isolated</strong></td>
+<td>Scenario metadata and archive persistence allow matched row-level comparison</td>
+</tr>
+<tr>
+<td><strong>QA-integrated over post-hoc</strong></td>
+<td>QA and validation queries are embedded directly in the script as part of the implementation artifact</td>
+</tr>
+<tr>
+<td><strong>Boundary-aware over overclaimed</strong></td>
+<td>Code commentary explicitly distinguishes simulation outputs from production underwriting, pricing, billing, or calibrated default modeling</td>
+</tr>
+</tbody></table>
+<p>This philosophy ensures the code can be reviewed by technical, business, validation, and governance stakeholders.</p>
+<hr>
+<h2><strong>B.3 SQL Object Inventory</strong></h2>
+<p>The implementation uses a controlled set of schemas, temporary tables, permanent tables, archive tables, and QA queries.</p>
+<table>
+<thead>
+<tr>
+<th>Object / Object Family</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>credit_decisioning_sim</code></td>
+<td>Schema</td>
+<td>Dedicated namespace for Module 1 outputs</td>
+</tr>
+<tr>
+<td><code>tmp_module1_params</code></td>
+<td>Temporary parameter table</td>
+<td>Centralized configuration layer for scenario identity, product mix, score mix, bounds, APR, LGD, and payment assumptions</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_1_population</code></td>
+<td>Temporary stage table</td>
+<td>Base synthetic application skeleton and deterministic seed values</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_2_borrower_profile</code></td>
+<td>Temporary stage table</td>
+<td>Borrower characteristics and behavioral risk signals</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_3_product_structuring</code></td>
+<td>Temporary stage table</td>
+<td>Requested amount, APR, term, payment proxy, PTI, and affordability structure</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_4_risk</code></td>
+<td>Temporary stage table</td>
+<td>Estimated-PD proxy, LGD, and Expected Loss inputs</td>
+</tr>
+<tr>
+<td><code>credit_decisioning_sim.synthetic_applications</code></td>
+<td>Permanent latest-run output table</td>
+<td>Final application-level synthetic output for the current run</td>
+</tr>
+<tr>
+<td><code>credit_decisioning_sim.synthetic_applications_scenario_archive</code></td>
+<td>Permanent scenario archive table</td>
+<td>Stores completed scenario runs for comparison</td>
+</tr>
+<tr>
+<td>Section 9 QA queries</td>
+<td>Review query suite</td>
+<td>Validates single-run realism, structure, distribution, workstream behavior, and edge cases</td>
+</tr>
+<tr>
+<td>Section 10 scenario comparison queries</td>
+<td>Review query suite</td>
+<td>Compares archived scenarios at portfolio, segment, and row levels</td>
+</tr>
+</tbody></table>
+<p>This object structure supports both latest-run analysis and multi-scenario archive comparison.</p>
+<hr>
+<h2><strong>B.4 SQL Section Map</strong></h2>
+<p>The SQL implementation is organized into major sections. Each section has a defined purpose and governance role.</p>
+<table>
+<thead>
+<tr>
+<th>SQL Section</th>
+<th>Section Name</th>
+<th>Purpose</th>
+<th>Primary Outputs / Effects</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>0</strong></td>
+<td>Schema Setup</td>
+<td>Creates and sets the dedicated simulation schema</td>
+<td><code>credit_decisioning_sim</code> schema and search path</td>
+</tr>
+<tr>
+<td><strong>1</strong></td>
+<td>Reset / Clean Rerun</td>
+<td>Drops latest-run output and temporary stage tables for clean rerun behavior</td>
+<td>Removes prior latest-run outputs and intermediate temp objects</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td>User Parameters</td>
+<td>Defines centralized configuration assumptions</td>
+<td><code>tmp_module1_params</code></td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td>Validation Gatekeeper</td>
+<td>Performs fail-fast parameter validation before data generation</td>
+<td>Halts execution if invalid assumptions are detected</td>
+</tr>
+<tr>
+<td><strong>4</strong></td>
+<td>Base Application Skeleton + Deterministic Seed Values</td>
+<td>Creates synthetic application IDs and deterministic uniform values</td>
+<td><code>tmp_m1_stage_1_population</code></td>
+</tr>
+<tr>
+<td><strong>5</strong></td>
+<td>Product &amp; Score Segment Assignment</td>
+<td>Assigns product type and score band using configured mix weights</td>
+<td>Product and score-band segmentation</td>
+</tr>
+<tr>
+<td><strong>6</strong></td>
+<td>Borrower Profile Feature Generation</td>
+<td>Generates borrower attributes and behavioral risk signals</td>
+<td><code>tmp_m1_stage_2_borrower_profile</code></td>
+</tr>
+<tr>
+<td><strong>7</strong></td>
+<td>Product Structuring — Amount, APR, Payment, PTI</td>
+<td>Generates requested amount, APR, payment proxy, PTI, and affordability fields</td>
+<td><code>tmp_m1_stage_3_product_structuring</code></td>
+</tr>
+<tr>
+<td><strong>8</strong></td>
+<td>Risk Modeling — Estimated-PD Proxy, LGD, Expected Loss</td>
+<td>Generates estimated-PD proxy, LGD, and expected-loss inputs</td>
+<td><code>tmp_m1_stage_4_risk</code></td>
+</tr>
+<tr>
+<td><strong>8.5</strong></td>
+<td>Scenario Archive / Run Persistence</td>
+<td>Stores latest run in governed scenario archive if enabled</td>
+<td><code>synthetic_applications_scenario_archive</code></td>
+</tr>
+<tr>
+<td><strong>9</strong></td>
+<td>QA / Review Queries</td>
+<td>Provides single-run validation and diagnostic review</td>
+<td>Portfolio, product, score, PTI, tail, and workstream QA outputs</td>
+</tr>
+<tr>
+<td><strong>10</strong></td>
+<td>Scenario Comparison QA</td>
+<td>Compares archived scenario outputs</td>
+<td>Scenario inventory, deltas, and matched row-level comparison</td>
+</tr>
+</tbody></table>
+<p>This map should remain current as the SQL evolves.</p>
+<hr>
+<h2><strong>B.5 Section 0 — Schema Setup</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Establish a dedicated schema for Module 1 simulation outputs.</p>
+<h3><strong>Implementation Standard</strong></h3>
+<p>The script should create and use:</p>
+<blockquote>
+<p><code>credit_decisioning_sim</code></p>
+</blockquote>
+<h3><strong>Governance Rationale</strong></h3>
+<p>A dedicated schema:</p>
+<ul>
+<li>isolates simulation objects from unrelated database objects;</li>
+<li>avoids naming collisions;</li>
+<li>makes cleanup and review easier;</li>
+<li>supports repeatable execution;</li>
+<li>and gives reviewers a clear namespace for Module 1 artifacts.</li>
+</ul>
+<h3><strong>Expected Behavior</strong></h3>
+<p>The script should safely create the schema if it does not already exist and set the session search path to use the simulation schema first.</p>
+<hr>
+<h2><strong>B.6 Section 1 — Reset / Clean Rerun</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Ensure each script execution starts from a clean latest-run state.</p>
+<h3><strong>Implementation Standard</strong></h3>
+<p>The reset section should remove:</p>
+<ul>
+<li>the latest-run output table;</li>
+<li>temporary stage tables;</li>
+<li>and any other transient execution objects used by the build.</li>
+</ul>
+<h3><strong>Expected Reset Targets</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Object</th>
+<th>Reset Behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>credit_decisioning_sim.synthetic_applications</code></td>
+<td>Dropped and recreated each run</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_1_population</code></td>
+<td>Dropped if present</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_2_borrower_profile</code></td>
+<td>Dropped if present</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_3_product_structuring</code></td>
+<td>Dropped if present</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_4_risk</code></td>
+<td>Dropped if present</td>
+</tr>
+</tbody></table>
+<h3><strong>Governance Rationale</strong></h3>
+<p>The latest-run table should represent only the current completed execution. This prevents silent mixing of outputs across different parameter sets or scenarios.</p>
+<p>Scenario history should be preserved through the scenario archive, not through repeated accumulation in the latest-run output table.</p>
+<hr>
+<h2><strong>B.7 Section 2 — User Parameters</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Provide a centralized configuration layer for all major simulation assumptions.</p>
+<h3><strong>Implementation Standard</strong></h3>
+<p>User-adjustable assumptions should be inserted into:</p>
+<blockquote>
+<p><code>tmp_module1_params</code></p>
+</blockquote>
+<h3><strong>Parameter Families</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter Family</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Scenario archive / comparison controls</td>
+<td>Define scenario set, scenario name, archive behavior, and comparison grouping</td>
+</tr>
+<tr>
+<td>Run identity / reproducibility</td>
+<td>Define <code>population_id</code> and related deterministic controls</td>
+</tr>
+<tr>
+<td>Population size / time window</td>
+<td>Define application count and simulated application period</td>
+</tr>
+<tr>
+<td>Product mix</td>
+<td>Define product composition</td>
+</tr>
+<tr>
+<td>Score mix</td>
+<td>Define borrower quality composition</td>
+</tr>
+<tr>
+<td>Structural limits / baseline economics</td>
+<td>Define score bounds, income bounds, DTI bounds, utilization bounds, amount bounds, base rates, and LGD</td>
+</tr>
+<tr>
+<td>Macro / rate environment</td>
+<td>Define <code>rate_shift_bps</code></td>
+</tr>
+<tr>
+<td>Revolving payment assumptions</td>
+<td>Define APR-sensitive revolving payment behavior</td>
+</tr>
+</tbody></table>
+<h3><strong>Design Standard</strong></h3>
+<p>Users should first attempt controlled changes through the parameter layer before modifying downstream SQL logic.</p>
+<h3><strong>Governance Guidance</strong></h3>
+<p>Parameter changes should be made one family at a time when possible. After each material change, users should rerun Section 9 QA before making additional logic changes.</p>
+<hr>
+<h2><strong>B.8 Section 3 — Validation Gatekeeper</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Stop the script before data generation if parameters are invalid, inconsistent, or outside governed bounds.</p>
+<h3><strong>Implementation Standard</strong></h3>
+<p>The validation gatekeeper should use fail-fast logic to prevent misleading outputs from being produced under invalid assumptions.</p>
+<h3><strong>Required Validation Checks</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Validation Gate</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Application count &gt; 0</td>
+<td>Prevents empty or invalid population generation</td>
+</tr>
+<tr>
+<td>Portfolio start date ≤ end date</td>
+<td>Ensures valid simulated application window</td>
+</tr>
+<tr>
+<td>Product mix sums to 1.00</td>
+<td>Ensures valid portfolio composition</td>
+</tr>
+<tr>
+<td>Score mix sums to 1.00</td>
+<td>Ensures valid borrower quality composition</td>
+</tr>
+<tr>
+<td>Min credit score &lt; max credit score</td>
+<td>Ensures valid score range</td>
+</tr>
+<tr>
+<td>Income floor &gt; 0 and &lt; income cap</td>
+<td>Ensures plausible income bounds</td>
+</tr>
+<tr>
+<td>DTI lower / upper bounds valid</td>
+<td>Prevents impossible DTI values</td>
+</tr>
+<tr>
+<td>Utilization lower / upper bounds valid</td>
+<td>Prevents impossible utilization values</td>
+</tr>
+<tr>
+<td>Product amount min &lt; max</td>
+<td>Ensures valid product amount ranges</td>
+</tr>
+<tr>
+<td>Product base APRs &gt; 0</td>
+<td>Prevents invalid pricing inputs</td>
+</tr>
+<tr>
+<td>LGD values between 0 and 1</td>
+<td>Ensures valid severity assumptions</td>
+</tr>
+<tr>
+<td>Revolving base payment percentage between 0 and 10%</td>
+<td>Prevents unrealistic minimum-payment assumptions</td>
+</tr>
+<tr>
+<td>Revolving APR passthrough factor between 0 and 1</td>
+<td>Prevents APR sensitivity from exceeding modeled interest pressure</td>
+</tr>
+</tbody></table>
+<h3><strong>Governance Rationale</strong></h3>
+<p>The validation gatekeeper protects the system from silent parameter failure. A failed run is preferable to a completed run with distorted economics.</p>
+<hr>
+<h2><strong>B.9 Section 4 — Base Application Skeleton and Deterministic Seed Values</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Create the base synthetic application population and deterministic uniform values used throughout the simulation.</p>
+<h3><strong>Implementation Standard</strong></h3>
+<p>The engine should not use session-randomized functions such as <code>random()</code> for core generation.</p>
+<p>Instead, deterministic pseudo-random values should be generated using stable hash logic tied to:</p>
+<ul>
+<li>application identity;</li>
+<li><code>population_id</code>;</li>
+<li>and deterministic key suffixes.</li>
+</ul>
+<h3><strong>Design Rationale</strong></h3>
+<p>This enables:</p>
+<ul>
+<li>identical outputs under identical inputs;</li>
+<li>stable QA results;</li>
+<li>row-level debugging;</li>
+<li>matched scenario comparison;</li>
+<li>and reproducible validation evidence.</li>
+</ul>
+<h3><strong>Expected Output</strong></h3>
+<p>This section should produce the first stage table:</p>
+<blockquote>
+<p><code>tmp_m1_stage_1_population</code></p>
+</blockquote>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>This is the reproducibility foundation of the engine. If this section is not stable, scenario comparison and QA traceability are not reliable.</p>
+<hr>
+<h2><strong>B.10 Section 4–5 Stage Materialization</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Materialize the first stage of the pipeline into a temporary table before continuing downstream transformations.</p>
+<h3><strong>Implementation Standard</strong></h3>
+<p>V2.0 uses staged temporary tables rather than one very large monolithic query.</p>
+<h3><strong>Rationale</strong></h3>
+<p>Staged materialization improves:</p>
+<ul>
+<li>readability;</li>
+<li>maintainability;</li>
+<li>debugging;</li>
+<li>PostgreSQL planner stability;</li>
+<li>performance;</li>
+<li>and reviewer comprehension.</li>
+</ul>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>Staging is not merely a performance choice. It is an auditability choice. Each stage can be inspected if outputs behave unexpectedly.</p>
+<hr>
+<h2><strong>B.11 Section 5 — Product &amp; Score Segment Assignment</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Assign product type and score band to each synthetic application using configured product and score mix assumptions.</p>
+<h3><strong>Implementation Standard</strong></h3>
+<p>Product and score assignment should be deterministic and driven by configured cumulative mix thresholds.</p>
+<h3><strong>Expected Behavior</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Assignment Area</th>
+<th>Expected Behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Product type</td>
+<td>Reflects configured product weights</td>
+</tr>
+<tr>
+<td>Score band</td>
+<td>Reflects configured score-band weights</td>
+</tr>
+<tr>
+<td>Assignment stability</td>
+<td>Remains identical under identical <code>population_id</code> and parameters</td>
+</tr>
+<tr>
+<td>Scenario comparability</td>
+<td>Remains stable when scenarios are intended to compare the same borrower population</td>
+</tr>
+</tbody></table>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>This section establishes the foundational portfolio structure. Workstream enhancements should not unintentionally alter product or score distributions unless a scenario explicitly changes those assumptions.</p>
+<hr>
+<h2><strong>B.12 Section 6 — Borrower Profile Feature Generation</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Generate borrower-like attributes and behavioral risk signals.</p>
+<h3><strong>Expected Output</strong></h3>
+<p>This section materializes:</p>
+<blockquote>
+<p><code>tmp_m1_stage_2_borrower_profile</code></p>
+</blockquote>
+<h3><strong>Generated Feature Families</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Feature Family</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Credit quality</td>
+<td>credit score, score band</td>
+</tr>
+<tr>
+<td>Capacity</td>
+<td>income, DTI</td>
+</tr>
+<tr>
+<td>Revolving behavior</td>
+<td>utilization</td>
+</tr>
+<tr>
+<td>Credit history depth</td>
+<td>tradeline count, months since oldest trade</td>
+</tr>
+<tr>
+<td>Recent activity</td>
+<td>inquiry count</td>
+</tr>
+<tr>
+<td>Adverse performance signals</td>
+<td>delinquency count, major derogatory flag, bankruptcy flag</td>
+</tr>
+<tr>
+<td>Customer relationship signals</td>
+<td>prequalified flag, returning customer flag</td>
+</tr>
+</tbody></table>
+<h3><strong>Design Standard</strong></h3>
+<p>Borrower characteristics should be correlated with score band directionally, but not deterministically.</p>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>The system should preserve realistic overlap. Stronger score bands should generally look stronger, but mixed-signal cases must remain possible.</p>
+<hr>
+<h2><strong>B.13 Section 7 — Product Structuring: Amount, APR, Payment, PTI</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Translate borrower and product context into requested amount, APR proxy, payment burden, PTI, and affordability structure.</p>
+<h3><strong>Expected Output</strong></h3>
+<p>This section materializes:</p>
+<blockquote>
+<p><code>tmp_m1_stage_3_product_structuring</code></p>
+</blockquote>
+<h3><strong>Core Sub-Layers</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Sub-Layer</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Amount and APR base</td>
+<td>Establish product-conditioned requested amount and APR anchor</td>
+</tr>
+<tr>
+<td>Mortgage tail smoothing</td>
+<td>Apply Workstream A2 amount-to-income tail governance</td>
+</tr>
+<tr>
+<td>Mortgage pre-floor</td>
+<td>Preserve post-A2 mortgage amount before PTI overlay</td>
+</tr>
+<tr>
+<td>APR bounding</td>
+<td>Apply product-level APR floors and ceilings</td>
+</tr>
+<tr>
+<td>Mortgage provisional payment</td>
+<td>Calculate provisional mortgage payment for PTI overlay logic</td>
+</tr>
+<tr>
+<td>Mortgage provisional PTI</td>
+<td>Convert provisional payment into affordability stress</td>
+</tr>
+<tr>
+<td>Mortgage PTI overlay</td>
+<td>Apply Workstream A3 PTI-aware dampener for hot mortgage cases</td>
+</tr>
+<tr>
+<td>Mortgage finalized</td>
+<td>Apply final mortgage amount floors / ceilings</td>
+</tr>
+<tr>
+<td>Payment and PTI finalization</td>
+<td>Generate final payment proxy and PTI</td>
+</tr>
+</tbody></table>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>Section 7 is where product structure becomes affordability burden.</p>
+<p>This is the operational implementation of the BRD chain:</p>
+<blockquote>
+<p><strong>Product Structure → APR → Payment → PTI</strong></p>
+</blockquote>
+<h3><strong>Workstream A Implementation Role</strong></h3>
+<p>This section implements the V2.0 mortgage realism enhancements:</p>
+<ul>
+<li>A2 amount-to-income tail smoothing;</li>
+<li>A3 PTI-aware overlay;</li>
+<li>mortgage diagnostic fields;</li>
+<li>final requested amount governance.</li>
+</ul>
+<h3><strong>Workstream D Implementation Role</strong></h3>
+<p>This section also implements the APR-sensitive revolving payment proxy, restoring:</p>
+<blockquote>
+<p><strong>APR → Payment → PTI</strong></p>
+</blockquote>
+<p>for revolving products.</p>
+<hr>
+<h2><strong>B.14 Section 8 — Risk Modeling: Estimated-PD Proxy, LGD, Expected Loss</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Translate borrower characteristics, behavioral risk signals, product structure, and affordability stress into:</p>
+<ul>
+<li>estimated-PD proxy;</li>
+<li>LGD;</li>
+<li>Expected Loss.</li>
+</ul>
+<h3><strong>Expected Output</strong></h3>
+<p>This section materializes:</p>
+<blockquote>
+<p><code>tmp_m1_stage_4_risk</code></p>
+</blockquote>
+<h3><strong>Risk Translation Logic</strong></h3>
+<p>The estimated-PD proxy framework should:</p>
+<ol>
+<li>assign a base estimated-PD proxy by score band;</li>
+<li>apply interpretable behavioral and structural multipliers;</li>
+<li>apply V2.0 soft-saturation logic;</li>
+<li>apply final floor and cap controls;</li>
+<li>attach product-level LGD;</li>
+<li>calculate Expected Loss.</li>
+</ol>
+<h3><strong>Boundary</strong></h3>
+<p><code>estimated_pd</code> is a synthetic estimated-PD proxy, not a calibrated production default model.</p>
+<h3><strong>Workstream B Implementation Role</strong></h3>
+<p>Section 8 implements Workstream B:</p>
+<ul>
+<li>raw estimated-PD proxy before saturation;</li>
+<li>saturation zone;</li>
+<li>saturation factor;</li>
+<li>estimated-PD proxy after saturation;</li>
+<li>final governed estimated-PD proxy.</li>
+</ul>
+<h3><strong>Expected Loss Formula</strong></h3>
+<blockquote>
+<p><strong>Expected Loss = requested_amount × estimated-PD proxy × LGD</strong></p>
+</blockquote>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>This section is the risk translation layer. It should remain transparent, bounded, and auditable.</p>
+<hr>
+<h2><strong>B.15 Final Output Shape</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Create the final latest-run output table.</p>
+<h3><strong>Final Output Table</strong></h3>
+<blockquote>
+<p><code>credit_decisioning_sim.synthetic_applications</code></p>
+</blockquote>
+<h3><strong>Required Output Categories</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Output Category</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Version and scenario metadata</td>
+<td>model version, scenario set, scenario name, population ID, anchor date</td>
+</tr>
+<tr>
+<td>Row identity</td>
+<td>application sequence, application ID, applicant ID, application date</td>
+</tr>
+<tr>
+<td>Product and borrower attributes</td>
+<td>product type, score band, credit score, income, DTI, utilization</td>
+</tr>
+<tr>
+<td>Behavioral signals</td>
+<td>tradelines, file age, inquiries, delinquencies, derogatory, bankruptcy</td>
+</tr>
+<tr>
+<td>Product structure</td>
+<td>requested amount, term, APR proxy</td>
+</tr>
+<tr>
+<td>Mortgage diagnostics</td>
+<td>candidate amount, smoothing zone, smoothing factor, provisional payment, provisional PTI, dampener zone, dampener factor</td>
+</tr>
+<tr>
+<td>Affordability outputs</td>
+<td>monthly payment proxy, PTI, amount-to-income ratio</td>
+</tr>
+<tr>
+<td>Estimated-risk components</td>
+<td>base estimated-PD proxy, multipliers, raw estimated-PD proxy, saturation zone, saturation factor, final estimated-PD proxy</td>
+</tr>
+<tr>
+<td>Severity and loss</td>
+<td>LGD, Expected Loss</td>
+</tr>
+<tr>
+<td>Audit fields</td>
+<td>created timestamp</td>
+</tr>
+</tbody></table>
+<h3><strong>Indexing Standard</strong></h3>
+<p>The final output table should include indexes supporting common QA patterns:</p>
+<table>
+<thead>
+<tr>
+<th>Index Purpose</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Product-level QA</td>
+<td><code>product_type</code></td>
+</tr>
+<tr>
+<td>Score-band QA</td>
+<td><code>score_band</code></td>
+</tr>
+<tr>
+<td>Product × score-band QA</td>
+<td><code>product_type</code>, <code>score_band</code></td>
+</tr>
+</tbody></table>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>The final output table should expose enough detail to support both executive summaries and row-level diagnostic review.</p>
+<hr>
+<h2><strong>B.16 Section 8.5 — Scenario Archive / Run Persistence</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Preserve completed runs so users can compare multiple scenarios after execution.</p>
+<h3><strong>Archive Table</strong></h3>
+<blockquote>
+<p><code>credit_decisioning_sim.synthetic_applications_scenario_archive</code></p>
+</blockquote>
+<h3><strong>Archive Design</strong></h3>
+<p>The archive table should mirror the latest-run output structure and add an archive timestamp.</p>
+<h3><strong>Archive Controls</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>archive_run_flag</code></td>
+<td>Determines whether the current run is archived</td>
+</tr>
+<tr>
+<td><code>archive_reset_mode = NONE</code></td>
+<td>Preserves existing archive rows</td>
+</tr>
+<tr>
+<td><code>archive_reset_mode = SCENARIO_ONLY</code></td>
+<td>Replaces only the current scenario within the scenario set and population</td>
+</tr>
+<tr>
+<td><code>archive_reset_mode = SET_ONLY</code></td>
+<td>Clears all scenarios in the current scenario set for the current population</td>
+</tr>
+<tr>
+<td><code>archive_reset_mode = ALL</code></td>
+<td>Clears the full archive table</td>
+</tr>
+</tbody></table>
+<h3><strong>Recommended Default</strong></h3>
+<p>For ordinary reruns of a scenario:</p>
+<blockquote>
+<p><code>SCENARIO_ONLY</code></p>
+</blockquote>
+<h3><strong>Scenario Archive Indexes</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Index Purpose</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Scenario inventory and retrieval</td>
+<td>scenario set, scenario name, population ID</td>
+</tr>
+<tr>
+<td>Matched row comparison</td>
+<td>scenario set, population ID, application ID</td>
+</tr>
+<tr>
+<td>Segment scenario comparison</td>
+<td>scenario set, scenario name, population ID, product type, score band</td>
+</tr>
+</tbody></table>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>The latest-run table is intentionally simple and overwritten each run. The scenario archive is the governed history layer.</p>
+<hr>
+<h2><strong>B.17 Section 9 — Single-Run QA / Review Queries</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Provide the embedded QA framework for validating one completed scenario output.</p>
+<h3><strong>Core Principle</strong></h3>
+<p>A successful SQL run is not sufficient. Section 9 exists to prove that the output behaves plausibly.</p>
+<h3><strong>Section 9 QA Map</strong></h3>
+<table>
+<thead>
+<tr>
+<th>QA Section</th>
+<th>QA Name</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>9.1</strong></td>
+<td>Record Count</td>
+<td>Confirms expected row count</td>
+</tr>
+<tr>
+<td><strong>9.2</strong></td>
+<td>Product Mix</td>
+<td>Confirms product assignment aligns with configured weights</td>
+</tr>
+<tr>
+<td><strong>9.3</strong></td>
+<td>Score Band Distribution</td>
+<td>Confirms score-band population structure</td>
+</tr>
+<tr>
+<td><strong>9.4</strong></td>
+<td>Variable Profile Statistics</td>
+<td>Reviews central tendency, spread, and tails</td>
+</tr>
+<tr>
+<td><strong>9.5</strong></td>
+<td>Score Band Profile Summary</td>
+<td>Confirms borrower and estimated-risk gradients</td>
+</tr>
+<tr>
+<td><strong>9.6</strong></td>
+<td>Product Profile Summary</td>
+<td>Confirms product-level differentiation</td>
+</tr>
+<tr>
+<td><strong>9.7</strong></td>
+<td>PTI Bucket Summary</td>
+<td>Confirms affordability-to-estimated-risk relationship</td>
+</tr>
+<tr>
+<td><strong>9.8</strong></td>
+<td>Product × Score Band Matrix</td>
+<td>Confirms interaction effects</td>
+</tr>
+<tr>
+<td><strong>9.9</strong></td>
+<td>Mixed-Signal Spot Checks</td>
+<td>Confirms realistic overlap and edge-case plausibility</td>
+</tr>
+<tr>
+<td><strong>9.10</strong></td>
+<td>Distribution Sanity by Product and Score Band</td>
+<td>Provides quick cross-sectional realism check</td>
+</tr>
+<tr>
+<td><strong>9.11</strong></td>
+<td>Optional Quick Profile Sample</td>
+<td>Supports row-level inspection</td>
+</tr>
+<tr>
+<td><strong>9.12</strong></td>
+<td>Estimated-PD Proxy Saturation Diagnostics</td>
+<td>Validates Workstream B cap-crowding behavior</td>
+</tr>
+<tr>
+<td><strong>9.13</strong></td>
+<td>Mortgage A3 Overlay Diagnostics</td>
+<td>Validates Workstream A PTI-aware dampening</td>
+</tr>
+<tr>
+<td><strong>9.14</strong></td>
+<td>Mortgage Transformation Trace</td>
+<td>Shows mortgage amount evolution through A2 and A3</td>
+</tr>
+<tr>
+<td><strong>9.15</strong></td>
+<td>Workstream D Revolving Payment vs APR Relationship</td>
+<td>Validates revolving APR-to-payment sensitivity</td>
+</tr>
+<tr>
+<td><strong>9.16</strong></td>
+<td>Revolving Payment by APR Bucket</td>
+<td>Checks directional payment behavior across APR buckets</td>
+</tr>
+<tr>
+<td><strong>9.17</strong></td>
+<td>PTI Tail Frequency Check</td>
+<td>Quantifies high-PTI prevalence</td>
+</tr>
+</tbody></table>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>Section 9 should be reviewed after any material parameter or logic change.</p>
+<p>It answers:</p>
+<blockquote>
+<p><strong>Did the generated portfolio behave as intended?</strong></p>
+</blockquote>
+<hr>
+<h2><strong>B.18 Section 10 — Scenario Comparison QA</strong></h2>
+<h3><strong>Purpose</strong></h3>
+<p>Compare archived scenarios within a scenario set.</p>
+<h3><strong>Core Principle</strong></h3>
+<p>Section 9 validates one scenario. Section 10 compares multiple archived scenarios.</p>
+<h3><strong>Section 10 QA Map</strong></h3>
+<table>
+<thead>
+<tr>
+<th>QA Section</th>
+<th>QA Name</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>10.1</strong></td>
+<td>Scenario Archive Inventory</td>
+<td>Lists archived scenarios and row counts</td>
+</tr>
+<tr>
+<td><strong>10.2</strong></td>
+<td>Portfolio-Level Scenario Summary</td>
+<td>Compares portfolio metrics across scenarios</td>
+</tr>
+<tr>
+<td><strong>10.3</strong></td>
+<td>Product × Score Scenario Summary</td>
+<td>Compares scenario movement by product and score band</td>
+</tr>
+<tr>
+<td><strong>10.4</strong></td>
+<td>Matched Row-Level Scenario Comparison</td>
+<td>Defines matched-row comparison concept</td>
+</tr>
+<tr>
+<td><strong>10.4A</strong></td>
+<td>Matched Row-Level Delta Sample</td>
+<td>Shows row-level baseline versus scenario deltas</td>
+</tr>
+<tr>
+<td><strong>10.4B</strong></td>
+<td>Matched Row-Level Delta Summary</td>
+<td>Summarizes how many rows changed and by how much</td>
+</tr>
+<tr>
+<td><strong>10.4C</strong></td>
+<td>Matched Row-Level Delta Summary by Product and Score Band</td>
+<td>Identifies which segments drove scenario movement</td>
+</tr>
+</tbody></table>
+<h3><strong>Scenario Alias Boundary</strong></h3>
+<p>Compact aliases such as <code>avg_pd</code>, <code>delta_pd</code>, and <code>rows_pd_increased</code> may be retained for readable QA output naming, but they refer to the <strong>synthetic estimated-PD proxy</strong>, not calibrated production default probabilities.</p>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>Section 10 answers:</p>
+<blockquote>
+<p><strong>What changed between scenarios, where did it change, and can those changes be attributed to controlled assumptions rather than population drift?</strong></p>
+</blockquote>
+<hr>
+<h2><strong>B.19 Staged Materialization Standard</strong></h2>
+<p>The V2.0 implementation intentionally uses staged temporary tables.</p>
+<table>
+<thead>
+<tr>
+<th>Stage Table</th>
+<th>Role</th>
+<th>Why It Matters</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>tmp_m1_stage_1_population</code></td>
+<td>Application skeleton and deterministic seeds</td>
+<td>Reproducibility foundation</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_2_borrower_profile</code></td>
+<td>Borrower characteristics and behavioral risk signals</td>
+<td>Enables borrower realism review</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_3_product_structuring</code></td>
+<td>Amount, APR, payment, PTI, affordability</td>
+<td>Translates product structure into burden</td>
+</tr>
+<tr>
+<td><code>tmp_m1_stage_4_risk</code></td>
+<td>Estimated-PD proxy, LGD, Expected Loss</td>
+<td>Final risk and loss translation</td>
+</tr>
+</tbody></table>
+<h3><strong>Implementation Rationale</strong></h3>
+<p>Staged materialization improves:</p>
+<ul>
+<li>performance;</li>
+<li>readability;</li>
+<li>error isolation;</li>
+<li>reviewer comprehension;</li>
+<li>auditability;</li>
+<li>and future extensibility.</li>
+</ul>
+<h3><strong>Governance Rule</strong></h3>
+<p>Future enhancements should preserve staged materialization unless there is a compelling performance or design reason to change it.</p>
+<hr>
+<h2><strong>B.20 SQL Commenting and Documentation Standards</strong></h2>
+<p>The SQL script should remain heavily commented because it serves as both implementation and teaching artifact.</p>
+<h3><strong>Required Comment Types</strong></h3>
+<table>
+<thead>
+<tr>
+<th>Comment Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executive purpose</td>
+<td>Defines what the script is and is not</td>
+</tr>
+<tr>
+<td>Terminology notes</td>
+<td>Clarifies estimated-PD proxy and other bounded concepts</td>
+</tr>
+<tr>
+<td>Parameter guidance</td>
+<td>Explains when and why to change assumptions</td>
+</tr>
+<tr>
+<td>Section purpose comments</td>
+<td>Explains each implementation block</td>
+</tr>
+<tr>
+<td>Teaching notes</td>
+<td>Clarifies SQL patterns and modeling logic</td>
+</tr>
+<tr>
+<td>Boundary notes</td>
+<td>Prevents production-model or forecast misinterpretation</td>
+</tr>
+<tr>
+<td>Workstream notes</td>
+<td>Identifies V2.0 enhancements and diagnostics</td>
+</tr>
+<tr>
+<td>QA interpretation notes</td>
+<td>Explains what each QA output means</td>
+</tr>
+</tbody></table>
+<h3><strong>Commenting Standard</strong></h3>
+<p>Comments should explain:</p>
+<ul>
+<li>business purpose;</li>
+<li>modeling rationale;</li>
+<li>implementation logic;</li>
+<li>expected behavior;</li>
+<li>interpretation boundary;</li>
+<li>and QA relevance.</li>
+</ul>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>The code should be readable by a reviewer who understands credit strategy but does not want to reverse-engineer SQL logic line by line.</p>
+<hr>
+<h2><strong>B.21 Naming Conventions</strong></h2>
+<p>Consistent naming improves readability and auditability.</p>
+<table>
+<thead>
+<tr>
+<th>Naming Area</th>
+<th>Standard</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Final output table</td>
+<td><code>credit_decisioning_sim.synthetic_applications</code></td>
+</tr>
+<tr>
+<td>Scenario archive table</td>
+<td><code>credit_decisioning_sim.synthetic_applications_scenario_archive</code></td>
+</tr>
+<tr>
+<td>Parameter table</td>
+<td><code>tmp_module1_params</code></td>
+</tr>
+<tr>
+<td>Stage tables</td>
+<td><code>tmp_m1_stage_[n]_[description]</code></td>
+</tr>
+<tr>
+<td>Mortgage V2 diagnostic fields</td>
+<td>suffix <code>_v2</code></td>
+</tr>
+<tr>
+<td>Estimated-PD proxy diagnostics</td>
+<td>prefix / stem <code>pd_</code> retained for compactness, interpreted as estimated-PD proxy</td>
+</tr>
+<tr>
+<td>Scenario controls</td>
+<td><code>scenario_set_name</code>, <code>scenario_name</code>, <code>population_id</code></td>
+</tr>
+<tr>
+<td>QA aliases</td>
+<td>Compact aliases may be used if interpretation is documented</td>
+</tr>
+</tbody></table>
+<h3><strong>Estimated-PD Proxy Naming Boundary</strong></h3>
+<p>Implementation fields may retain compact names such as:</p>
+<ul>
+<li><code>base_pd</code></li>
+<li><code>estimated_pd</code></li>
+<li><code>pd_raw_pre_saturation_v2</code></li>
+<li><code>pd_saturation_zone_v2</code></li>
+<li><code>pd_saturation_factor_v2</code></li>
+<li><code>pd_after_saturation_v2</code></li>
+</ul>
+<p>These names are implementation shorthand. They should be interpreted as part of the <strong>synthetic estimated-PD proxy framework</strong>, not as calibrated production PD fields.</p>
+<hr>
+<h2><strong>B.22 Execution Workflow</strong></h2>
+<p>The recommended execution workflow is:</p>
+<ol>
+<li><strong>Review the parameter block in Section 2.</strong></li>
+<li><strong>Modify only controlled parameter values where possible.</strong></li>
+<li><strong>Set or confirm <code>scenario_set_name</code>, <code>scenario_name</code>, and <code>population_id</code>.</strong></li>
+<li><strong>Run the script end to end.</strong></li>
+<li><strong>Confirm validation gatekeepers pass.</strong></li>
+<li><strong>Review the final output table.</strong></li>
+<li><strong>Run and review Section 9 QA queries.</strong></li>
+<li><strong>If scenario comparison is required, ensure the run is archived.</strong></li>
+<li><strong>Run and review Section 10 scenario comparison queries.</strong></li>
+<li><strong>Document any unexpected behavior.</strong></li>
+<li><strong>Determine whether behavior reflects expected parameter movement, scenario effect, or a true logic concern.</strong></li>
+</ol>
+<h3><strong>Best Practice</strong></h3>
+<p>Change one parameter family at a time when testing. This makes scenario effects easier to attribute.</p>
+<hr>
+<h2><strong>B.23 Scenario Execution Workflow</strong></h2>
+<p>A governed scenario comparison should follow this process:</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>Run baseline with <code>archive_run_flag = TRUE</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>Use a clear <code>scenario_set_name</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>Use <code>scenario_name = BASELINE_V2</code> or equivalent</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Preserve <code>population_id</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td>Modify scenario parameter, such as <code>rate_shift_bps</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td>Change <code>scenario_name</code> to reflect the new scenario</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Rerun and archive scenario</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Review Section 10 archive inventory</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Review portfolio-level scenario summary</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Review product × score scenario summary</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Review matched row-level deltas</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Interpret differences as parameter-driven only if population is matched</td>
+</tr>
+</tbody></table>
+<h3><strong>Scenario Interpretation Boundary</strong></h3>
+<p>Scenario outputs are controlled simulation results, not forecasts.</p>
+<hr>
+<h2><strong>B.24 QA Output Consumption Standard</strong></h2>
+<p>QA outputs should be used as validation evidence.</p>
+<table>
+<thead>
+<tr>
+<th>QA Output Type</th>
+<th>Consumption Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Record count</td>
+<td>Confirms run completeness</td>
+</tr>
+<tr>
+<td>Product mix</td>
+<td>Confirms configured portfolio structure</td>
+</tr>
+<tr>
+<td>Score mix</td>
+<td>Confirms borrower quality distribution</td>
+</tr>
+<tr>
+<td>Variable profile statistics</td>
+<td>Confirms central tendency and tail behavior</td>
+</tr>
+<tr>
+<td>Product summaries</td>
+<td>Confirms product differentiation</td>
+</tr>
+<tr>
+<td>Score-band summaries</td>
+<td>Confirms risk ordering</td>
+</tr>
+<tr>
+<td>PTI summaries</td>
+<td>Confirms affordability-to-risk translation</td>
+</tr>
+<tr>
+<td>Mixed-signal outputs</td>
+<td>Confirms realistic overlap</td>
+</tr>
+<tr>
+<td>Saturation diagnostics</td>
+<td>Confirms estimated-PD proxy cap governance</td>
+</tr>
+<tr>
+<td>Mortgage diagnostics</td>
+<td>Confirms Workstream A behavior</td>
+</tr>
+<tr>
+<td>Revolving diagnostics</td>
+<td>Confirms Workstream D behavior</td>
+</tr>
+<tr>
+<td>Tail-frequency output</td>
+<td>Confirms high-PTI rows remain present but non-dominant</td>
+</tr>
+<tr>
+<td>Scenario deltas</td>
+<td>Confirms matched parameter-driven movement</td>
+</tr>
+</tbody></table>
+<h3><strong>Governance Interpretation</strong></h3>
+<p>QA outputs should not be treated as decorative afterthoughts. They are the evidence layer that supports the Validation Summary.</p>
+<hr>
+<h2><strong>B.25 Implementation Acceptance Criteria</strong></h2>
+<p>The SQL implementation should be considered acceptable when it satisfies the following conditions.</p>
+<table>
+<thead>
+<tr>
+<th>Acceptance Area</th>
+<th>Acceptance Requirement</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Schema isolation</td>
+<td>Outputs are created in the dedicated simulation schema</td>
+</tr>
+<tr>
+<td>Clean rerun</td>
+<td>Latest-run outputs are reset and regenerated cleanly</td>
+</tr>
+<tr>
+<td>Parameter centralization</td>
+<td>Key assumptions are controlled through <code>tmp_module1_params</code></td>
+</tr>
+<tr>
+<td>Gatekeeper validation</td>
+<td>Invalid assumptions fail fast before generation</td>
+</tr>
+<tr>
+<td>Deterministic generation</td>
+<td>Identical inputs reproduce identical outputs</td>
+</tr>
+<tr>
+<td>Staged transformations</td>
+<td>Major logic layers are materialized and inspectable</td>
+</tr>
+<tr>
+<td>Product-aware behavior</td>
+<td>Product structure influences amount, APR, payment, PTI, LGD, and loss</td>
+</tr>
+<tr>
+<td>Estimated-PD proxy transparency</td>
+<td>Risk proxy logic is explainable and bounded</td>
+</tr>
+<tr>
+<td>Scenario archiving</td>
+<td>Completed runs can be archived for comparison</td>
+</tr>
+<tr>
+<td>QA integration</td>
+<td>Section 9 review queries are available and interpretable</td>
+</tr>
+<tr>
+<td>Scenario comparison</td>
+<td>Section 10 supports matched row-level attribution</td>
+</tr>
+<tr>
+<td>Boundary language</td>
+<td>Comments prevent production-model overinterpretation</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>B.26 Maintenance and Change-Control Guidance</strong></h2>
+<p>Future changes should follow a disciplined change-control process.</p>
+<h3><strong>Before Changing Code</strong></h3>
+<p>The developer should identify:</p>
+<ul>
+<li>business objective;</li>
+<li>parameter versus logic change;</li>
+<li>affected section;</li>
+<li>expected output movement;</li>
+<li>required QA checks;</li>
+<li>scenario comparison needs;</li>
+<li>and documentation updates.</li>
+</ul>
+<h3><strong>After Changing Code</strong></h3>
+<p>The developer should:</p>
+<ul>
+<li>rerun the full script;</li>
+<li>confirm gatekeepers pass;</li>
+<li>review Section 9 QA;</li>
+<li>review Section 10 if scenarios are affected;</li>
+<li>compare against prior baseline if applicable;</li>
+<li>document observed differences;</li>
+<li>update BRD sections if design intent changes;</li>
+<li>update Validation Summary if validation evidence changes.</li>
+</ul>
+<h3><strong>Governance Principle</strong></h3>
+<p>Do not change downstream transformation logic casually when the desired behavior can be achieved through governed parameters.</p>
+<hr>
+<h2><strong>B.27 Future Implementation Extension Standards</strong></h2>
+<p>Future modules should preserve the architectural discipline established in Module 1.</p>
+<p>Potential future modules may include:</p>
+<ul>
+<li>decision strategy logic;</li>
+<li>approval / decline / review simulation;</li>
+<li>exposure assignment;</li>
+<li>pricing strategy;</li>
+<li>enhanced LGD;</li>
+<li>macro overlays;</li>
+<li>lifecycle simulation;</li>
+<li>or reporting dashboards.</li>
+</ul>
+<p>Each future module should include:</p>
+<ul>
+<li>purpose header;</li>
+<li>parameter layer;</li>
+<li>validation gatekeepers;</li>
+<li>deterministic controls where applicable;</li>
+<li>staged transformation logic;</li>
+<li>QA section;</li>
+<li>output interpretation boundaries;</li>
+<li>and validation artifact linkage.</li>
+</ul>
+<h3><strong>Design Principle</strong></h3>
+<p>Future enhancements should extend the architecture without weakening reproducibility, auditability, or boundary discipline.</p>
+<hr>
+<h2><strong>B.28 Relationship to BRD and Validation Summary</strong></h2>
+<p>This appendix connects the implementation artifact to the broader documentation set.</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>BRD</strong></td>
+<td>Defines design intent, architecture, parameters, outputs, governance, and boundaries</td>
+</tr>
+<tr>
+<td><strong>SQL Implementation</strong></td>
+<td>Executes the governed synthetic application and risk modeling engine</td>
+</tr>
+<tr>
+<td><strong>Validation Summary</strong></td>
+<td>Demonstrates that the implementation behaves as intended through QA evidence</td>
+</tr>
+</tbody></table>
+<p>Together, these artifacts create a complete system package:</p>
+<blockquote>
+<p><strong>Design → Implementation → Validation</strong></p>
+</blockquote>
+<p>This structure is important because the system is not only a coding exercise. It is a governed, reviewable, and scenario-capable simulation framework.</p>
+<hr>
+<h2><strong>B.29 Final Implementation Guidance</strong></h2>
+<p>The SQL implementation should remain:</p>
+<ul>
+<li>readable;</li>
+<li>parameterized;</li>
+<li>deterministic;</li>
+<li>staged;</li>
+<li>auditable;</li>
+<li>scenario-aware;</li>
+<li>QA-integrated;</li>
+<li>and boundary-aware.</li>
+</ul>
+<p>The script should be maintained as a <strong>portfolio-grade implementation artifact</strong>. It should demonstrate not only that the system can run, but that the system can be understood, reviewed, validated, and governed.</p>
+<p>In short:</p>
+<blockquote>
+<p><strong>The SQL implementation is the executable expression of the BRD. Its structure must remain as transparent and governed as the simulation logic it produces.</strong></p>
+</blockquote>
+</div></article><article id="c037-m00427" class="message user"><div class="role">Andrew</div><p class="meta">C037-M00427 · 2026-05-05T08:53:24.968000-04:00 · active path</p><div class="body"><p>apply the same elite level to the requirements traceability matrix appendix C.  note, we do not need length here.  we need precision guidance.</p>
+</div></article><article id="c037-m00430" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C037-M00430 · 2026-05-05T08:56:32.561022-04:00 · active path</p><div class="body"><p>Below is a <strong>ready-to-paste Appendix C</strong> designed for precision rather than length. It functions as an executive/audit traceability layer: every major requirement is mapped to the BRD design anchor, implementation / QA anchor, and validation acceptance signal.</p>
+<p>This is intentionally not field-by-field exhaustive; Section 7 and Appendix A already provide detailed field behavior and configuration references. Appendix C should show that the system’s major design requirements are covered, implemented, validated, and bounded. fileciteturn35file0turn30file0</p>
+<hr>
+<h1><strong>Appendix C — Requirements Traceability Matrix</strong></h1>
+<h2><strong>C.1 Purpose</strong></h2>
+<p>This appendix provides a concise requirements traceability matrix for Module 1 V2.0.</p>
+<p>The matrix connects:</p>
+<ul>
+<li>business and design requirements;</li>
+<li>BRD design sections;</li>
+<li>SQL implementation / QA anchors;</li>
+<li>validation evidence;</li>
+<li>and final requirement status.</li>
+</ul>
+<p>The purpose is to confirm that Module 1 V2.0 is not only well described, but also traceable from <strong>requirement → design → implementation → validation</strong>.</p>
+<hr>
+<h2><strong>C.2 Traceability Standard</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Satisfied</strong></td>
+<td>Requirement is implemented and validated within V2.0 scope</td>
+</tr>
+<tr>
+<td><strong>Boundary-Controlled</strong></td>
+<td>Requirement is intentionally limited by documented scope boundaries</td>
+</tr>
+<tr>
+<td><strong>Future Scope</strong></td>
+<td>Requirement is intentionally deferred to a future module or enhancement</td>
+</tr>
+<tr>
+<td><strong>Not Applicable</strong></td>
+<td>Requirement is outside Module 1 design intent</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.3 Functional Requirements Traceability</strong></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>BRD Anchor</th>
+<th>SQL / QA Anchor</th>
+<th>Validation Acceptance Signal</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>FR-01</strong></td>
+<td>Generate deterministic synthetic application-level population</td>
+<td>§§3, 5, 7, 12</td>
+<td>SQL §§4–5; QA 9.1</td>
+<td>50,000 synthetic applications generated and validated</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-02</strong></td>
+<td>Preserve deterministic reproducibility under identical inputs</td>
+<td>§§3.1, 5.2, 7B.2, 11</td>
+<td>SQL deterministic seed framework; QA reproducibility checks</td>
+<td>100% identical outputs across repeated runs</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-03</strong></td>
+<td>Assign product type using governed product mix</td>
+<td>§§6, 7A.1, 11.5</td>
+<td>SQL §5; QA 9.2</td>
+<td>Observed product mix aligned within ~0.2 percentage points</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-04</strong></td>
+<td>Assign score bands using governed score mix</td>
+<td>§§7A.2, 11.6</td>
+<td>SQL §5; QA 9.3</td>
+<td>Score bands fully populated and stable across V2.0 runs</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-05</strong></td>
+<td>Generate borrower profile and behavioral attributes</td>
+<td>§§7A.2–7A.11</td>
+<td>SQL §6; QA 9.5, 9.9</td>
+<td>Score-band gradients and mixed-signal behavior validated</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-06</strong></td>
+<td>Generate product-specific requested amount</td>
+<td>§§7A.12, 8, 11.8</td>
+<td>SQL §7; QA 9.6, 9.14</td>
+<td>Mortgage tail controlled; max requested amount reduced ~$1.15M → ~$1.05M</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-07</strong></td>
+<td>Generate APR proxy for payment calculation</td>
+<td>§§7A.14, 8, 11.9</td>
+<td>SQL §7; scenario QA 10.2</td>
+<td>Rate-up scenario moved avg APR ~14.56% → ~16.14%</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-08</strong></td>
+<td>Generate product-specific monthly payment proxy</td>
+<td>§§7A.15, 8, 11.10</td>
+<td>SQL §7; QA 9.6, 9.15, 9.16</td>
+<td>Rate-up scenario moved avg payment ~$1,511 → ~$1,612; revolving deltas positive</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-09</strong></td>
+<td>Calculate PTI as primary affordability bridge</td>
+<td>§§7A.16, 8</td>
+<td>SQL §7; QA 9.7, 9.17</td>
+<td>PTI bucket relationship validated; PTI &gt;50% reduced 1.77% → 1.20%</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-10</strong></td>
+<td>Generate estimated-PD proxy using transparent bounded framework</td>
+<td>§§7A.18, 8.8–8.9, 11.11</td>
+<td>SQL §8; QA 9.5, 9.12</td>
+<td>Estimated-PD proxy monotonic by score band; cap crowding reduced 17.72% → 12.86%</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-11</strong></td>
+<td>Generate LGD using product-level severity assumptions</td>
+<td>§§7A.19, 8.10, 11.12</td>
+<td>SQL §8; QA 9.6</td>
+<td>LGD varies by product and supports secured/unsecured severity contrast</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-12</strong></td>
+<td>Calculate Expected Loss</td>
+<td>§§7A.20, 8.10, 12</td>
+<td>SQL §8; QA 9.6, 9.7</td>
+<td>Expected Loss responds to exposure × estimated-PD proxy × LGD</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-13</strong></td>
+<td>Support scenario metadata and archive persistence</td>
+<td>§§7B.1, 9, 12</td>
+<td>SQL §8.5; QA 10.1</td>
+<td>Baseline and rate-stress scenarios archived with 50,000 rows each</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-14</strong></td>
+<td>Support matched row-level scenario comparison</td>
+<td>§§5.3, 7B.2, 9.11</td>
+<td>SQL §10; QA 10.4</td>
+<td>Same <code>population_id</code>; 100% identical borrower-level attributes across scenarios</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-15</strong></td>
+<td>Surface diagnostic fields for validation and auditability</td>
+<td>§§7B.3, 10.10, 12.7</td>
+<td>SQL §§7–8; QA 9.12–9.17</td>
+<td>Mortgage, saturation, revolving, and tail diagnostics used in validation</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-16</strong></td>
+<td>Preserve mixed-signal borrower realism</td>
+<td>§§3.4, 7, 10.8</td>
+<td>QA 9.9; Validation §10</td>
+<td>Strong-credit/high-PTI, weak-credit/manageable-PTI, and large-exposure/manageable-affordability cases validated</td>
+<td>Satisfied</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.4 Non-Functional &amp; Governance Requirements Traceability</strong></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>BRD Anchor</th>
+<th>SQL / QA Anchor</th>
+<th>Validation Acceptance Signal</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>NFR-01</strong></td>
+<td>Deterministic reproducibility</td>
+<td>§§3.1, 5.2, 11.4</td>
+<td>SQL deterministic hash design</td>
+<td>100% identical outputs under identical inputs</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-02</strong></td>
+<td>Auditability and traceability</td>
+<td>§§3.7, 7B, 10, 12</td>
+<td>Diagnostic fields; QA §§9–10</td>
+<td>Outputs explainable through parameters, diagnostics, and QA evidence</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-03</strong></td>
+<td>Parameter governance</td>
+<td>§§3.2, 11</td>
+<td>SQL parameter table; validation gatekeepers</td>
+<td>Product mix, score mix, bounds, rate shift, LGD, and caps centrally controlled</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-04</strong></td>
+<td>Separation of concerns</td>
+<td>§§3.5, 5, 8</td>
+<td>SQL staged transformation architecture</td>
+<td>Population, product, borrower, payment, risk, and loss layers distinct</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-05</strong></td>
+<td>Scenario comparability</td>
+<td>§§3.6, 5.3, 9</td>
+<td>Scenario archive; QA §10</td>
+<td>50,000 matched rows per scenario; same <code>population_id</code></td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-06</strong></td>
+<td>Tail governance</td>
+<td>§§8.7, 10.7, 11.8</td>
+<td>QA 9.17; mortgage diagnostics</td>
+<td>PTI &gt;40%, &gt;50%, &gt;75% measured; severe PTI tail reduced</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-07</strong></td>
+<td>Estimated-risk dispersion governance</td>
+<td>§§7A.18, 8.9, 11.11</td>
+<td>QA 9.12</td>
+<td>Capped estimated-PD proxy observations reduced 17.72% → 12.86%</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-08</strong></td>
+<td>Product-aware modeling</td>
+<td>§§6, 8.4</td>
+<td>QA 9.6</td>
+<td>Products show distinct exposure, APR, payment, PTI, LGD, and Expected Loss profiles</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-09</strong></td>
+<td>Maintainability and reviewability</td>
+<td>§§10, Appendix B</td>
+<td>Staged SQL sections; embedded comments</td>
+<td>SQL structured as documented implementation artifact</td>
+<td>Satisfied</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.5 Boundary Requirements Traceability</strong></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Boundary Requirement</th>
+<th>BRD Anchor</th>
+<th>Validation / Governance Evidence</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>BND-01</strong></td>
+<td>System must not expose or rely on real customer data</td>
+<td>§§1, 4, 13.10</td>
+<td>Synthetic-only application population</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-02</strong></td>
+<td>System must not be used for production underwriting</td>
+<td>§§4.2, 13.2–13.3</td>
+<td>Explicit non-use boundary in BRD and Validation Summary</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-03</strong></td>
+<td><code>estimated_pd</code> must be interpreted as estimated-PD proxy, not calibrated PD</td>
+<td>§§7A.18, 8.8, 13.4</td>
+<td>Validation emphasizes directional coherence, not calibration</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-04</strong></td>
+<td>APR must be interpreted as burden-estimation proxy, not production pricing</td>
+<td>§§7A.14, 11.9, 13.7</td>
+<td>APR supports payment/PTI modeling and rate sensitivity only</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-05</strong></td>
+<td>Revolving payment must remain a proxy, not a billing engine</td>
+<td>§§8.5, 11.10, 13.8</td>
+<td>Workstream D restores APR sensitivity while excluding servicing mechanics</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-06</strong></td>
+<td>Expected Loss must be interpreted as comparative simulation output</td>
+<td>§§8.10, 12.5, 13.6</td>
+<td>Expected Loss used for comparison, not reserves/capital/forecasting</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-07</strong></td>
+<td>Scenario outputs must be interpreted as sensitivity analysis, not forecasts</td>
+<td>§§9, 13.9</td>
+<td>Scenario framework uses matched synthetic populations and controlled assumptions</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-08</strong></td>
+<td>Fair lending and regulatory validation are out of Module 1 scope</td>
+<td>§§4.2, 13.11</td>
+<td>Future separate governance required for compliance analysis</td>
+<td>Boundary-Controlled</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.6 Future-Scope Requirements</strong></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Future Capability</th>
+<th>Current V2.0 Position</th>
+<th>BRD Roadmap Anchor</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>FUT-01</strong></td>
+<td>Approval / decline / review strategy layer</td>
+<td>Not included in Module 1</td>
+<td>§14.4</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-02</strong></td>
+<td>Approved amount / line assignment</td>
+<td>Requested amount generated; approval amount not assigned</td>
+<td>§14.5</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-03</strong></td>
+<td>Production pricing or profitability strategy</td>
+<td>APR is payment-burden proxy only</td>
+<td>§14.6</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-04</strong></td>
+<td>Row-level LGD enhancement</td>
+<td>LGD is product-level in V2.0</td>
+<td>§14.7</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-05</strong></td>
+<td>Expanded macro overlays</td>
+<td>Rate shift only in V2.0</td>
+<td>§14.8</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-06</strong></td>
+<td>Account lifecycle / performance simulation</td>
+<td>Application-level only in V2.0</td>
+<td>§14.10</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-07</strong></td>
+<td>Empirical calibration / benchmarking</td>
+<td>Directional proxy validation only</td>
+<td>§14.11</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-08</strong></td>
+<td>Automated QA dashboard / reporting layer</td>
+<td>SQL QA outputs and documents currently support review</td>
+<td>§14.12</td>
+<td>Future Scope</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.7 Traceability Conclusion</strong></h2>
+<p>The requirements traceability matrix confirms that Module 1 V2.0 requirements are covered across the design, implementation, validation, and governance artifacts.</p>
+<p>The system demonstrates traceability across four levels:</p>
+<table>
+<thead>
+<tr>
+<th>Traceability Layer</th>
+<th>Confirmation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Design</strong></td>
+<td>Requirements are defined in the BRD</td>
+</tr>
+<tr>
+<td><strong>Implementation</strong></td>
+<td>Requirements are implemented through staged SQL logic and parameter controls</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Requirements are tested through QA outputs and the companion Validation Summary</td>
+</tr>
+<tr>
+<td><strong>Governance</strong></td>
+<td>Boundaries and future-scope items are explicitly documented</td>
+</tr>
+</tbody></table>
+<p>Final traceability conclusion:</p>
+<blockquote>
+<p><strong>Module 1 V2.0 requirements are satisfied within the documented system boundary. Future capabilities are clearly separated from current validated functionality.</strong></p>
+</blockquote>
+</div></article><article id="c037-m00431" class="message user"><div class="role">Andrew</div><p class="meta">C037-M00431 · 2026-05-05T08:58:56.604000-04:00 · active path</p><div class="body"><p>i don&#39;t like these symbols in the above write-up: §  please provide full appendix C again with those not included.</p>
+</div></article><article id="c037-m00433" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C037-M00433 · 2026-05-05T09:00:56.100846-04:00 · active path</p><div class="body"><p>Absolutely — below is the full <strong>Appendix C</strong> rewritten without the <code>§</code> symbols.</p>
+<p>This version keeps the same precision and traceability, but uses clean section references such as <strong>BRD Sections 3, 5, 7, and 12</strong> rather than legal-style symbols.</p>
+<hr>
+<h1><strong>Appendix C — Requirements Traceability Matrix</strong></h1>
+<h2><strong>C.1 Purpose</strong></h2>
+<p>This appendix provides a concise requirements traceability matrix for Module 1 V2.0.</p>
+<p>The matrix connects:</p>
+<ul>
+<li>business and design requirements;</li>
+<li>BRD design sections;</li>
+<li>SQL implementation / QA anchors;</li>
+<li>validation evidence;</li>
+<li>and final requirement status.</li>
+</ul>
+<p>The purpose is to confirm that Module 1 V2.0 is traceable from:</p>
+<blockquote>
+<p><strong>requirement → design → implementation → validation</strong></p>
+</blockquote>
+<p>This appendix is intentionally concise. Detailed field behavior is documented in Section 7, detailed implementation guidance is documented in Appendix B, and detailed validation evidence is documented in the companion Validation Summary.</p>
+<hr>
+<h2><strong>C.2 Traceability Status Definitions</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Satisfied</strong></td>
+<td>Requirement is implemented and validated within V2.0 scope</td>
+</tr>
+<tr>
+<td><strong>Boundary-Controlled</strong></td>
+<td>Requirement is intentionally limited by documented scope boundaries</td>
+</tr>
+<tr>
+<td><strong>Future Scope</strong></td>
+<td>Requirement is intentionally deferred to a future module or enhancement</td>
+</tr>
+<tr>
+<td><strong>Not Applicable</strong></td>
+<td>Requirement is outside Module 1 design intent</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.3 Functional Requirements Traceability</strong></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>BRD Anchor</th>
+<th>SQL / QA Anchor</th>
+<th>Validation Acceptance Signal</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>FR-01</strong></td>
+<td>Generate deterministic synthetic application-level population</td>
+<td>BRD Sections 3, 5, 7, and 12</td>
+<td>SQL Sections 4–5; QA 9.1</td>
+<td>50,000 synthetic applications generated and validated</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-02</strong></td>
+<td>Preserve deterministic reproducibility under identical inputs</td>
+<td>BRD Sections 3.1, 5.2, 7B.2, and 11</td>
+<td>SQL deterministic seed framework; reproducibility QA</td>
+<td>100% identical outputs across repeated runs</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-03</strong></td>
+<td>Assign product type using governed product mix</td>
+<td>BRD Sections 6, 7A.1, and 11.5</td>
+<td>SQL Section 5; QA 9.2</td>
+<td>Observed product mix aligned within approximately 0.2 percentage points</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-04</strong></td>
+<td>Assign score bands using governed score mix</td>
+<td>BRD Sections 7A.2 and 11.6</td>
+<td>SQL Section 5; QA 9.3</td>
+<td>Score bands fully populated and stable across V2.0 runs</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-05</strong></td>
+<td>Generate borrower profile and behavioral attributes</td>
+<td>BRD Sections 7A.2–7A.11</td>
+<td>SQL Section 6; QA 9.5 and 9.9</td>
+<td>Score-band gradients and mixed-signal behavior validated</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-06</strong></td>
+<td>Generate product-specific requested amount</td>
+<td>BRD Sections 7A.12, 8, and 11.8</td>
+<td>SQL Section 7; QA 9.6 and 9.14</td>
+<td>Mortgage tail controlled; max requested amount reduced from approximately $1.15M to $1.05M</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-07</strong></td>
+<td>Generate APR proxy for payment calculation</td>
+<td>BRD Sections 7A.14, 8, and 11.9</td>
+<td>SQL Section 7; scenario QA 10.2</td>
+<td>Rate-up scenario moved average APR from approximately 14.56% to 16.14%</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-08</strong></td>
+<td>Generate product-specific monthly payment proxy</td>
+<td>BRD Sections 7A.15, 8, and 11.10</td>
+<td>SQL Section 7; QA 9.6, 9.15, and 9.16</td>
+<td>Rate-up scenario moved average payment from approximately $1,511 to $1,612; revolving deltas became positive</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-09</strong></td>
+<td>Calculate PTI as primary affordability bridge</td>
+<td>BRD Sections 7A.16 and 8</td>
+<td>SQL Section 7; QA 9.7 and 9.17</td>
+<td>PTI bucket relationship validated; PTI greater than 50% reduced from 1.77% to 1.20%</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-10</strong></td>
+<td>Generate estimated-PD proxy using transparent bounded framework</td>
+<td>BRD Sections 7A.18, 8.8, 8.9, and 11.11</td>
+<td>SQL Section 8; QA 9.5 and 9.12</td>
+<td>Estimated-PD proxy monotonic by score band; cap crowding reduced from 17.72% to 12.86%</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-11</strong></td>
+<td>Generate LGD using product-level severity assumptions</td>
+<td>BRD Sections 7A.19, 8.10, and 11.12</td>
+<td>SQL Section 8; QA 9.6</td>
+<td>LGD varies by product and supports secured versus unsecured severity contrast</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-12</strong></td>
+<td>Calculate Expected Loss</td>
+<td>BRD Sections 7A.20, 8.10, and 12</td>
+<td>SQL Section 8; QA 9.6 and 9.7</td>
+<td>Expected Loss responds to exposure × estimated-PD proxy × LGD</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-13</strong></td>
+<td>Support scenario metadata and archive persistence</td>
+<td>BRD Sections 7B.1, 9, and 12</td>
+<td>SQL Section 8.5; QA 10.1</td>
+<td>Baseline and rate-stress scenarios archived with 50,000 rows each</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-14</strong></td>
+<td>Support matched row-level scenario comparison</td>
+<td>BRD Sections 5.3, 7B.2, and 9.11</td>
+<td>SQL Section 10; QA 10.4</td>
+<td>Same <code>population_id</code>; 100% identical borrower-level attributes across scenarios</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-15</strong></td>
+<td>Surface diagnostic fields for validation and auditability</td>
+<td>BRD Sections 7B.3, 10.10, and 12.7</td>
+<td>SQL Sections 7–8; QA 9.12–9.17</td>
+<td>Mortgage, saturation, revolving, and tail diagnostics used in validation</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>FR-16</strong></td>
+<td>Preserve mixed-signal borrower realism</td>
+<td>BRD Sections 3.4, 7, and 10.8</td>
+<td>QA 9.9; Validation Summary Section 10</td>
+<td>Strong-credit/high-PTI, weaker-credit/manageable-PTI, and large-exposure/manageable-affordability cases validated</td>
+<td>Satisfied</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.4 Non-Functional &amp; Governance Requirements Traceability</strong></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>BRD Anchor</th>
+<th>SQL / QA Anchor</th>
+<th>Validation Acceptance Signal</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>NFR-01</strong></td>
+<td>Deterministic reproducibility</td>
+<td>BRD Sections 3.1, 5.2, and 11.4</td>
+<td>SQL deterministic hash design</td>
+<td>100% identical outputs under identical inputs</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-02</strong></td>
+<td>Auditability and traceability</td>
+<td>BRD Sections 3.7, 7B, 10, and 12</td>
+<td>Diagnostic fields; QA Sections 9–10</td>
+<td>Outputs explainable through parameters, diagnostics, and QA evidence</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-03</strong></td>
+<td>Parameter governance</td>
+<td>BRD Sections 3.2 and 11</td>
+<td>SQL parameter table; validation gatekeepers</td>
+<td>Product mix, score mix, bounds, rate shift, LGD, and caps centrally controlled</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-04</strong></td>
+<td>Separation of concerns</td>
+<td>BRD Sections 3.5, 5, and 8</td>
+<td>SQL staged transformation architecture</td>
+<td>Population, product, borrower, payment, risk, and loss layers distinct</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-05</strong></td>
+<td>Scenario comparability</td>
+<td>BRD Sections 3.6, 5.3, and 9</td>
+<td>Scenario archive; QA Section 10</td>
+<td>50,000 matched rows per scenario; same <code>population_id</code></td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-06</strong></td>
+<td>Tail governance</td>
+<td>BRD Sections 8.7, 10.7, and 11.8</td>
+<td>QA 9.17; mortgage diagnostics</td>
+<td>PTI greater than 40%, 50%, and 75% measured; severe PTI tail reduced</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-07</strong></td>
+<td>Estimated-risk dispersion governance</td>
+<td>BRD Sections 7A.18, 8.9, and 11.11</td>
+<td>QA 9.12</td>
+<td>Capped estimated-PD proxy observations reduced from 17.72% to 12.86%</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-08</strong></td>
+<td>Product-aware modeling</td>
+<td>BRD Sections 6 and 8.4</td>
+<td>QA 9.6</td>
+<td>Products show distinct exposure, APR, payment, PTI, LGD, and Expected Loss profiles</td>
+<td>Satisfied</td>
+</tr>
+<tr>
+<td><strong>NFR-09</strong></td>
+<td>Maintainability and reviewability</td>
+<td>BRD Section 10 and Appendix B</td>
+<td>Staged SQL sections; embedded comments</td>
+<td>SQL structured as documented implementation artifact</td>
+<td>Satisfied</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.5 Boundary Requirements Traceability</strong></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Boundary Requirement</th>
+<th>BRD Anchor</th>
+<th>Validation / Governance Evidence</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>BND-01</strong></td>
+<td>System must not expose or rely on real customer data</td>
+<td>BRD Sections 1, 4, and 13.10</td>
+<td>Synthetic-only application population</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-02</strong></td>
+<td>System must not be used for production underwriting</td>
+<td>BRD Sections 4.2, 13.2, and 13.3</td>
+<td>Explicit non-use boundary in BRD and Validation Summary</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-03</strong></td>
+<td><code>estimated_pd</code> must be interpreted as an estimated-PD proxy, not calibrated PD</td>
+<td>BRD Sections 7A.18, 8.8, and 13.4</td>
+<td>Validation emphasizes directional coherence, not calibration</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-04</strong></td>
+<td>APR must be interpreted as burden-estimation proxy, not production pricing</td>
+<td>BRD Sections 7A.14, 11.9, and 13.7</td>
+<td>APR supports payment/PTI modeling and rate sensitivity only</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-05</strong></td>
+<td>Revolving payment must remain a proxy, not a billing engine</td>
+<td>BRD Sections 8.5, 11.10, and 13.8</td>
+<td>Workstream D restores APR sensitivity while excluding servicing mechanics</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-06</strong></td>
+<td>Expected Loss must be interpreted as comparative simulation output</td>
+<td>BRD Sections 8.10, 12.5, and 13.6</td>
+<td>Expected Loss used for comparison, not reserves, capital, or forecasting</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-07</strong></td>
+<td>Scenario outputs must be interpreted as sensitivity analysis, not forecasts</td>
+<td>BRD Sections 9 and 13.9</td>
+<td>Scenario framework uses matched synthetic populations and controlled assumptions</td>
+<td>Boundary-Controlled</td>
+</tr>
+<tr>
+<td><strong>BND-08</strong></td>
+<td>Fair lending and regulatory validation are out of Module 1 scope</td>
+<td>BRD Sections 4.2 and 13.11</td>
+<td>Future separate governance required for compliance analysis</td>
+<td>Boundary-Controlled</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.6 Future-Scope Requirements</strong></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Future Capability</th>
+<th>Current V2.0 Position</th>
+<th>BRD Roadmap Anchor</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>FUT-01</strong></td>
+<td>Approval / decline / review strategy layer</td>
+<td>Not included in Module 1</td>
+<td>BRD Section 14.4</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-02</strong></td>
+<td>Approved amount / line assignment</td>
+<td>Requested amount generated; approval amount not assigned</td>
+<td>BRD Section 14.5</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-03</strong></td>
+<td>Production pricing or profitability strategy</td>
+<td>APR is payment-burden proxy only</td>
+<td>BRD Section 14.6</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-04</strong></td>
+<td>Row-level LGD enhancement</td>
+<td>LGD is product-level in V2.0</td>
+<td>BRD Section 14.7</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-05</strong></td>
+<td>Expanded macro overlays</td>
+<td>Rate shift only in V2.0</td>
+<td>BRD Section 14.8</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-06</strong></td>
+<td>Account lifecycle / performance simulation</td>
+<td>Application-level only in V2.0</td>
+<td>BRD Section 14.10</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-07</strong></td>
+<td>Empirical calibration / benchmarking</td>
+<td>Directional proxy validation only</td>
+<td>BRD Section 14.11</td>
+<td>Future Scope</td>
+</tr>
+<tr>
+<td><strong>FUT-08</strong></td>
+<td>Automated QA dashboard / reporting layer</td>
+<td>SQL QA outputs and documents currently support review</td>
+<td>BRD Section 14.12</td>
+<td>Future Scope</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>C.7 Traceability Conclusion</strong></h2>
+<p>The requirements traceability matrix confirms that Module 1 V2.0 requirements are covered across the design, implementation, validation, and governance artifacts.</p>
+<p>The system demonstrates traceability across four levels:</p>
+<table>
+<thead>
+<tr>
+<th>Traceability Layer</th>
+<th>Confirmation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Design</strong></td>
+<td>Requirements are defined in the BRD</td>
+</tr>
+<tr>
+<td><strong>Implementation</strong></td>
+<td>Requirements are implemented through staged SQL logic and parameter controls</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Requirements are tested through QA outputs and the companion Validation Summary</td>
+</tr>
+<tr>
+<td><strong>Governance</strong></td>
+<td>Boundaries and future-scope items are explicitly documented</td>
+</tr>
+</tbody></table>
+<p>Final traceability conclusion:</p>
+<blockquote>
+<p><strong>Module 1 V2.0 requirements are satisfied within the documented system boundary. Future capabilities are clearly separated from current validated functionality.</strong></p>
+</blockquote>
+</div></article><article id="c037-m00434" class="message user"><div class="role">Andrew</div><p class="meta">C037-M00434 · 2026-05-05T09:09:55.502000-04:00 · active path</p><div class="body"><p>give the same elite, precise (not lengthy) level to the Appendix D — V1.0 to V2.0 Design Evolution Summary </p>
+</div></article><article id="c037-m00437" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C037-M00437 · 2026-05-05T09:11:25.676278-04:00 · active path</p><div class="body"><p>Below is a <strong>ready-to-paste Appendix D</strong> written to be precise, compact, and audit-friendly. It summarizes the V1.0 → V2.0 design evolution without re-litigating all validation evidence. It aligns the current V2.0 BRD with the V1.0 BRD baseline and the final V2.0 validation narrative. fileciteturn35file0turn35file1</p>
+<hr>
+<h1><strong>Appendix D — V1.0 to V2.0 Design Evolution Summary</strong></h1>
+<h2><strong>D.1 Purpose</strong></h2>
+<p>This appendix summarizes how Module 1 evolved from V1.0 to V2.0.</p>
+<p>The purpose is to show that V2.0 is a direct, governed evolution of the original Module 1 design—not a separate or unrelated redesign.</p>
+<p>V1.0 established the core synthetic application and risk modeling foundation. V2.0 preserves that foundation while strengthening realism, scenario comparability, diagnostic transparency, and governance.</p>
+<hr>
+<h2><strong>D.2 Design Evolution Summary</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Design Area</th>
+<th>V1.0 Foundation</th>
+<th>V2.0 Enhancement</th>
+<th>Design Impact</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>System positioning</strong></td>
+<td>Synthetic application and risk modeling engine for pre-production strategy testing</td>
+<td>Reframed as a governed, scenario-capable decisioning simulation framework</td>
+<td>Moves the system from static generation toward controlled experimentation</td>
+</tr>
+<tr>
+<td><strong>Core transmission chain</strong></td>
+<td>Application → Product Structure → APR → Payment → PTI → PD → Expected Loss</td>
+<td>Application → Product Structure → APR → Payment → PTI → estimated-PD proxy → Expected Loss</td>
+<td>Preserves structure-to-risk logic while clarifying proxy-model boundaries</td>
+</tr>
+<tr>
+<td><strong>Deterministic reproducibility</strong></td>
+<td>Deterministic generation anchored to population controls</td>
+<td>Elevated through <code>population_id</code>, scenario labels, archive persistence, and matched row comparison</td>
+<td>Enables true apples-to-apples scenario testing</td>
+</tr>
+<tr>
+<td><strong>Product-aware design</strong></td>
+<td>Product type drives amount, APR, payment, PTI, LGD, and risk treatment</td>
+<td>Product behavior further refined through mortgage realism and revolving sensitivity workstreams</td>
+<td>Strengthens product-level realism and downstream risk differentiation</td>
+</tr>
+<tr>
+<td><strong>Mortgage behavior</strong></td>
+<td>Mortgage treated as large-balance secured installment product</td>
+<td>Workstream A adds tail smoothing and PTI-aware affordability overlay</td>
+<td>Reduces unrealistic upper-tail behavior without collapsing the core mortgage distribution</td>
+</tr>
+<tr>
+<td><strong>Revolving behavior</strong></td>
+<td>Revolving payment represented through simplified minimum-payment proxy</td>
+<td>Workstream D adds APR-sensitive revolving payment behavior</td>
+<td>Restores APR → Payment → PTI → estimated-risk transmission</td>
+</tr>
+<tr>
+<td><strong>Risk framework</strong></td>
+<td>Transparent multiplier-based PD proxy framework</td>
+<td>Workstream B formalizes estimated-PD proxy terminology and adds soft-saturation logic</td>
+<td>Reduces cap crowding while preserving directional score-band ordering</td>
+</tr>
+<tr>
+<td><strong>Scenario capability</strong></td>
+<td>Primarily single-run simulation with deterministic reproducibility</td>
+<td>Workstream C introduces <code>scenario_set_name</code>, <code>scenario_name</code>, archive persistence, and matched row-level comparison</td>
+<td>Enables controlled scenario attribution and repeatable strategy testing</td>
+</tr>
+<tr>
+<td><strong>QA framework</strong></td>
+<td>Core QA checks for row count, product mix, score distribution, PTI, PD, Expected Loss, and edge cases</td>
+<td>Expanded QA framework with workstream diagnostics, tail-frequency validation, saturation diagnostics, scenario QA, and matched comparison</td>
+<td>Converts validation from static checks into governed evidence</td>
+</tr>
+<tr>
+<td><strong>Tail behavior</strong></td>
+<td>Outlier realism acknowledged and reviewed through distribution / spot checks</td>
+<td>Tail-frequency validation explicitly measures PTI &gt;40%, &gt;50%, and &gt;75%</td>
+<td>Quantifies whether tails remain present but non-dominant</td>
+</tr>
+<tr>
+<td><strong>Model boundaries</strong></td>
+<td>System identified as synthetic and non-production</td>
+<td>Boundaries expanded for estimated-PD proxy, APR proxy, revolving proxy, Expected Loss, scenario outputs, and non-use cases</td>
+<td>Strengthens auditability and prevents overclaiming</td>
+</tr>
+<tr>
+<td><strong>Implementation documentation</strong></td>
+<td>SQL guidance included for parameterization, QA, and structured implementation</td>
+<td>V2.0 adds formal appendices for configuration values, SQL section map, traceability, and design evolution</td>
+<td>Makes the BRD more implementation-ready and reviewable</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>D.3 Workstream Evolution Summary</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Workstream</th>
+<th>Initial Design Gap</th>
+<th>V2.0 Design Response</th>
+<th>Final Design Outcome</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>A — Mortgage Realism</strong></td>
+<td>Mortgage tail behavior could create excessive affordability stress in upper-balance cases</td>
+<td>Added amount-to-income tail smoothing and PTI-aware overlay</td>
+<td>Mortgage tail governed while median mortgage behavior remains stable</td>
+</tr>
+<tr>
+<td><strong>B — Estimated-PD Proxy Dispersion</strong></td>
+<td>High-risk observations could cluster mechanically near the governance cap</td>
+<td>Added soft-saturation logic before final cap application</td>
+<td>Reduced cap crowding and improved high-risk differentiation</td>
+</tr>
+<tr>
+<td><strong>C — Scenario Framework</strong></td>
+<td>Deterministic runs were reproducible, but scenario comparison was not yet formally archived or matched</td>
+<td>Added scenario set/name, archive persistence, population anchoring, and row-level comparison</td>
+<td>Scenario deltas become attributable to parameters rather than population noise</td>
+</tr>
+<tr>
+<td><strong>D — Revolving Sensitivity</strong></td>
+<td>Revolving payment did not sufficiently respond to APR movement</td>
+<td>Added APR-sensitive revolving payment proxy</td>
+<td>Restored rate-to-affordability transmission while preserving billing-model boundary</td>
+</tr>
+</tbody></table>
+<hr>
+<h2><strong>D.4 What V2.0 Preserves from V1.0</strong></h2>
+<p>V2.0 preserves the core V1.0 design foundation:</p>
+<ul>
+<li>synthetic application-level generation;</li>
+<li>multi-product portfolio construction;</li>
+<li>score-band-driven borrower segmentation;</li>
+<li>product-conditioned requested amount, APR, payment, PTI, LGD, and Expected Loss;</li>
+<li>deterministic reproducibility;</li>
+<li>transparent estimated-risk logic;</li>
+<li>mixed-signal borrower realism;</li>
+<li>pre-production strategy-testing scope;</li>
+<li>and clear separation from production underwriting.</li>
+</ul>
+<p>V2.0 does not discard the V1.0 architecture. It matures it.</p>
+<hr>
+<h2><strong>D.5 What V2.0 Adds Beyond V1.0</strong></h2>
+<p>V2.0 adds four major design capabilities:</p>
+<ol>
+<li><p><strong>Greater realism</strong><br>Mortgage exposure and affordability tails are governed more effectively.</p>
+</li>
+<li><p><strong>Greater differentiation</strong><br>Estimated-PD proxy behavior is less compressed near the upper governance cap.</p>
+</li>
+<li><p><strong>Greater comparability</strong><br>Scenarios can be archived and compared using matched synthetic populations.</p>
+</li>
+<li><p><strong>Greater sensitivity</strong><br>Revolving products now transmit APR movement into payment burden and PTI.</p>
+</li>
+</ol>
+<p>Together, these additions transform Module 1 from a strong synthetic application engine into a more complete scenario-capable decisioning simulation framework.</p>
+<hr>
+<h2><strong>D.6 Final Evolution Statement</strong></h2>
+<p>Module 1 V2.0 is a structured evolution of V1.0.</p>
+<p>V1.0 established the foundational simulation architecture.<br>V2.0 strengthens that architecture through targeted realism, dispersion, scenario, and sensitivity enhancements.</p>
+<p>Final design conclusion:</p>
+<blockquote>
+<p><strong>V2.0 preserves the validated V1.0 foundation while adding the governance, diagnostics, and scenario-comparison capabilities required for a portfolio-grade synthetic credit strategy simulator.</strong></p>
+</blockquote>
+</div></article><article id="c037-m00438" class="message user"><div class="role">Andrew</div><p class="meta">C037-M00438 · 2026-05-05T09:35:49.765000-04:00 · active path</p><div class="body"><p>evaluate (content only - format will come later) the brd through appendix D.  while doing so, do another pass through V1.0 BRD to see if anything critical or helpful is missing in V2.0 BRD.  This V2.0 should be nearing completion from a content standpoint.  we need to make sure the narrative across the BRD, Validation Summary, and Code are elite and aligned.  I&#39;d also like to include a table of contents at the top below the executive summary.  I&#39;d like to create the same type of table of contents for the validation summary.  take your time and really dig in and make sure these artifacts are elite.</p>
+</div></article><article id="c037-m00445" class="message user"><div class="role">Andrew</div><p class="meta">C037-M00445 · 2026-05-05T09:38:42.073000-04:00 · active path</p><div class="body"><p>evaluate (content only - format will come later) the brd through appendix D. while doing so, do another pass through V1.0 BRD to see if anything critical or helpful is missing in V2.0 BRD. This V2.0 should be nearing completion from a content standpoint. we need to make sure the narrative across the BRD, Validation Summary, and Code are elite and aligned. I&#39;d also like to include a table of contents at the top below the executive summary. I&#39;d like to create the same type of table of contents for the validation summary. take your time and really dig in and make sure these artifacts are elite.  to assist this prompt, V1.0 and V2.0 BRD and Validation Summary attached.  Also attached is V1.0 and V2.0 code.</p>
+<p><strong>Attachments in export:</strong> <code>Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v2.0 - working version through appendix D.pdf</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Validation_Summary_v2.0(3).pdf</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Validation_Summary_v1.0(6).pdf</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v1.0(4).pdf</code>, <code>module1_synthetic_application_risk_engine_v2.0(10).sql</code>, <code>module1_synthetic_application_risk_engine_v1.0(4).sql</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c037-m00451" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C037-M00451 · 2026-05-05T09:40:46.908620-04:00 · alternate branch</p><div class="body"><p>Yes — the V2.0 BRD is nearing content-complete status. After comparing the current V2.0 BRD against the V1.0 BRD, the final V2.0 Validation Summary, and the V2.0 SQL implementation, the overall package is now strongly aligned and substantially more mature than V1.0. The V2.0 BRD has evolved from a design description into a full enterprise system artifact: it covers architecture, scope, product behavior, variable behavior, payment / affordability / risk translation, scenario architecture, QA governance, parameter governance, output consumption, model boundaries, roadmap, final design posture, and appendices for configuration, SQL implementation, traceability, and design evolution. fileciteturn35file0turn35file1turn36file3turn36file9</p>
+<p>There are a few final content refinements I would make before calling the BRD final.</p>
+<hr>
+<h1>Overall content evaluation</h1>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th align="right">Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executive credibility</td>
+<td align="right"><strong>9.3 / 10</strong></td>
+</tr>
+<tr>
+<td>System design completeness</td>
+<td align="right"><strong>9.4 / 10</strong></td>
+</tr>
+<tr>
+<td>Technical specificity</td>
+<td align="right"><strong>9.3 / 10</strong></td>
+</tr>
+<tr>
+<td>Alignment with Validation Summary</td>
+<td align="right"><strong>9.5 / 10</strong></td>
+</tr>
+<tr>
+<td>Alignment with SQL implementation</td>
+<td align="right"><strong>9.2 / 10</strong></td>
+</tr>
+<tr>
+<td>V1.0 continuity</td>
+<td align="right"><strong>9.2 / 10</strong></td>
+</tr>
+<tr>
+<td>Content-final readiness</td>
+<td align="right"><strong>Near final</strong></td>
+</tr>
+</tbody></table>
+<p>After the few refinements below, this becomes a <strong>9.5-level BRD</strong>, matching the final Validation Summary.</p>
+<hr>
+<h1>Critical fix before finalization</h1>
+<h2>1. Remove duplicated Section 10 opening</h2>
+<p>The current V2.0 BRD appears to repeat the opening of Section 10. Page 39 starts <strong>“10. Validation, QA, and Diagnostic Governance Framework”</strong>, and then the heading and initial subsections appear again on page 40. This looks like an accidental duplicate insertion, not an intentional structure. fileciteturn35file0</p>
+<h3>Action</h3>
+<p>Remove the duplicate Section 10 opening so the section flows once:</p>
+<ul>
+<li>10.1 Purpose  </li>
+<li>10.2 Design Objective  </li>
+<li>10.3 QA Framework Principles  </li>
+<li>10.4 Core QA Layers  </li>
+<li>through 10.15 Conclusion</li>
+</ul>
+<p>This is the only issue I would classify as a <strong>must-fix</strong>.</p>
+<hr>
+<h1>V1.0 content comparison: what V2.0 already captures well</h1>
+<p>The V1.0 BRD included several valuable content areas: product mix, variable specifications, payment modeling, rate environment modeling, PD framework, scenario interpretations, Expected Loss framework, parameterization, QA requirements, assumptions / limitations, future enhancements, and SQL implementation guidance. fileciteturn35file1</p>
+<p>V2.0 now captures almost all of this, and usually at a higher level.</p>
+<table>
+<thead>
+<tr>
+<th>V1.0 Content Area</th>
+<th>V2.0 Coverage</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executive design positioning</td>
+<td>Sections 1–2</td>
+<td>Stronger in V2.0</td>
+</tr>
+<tr>
+<td>Design philosophy</td>
+<td>Section 3</td>
+<td>Stronger and more formal</td>
+</tr>
+<tr>
+<td>Scope / exclusions</td>
+<td>Section 4</td>
+<td>Stronger and more defensible</td>
+</tr>
+<tr>
+<td>System architecture</td>
+<td>Section 5</td>
+<td>Stronger, scenario-aware</td>
+</tr>
+<tr>
+<td>Product behavior matrix</td>
+<td>Section 6</td>
+<td>Stronger and V2.0-aware</td>
+</tr>
+<tr>
+<td>Variable behavior specs</td>
+<td>Section 7</td>
+<td>Much stronger</td>
+</tr>
+<tr>
+<td>Payment / affordability modeling</td>
+<td>Section 8</td>
+<td>Stronger, but one formula reference should be added</td>
+</tr>
+<tr>
+<td>Rate environment modeling</td>
+<td>Sections 8, 9, 11 and Appendix A</td>
+<td>Covered</td>
+</tr>
+<tr>
+<td>PD / estimated-risk framework</td>
+<td>Sections 7, 8, 11, Appendix A</td>
+<td>Stronger and more defensible</td>
+</tr>
+<tr>
+<td>Example scenario interpretations</td>
+<td>Validation Summary covers deeply; BRD could use a compact table</td>
+<td>Add short BRD reference</td>
+</tr>
+<tr>
+<td>Expected Loss framework</td>
+<td>Sections 8, 12, 13</td>
+<td>Stronger</td>
+</tr>
+<tr>
+<td>Parameterization requirements</td>
+<td>Section 11 and Appendix A</td>
+<td>Stronger</td>
+</tr>
+<tr>
+<td>QA requirements</td>
+<td>Section 10 and Appendix B</td>
+<td>Much stronger</td>
+</tr>
+<tr>
+<td>Assumptions / limitations</td>
+<td>Section 13</td>
+<td>Much stronger</td>
+</tr>
+<tr>
+<td>Future enhancements</td>
+<td>Section 14</td>
+<td>Stronger</td>
+</tr>
+<tr>
+<td>SQL implementation guidance</td>
+<td>Appendix B</td>
+<td>Stronger</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>Final content enhancements I recommend</h1>
+<p>These are not rewrites. They are small additions that make the BRD fully complete.</p>
+<hr>
+<h2>1. Add a compact payment formula reference</h2>
+<p>V1.0 had an explicit installment payment formula. V2.0 explains payment design very well, but I would reinsert a compact formula reference so reviewers can see exactly how payment mechanics are represented conceptually.</p>
+<p>Add this either to <strong>Section 8.4 Product-Specific Payment Design</strong> or <strong>Appendix A</strong>.</p>
+<h3>Suggested insert: Payment Formula Reference</h3>
+<table>
+<thead>
+<tr>
+<th>Product / Method</th>
+<th>Conceptual Formula</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Installment / amortizing proxy</strong></td>
+<td><code>Payment = P × [r(1+r)^n] / [(1+r)^n − 1]</code></td>
+<td>Used for mortgage, auto, and unsecured installment structures</td>
+</tr>
+<tr>
+<td><strong>HELOC interest-only proxy</strong></td>
+<td><code>Payment = Requested Amount × APR / 12</code></td>
+<td>Represents simplified immediate payment burden</td>
+</tr>
+<tr>
+<td><strong>Revolving APR-sensitive proxy</strong></td>
+<td><code>Payment = Requested Amount × [base minimum-payment pct + (APR / 12 × passthrough factor)]</code></td>
+<td>Restores APR sensitivity without modeling full billing-cycle behavior</td>
+</tr>
+</tbody></table>
+<p>Where:</p>
+<ul>
+<li><code>P</code> = requested amount  </li>
+<li><code>r</code> = monthly APR  </li>
+<li><code>n</code> = term in months</li>
+</ul>
+<p>This is short, precise, and directly carries forward a useful V1.0 design artifact.</p>
+<hr>
+<h2>2. Add compact design interpretation examples</h2>
+<p>V1.0 had scenario interpretation examples that were helpful for business readers. V2.0’s Validation Summary covers mixed-signal realism in detail, but the BRD should still include a compact design interpretation table so readers understand how to interpret output combinations.</p>
+<p>Best location: <strong>Section 12.13 Output Interpretation Principles</strong>, or immediately after <strong>Section 8.13 Business Interpretation</strong>.</p>
+<h3>Suggested insert: Design Interpretation Examples</h3>
+<table>
+<thead>
+<tr>
+<th>Example</th>
+<th>Synthetic Profile</th>
+<th>Design Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Strong credit, high affordability burden</strong></td>
+<td>Prime / Super Prime borrower with large requested amount and elevated PTI</td>
+<td>Strong credit does not eliminate affordability stress. Product structure and payment burden can still raise downstream estimated risk.</td>
+</tr>
+<tr>
+<td><strong>Weaker credit, manageable PTI</strong></td>
+<td>Subprime borrower with smaller requested amount and low PTI</td>
+<td>Weak credit history can coexist with manageable new-payment burden. Estimated risk remains elevated due to borrower risk signals.</td>
+</tr>
+<tr>
+<td><strong>Large exposure, structured stability</strong></td>
+<td>High-income mortgage borrower with long term and manageable PTI</td>
+<td>Large exposure does not automatically imply affordability stress when income capacity and structure support the payment.</td>
+</tr>
+<tr>
+<td><strong>High APR, low exposure</strong></td>
+<td>Revolving or personal loan borrower with high APR but low balance</td>
+<td>APR matters, but total affordability impact depends on exposure and payment method.</td>
+</tr>
+<tr>
+<td><strong>Low LGD, high Expected Loss</strong></td>
+<td>Mortgage borrower with low LGD but very large exposure</td>
+<td>Expected Loss reflects exposure × estimated-PD proxy × LGD; low LGD alone does not guarantee low dollar loss.</td>
+</tr>
+</tbody></table>
+<p>This is concise and very useful for non-technical readers.</p>
+<hr>
+<h2>3. Add a short boundary summary table at the start of Section 13</h2>
+<p>Section 13 is excellent, but it is long. A quick summary table at the top would make the boundaries easier to scan.</p>
+<h3>Suggested insert: Boundary Summary</h3>
+<table>
+<thead>
+<tr>
+<th>Boundary Area</th>
+<th>V2.0 Position</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Data</strong></td>
+<td>Synthetic only; not real customer data</td>
+</tr>
+<tr>
+<td><strong>Estimated-PD proxy</strong></td>
+<td>Directional synthetic risk proxy; not calibrated PD</td>
+</tr>
+<tr>
+<td><strong>APR</strong></td>
+<td>Payment-burden proxy; not production pricing</td>
+</tr>
+<tr>
+<td><strong>Expected Loss</strong></td>
+<td>Comparative simulation metric; not production loss forecast</td>
+</tr>
+<tr>
+<td><strong>Revolving payment</strong></td>
+<td>APR-sensitive proxy; not billing engine</td>
+</tr>
+<tr>
+<td><strong>Scenario outputs</strong></td>
+<td>Sensitivity analysis; not forecasting</td>
+</tr>
+<tr>
+<td><strong>Fair lending / compliance</strong></td>
+<td>Out of Module 1 scope</td>
+</tr>
+<tr>
+<td><strong>Production deployment</strong></td>
+<td>Out of Module 1 scope</td>
+</tr>
+</tbody></table>
+<p>This improves scanability without adding much length.</p>
+<hr>
+<h2>4. Add a compact table of contents after the Executive Summary</h2>
+<p>This is a good idea. Both the BRD and Validation Summary are now long enough that a table of contents is necessary. I would put it immediately after Section 1 in both documents.</p>
+<p>For the BRD, use a <strong>content-oriented TOC</strong>, not just a list of headings. It should tell the reader what each section does.</p>
+<hr>
+<h1>Recommended BRD Table of Contents</h1>
+<p>Place this after <strong>1. Executive Summary</strong>.</p>
+<h2><strong>Table of Contents</strong></h2>
+<table>
+<thead>
+<tr>
+<th align="right">Section</th>
+<th>Title</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right"><strong>1</strong></td>
+<td>Executive Summary</td>
+<td>Summarizes Module 1 V2.0 purpose, design posture, and strategic value</td>
+</tr>
+<tr>
+<td align="right"><strong>2</strong></td>
+<td>Business Objective and Strategic Value</td>
+<td>Defines why the system exists and what business value it provides</td>
+</tr>
+<tr>
+<td align="right"><strong>3</strong></td>
+<td>Design Principles</td>
+<td>Establishes deterministic reproducibility, governance, economic coherence, auditability, and scenario-based design</td>
+</tr>
+<tr>
+<td align="right"><strong>4</strong></td>
+<td>Scope</td>
+<td>Defines what is included, excluded, and how the system should be interpreted</td>
+</tr>
+<tr>
+<td align="right"><strong>5</strong></td>
+<td>System Architecture Overview</td>
+<td>Describes the end-to-end staged architecture and scenario-aware design</td>
+</tr>
+<tr>
+<td align="right"><strong>6</strong></td>
+<td>Product Behavior Matrix</td>
+<td>Explains how product structure drives amount, APR, payment, PTI, estimated risk, and Expected Loss</td>
+</tr>
+<tr>
+<td align="right"><strong>7</strong></td>
+<td>Variable Behavior Specifications</td>
+<td>Defines borrower, structural, risk, scenario, and diagnostic variable behavior</td>
+</tr>
+<tr>
+<td align="right"><strong>8</strong></td>
+<td>Payment, Affordability, and Risk Translation Framework</td>
+<td>Explains how product structure flows through APR, payment, PTI, estimated-PD proxy, and Expected Loss</td>
+</tr>
+<tr>
+<td align="right"><strong>9</strong></td>
+<td>Scenario Framework &amp; Comparison Architecture</td>
+<td>Defines scenario metadata, archive persistence, population anchoring, and matched comparison</td>
+</tr>
+<tr>
+<td align="right"><strong>10</strong></td>
+<td>Validation, QA, and Diagnostic Governance Framework</td>
+<td>Defines required QA layers, workstream diagnostics, tail-frequency checks, and scenario QA</td>
+</tr>
+<tr>
+<td align="right"><strong>11</strong></td>
+<td>Parameter Governance &amp; Configuration Framework</td>
+<td>Defines governed assumptions, parameter controls, validation gatekeepers, and change workflow</td>
+</tr>
+<tr>
+<td align="right"><strong>12</strong></td>
+<td>Output Data Model &amp; Consumption Framework</td>
+<td>Defines final outputs, diagnostic fields, scenario fields, and valid consumption patterns</td>
+</tr>
+<tr>
+<td align="right"><strong>13</strong></td>
+<td>Model Boundaries, Intended Use &amp; Governance Guardrails</td>
+<td>Defines valid use, non-use, and interpretation boundaries</td>
+</tr>
+<tr>
+<td align="right"><strong>14</strong></td>
+<td>Future Enhancement Roadmap &amp; Modular Expansion Strategy</td>
+<td>Defines future modules and scope-expansion opportunities</td>
+</tr>
+<tr>
+<td align="right"><strong>15</strong></td>
+<td>Final Design Statement</td>
+<td>Provides the final design conclusion and relationship to the Validation Summary</td>
+</tr>
+<tr>
+<td align="right"><strong>Appendix A</strong></td>
+<td>Default Configuration &amp; Estimated-Risk Reference Tables</td>
+<td>Provides default values, parameter references, multipliers, caps, LGD, and V2.0 governance settings</td>
+</tr>
+<tr>
+<td align="right"><strong>Appendix B</strong></td>
+<td>SQL Implementation Guidance &amp; Section Map</td>
+<td>Maps the SQL implementation sections, object structure, QA sections, and execution workflow</td>
+</tr>
+<tr>
+<td align="right"><strong>Appendix C</strong></td>
+<td>Requirements Traceability Matrix</td>
+<td>Maps requirements to BRD sections, SQL / QA anchors, validation evidence, and status</td>
+</tr>
+<tr>
+<td align="right"><strong>Appendix D</strong></td>
+<td>V1.0 to V2.0 Design Evolution Summary</td>
+<td>Summarizes how V2.0 extends and matures the validated V1.0 foundation</td>
+</tr>
+</tbody></table>
+<p>This table is board-friendly and useful for technical reviewers.</p>
+<hr>
+<h1>Recommended Validation Summary Table of Contents</h1>
+<p>Place this after <strong>1. Executive Summary</strong> in the Validation Summary.</p>
+<h2><strong>Table of Contents</strong></h2>
+<table>
+<thead>
+<tr>
+<th align="right">Section</th>
+<th>Title</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right"><strong>1</strong></td>
+<td>Executive Summary</td>
+<td>Summarizes final V2.0 validation outcome and key evidence</td>
+</tr>
+<tr>
+<td align="right"><strong>2</strong></td>
+<td>Validation Approach Overview</td>
+<td>Defines validation methodology, workstream evidence, scenario consistency, tail-frequency review, and diagnostic transparency</td>
+</tr>
+<tr>
+<td align="right"><strong>3</strong></td>
+<td>Portfolio Structure Validation</td>
+<td>Validates product mix, score-band distribution, and V2.0 stability</td>
+</tr>
+<tr>
+<td align="right"><strong>4</strong></td>
+<td>Deterministic Generation Validation</td>
+<td>Validates reproducibility, deterministic seeding, and scenario comparability</td>
+</tr>
+<tr>
+<td align="right"><strong>5</strong></td>
+<td>Variable Distribution Validation</td>
+<td>Validates central tendency, tails, distribution improvements, and estimated-PD proxy behavior</td>
+</tr>
+<tr>
+<td align="right"><strong>6</strong></td>
+<td>Product-Level Behavior Validation</td>
+<td>Validates product differentiation across exposure, APR, payment, PTI, LGD, and Expected Loss</td>
+</tr>
+<tr>
+<td align="right"><strong>7</strong></td>
+<td>Score-Band Behavior Validation</td>
+<td>Validates borrower-quality gradients, behavioral risk signals, estimated-PD proxy ordering, and cap interpretation</td>
+</tr>
+<tr>
+<td align="right"><strong>8</strong></td>
+<td>Affordability-to-Risk Relationship Validation</td>
+<td>Validates PTI as the bridge from payment burden into estimated risk and Expected Loss</td>
+</tr>
+<tr>
+<td align="right"><strong>9</strong></td>
+<td>Workstream Validation Narrative</td>
+<td>Documents V2.0 workstream evolution across mortgage realism, estimated-PD proxy dispersion, scenario framework, and revolving sensitivity</td>
+</tr>
+<tr>
+<td align="right"><strong>10</strong></td>
+<td>Mixed-Signal Realism Validation</td>
+<td>Validates realistic overlap and borrower exceptions</td>
+</tr>
+<tr>
+<td align="right"><strong>11</strong></td>
+<td>Edge Case &amp; Boundary Behavior Validation</td>
+<td>Validates residual extremes as bounded, explainable, and non-dominant</td>
+</tr>
+<tr>
+<td align="right"><strong>12</strong></td>
+<td>System-Level Validation Synthesis</td>
+<td>Consolidates evidence across all validation dimensions into an acceptance assessment</td>
+</tr>
+<tr>
+<td align="right"><strong>13</strong></td>
+<td>Model Boundaries &amp; Intended Use Validation</td>
+<td>Defines what validation supports and what it does not support</td>
+</tr>
+<tr>
+<td align="right"><strong>14</strong></td>
+<td>Future Enhancement Roadmap</td>
+<td>Identifies future enhancements as additive extensions beyond V2.0 acceptance</td>
+</tr>
+<tr>
+<td align="right"><strong>15</strong></td>
+<td>Final Validation Statement</td>
+<td>Provides final acceptance posture and confirms fit-for-purpose status</td>
+</tr>
+</tbody></table>
+<p>This makes the Validation Summary much easier to navigate.</p>
+<hr>
+<h1>Cross-artifact narrative alignment</h1>
+<p>The BRD, Validation Summary, and Code are now aligned around the same central thesis:</p>
+<blockquote>
+<p><strong>Credit risk in the simulator is not assigned statically; it emerges from borrower profile, product structure, pricing, affordability, and governed estimated-risk translation.</strong></p>
+</blockquote>
+<h2>Alignment check</h2>
+<table>
+<thead>
+<tr>
+<th>Narrative Theme</th>
+<th>BRD</th>
+<th>Validation Summary</th>
+<th>SQL Code</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Deterministic reproducibility</td>
+<td>Sections 3, 5, 7B, 11</td>
+<td>Sections 4, 12</td>
+<td>Deterministic hash framework</td>
+</tr>
+<tr>
+<td>Scenario comparability</td>
+<td>Sections 5, 9, 12</td>
+<td>Sections 4, 8, 9, 12</td>
+<td>Scenario archive and Section 10 comparison QA</td>
+</tr>
+<tr>
+<td>Estimated-PD proxy boundary</td>
+<td>Sections 7, 8, 11, 13, Appendix A</td>
+<td>Sections 2, 5, 7, 13, 15</td>
+<td>Terminology notes and estimated-PD proxy diagnostics</td>
+</tr>
+<tr>
+<td>Mortgage realism</td>
+<td>Sections 6, 7, 8, 11, Appendix A</td>
+<td>Sections 5, 6, 9, 11</td>
+<td>Workstream A diagnostics</td>
+</tr>
+<tr>
+<td>Revolving sensitivity</td>
+<td>Sections 6, 8, 11, 13</td>
+<td>Sections 6, 8, 9, 13</td>
+<td>Workstream D payment proxy and QA</td>
+</tr>
+<tr>
+<td>Tail-frequency governance</td>
+<td>Sections 10, 11, Appendix B</td>
+<td>Sections 2, 5, 11, 12</td>
+<td>QA 9.17</td>
+</tr>
+<tr>
+<td>Product differentiation</td>
+<td>Sections 6, 8, 12</td>
+<td>Section 6</td>
+<td>Product profile QA</td>
+</tr>
+<tr>
+<td>Mixed-signal realism</td>
+<td>Sections 3, 7, 10, 12</td>
+<td>Sections 7, 10, 11</td>
+<td>QA 9.9</td>
+</tr>
+<tr>
+<td>Boundaries / non-use</td>
+<td>Sections 4, 13, 15</td>
+<td>Sections 13, 15</td>
+<td>Code commentary and parameter guidance</td>
+</tr>
+</tbody></table>
+<p>This is now very strong.</p>
+<hr>
+<h1>Content items I would still update</h1>
+<h2>Must fix</h2>
+<ol>
+<li><strong>Remove duplicate Section 10 opening.</strong></li>
+</ol>
+<h2>Strongly recommended</h2>
+<ol start="2">
+<li>Add <strong>Table of Contents</strong> to BRD after Executive Summary.  </li>
+<li>Add <strong>Table of Contents</strong> to Validation Summary after Executive Summary.  </li>
+<li>Add compact <strong>Payment Formula Reference</strong>.  </li>
+<li>Add compact <strong>Design Interpretation Examples</strong> table.  </li>
+<li>Add Section 13 <strong>Boundary Summary</strong> table.</li>
+</ol>
+<h2>Optional</h2>
+<ol start="7">
+<li>Add a small <strong>Document Control / Artifact Linkage</strong> table near the front:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Version</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>BRD</td>
+<td>V2.0</td>
+<td>System design artifact</td>
+</tr>
+<tr>
+<td>Validation Summary</td>
+<td>V2.0</td>
+<td>Evidence / validation artifact</td>
+</tr>
+<tr>
+<td>SQL Implementation</td>
+<td>V2.0</td>
+<td>Executable implementation artifact</td>
+</tr>
+</tbody></table>
+<p>This would help reviewers understand the package.</p>
+<hr>
+<h1>Final evaluation</h1>
+<p>The V2.0 BRD is now at a very high level. It is more detailed, better governed, more auditable, and more scenario-aware than V1.0. The final Validation Summary is already elite. The SQL implementation has been brought into alignment through estimated-PD proxy terminology, workstream commentary, and QA structure.</p>
+<p>Once the few final BRD refinements are made, the full artifact set will read as one coherent enterprise system package:</p>
+<blockquote>
+<p><strong>BRD:</strong> what the system is and how it should work<br><strong>SQL:</strong> executable system implementation<br><strong>Validation Summary:</strong> evidence that the system works as intended  </p>
+</blockquote>
+<p>That is the right final posture.</p>
+</div></article><article id="c037-m00454" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C037-M00454 · 2026-05-05T09:47:09.418497-04:00 · alternate branch</p><div class="body"><h2>Overall verdict</h2>
+<p>The V2.0 BRD is now <strong>very close to content-final</strong>. It preserves the useful V1.0 foundation and materially improves it across scenario architecture, workstream governance, diagnostic transparency, parameter governance, output interpretation, model boundaries, and implementation traceability. The current BRD, final Validation Summary, and V2.0 SQL now tell the same core story:</p>
+<blockquote>
+<p><strong>Module 1 V2.0 is a governed, deterministic, scenario-capable synthetic credit simulation engine where product structure, pricing, affordability, estimated-risk proxy behavior, LGD, and Expected Loss interact through a transparent and auditable design.</strong></p>
+</blockquote>
+<p>The V1.0 BRD’s strongest reusable elements were its product behavior matrix, variable specifications, QA requirements, assumptions/limitations, future enhancements, and SQL implementation guidance. V2.0 now covers those and generally improves them, especially through Sections 8–15 and Appendices A–D. V1.0’s SQL implementation guidance explicitly called for a strong job-aid header, dedicated schema, reset section, user-parameter section, fail-fast validation, deterministic seeds, staged CTEs, and integrated QA queries; V2.0 now carries that forward through Appendix B and the V2.0 SQL architecture. fileciteturn37file0turn37file17</p>
+<p>My content assessment: <strong>9.4 / 10</strong> now, with a path to <strong>9.6 / 10</strong> after adding the two tables of contents and making one tiny code-comment polish item.</p>
+<hr>
+<h1>1. BRD content evaluation through Appendix D</h1>
+<h2>What is working extremely well</h2>
+<p>The BRD now has a clean enterprise design arc:</p>
+<ol>
+<li><strong>Executive framing</strong> — what the system is, why it matters, and what it demonstrates.  </li>
+<li><strong>Design principles</strong> — deterministic reproducibility, parameter governance, economic coherence, behavioral realism, separation of concerns, scenario-based design, and auditability.  </li>
+<li><strong>Scope and boundaries</strong> — clear included / excluded functionality.  </li>
+<li><strong>Architecture</strong> — staged flow from application generation through Expected Loss.  </li>
+<li><strong>Product and variable behavior</strong> — detailed field-level design specifications.  </li>
+<li><strong>Translation mechanics</strong> — payment, PTI, estimated-PD proxy, LGD, and Expected Loss.  </li>
+<li><strong>Scenario architecture</strong> — matched scenario comparison and attribution.  </li>
+<li><strong>QA and diagnostic governance</strong> — how outputs are reviewed and validated.  </li>
+<li><strong>Parameter governance</strong> — how assumptions are controlled.  </li>
+<li><strong>Output consumption</strong> — what the outputs mean and how they should be used.  </li>
+<li><strong>Boundaries and roadmap</strong> — what the system is not and how it can evolve.  </li>
+<li><strong>Appendices</strong> — reference values, implementation map, requirements traceability, and V1.0 → V2.0 evolution.</li>
+</ol>
+<p>That is the right structure for a board-ready BRD.</p>
+<h2>The appendices materially improve the document</h2>
+<p>Appendix A restores the compact parameter/reference discipline that V1.0 had, but in a V2.0-compatible way. Appendix B brings forward the V1.0 SQL implementation guidance and expands it into a true implementation-governance map. Appendix C gives the BRD an audit-style traceability layer. Appendix D makes the V1.0 → V2.0 evolution explicit instead of implied.</p>
+<p>Those appendices are not filler. They make the BRD <strong>reviewable, traceable, and implementation-ready</strong>.</p>
+<hr>
+<h1>2. V1.0 content cross-check</h1>
+<p>I do <strong>not</strong> see any major V1.0 concept that remains critically missing from V2.0.</p>
+<p>Here is the coverage view:</p>
+<table>
+<thead>
+<tr>
+<th>V1.0 BRD Content Area</th>
+<th>V2.0 Coverage</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executive system framing</td>
+<td>Cover + Section 1</td>
+<td>Improved</td>
+</tr>
+<tr>
+<td>Business objective / strategic value</td>
+<td>Section 2</td>
+<td>Improved</td>
+</tr>
+<tr>
+<td>Design philosophy</td>
+<td>Section 3</td>
+<td>Improved and formalized</td>
+</tr>
+<tr>
+<td>Scope included / excluded</td>
+<td>Section 4</td>
+<td>Improved with stronger boundaries</td>
+</tr>
+<tr>
+<td>System architecture flow</td>
+<td>Section 5</td>
+<td>Improved with scenario architecture</td>
+</tr>
+<tr>
+<td>Product behavior matrix</td>
+<td>Section 6</td>
+<td>Preserved and enhanced</td>
+</tr>
+<tr>
+<td>Default product mix</td>
+<td>Section 11 and Appendix A</td>
+<td>Preserved, correctly relocated</td>
+</tr>
+<tr>
+<td>Variable behavior specs</td>
+<td>Section 7</td>
+<td>Significantly improved</td>
+</tr>
+<tr>
+<td>Rate environment modeling</td>
+<td>Sections 8, 9, 11 and Appendix A</td>
+<td>Improved</td>
+</tr>
+<tr>
+<td>PD framework</td>
+<td>Reframed as estimated-PD proxy in Sections 7, 8, 11, 13 and Appendix A</td>
+<td>Improved and more defensible</td>
+</tr>
+<tr>
+<td>Expected Loss calculation</td>
+<td>Sections 8, 12 and Appendix A</td>
+<td>Improved</td>
+</tr>
+<tr>
+<td>Parameterization requirements</td>
+<td>Section 11 + Appendix A</td>
+<td>Improved</td>
+</tr>
+<tr>
+<td>QA requirements</td>
+<td>Section 10 + Appendix B</td>
+<td>Significantly improved</td>
+</tr>
+<tr>
+<td>Assumptions / limitations</td>
+<td>Section 13</td>
+<td>Significantly improved</td>
+</tr>
+<tr>
+<td>Future enhancements</td>
+<td>Section 14 + Appendix D</td>
+<td>Improved</td>
+</tr>
+<tr>
+<td>SQL implementation guidance</td>
+<td>Appendix B</td>
+<td>Preserved and elevated</td>
+</tr>
+</tbody></table>
+<p>V1.0’s QA requirements included record count, product mix, score distribution, income/DTI/utilization by score, delinquency/derogatory/bankruptcy review, product/payment review, PTI review, risk distribution review, Expected Loss review, and mixed-signal spot checks. V2.0 now covers all of that, plus workstream diagnostics, scenario comparison, saturation diagnostics, tail-frequency validation, and matched row-level comparison. fileciteturn37file9turn35file1</p>
+<hr>
+<h1>3. Alignment across BRD, Validation Summary, and Code</h1>
+<h2>BRD ↔ Validation Summary</h2>
+<p>The alignment is very strong.</p>
+<p>The BRD defines:</p>
+<ul>
+<li>deterministic generation,</li>
+<li>scenario architecture,</li>
+<li>product-aware behavior,</li>
+<li>payment and affordability translation,</li>
+<li>estimated-PD proxy boundaries,</li>
+<li>Expected Loss logic,</li>
+<li>parameter governance,</li>
+<li>output interpretation,</li>
+<li>QA governance,</li>
+<li>and model boundaries.</li>
+</ul>
+<p>The Validation Summary proves:</p>
+<ul>
+<li>product mix and score mix stability,</li>
+<li>deterministic reproducibility,</li>
+<li>matched scenario comparability,</li>
+<li>tail-frequency governance,</li>
+<li>mortgage realism,</li>
+<li>estimated-PD proxy dispersion,</li>
+<li>revolving sensitivity,</li>
+<li>affordability-to-risk translation,</li>
+<li>mixed-signal realism,</li>
+<li>edge-case governance,</li>
+<li>and final acceptance. fileciteturn35file1</li>
+</ul>
+<p>That division of labor is exactly right:</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>BRD</strong></td>
+<td>Defines the system design and governance intent</td>
+</tr>
+<tr>
+<td><strong>Validation Summary</strong></td>
+<td>Proves the system behaves as intended</td>
+</tr>
+<tr>
+<td><strong>SQL Code</strong></td>
+<td>Implements the governed simulation and embedded QA framework</td>
+</tr>
+</tbody></table>
+<h2>BRD ↔ Code</h2>
+<p>The BRD and code are also strongly aligned. Appendix B maps the SQL implementation sections, and the V2.0 SQL itself has staged materialization, Workstream A mortgage transformation logic, Workstream D revolving sensitivity, Section 9 QA, and Section 10 scenario comparison. The code commentary explicitly explains why product formulas differ, why mortgage gets A2/A3 treatment, and why the system avoids one generic formula for all products. fileciteturn37file17</p>
+<p>One tiny code-comment polish item remains from a text-search perspective:</p>
+<blockquote>
+<p><code>estimated_pd proxy governance cap</code></p>
+</blockquote>
+<p>I would change that to either:</p>
+<blockquote>
+<p><code>estimated-PD proxy governance cap</code></p>
+</blockquote>
+<p>or:</p>
+<blockquote>
+<p><code>where estimated_pd = 0.450000</code></p>
+</blockquote>
+<p>This is not a logic issue. It is a final terminology polish item to keep code commentary aligned with the BRD / Validation Summary language.</p>
+<hr>
+<h1>4. Remaining content recommendations</h1>
+<h2>Required</h2>
+<h3>1. Add a Table of Contents to the BRD</h3>
+<p>Place it <strong>after Section 1 Executive Summary</strong> and before Section 2.</p>
+<h3>2. Add a Table of Contents to the Validation Summary</h3>
+<p>Same placement: after the Executive Summary and before Section 2.</p>
+<h3>3. Fix the one SQL comment phrase</h3>
+<p>Change:</p>
+<blockquote>
+<p><code>estimated_pd proxy governance cap</code></p>
+</blockquote>
+<p>to:</p>
+<blockquote>
+<p><code>estimated-PD proxy governance cap</code></p>
+</blockquote>
+<h2>Optional but valuable</h2>
+<h3>Add a short glossary / abbreviation box</h3>
+<p>This is not mandatory, but it would help because the artifact now uses several recurring technical terms:</p>
+<ul>
+<li>PTI</li>
+<li>LGD</li>
+<li>EL</li>
+<li>estimated-PD proxy</li>
+<li>scenario set</li>
+<li>population ID</li>
+<li>A2 / A3 / B1 / B3 / C / D workstreams</li>
+</ul>
+<p>You could either add it as <strong>Appendix E — Glossary &amp; Abbreviations</strong> or as a compact front-matter box after the TOC. I would only add it if you want the document to be maximally reviewer-friendly.</p>
+<hr>
+<h1>5. Recommended BRD Table of Contents</h1>
+<p>Place this after the Executive Summary.</p>
+<h2><strong>Table of Contents</strong></h2>
+<table>
+<thead>
+<tr>
+<th align="right">Section</th>
+<th>Title</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right"><strong>1</strong></td>
+<td>Executive Summary</td>
+</tr>
+<tr>
+<td align="right"><strong>2</strong></td>
+<td>Business Objective and Strategic Value</td>
+</tr>
+<tr>
+<td align="right"><strong>3</strong></td>
+<td>Design Principles</td>
+</tr>
+<tr>
+<td align="right"><strong>4</strong></td>
+<td>Scope</td>
+</tr>
+<tr>
+<td align="right"><strong>5</strong></td>
+<td>System Architecture Overview</td>
+</tr>
+<tr>
+<td align="right"><strong>6</strong></td>
+<td>Product Behavior Matrix</td>
+</tr>
+<tr>
+<td align="right"><strong>7</strong></td>
+<td>Core Variable Behavior Specifications</td>
+</tr>
+<tr>
+<td align="right"><strong>7A</strong></td>
+<td>Core Variable Behavior Specifications: Borrower, Structural, and Risk Variables</td>
+</tr>
+<tr>
+<td align="right"><strong>7B</strong></td>
+<td>System-Level, Scenario, and Diagnostic Variables</td>
+</tr>
+<tr>
+<td align="right"><strong>7C</strong></td>
+<td>Cross-Variable Interaction Framework</td>
+</tr>
+<tr>
+<td align="right"><strong>8</strong></td>
+<td>Payment, Affordability, and Risk Translation Framework</td>
+</tr>
+<tr>
+<td align="right"><strong>9</strong></td>
+<td>Scenario Framework and Comparison Architecture</td>
+</tr>
+<tr>
+<td align="right"><strong>10</strong></td>
+<td>Validation, QA, and Diagnostic Governance Framework</td>
+</tr>
+<tr>
+<td align="right"><strong>11</strong></td>
+<td>Parameter Governance and Configuration Framework</td>
+</tr>
+<tr>
+<td align="right"><strong>12</strong></td>
+<td>Output Data Model and Consumption Framework</td>
+</tr>
+<tr>
+<td align="right"><strong>13</strong></td>
+<td>Model Boundaries, Intended Use, and Governance Guardrails</td>
+</tr>
+<tr>
+<td align="right"><strong>14</strong></td>
+<td>Future Enhancement Roadmap and Modular Expansion Strategy</td>
+</tr>
+<tr>
+<td align="right"><strong>15</strong></td>
+<td>Final Design Statement</td>
+</tr>
+<tr>
+<td align="right"><strong>Appendix A</strong></td>
+<td>Default Configuration and Estimated-Risk Reference Tables</td>
+</tr>
+<tr>
+<td align="right"><strong>Appendix B</strong></td>
+<td>SQL Implementation Guidance and Section Map</td>
+</tr>
+<tr>
+<td align="right"><strong>Appendix C</strong></td>
+<td>Requirements Traceability Matrix</td>
+</tr>
+<tr>
+<td align="right"><strong>Appendix D</strong></td>
+<td>V1.0 to V2.0 Design Evolution Summary</td>
+</tr>
+</tbody></table>
+<p>Optional addition if you choose to add it:</p>
+<table>
+<thead>
+<tr>
+<th align="right">Section</th>
+<th>Title</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right"><strong>Appendix E</strong></td>
+<td>Glossary and Abbreviations</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>6. Recommended Validation Summary Table of Contents</h1>
+<p>Place this after the Executive Summary.</p>
+<h2><strong>Table of Contents</strong></h2>
+<table>
+<thead>
+<tr>
+<th align="right">Section</th>
+<th>Title</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right"><strong>1</strong></td>
+<td>Executive Summary</td>
+</tr>
+<tr>
+<td align="right"><strong>2</strong></td>
+<td>Validation Approach Overview</td>
+</tr>
+<tr>
+<td align="right"><strong>3</strong></td>
+<td>Portfolio Structure Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>4</strong></td>
+<td>Deterministic Generation Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>5</strong></td>
+<td>Variable Distribution Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>6</strong></td>
+<td>Product-Level Behavior Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>7</strong></td>
+<td>Score-Band Behavior Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>8</strong></td>
+<td>Affordability-to-Risk Relationship Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>9</strong></td>
+<td>Workstream Validation Narrative</td>
+</tr>
+<tr>
+<td align="right"><strong>10</strong></td>
+<td>Mixed-Signal Realism Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>11</strong></td>
+<td>Edge Case and Boundary Behavior Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>12</strong></td>
+<td>System-Level Validation Synthesis</td>
+</tr>
+<tr>
+<td align="right"><strong>13</strong></td>
+<td>Model Boundaries and Intended Use Validation</td>
+</tr>
+<tr>
+<td align="right"><strong>14</strong></td>
+<td>Future Enhancement Roadmap</td>
+</tr>
+<tr>
+<td align="right"><strong>15</strong></td>
+<td>Final Validation Statement</td>
+</tr>
+</tbody></table>
+<p>This gives both artifacts the same front-matter discipline and makes the document pair feel cohesive.</p>
+<hr>
+<h1>7. Optional glossary / abbreviation table</h1>
+<p>If you add this, keep it concise.</p>
+<h2><strong>Glossary and Abbreviations</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>APR</strong></td>
+<td>Annual Percentage Rate proxy used for payment burden estimation</td>
+</tr>
+<tr>
+<td><strong>PTI</strong></td>
+<td>Payment-to-Income ratio; primary affordability bridge</td>
+</tr>
+<tr>
+<td><strong>DTI</strong></td>
+<td>Debt-to-Income ratio; existing debt burden measure</td>
+</tr>
+<tr>
+<td><strong>LGD</strong></td>
+<td>Loss Given Default; product-level severity assumption</td>
+</tr>
+<tr>
+<td><strong>EL</strong></td>
+<td>Expected Loss; calculated as exposure × estimated-PD proxy × LGD</td>
+</tr>
+<tr>
+<td><strong>estimated-PD proxy</strong></td>
+<td>Synthetic estimated-risk proxy; not a calibrated production default probability</td>
+</tr>
+<tr>
+<td><strong>population_id</strong></td>
+<td>Deterministic population anchor used for reproducibility and scenario comparison</td>
+</tr>
+<tr>
+<td><strong>scenario_set_name</strong></td>
+<td>Scenario family identifier</td>
+</tr>
+<tr>
+<td><strong>scenario_name</strong></td>
+<td>Specific scenario label</td>
+</tr>
+<tr>
+<td><strong>Workstream A</strong></td>
+<td>Mortgage realism refinement</td>
+</tr>
+<tr>
+<td><strong>Workstream B</strong></td>
+<td>Estimated-PD proxy dispersion refinement</td>
+</tr>
+<tr>
+<td><strong>Workstream C</strong></td>
+<td>Scenario framework design</td>
+</tr>
+<tr>
+<td><strong>Workstream D</strong></td>
+<td>Revolving payment sensitivity enhancement</td>
+</tr>
+</tbody></table>
+<p>This would make the BRD and Validation Summary easier for a first-time reviewer to navigate.</p>
+<hr>
+<h1>8. Final readiness assessment</h1>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th align="right">Content Readiness</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>BRD V2.0</strong></td>
+<td align="right"><strong>9.4 / 10</strong></td>
+<td>Add TOC; optionally add glossary; fix one code-comment phrase</td>
+</tr>
+<tr>
+<td><strong>Validation Summary V2.0</strong></td>
+<td align="right"><strong>9.6 / 10</strong></td>
+<td>Final-quality; add TOC for symmetry</td>
+</tr>
+<tr>
+<td><strong>V2.0 SQL</strong></td>
+<td align="right"><strong>9.4 / 10</strong></td>
+<td>Strongly aligned; one small terminology polish item remains</td>
+</tr>
+<tr>
+<td><strong>Artifact set overall</strong></td>
+<td align="right"><strong>9.5 / 10</strong></td>
+<td>Enterprise-grade and portfolio-ready</td>
+</tr>
+</tbody></table>
+<p>Final judgment:</p>
+<blockquote>
+<p>The V2.0 BRD is content-complete in substance. It now captures the valuable V1.0 material and extends it into a much stronger system-design artifact. The Validation Summary proves the design. The SQL implements it with aligned commentary and QA. Add the two TOCs, clean the one code-comment phrase, and optionally add a short glossary. After that, the artifact set is at elite portfolio quality.</p>
+</blockquote>
+</div></article><article id="c037-m00456" class="message user"><div class="role">Andrew</div><p class="meta">C037-M00456 · 2026-05-05T09:49:08.955000-04:00 · active path</p><div class="body"><p>evaluate (content only - format will come later) the brd through appendix D. while doing so, do another pass through V1.0 BRD to see if anything critical or helpful is missing in V2.0 BRD. This V2.0 should be nearing completion from a content standpoint.  I&#39;d also like to include a table of contents at the top below the executive summary. Take your time and really dig in and make sure this BRD is elite. to assist this prompt, V1.0 and V2.0 BRD are attached.</p>
+<p><strong>Attachments in export:</strong> <code>Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v2.0 - working version through appendix D(1).pdf</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v1.0(5).pdf</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>
