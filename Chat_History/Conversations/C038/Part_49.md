@@ -1,0 +1,2766 @@
+# Module 2 Decision Simulator Build
+
+## Part 49
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_48.md) · [Next](Part_50.md)
+
+<a id="c038-m00958"></a>
+
+### C038-M00958
+
+**ChatGPT** · 2026-05-10T00:45:00.324789-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00958 -->
+According to a document from 2026-05-10, I recommend replacing Section 12 with the version below. I preserved the current archive persistence logic and strengthened the instructional commentary around **how to run it, how to interpret it, credit-risk governance concepts, archive replacement discipline, and how the SQL mechanics work**. fileciteturn103file8
+
+```sql
+/***************************************************************************************************
+SECTION 12 — STRATEGY DECISION ARCHIVE PERSISTENCE LAYER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Persist completed latest-run Module 2 strategy outputs into a governed archive table.
+
+    Section 12 answers:
+
+        "Should this completed Module 2 strategy run be archived, and if so, how should existing
+         archive rows be handled before inserting the current latest-run output?"
+
+    This section is the governed history layer for Module 2.
+
+    Section 11 materialized the current latest-run output.
+    Section 12 decides whether that completed latest-run output should become durable historical
+    strategy evidence.
+
+SQL PURPOSE:
+    1. Consume credit_decisioning_sim.strategy_decisions.
+    2. Create or reuse credit_decisioning_sim.strategy_decisions_archive.
+    3. Validate latest-run archive controls.
+    4. Validate archive schema alignment.
+    5. Capture archive inventory before persistence.
+    6. Apply governed archive reset / replacement behavior.
+    7. Insert the current latest-run output into the archive when archive_run_flag = TRUE.
+    8. Add archive_inserted_ts as archive persistence audit metadata.
+    9. Capture archive inventory after persistence.
+    10. Add archive validation indexes before row-level persistence checks.
+    11. Validate archive grain, current slice integrity, and archive-control behavior.
+    12. Create practical archive indexes.
+    13. Provide lightweight archive diagnostics.
+
+WHO SHOULD REVIEW THIS SECTION:
+    Credit strategy reviewers:
+        Confirm that completed strategy outputs are archived under the intended replacement behavior
+        before strategy comparison or frontier review begins.
+
+    Model governance / validation reviewers:
+        Confirm that archive persistence preserves the completed latest-run output without
+        recalculating decisions, reason codes, approved exposure, or approved Expected Loss.
+
+    SQL reviewers:
+        Confirm that archive persistence uses explicit keys, schema-alignment checks, dynamic insert
+        column lists, row-level fidelity checks, and archive grain enforcement.
+
+    Portfolio / executive reviewers:
+        Use the archive as the governed source for later matched comparison, strategy frontier, and
+        run-evidence capture.
+
+WHEN TO RUN THIS SECTION:
+    Run Section 12 after:
+
+        Section 11 — Latest-Run Strategy Decision Output Table
+
+    Section 12 should be run before:
+
+        Section 13 — Archive Inventory and Matched Strategy Comparison Framework
+        Section 15 — Strategy Frontier Summary and Executive Comparison View
+        Section 16 — Strategy Run Evidence Capture and Executive Story Register
+
+    Section 12 depends on:
+
+        credit_decisioning_sim.strategy_decisions
+
+HOW TO INTERPRET THIS SECTION:
+    Passing Section 12 means:
+        the archive table exists,
+        the archive schema aligns to the latest-run schema,
+        archive controls were unambiguous,
+        archive reset / replacement behavior was applied according to the active controls,
+        archived rows preserve the latest-run core strategy output fields,
+        archive row-level grain is protected,
+        and archive diagnostics are available for review.
+
+    Passing Section 12 does not mean:
+        matched strategy comparison has been performed,
+        full latest-run QA has passed,
+        strategy frontier evidence has been created,
+        executive evidence has been captured,
+        or documentation is ready to draft.
+
+INPUT:
+    credit_decisioning_sim.strategy_decisions
+
+OUTPUT:
+    credit_decisioning_sim.strategy_decisions_archive
+
+TEMPORARY DIAGNOSTIC OUTPUTS:
+    tmp_m2_archive_inventory_before
+    tmp_m2_archive_inventory_after
+    tmp_m2_archive_persistence_audit
+
+WHY LATEST-RUN OUTPUT AND ARCHIVE PERSISTENCE ARE SEPARATE:
+    credit_decisioning_sim.strategy_decisions is the current latest-run output.
+
+    It is replaced each run.
+
+    credit_decisioning_sim.strategy_decisions_archive is the governed history layer.
+
+    It supports:
+        completed-run retention,
+        rerun replacement control,
+        strategy comparison,
+        strategy frontier analysis,
+        validation evidence review,
+        and documentation traceability.
+
+SECTION 12 DOES NOT RECALCULATE STRATEGY RESULTS:
+    Section 12 does not recalculate:
+        decision_outcome,
+        decision_path,
+        approved_amount,
+        approved_payment_to_income_ratio,
+        approved_expected_loss_amount,
+        simulated reason codes,
+        trigger flags,
+        segmentation fields,
+        counteroffer feasibility,
+        or final outcome flags.
+
+    It persists the already-materialized latest-run output.
+
+CREDIT RISK GOVERNANCE CONCEPT — WHY ARCHIVING MATTERS:
+    A credit strategy simulator needs durable history.
+
+    The latest-run output tells reviewers what happened in the current run.
+    The archive tells reviewers how completed runs compare over time.
+
+    Without archive persistence, strategy review would rely on manually copied outputs or transient
+    session tables, which weakens repeatability and validation traceability.
+
+ARCHIVE GRAIN:
+    One row per application
+    × Module 1 scenario
+    × Module 2 strategy version.
+
+Archive row-level grain fields:
+    strategy_set_name
+    strategy_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+    application_id
+
+ARCHIVE REPLACEMENT / RERUN KEY:
+    strategy_set_name
+    strategy_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+
+WHY APPLICATION_ID IS EXCLUDED FROM THE REPLACEMENT KEY:
+    The replacement key identifies the completed strategy / scenario / population slice.
+
+    application_id identifies each row within that slice.
+
+    Deleting by replacement key clears the whole prior slice before inserting the current completed
+    latest-run slice.
+
+AUDIT METADATA BOUNDARY:
+    strategy_run_id:
+        run traceability metadata.
+
+    strategy_run_ts:
+        run timestamp metadata.
+
+    latest_output_created_ts:
+        latest-run table materialization metadata.
+
+    archive_inserted_ts:
+        archive persistence metadata.
+
+    None of these timestamp or run-audit fields define archive replacement grain.
+    None of them should define matched strategy comparison grain.
+
+ARCHIVE CONTROL MODES:
+    archive_run_flag = FALSE:
+        Skip archive persistence.
+        Do not delete archive rows.
+        Do not insert archive rows.
+
+    strategy_archive_reset_mode = NONE:
+        Do not delete existing archive rows before insert.
+        Fail if the current replacement key already exists.
+
+    strategy_archive_reset_mode = STRATEGY_SCENARIO_ONLY:
+        Ordinary rerun mode.
+        Replace only the current strategy / Module 1 scenario / population slice.
+
+    strategy_archive_reset_mode = STRATEGY_SET_ONLY:
+        Broader reset mode.
+        Replace all strategy_name / strategy_version outputs within the current strategy_set_name
+        for the selected Module 1 scenario and population.
+
+    strategy_archive_reset_mode = ALL:
+        Broadest reset mode.
+        Delete all archive rows before inserting the current latest-run output.
+
+SCHEMA ALIGNMENT NOTE:
+    The archive table is created from the current latest-run output schema when it does not exist.
+
+    If the latest-run schema changes after the archive already exists, the archive table may need to
+    be altered or recreated so both schemas remain aligned.
+
+    Section 12 includes practical schema alignment gatekeepers:
+        missing-column checks,
+        data-type alignment checks,
+        unexpected archive column checks,
+        and archive_inserted_ts existence checks.
+
+    It does not attempt to build a full dynamic schema migration system.
+
+WHY ARCHIVE VALIDATION INDEXES ARE CREATED BEFORE SECTION 12.6:
+    Section 12.6 compares latest-run rows to archived rows at row-level archive grain.
+
+    As the archive grows across strategy and scenario slices, row-level validation can become slow if
+    the latest-run and archive tables lack supporting indexes.
+
+    Section 12.5A therefore creates validation indexes before Section 12.6 performs persistence
+    fidelity checks.
+
+CAMPAIGN REGISTRY BOUNDARY:
+    Campaign IDs such as module1_run_id, module2_run_id, showcase_id, comparison_group_id, and
+    validation_evidence_group_id are evidence-linkage metadata.
+
+    They are persisted later through Section 16 evidence capture.
+
+    They do not replace archive grain and are not inserted into every archive row in Section 12.
+
+MATCHED COMPARISON BOUNDARY:
+    Section 12 persists archive rows.
+
+    It does not compare archived strategies.
+
+    Matched strategy comparison is built in Section 13.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CREATE TABLE IF NOT EXISTS ... LIKE:
+        Creates the archive table from the latest-run table shape when the archive does not yet
+        exist.
+
+    ALTER TABLE ... ADD COLUMN IF NOT EXISTS:
+        Adds archive_inserted_ts without failing if the column already exists.
+
+    information_schema.columns:
+        Inspects table schemas so Section 12 can verify latest-run and archive column alignment.
+
+    DO $$ ... END $$:
+        Runs procedural validation and archive-control logic with variables, IF statements,
+        dynamic SQL, and explicit exceptions.
+
+    SELECT ... INTO:
+        Loads counts, archive controls, replacement keys, and diagnostic values into PL/pgSQL
+        variables.
+
+    GET DIAGNOSTICS ... ROW_COUNT:
+        Captures how many rows were deleted or inserted by the most recent DML statement.
+
+    EXECUTE FORMAT(...):
+        Runs a dynamic INSERT statement using an explicit column list derived from the latest-run
+        schema.
+
+    IS DISTINCT FROM:
+        Provides NULL-safe comparisons when checking whether archived values match latest-run values.
+
+    FULL OUTER JOIN:
+        Compares before / after archive inventory even when a slice exists only before or only after
+        persistence.
+
+    CREATE UNIQUE INDEX:
+        Enforces the row-level archive grain so matched comparison does not operate on duplicate
+        archived applications.
+
+GOVERNANCE ROLE:
+    Section 12 protects history, replacement discipline, schema consistency, archive grain, and
+    persistence fidelity before archive comparison or executive evidence capture occurs.
+
+COMMON MISUSE TO AVOID:
+    Do not use the latest-run table as strategy history.
+    Do not manually delete archive rows outside governed archive controls.
+    Do not treat timestamp fields as matched-comparison keys.
+    Do not interpret archive persistence as recalculation or revalidation of decision logic.
+    Do not interpret archive_inserted_ts as a business outcome.
+    Do not treat archive_run_flag = TRUE as proof that validation passed.
+    Do not treat archive persistence as a substitute for Section 14 QA.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 12.1 — LATEST-RUN SOURCE INTEGRITY AND ARCHIVE-CONTROL PREFLIGHT
+****************************************************************************************************
+
+PURPOSE:
+    Confirm that the latest-run strategy_decisions table exists, is populated, is unique at
+    application_id, and contains one unambiguous archive-control configuration and replacement key.
+
+BUSINESS PURPOSE:
+    Archive persistence should operate on one completed latest-run strategy slice.
+
+    A mixed latest-run table would make archive reset behavior ambiguous and could corrupt archive
+    history.
+
+SQL PURPOSE:
+    1. Confirm credit_decisioning_sim.strategy_decisions exists.
+    2. Confirm latest-run output contains rows.
+    3. Confirm application_id is unique in the latest-run output.
+    4. Confirm archive_run_flag and strategy_archive_reset_mode are populated.
+    5. Confirm strategy_archive_reset_mode uses an accepted mode.
+    6. Confirm the latest-run output contains exactly one archive-control configuration.
+    7. Confirm the latest-run output contains exactly one archive replacement / rerun key.
+
+WHY THIS PREFLIGHT EXISTS:
+    Archive operations can delete or insert persistent historical rows.
+
+    Section 12 therefore must prove the current latest-run slice is unambiguous before any archive
+    reset or insert logic executes.
+
+SQL MECHANICS:
+    TO_REGCLASS checks table existence.
+    COUNT(*) checks latest-run row count.
+    COUNT(DISTINCT application_id) checks row-level latest-run grain.
+    COUNT(DISTINCT archive_run_flag) checks archive-control uniqueness.
+    COUNT(DISTINCT strategy_archive_reset_mode) checks reset-mode uniqueness.
+    SELECT DISTINCT replacement-key fields confirms a single archive slice.
+
+BOUNDARY:
+    Section 12.1 does not create archive rows.
+    Section 12.1 does not delete archive rows.
+    Section 12.1 does not modify latest-run rows.
+    Section 12.1 only validates readiness for archive persistence.
+
+****************************************************************************************************/
+
+DO $$
+DECLARE
+    /***********************************************************************************************
+    Latest-run row-grain diagnostics.
+    ***********************************************************************************************/
+    v_latest_count BIGINT;
+    v_latest_distinct_app_count BIGINT;
+    v_duplicate_application_count BIGINT;
+
+    /***********************************************************************************************
+    Archive-control diagnostics.
+    ***********************************************************************************************/
+    v_archive_control_null_count BIGINT;
+    v_archive_control_invalid_count BIGINT;
+    v_archive_flag_value_count BIGINT;
+    v_archive_mode_value_count BIGINT;
+
+    /***********************************************************************************************
+    Archive replacement-key diagnostic.
+    ***********************************************************************************************/
+    v_archive_key_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run output table must exist.
+
+    SQL mechanics:
+        TO_REGCLASS returns NULL if the table does not exist.
+
+    Failure interpretation:
+        Section 11 has not run successfully, or the latest-run output was dropped after Section 11.
+    -------------------------------------------------------------------------------------------*/
+    IF TO_REGCLASS('credit_decisioning_sim.strategy_decisions') IS NULL THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: credit_decisioning_sim.strategy_decisions does not exist.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run output must contain rows.
+
+    Business purpose:
+        A zero-row latest-run table is not a completed strategy run suitable for archive persistence.
+
+    SQL mechanics:
+        COUNT(*) returns the number of latest-run rows.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_latest_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+    IF v_latest_count = 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: latest-run strategy_decisions table contains zero rows.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run application_id must be unique.
+
+    Business purpose:
+        Section 12 archive persistence assumes one latest-run row per application_id.
+
+    Credit risk / comparison interpretation:
+        Duplicate application_id values would duplicate archived decisions and distort matched
+        baseline / challenger comparisons.
+
+    SQL mechanics:
+        Compare total rows to distinct application_id count.
+
+        If they differ, the nested GROUP BY query counts how many application_id groups are
+        duplicated.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_latest_distinct_app_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+    IF v_latest_distinct_app_count <> v_latest_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_count
+        FROM (
+            SELECT application_id
+            FROM credit_decisioning_sim.strategy_decisions
+            GROUP BY application_id
+            HAVING COUNT(*) > 1
+        ) d;
+
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: latest-run application_id is not unique. Latest rows: %, distinct application_id count: %, duplicate application_id group count: %.',
+            v_latest_count,
+            v_latest_distinct_app_count,
+            v_duplicate_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive controls must be populated.
+
+    Business purpose:
+        Archive behavior should be explicit. NULL archive controls would make persistence ambiguous.
+
+    Required controls:
+        archive_run_flag
+        strategy_archive_reset_mode
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_archive_control_null_count
+    FROM credit_decisioning_sim.strategy_decisions
+    WHERE archive_run_flag IS NULL
+       OR strategy_archive_reset_mode IS NULL
+       OR NULLIF(BTRIM(strategy_archive_reset_mode), '') IS NULL;
+
+    IF v_archive_control_null_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: % latest-run row(s) have null archive controls.',
+            v_archive_control_null_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive reset mode must be valid.
+
+    Accepted modes:
+        NONE
+        STRATEGY_SCENARIO_ONLY
+        STRATEGY_SET_ONLY
+        ALL
+
+    Boundary:
+        The mode controls archive persistence behavior only.
+
+        It does not change decisions, exposure, or reason codes.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_archive_control_invalid_count
+    FROM credit_decisioning_sim.strategy_decisions
+    WHERE strategy_archive_reset_mode NOT IN (
+        'NONE',
+        'STRATEGY_SCENARIO_ONLY',
+        'STRATEGY_SET_ONLY',
+        'ALL'
+    );
+
+    IF v_archive_control_invalid_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: % latest-run row(s) have invalid strategy_archive_reset_mode values.',
+            v_archive_control_invalid_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run table must contain exactly one archive_run_flag value.
+
+    Business purpose:
+        The latest-run table is one completed strategy run.
+
+        It cannot simultaneously ask to both archive and not archive itself.
+
+    SQL mechanics:
+        COUNT(DISTINCT archive_run_flag) should equal 1.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT archive_run_flag)
+    INTO v_archive_flag_value_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+    IF v_archive_flag_value_count <> 1 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: latest-run output contains % distinct archive_run_flag values. Expected exactly one.',
+            v_archive_flag_value_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run table must contain exactly one archive reset mode.
+
+    Business purpose:
+        A mixed reset-mode latest-run output would make delete scope ambiguous.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT strategy_archive_reset_mode)
+    INTO v_archive_mode_value_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+    IF v_archive_mode_value_count <> 1 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: latest-run output contains % distinct strategy_archive_reset_mode values. Expected exactly one.',
+            v_archive_mode_value_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run table must contain exactly one archive replacement / rerun key.
+
+    Archive replacement / rerun key:
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    Business interpretation:
+        The latest-run output should represent one strategy / Module 1 scenario / population slice.
+
+        If more than one replacement key is present, archive delete / insert behavior could affect
+        the wrong history slice.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_archive_key_count
+    FROM (
+        SELECT DISTINCT
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id
+        FROM credit_decisioning_sim.strategy_decisions
+    ) k;
+
+    IF v_archive_key_count <> 1 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: latest-run output contains % archive replacement keys. Expected exactly one.',
+            v_archive_key_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 12.2 — ARCHIVE TABLE SETUP AND SCHEMA ALIGNMENT CHECK
+****************************************************************************************************
+
+ARCHIVE TABLE DESIGN:
+    all fields from credit_decisioning_sim.strategy_decisions
+    plus archive_inserted_ts.
+
+archive_inserted_ts:
+    Audit metadata indicating when the latest-run output was persisted to archive.
+
+BUSINESS PURPOSE:
+    Ensure the archive table exists and can faithfully hold the current latest-run output schema.
+
+SQL PURPOSE:
+    1. Create the archive table from the latest-run output schema when needed.
+    2. Add archive_inserted_ts if needed.
+    3. Validate every latest-run column exists in the archive.
+    4. Validate common latest-run / archive column data types align.
+    5. Validate the archive does not contain unexpected non-latest-run columns.
+    6. Validate archive_inserted_ts exists.
+
+WHY SCHEMA ALIGNMENT MATTERS:
+    Archive rows should be a faithful persisted copy of the governed latest-run output.
+
+    If the latest-run schema and archive schema diverge, matched comparison, frontier analysis,
+    QA review, and evidence capture can become unreliable.
+
+SQL MECHANICS:
+    CREATE TABLE IF NOT EXISTS ... LIKE:
+        Creates the archive table from the latest-run table when the archive does not exist.
+
+    ALTER TABLE ... ADD COLUMN IF NOT EXISTS:
+        Adds archive_inserted_ts in a rerunnable way.
+
+    information_schema.columns:
+        Lets the code inspect table columns, data types, numeric precision, numeric scale, character
+        length, and timestamp precision.
+
+    STRING_AGG:
+        Converts any schema defects into readable exception text.
+
+BOUNDARY:
+    Section 12.2 may create or alter the archive table structure.
+
+    It does not insert archive rows.
+    It does not delete archive rows.
+    It does not recalculate strategy outputs.
+
+****************************************************************************************************/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_decisions_archive
+(LIKE credit_decisioning_sim.strategy_decisions INCLUDING DEFAULTS);
+
+ALTER TABLE credit_decisioning_sim.strategy_decisions_archive
+ADD COLUMN IF NOT EXISTS archive_inserted_ts TIMESTAMP;
+
+
+/*-----------------------------------------------------------------------------------------------
+Practical schema-alignment gatekeeper.
+
+If the archive already existed before the latest-run schema changed, it may be missing columns, may
+contain incompatible data types, or may contain unexpected extra columns.
+
+This gatekeeper fails clearly rather than silently inserting misaligned rows.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+DECLARE
+    /***********************************************************************************************
+    Schema diagnostics.
+
+    Each variable stores a readable list of schema issues, if any are found.
+    ***********************************************************************************************/
+    v_missing_archive_columns TEXT;
+    v_type_mismatch_columns TEXT;
+    v_unexpected_archive_columns TEXT;
+    v_archive_inserted_ts_exists BOOLEAN;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Missing-column check.
+
+    Business purpose:
+        The archive should contain every latest-run column.
+
+    SQL mechanics:
+        For each latest-run column, NOT EXISTS checks whether the same column name appears in the
+        archive table.
+
+        STRING_AGG returns a comma-separated list of missing columns.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(l.column_name, ', ' ORDER BY l.ordinal_position)
+    INTO v_missing_archive_columns
+    FROM information_schema.columns l
+    WHERE l.table_schema = 'credit_decisioning_sim'
+      AND l.table_name = 'strategy_decisions'
+      AND NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns a
+            WHERE a.table_schema = 'credit_decisioning_sim'
+              AND a.table_name = 'strategy_decisions_archive'
+              AND a.column_name = l.column_name
+      );
+
+    IF v_missing_archive_columns IS NOT NULL THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: strategy_decisions_archive is missing latest-run column(s): %. Align or recreate the archive table before persistence.',
+            v_missing_archive_columns;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Data-type alignment check.
+
+    Business purpose:
+        The archive table may already exist from an earlier implementation version.
+
+        A missing-column check alone is not sufficient because the archive could contain the same
+        column names with incompatible data types.
+
+    SQL mechanics:
+        common_columns joins latest-run columns to archive columns by column name.
+
+        The mismatch predicate compares:
+            data_type,
+            numeric_precision,
+            numeric_scale,
+            character_maximum_length,
+            datetime_precision.
+
+        IS DISTINCT FROM is used so NULL differences are handled explicitly and safely.
+    -------------------------------------------------------------------------------------------*/
+    WITH common_columns AS (
+        SELECT
+            l.column_name,
+
+            l.data_type AS latest_data_type,
+            a.data_type AS archive_data_type,
+
+            l.numeric_precision AS latest_numeric_precision,
+            a.numeric_precision AS archive_numeric_precision,
+
+            l.numeric_scale AS latest_numeric_scale,
+            a.numeric_scale AS archive_numeric_scale,
+
+            l.character_maximum_length AS latest_character_maximum_length,
+            a.character_maximum_length AS archive_character_maximum_length,
+
+            l.datetime_precision AS latest_datetime_precision,
+            a.datetime_precision AS archive_datetime_precision,
+
+            l.ordinal_position
+        FROM information_schema.columns l
+        JOIN information_schema.columns a
+            ON a.table_schema = 'credit_decisioning_sim'
+           AND a.table_name = 'strategy_decisions_archive'
+           AND a.column_name = l.column_name
+        WHERE l.table_schema = 'credit_decisioning_sim'
+          AND l.table_name = 'strategy_decisions'
+    )
+    SELECT STRING_AGG(
+        FORMAT(
+            '%s latest(data_type=%s, numeric_precision=%s, numeric_scale=%s, char_len=%s, datetime_precision=%s) archive(data_type=%s, numeric_precision=%s, numeric_scale=%s, char_len=%s, datetime_precision=%s)',
+            column_name,
+            COALESCE(latest_data_type, '<NULL>'),
+            COALESCE(latest_numeric_precision::TEXT, '<NULL>'),
+            COALESCE(latest_numeric_scale::TEXT, '<NULL>'),
+            COALESCE(latest_character_maximum_length::TEXT, '<NULL>'),
+            COALESCE(latest_datetime_precision::TEXT, '<NULL>'),
+            COALESCE(archive_data_type, '<NULL>'),
+            COALESCE(archive_numeric_precision::TEXT, '<NULL>'),
+            COALESCE(archive_numeric_scale::TEXT, '<NULL>'),
+            COALESCE(archive_character_maximum_length::TEXT, '<NULL>'),
+            COALESCE(archive_datetime_precision::TEXT, '<NULL>')
+        ),
+        '; '
+        ORDER BY ordinal_position
+    )
+    INTO v_type_mismatch_columns
+    FROM common_columns
+    WHERE latest_data_type IS DISTINCT FROM archive_data_type
+       OR latest_numeric_precision IS DISTINCT FROM archive_numeric_precision
+       OR latest_numeric_scale IS DISTINCT FROM archive_numeric_scale
+       OR latest_character_maximum_length IS DISTINCT FROM archive_character_maximum_length
+       OR latest_datetime_precision IS DISTINCT FROM archive_datetime_precision;
+
+    IF v_type_mismatch_columns IS NOT NULL THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: strategy_decisions_archive has data-type mismatch(es) versus strategy_decisions: %.',
+            v_type_mismatch_columns;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Unexpected archive column check.
+
+    Business purpose:
+        For Module 2 V1.0, the archive should be a persisted copy of the governed latest-run output
+        plus archive_inserted_ts.
+
+        Unexpected extra columns may indicate an older incompatible archive schema.
+
+    SQL mechanics:
+        The query finds archive columns that are neither:
+            archive_inserted_ts,
+            nor a column in the latest-run output.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(a.column_name, ', ' ORDER BY a.ordinal_position)
+    INTO v_unexpected_archive_columns
+    FROM information_schema.columns a
+    WHERE a.table_schema = 'credit_decisioning_sim'
+      AND a.table_name = 'strategy_decisions_archive'
+      AND a.column_name <> 'archive_inserted_ts'
+      AND NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns l
+            WHERE l.table_schema = 'credit_decisioning_sim'
+              AND l.table_name = 'strategy_decisions'
+              AND l.column_name = a.column_name
+      );
+
+    IF v_unexpected_archive_columns IS NOT NULL THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: strategy_decisions_archive contains unexpected non-latest-run column(s): %. Align or recreate the archive table before persistence.',
+            v_unexpected_archive_columns;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    archive_inserted_ts existence check.
+
+    Business purpose:
+        archive_inserted_ts identifies when Section 12 persisted rows to archive.
+
+    Boundary:
+        This column exists only on the archive table and is excluded from latest-run-to-archive schema
+        comparisons.
+    -------------------------------------------------------------------------------------------*/
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'credit_decisioning_sim'
+          AND table_name = 'strategy_decisions_archive'
+          AND column_name = 'archive_inserted_ts'
+    )
+    INTO v_archive_inserted_ts_exists;
+
+    IF v_archive_inserted_ts_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: strategy_decisions_archive is missing archive_inserted_ts.';
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 12.3 — ARCHIVE INVENTORY SNAPSHOT BEFORE PERSISTENCE
+****************************************************************************************************
+
+PURPOSE:
+    Capture archive inventory before any delete / insert behavior so Section 12 can validate that
+    archive reset modes do not unintentionally affect unrelated strategy slices.
+
+BUSINESS PURPOSE:
+    Archive reset behavior must be observable.
+
+    Capturing inventory before persistence lets the module compare what changed after Section 12.4.
+
+SQL PURPOSE:
+    1. Drop and recreate tmp_m2_archive_inventory_before.
+    2. Summarize archive rows by strategy / scenario / population slice before persistence.
+    3. Drop and recreate tmp_m2_archive_persistence_audit.
+    4. Prepare a one-row audit table that Section 12.4 populates after applying archive controls.
+
+WHY THIS SECTION EXISTS:
+    Archive controls can intentionally delete rows.
+
+    The before snapshot makes that behavior reviewable and testable.
+
+    It also lets Section 12.6 verify that skip mode, ordinary replacement mode, strategy-set reset
+    mode, and all-archive reset mode behaved within the intended scope.
+
+SQL MECHANICS:
+    CREATE TEMP TABLE ... AS:
+        Materializes the pre-persistence inventory.
+
+    GROUP BY:
+        Aggregates archive row count by archive replacement slice.
+
+    ON COMMIT PRESERVE ROWS:
+        Keeps the temporary diagnostic tables available to later Section 12 blocks in the same
+        session.
+
+BOUNDARY:
+    Section 12.3 does not change the archive.
+    Section 12.3 only captures diagnostic state and prepares the audit table.
+
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_archive_inventory_before;
+
+CREATE TEMP TABLE tmp_m2_archive_inventory_before
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    COUNT(*) AS row_count
+FROM credit_decisioning_sim.strategy_decisions_archive
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+DROP TABLE IF EXISTS tmp_m2_archive_persistence_audit;
+
+CREATE TEMP TABLE tmp_m2_archive_persistence_audit (
+    /***********************************************************************************************
+    Active archive controls.
+    ***********************************************************************************************/
+    archive_run_flag                         BOOLEAN,
+    strategy_archive_reset_mode              TEXT,
+
+    /***********************************************************************************************
+    Archive replacement / rerun key.
+    ***********************************************************************************************/
+    strategy_set_name                        TEXT,
+    strategy_name                            TEXT,
+    strategy_version                         TEXT,
+    module1_scenario_set_name                TEXT,
+    module1_scenario_name                    TEXT,
+    population_id                            TEXT,
+
+    /***********************************************************************************************
+    Latest-run source row counts.
+    ***********************************************************************************************/
+    latest_run_row_count                     BIGINT,
+    latest_run_distinct_application_count    BIGINT,
+
+    /***********************************************************************************************
+    Archive before / delete / insert / after counts.
+    ***********************************************************************************************/
+    archive_row_count_before                 BIGINT,
+    archive_deleted_rows                     BIGINT,
+    archive_inserted_rows                    BIGINT,
+    archive_row_count_after                  BIGINT,
+
+    /***********************************************************************************************
+    Human-readable archive action label.
+    ***********************************************************************************************/
+    archive_action                           TEXT,
+    archive_action_ts                        TIMESTAMP
+) ON COMMIT PRESERVE ROWS;
+
+
+
+/***************************************************************************************************
+SECTION 12.4 — APPLY ARCHIVE CONTROL LOGIC
+****************************************************************************************************
+
+PURPOSE:
+    Apply the active archive_run_flag and strategy_archive_reset_mode controls.
+
+BUSINESS PURPOSE:
+    Archive persistence should be governed, repeatable, and explainable.
+
+    Users should be able to distinguish:
+        skipped persistence,
+        append-only insert,
+        ordinary slice replacement,
+        strategy-set replacement,
+        and full archive reset.
+
+SQL PURPOSE:
+    1. Read the single archive-control configuration and archive replacement key.
+    2. Count latest-run and archive rows before persistence.
+    3. If archive_run_flag = FALSE, skip delete and insert behavior.
+    4. If archive_run_flag = TRUE, apply the governed reset mode.
+    5. Insert latest-run rows into archive using an explicit dynamic column list.
+    6. Capture deleted-row and inserted-row counts.
+    7. Insert one audit row into tmp_m2_archive_persistence_audit.
+
+WHY DYNAMIC INSERT IS USED:
+    The archive is designed to contain all latest-run columns plus archive_inserted_ts.
+
+    Instead of relying on physical column order, Section 12 builds an explicit latest-run column list
+    from information_schema.columns.
+
+    This is safer and more auditable than INSERT ... SELECT *.
+
+ARCHIVE CONTROL INTERPRETATION:
+    archive_run_flag = FALSE:
+        No delete.
+        No insert.
+        Existing archive remains untouched.
+
+    NONE:
+        Insert only when the current replacement key does not already exist.
+
+    STRATEGY_SCENARIO_ONLY:
+        Delete existing archive rows for the exact current replacement key, then insert latest-run.
+
+    STRATEGY_SET_ONLY:
+        Delete all strategy_name / strategy_version rows in the same strategy_set_name for the same
+        Module 1 scenario / population, then insert latest-run.
+
+    ALL:
+        Delete the entire archive, then insert latest-run.
+
+BOUNDARY:
+    Section 12.4 mutates only the archive table and audit helper table.
+
+    It does not mutate the latest-run output.
+    It does not recalculate strategy results.
+    It does not perform matched comparison.
+
+****************************************************************************************************/
+
+DO $$
+DECLARE
+    /***********************************************************************************************
+    Active archive controls from latest-run output.
+    ***********************************************************************************************/
+    v_archive_run_flag BOOLEAN;
+    v_strategy_archive_reset_mode TEXT;
+
+    /***********************************************************************************************
+    Current archive replacement / rerun key.
+    ***********************************************************************************************/
+    v_strategy_set_name TEXT;
+    v_strategy_name TEXT;
+    v_strategy_version TEXT;
+    v_module1_scenario_set_name TEXT;
+    v_module1_scenario_name TEXT;
+    v_population_id TEXT;
+
+    /***********************************************************************************************
+    Row-count diagnostics.
+    ***********************************************************************************************/
+    v_latest_count BIGINT;
+    v_latest_distinct_app_count BIGINT;
+    v_archive_before_count BIGINT;
+    v_archive_after_count BIGINT;
+    v_existing_key_count BIGINT;
+
+    /***********************************************************************************************
+    DML impact counts.
+
+    These are populated using GET DIAGNOSTICS after DELETE and INSERT statements.
+    ***********************************************************************************************/
+    v_deleted_rows BIGINT := 0;
+    v_inserted_rows BIGINT := 0;
+
+    /***********************************************************************************************
+    Archive action label and dynamic SQL column lists.
+    ***********************************************************************************************/
+    v_archive_action TEXT;
+    v_insert_columns TEXT;
+    v_select_columns TEXT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Read the single archive-control configuration and archive replacement key from latest-run output.
+
+    Section 12.1 has already validated that exactly one such configuration exists.
+
+    SQL mechanics:
+        SELECT DISTINCT returns the one archive-control / replacement-key row.
+
+        INTO assigns each selected field into a PL/pgSQL variable.
+    -------------------------------------------------------------------------------------------*/
+    SELECT
+        archive_run_flag,
+        strategy_archive_reset_mode,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    INTO
+        v_archive_run_flag,
+        v_strategy_archive_reset_mode,
+        v_strategy_set_name,
+        v_strategy_name,
+        v_strategy_version,
+        v_module1_scenario_set_name,
+        v_module1_scenario_name,
+        v_population_id
+    FROM (
+        SELECT DISTINCT
+            archive_run_flag,
+            strategy_archive_reset_mode,
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id
+        FROM credit_decisioning_sim.strategy_decisions
+    ) k;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Count latest-run rows.
+
+    Business purpose:
+        These counts become audit evidence for how many rows Section 12 should insert when
+        archive_run_flag = TRUE.
+    -------------------------------------------------------------------------------------------*/
+    SELECT
+        COUNT(*),
+        COUNT(DISTINCT application_id)
+    INTO
+        v_latest_count,
+        v_latest_distinct_app_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Count archive rows before Section 12.4 mutation.
+
+    Business purpose:
+        This value is stored in tmp_m2_archive_persistence_audit.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_archive_before_count
+    FROM credit_decisioning_sim.strategy_decisions_archive;
+
+
+    /*-------------------------------------------------------------------------------------------
+    archive_run_flag = FALSE:
+        Skip archive persistence.
+        Do not delete archive rows.
+        Do not insert archive rows.
+
+    Business interpretation:
+        This supports smoke tests, development runs, and intentional non-persistent runs.
+
+    SQL mechanics:
+        No DELETE or INSERT is executed.
+        The audit row later records zero deleted rows and zero inserted rows.
+    -------------------------------------------------------------------------------------------*/
+    IF v_archive_run_flag IS FALSE THEN
+        v_archive_action := 'ARCHIVE_PERSISTENCE_SKIPPED_ARCHIVE_RUN_FLAG_FALSE';
+        v_deleted_rows := 0;
+        v_inserted_rows := 0;
+
+        RAISE NOTICE
+            'Module 2 Section 12: archive persistence skipped because archive_run_flag = FALSE. Existing archive rows preserved.';
+
+
+    ELSE
+        /*---------------------------------------------------------------------------------------
+        archive_run_flag = TRUE:
+            Apply governed reset mode before inserting current latest-run rows.
+
+        Business interpretation:
+            Delete scope is controlled by strategy_archive_reset_mode.
+        ---------------------------------------------------------------------------------------*/
+
+        IF v_strategy_archive_reset_mode = 'NONE' THEN
+            /*-----------------------------------------------------------------------------------
+            NONE:
+                Append only if the current replacement key does not already exist.
+
+            Business purpose:
+                Prevent silent duplicate archive slices.
+
+            SQL mechanics:
+                Count existing archive rows for the exact replacement key.
+
+                If any exist, fail before insert.
+            -----------------------------------------------------------------------------------*/
+            SELECT COUNT(*)
+            INTO v_existing_key_count
+            FROM credit_decisioning_sim.strategy_decisions_archive
+            WHERE strategy_set_name = v_strategy_set_name
+              AND strategy_name = v_strategy_name
+              AND strategy_version = v_strategy_version
+              AND module1_scenario_set_name = v_module1_scenario_set_name
+              AND module1_scenario_name = v_module1_scenario_name
+              AND population_id = v_population_id;
+
+            IF v_existing_key_count > 0 THEN
+                RAISE EXCEPTION
+                    'Module 2 Section 12 failure: strategy_archive_reset_mode = NONE, but % archive row(s) already exist for the current replacement key.',
+                    v_existing_key_count;
+            END IF;
+
+            v_archive_action := 'ARCHIVE_INSERT_WITHOUT_DELETE_NONE_MODE';
+            v_deleted_rows := 0;
+
+
+        ELSIF v_strategy_archive_reset_mode = 'STRATEGY_SCENARIO_ONLY' THEN
+            /*-----------------------------------------------------------------------------------
+            STRATEGY_SCENARIO_ONLY:
+                Ordinary rerun mode.
+
+                Replace only the exact strategy / Module 1 scenario / population slice.
+
+            Business purpose:
+                This is the safest ordinary replacement behavior for rerunning one completed
+                strategy scenario slice.
+            -----------------------------------------------------------------------------------*/
+            DELETE FROM credit_decisioning_sim.strategy_decisions_archive
+            WHERE strategy_set_name = v_strategy_set_name
+              AND strategy_name = v_strategy_name
+              AND strategy_version = v_strategy_version
+              AND module1_scenario_set_name = v_module1_scenario_set_name
+              AND module1_scenario_name = v_module1_scenario_name
+              AND population_id = v_population_id;
+
+            GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+            v_archive_action := 'ARCHIVE_REPLACED_STRATEGY_SCENARIO_ONLY';
+
+
+        ELSIF v_strategy_archive_reset_mode = 'STRATEGY_SET_ONLY' THEN
+            /*-----------------------------------------------------------------------------------
+            STRATEGY_SET_ONLY:
+                Broader reset mode.
+
+                Clears all strategy_name / strategy_version outputs within the same strategy set for
+                the selected Module 1 scenario and population.
+
+            Business purpose:
+                Supports restarting a strategy-family comparison under one strategy_set_name without
+                disturbing unrelated Module 1 scenarios or unrelated populations.
+            -----------------------------------------------------------------------------------*/
+            DELETE FROM credit_decisioning_sim.strategy_decisions_archive
+            WHERE strategy_set_name = v_strategy_set_name
+              AND module1_scenario_set_name = v_module1_scenario_set_name
+              AND module1_scenario_name = v_module1_scenario_name
+              AND population_id = v_population_id;
+
+            GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+            v_archive_action := 'ARCHIVE_REPLACED_STRATEGY_SET_ONLY';
+
+
+        ELSIF v_strategy_archive_reset_mode = 'ALL' THEN
+            /*-----------------------------------------------------------------------------------
+            ALL:
+                Broad reset mode.
+
+                Deletes all archive rows before inserting the current latest-run output.
+
+            Business purpose:
+                Supports intentional complete archive resets.
+
+            Warning:
+                This is not the ordinary rerun mode. Use intentionally.
+            -----------------------------------------------------------------------------------*/
+            DELETE FROM credit_decisioning_sim.strategy_decisions_archive;
+
+            GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+            v_archive_action := 'ARCHIVE_FULL_RESET_ALL_MODE';
+
+
+        ELSE
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: unsupported strategy_archive_reset_mode: %.',
+                v_strategy_archive_reset_mode;
+        END IF;
+
+
+        /*---------------------------------------------------------------------------------------
+        Insert current latest-run rows into archive.
+
+        Business purpose:
+            Persist the completed latest-run strategy output to governed history.
+
+        SQL mechanics:
+            information_schema.columns builds:
+                v_insert_columns:
+                    archive target columns that match latest-run output columns.
+
+                v_select_columns:
+                    source select expressions from credit_decisioning_sim.strategy_decisions.
+
+            archive_inserted_ts is added separately with CURRENT_TIMESTAMP.
+
+            EXECUTE FORMAT runs the dynamically generated INSERT.
+
+        Why this is safer than SELECT *:
+            SELECT * depends on physical column order.
+            This dynamic insert uses explicit column names.
+        ---------------------------------------------------------------------------------------*/
+        SELECT
+            STRING_AGG(FORMAT('%I', column_name), ', ' ORDER BY ordinal_position),
+            STRING_AGG(FORMAT('sd.%I', column_name), ', ' ORDER BY ordinal_position)
+        INTO
+            v_insert_columns,
+            v_select_columns
+        FROM information_schema.columns
+        WHERE table_schema = 'credit_decisioning_sim'
+          AND table_name = 'strategy_decisions';
+
+        IF v_insert_columns IS NULL OR v_select_columns IS NULL THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: unable to derive latest-run insert column list for archive persistence.';
+        END IF;
+
+        EXECUTE FORMAT(
+            'INSERT INTO credit_decisioning_sim.strategy_decisions_archive (%s, archive_inserted_ts)
+             SELECT %s, CURRENT_TIMESTAMP
+             FROM credit_decisioning_sim.strategy_decisions sd',
+            v_insert_columns,
+            v_select_columns
+        );
+
+        GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Count archive rows after Section 12.4 behavior.
+
+    Business purpose:
+        This value becomes audit evidence for later Section 12.6 validation.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_archive_after_count
+    FROM credit_decisioning_sim.strategy_decisions_archive;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Persist one archive persistence audit row.
+
+    Business purpose:
+        Store the archive action taken and the row counts affected by Section 12.4.
+
+    Boundary:
+        This temporary audit row supports current-run validation only.
+
+        It is not the persistent evidence layer used by Section 16.
+    -------------------------------------------------------------------------------------------*/
+    INSERT INTO tmp_m2_archive_persistence_audit (
+        archive_run_flag,
+        strategy_archive_reset_mode,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        latest_run_row_count,
+        latest_run_distinct_application_count,
+
+        archive_row_count_before,
+        archive_deleted_rows,
+        archive_inserted_rows,
+        archive_row_count_after,
+
+        archive_action,
+        archive_action_ts
+    )
+    VALUES (
+        v_archive_run_flag,
+        v_strategy_archive_reset_mode,
+
+        v_strategy_set_name,
+        v_strategy_name,
+        v_strategy_version,
+        v_module1_scenario_set_name,
+        v_module1_scenario_name,
+        v_population_id,
+
+        v_latest_count,
+        v_latest_distinct_app_count,
+
+        v_archive_before_count,
+        v_deleted_rows,
+        v_inserted_rows,
+        v_archive_after_count,
+
+        v_archive_action,
+        CURRENT_TIMESTAMP
+    );
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 12.5 — ARCHIVE INVENTORY SNAPSHOT AFTER PERSISTENCE
+****************************************************************************************************
+
+PURPOSE:
+    Capture archive inventory after archive control logic runs.
+
+BUSINESS PURPOSE:
+    The after snapshot supports Section 12.6 validation of skip behavior, replacement behavior, and
+    reset-mode scope.
+
+SQL PURPOSE:
+    1. Drop and recreate tmp_m2_archive_inventory_after.
+    2. Summarize archive rows by strategy / scenario / population slice after Section 12.4.
+    3. Provide comparable inventory grain to tmp_m2_archive_inventory_before.
+
+WHY THIS SECTION EXISTS:
+    Archive-control logic needs after-state evidence.
+
+    The after snapshot is compared to the before snapshot in Section 12.6 to confirm that archive
+    controls changed only the intended slices.
+
+SQL MECHANICS:
+    GROUP BY uses the archive replacement / rerun key:
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id.
+
+BOUNDARY:
+    Section 12.5 does not change the archive.
+    It only captures post-persistence inventory state.
+
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_archive_inventory_after;
+
+CREATE TEMP TABLE tmp_m2_archive_inventory_after
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    COUNT(*) AS row_count
+FROM credit_decisioning_sim.strategy_decisions_archive
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+
+/***************************************************************************************************
+SECTION 12.5A — ARCHIVE VALIDATION INDEX SUPPORT BEFORE FAIL-FAST CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Support efficient archive persistence validation before Section 12.6 row-level gatekeepers.
+
+BUSINESS PURPOSE:
+    Section 12.6 compares the latest-run table to the current archived slice and validates archive
+    grain integrity.
+
+    These are validation checks, not strategy logic. They should not become a runtime bottleneck as
+    the archive grows across multiple strategy and scenario slices.
+
+SQL PURPOSE:
+    1. Create latest-run validation-grain index.
+    2. Create archive validation-grain index.
+    3. Create unique archive row-level grain index.
+    4. Analyze latest-run and archive tables for query planning.
+
+WHY THIS EXISTS:
+    The archive replacement / rerun key identifies the strategy × Module 1 scenario × population
+    slice.
+
+    The row-level archive grain additionally includes application_id.
+
+    Section 12.6 compares latest-run rows to archived rows at the row-level grain. Without a
+    supporting index, PostgreSQL may choose a poor plan, especially as the archive grows.
+
+UNIQUE ARCHIVE GRAIN ENFORCEMENT:
+    The archive should not contain duplicate rows for the same application under the same Module 1
+    scenario and Module 2 strategy version.
+
+    If duplicates already exist, unique index creation will fail clearly.
+
+    That is preferable to allowing ambiguous matched comparison later.
+
+SQL MECHANICS:
+    CREATE INDEX IF NOT EXISTS:
+        Rerunnable index creation.
+
+    CREATE UNIQUE INDEX IF NOT EXISTS:
+        Enforces row-level archive grain.
+
+    ANALYZE:
+        Refreshes planner statistics so row-level validation joins can use better query plans.
+
+BOUNDARY:
+    This section does not recalculate decision_outcome.
+    This section does not recalculate approved exposure.
+    This section does not recalculate approved Expected Loss.
+    This section does not reassign simulated reason codes.
+    This section only supports efficient archive validation.
+
+****************************************************************************************************/
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_validation_grain
+ON credit_decisioning_sim.strategy_decisions (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_validation_grain
+ON credit_decisioning_sim.strategy_decisions_archive (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+
+/*
+Unique archive grain enforcement:
+    The archive should not contain duplicate rows for the same application under the same Module 1
+    scenario and Module 2 strategy version.
+
+    If duplicates already exist, this index creation will fail clearly. That is preferable to
+    allowing ambiguous matched comparison later.
+*/
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_unique_grain
+ON credit_decisioning_sim.strategy_decisions_archive (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+ANALYZE credit_decisioning_sim.strategy_decisions;
+ANALYZE credit_decisioning_sim.strategy_decisions_archive;
+
+
+
+/***************************************************************************************************
+SECTION 12.6 — LOCAL FAIL-FAST CHECKS FOR ARCHIVE PERSISTENCE
+****************************************************************************************************
+
+PURPOSE:
+    Validate archive persistence behavior before matched comparison or full QA is built.
+
+BUSINESS PURPOSE:
+    Confirm that archive persistence preserved latest-run results, applied archive controls within
+    the expected scope, and maintained archive grain.
+
+THESE CHECKS VALIDATE:
+    latest-run source integrity,
+    archive table existence,
+    archive skip behavior,
+    archive insert behavior,
+    archive mode behavior,
+    archive grain integrity,
+    and persistence fidelity.
+
+SQL PURPOSE:
+    1. Load current archive persistence audit row.
+    2. Confirm archive table and archive_inserted_ts exist.
+    3. Confirm latest-run source integrity still holds.
+    4. Validate skip behavior when archive_run_flag = FALSE.
+    5. Validate insert behavior when archive_run_flag = TRUE.
+    6. Validate current archived slice row count and distinct application count.
+    7. Validate current archived slice archive_inserted_ts.
+    8. Validate current archived slice application_id uniqueness.
+    9. Validate archived values match latest-run values for core fields.
+    10. Validate archive mode scope.
+    11. Validate archive unique row-level grain index exists and is valid.
+
+BOUNDARY:
+    These are archive persistence gatekeepers only.
+
+    They are not:
+        matched strategy comparison,
+        full latest-run QA,
+        executive frontier analysis,
+        or evidence capture.
+
+SQL MECHANICS:
+    FULL OUTER JOIN compares before / after inventory slices.
+    IS DISTINCT FROM performs NULL-safe value comparison.
+    pg_index / pg_class / pg_namespace inspect the archive unique index.
+    RAISE EXCEPTION stops execution when archive persistence does not meet expectations.
+
+****************************************************************************************************/
+
+DO $$
+DECLARE
+    /***********************************************************************************************
+    Current archive audit row.
+    ***********************************************************************************************/
+    a RECORD;
+
+    /***********************************************************************************************
+    Archive object diagnostics.
+    ***********************************************************************************************/
+    v_archive_table_exists BOOLEAN;
+    v_archive_inserted_ts_exists BOOLEAN;
+    v_archive_unique_grain_index_valid BOOLEAN;
+
+    /***********************************************************************************************
+    Latest-run source diagnostics.
+    ***********************************************************************************************/
+    v_latest_count BIGINT;
+    v_latest_distinct_app_count BIGINT;
+
+    /***********************************************************************************************
+    Current archived-slice diagnostics.
+    ***********************************************************************************************/
+    v_current_archive_count BIGINT;
+    v_current_archive_distinct_app_count BIGINT;
+    v_current_archive_null_ts_count BIGINT;
+    v_current_archive_duplicate_app_count BIGINT;
+
+    /***********************************************************************************************
+    Inventory and persistence fidelity diagnostics.
+    ***********************************************************************************************/
+    v_inventory_diff_count BIGINT;
+    v_after_inventory_group_count BIGINT;
+    v_persistence_mismatch_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Load the current archive persistence audit row.
+
+    Expected:
+        exactly one row created by Section 12.4.
+
+    Failure interpretation:
+        Section 12.4 did not run or failed before writing the audit helper.
+    -------------------------------------------------------------------------------------------*/
+    SELECT *
+    INTO a
+    FROM tmp_m2_archive_persistence_audit
+    LIMIT 1;
+
+    IF a IS NULL THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: tmp_m2_archive_persistence_audit contains no rows.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive table and archive_inserted_ts must exist.
+
+    Business purpose:
+        Archive validation cannot proceed unless the archive object and audit timestamp field exist.
+    -------------------------------------------------------------------------------------------*/
+    SELECT TO_REGCLASS('credit_decisioning_sim.strategy_decisions_archive') IS NOT NULL
+    INTO v_archive_table_exists;
+
+    IF v_archive_table_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: strategy_decisions_archive does not exist after archive setup.';
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'credit_decisioning_sim'
+          AND table_name = 'strategy_decisions_archive'
+          AND column_name = 'archive_inserted_ts'
+    )
+    INTO v_archive_inserted_ts_exists;
+
+    IF v_archive_inserted_ts_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: archive_inserted_ts column does not exist after archive setup.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run source integrity remains valid.
+
+    Business purpose:
+        The latest-run source should still contain rows and remain unique at application_id.
+
+    SQL mechanics:
+        This repeats the row-grain check after archive mutation setup so Section 12.6 can validate
+        persistence against a valid current-run source.
+    -------------------------------------------------------------------------------------------*/
+    SELECT
+        COUNT(*),
+        COUNT(DISTINCT application_id)
+    INTO
+        v_latest_count,
+        v_latest_distinct_app_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+    IF v_latest_count <= 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: latest-run table contains zero rows during archive gatekeeper.';
+    END IF;
+
+    IF v_latest_distinct_app_count <> v_latest_count THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: latest-run application_id uniqueness failed during archive gatekeeper.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive_run_flag = FALSE skip behavior.
+
+    Expected:
+        Skip mode should not delete archive rows.
+        Skip mode should not insert archive rows.
+        Archive row count should remain unchanged.
+        Archive inventory should remain unchanged.
+
+    Business interpretation:
+        Development or smoke-test runs can intentionally avoid archive persistence.
+
+        That skip should leave history untouched.
+    -------------------------------------------------------------------------------------------*/
+    IF a.archive_run_flag IS FALSE THEN
+        IF a.archive_deleted_rows <> 0
+           OR a.archive_inserted_rows <> 0
+           OR a.archive_row_count_after <> a.archive_row_count_before THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: archive_run_flag = FALSE but archive row counts changed.';
+        END IF;
+
+        SELECT COUNT(*)
+        INTO v_inventory_diff_count
+        FROM (
+            SELECT
+                COALESCE(b.strategy_set_name, aft.strategy_set_name) AS strategy_set_name,
+                COALESCE(b.strategy_name, aft.strategy_name) AS strategy_name,
+                COALESCE(b.strategy_version, aft.strategy_version) AS strategy_version,
+                COALESCE(b.module1_scenario_set_name, aft.module1_scenario_set_name) AS module1_scenario_set_name,
+                COALESCE(b.module1_scenario_name, aft.module1_scenario_name) AS module1_scenario_name,
+                COALESCE(b.population_id, aft.population_id) AS population_id,
+                COALESCE(b.row_count, 0) AS before_row_count,
+                COALESCE(aft.row_count, 0) AS after_row_count
+            FROM tmp_m2_archive_inventory_before b
+            FULL OUTER JOIN tmp_m2_archive_inventory_after aft
+                ON aft.strategy_set_name = b.strategy_set_name
+               AND aft.strategy_name = b.strategy_name
+               AND aft.strategy_version = b.strategy_version
+               AND aft.module1_scenario_set_name = b.module1_scenario_set_name
+               AND aft.module1_scenario_name = b.module1_scenario_name
+               AND aft.population_id = b.population_id
+        ) d
+        WHERE before_row_count <> after_row_count;
+
+        IF v_inventory_diff_count > 0 THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: archive inventory changed even though archive_run_flag = FALSE.';
+        END IF;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive_run_flag = TRUE insert behavior.
+
+    Expected:
+        archive_inserted_rows equals latest-run row count.
+        NONE mode deletes zero rows.
+        ALL mode deletes the full prior archive row count.
+        The current archived slice row count equals latest-run row count.
+        The current archived slice distinct application_id count equals latest-run distinct
+        application_id count.
+        archive_inserted_ts is populated for current archived slice rows.
+        The current archived slice has no duplicate application_id groups.
+    -------------------------------------------------------------------------------------------*/
+    IF a.archive_run_flag IS TRUE THEN
+        IF a.archive_inserted_rows <> v_latest_count THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: archive_inserted_rows (%) does not equal latest-run row count (%).',
+                a.archive_inserted_rows,
+                v_latest_count;
+        END IF;
+
+        IF a.strategy_archive_reset_mode = 'NONE'
+           AND a.archive_deleted_rows <> 0 THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: NONE mode deleted % archive row(s); expected zero.',
+                a.archive_deleted_rows;
+        END IF;
+
+        IF a.strategy_archive_reset_mode = 'ALL'
+           AND a.archive_deleted_rows <> a.archive_row_count_before THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: ALL mode deleted % row(s), but archive_row_count_before was %.',
+                a.archive_deleted_rows,
+                a.archive_row_count_before;
+        END IF;
+
+        SELECT
+            COUNT(*),
+            COUNT(DISTINCT application_id)
+        INTO
+            v_current_archive_count,
+            v_current_archive_distinct_app_count
+        FROM credit_decisioning_sim.strategy_decisions_archive
+        WHERE strategy_set_name = a.strategy_set_name
+          AND strategy_name = a.strategy_name
+          AND strategy_version = a.strategy_version
+          AND module1_scenario_set_name = a.module1_scenario_set_name
+          AND module1_scenario_name = a.module1_scenario_name
+          AND population_id = a.population_id;
+
+        IF v_current_archive_count <> v_latest_count THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: current archived slice row count (%) does not match latest-run row count (%).',
+                v_current_archive_count,
+                v_latest_count;
+        END IF;
+
+        IF v_current_archive_distinct_app_count <> v_latest_distinct_app_count THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: current archived slice distinct application_id count (%) does not match latest-run distinct application_id count (%).',
+                v_current_archive_distinct_app_count,
+                v_latest_distinct_app_count;
+        END IF;
+
+        SELECT COUNT(*)
+        INTO v_current_archive_null_ts_count
+        FROM credit_decisioning_sim.strategy_decisions_archive
+        WHERE strategy_set_name = a.strategy_set_name
+          AND strategy_name = a.strategy_name
+          AND strategy_version = a.strategy_version
+          AND module1_scenario_set_name = a.module1_scenario_set_name
+          AND module1_scenario_name = a.module1_scenario_name
+          AND population_id = a.population_id
+          AND archive_inserted_ts IS NULL;
+
+        IF v_current_archive_null_ts_count > 0 THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: % current archived slice row(s) have null archive_inserted_ts.',
+                v_current_archive_null_ts_count;
+        END IF;
+
+        SELECT COUNT(*)
+        INTO v_current_archive_duplicate_app_count
+        FROM (
+            SELECT application_id
+            FROM credit_decisioning_sim.strategy_decisions_archive
+            WHERE strategy_set_name = a.strategy_set_name
+              AND strategy_name = a.strategy_name
+              AND strategy_version = a.strategy_version
+              AND module1_scenario_set_name = a.module1_scenario_set_name
+              AND module1_scenario_name = a.module1_scenario_name
+              AND population_id = a.population_id
+            GROUP BY application_id
+            HAVING COUNT(*) > 1
+        ) d;
+
+        IF v_current_archive_duplicate_app_count > 0 THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: current archived slice contains % duplicate application_id group(s).',
+                v_current_archive_duplicate_app_count;
+        END IF;
+
+
+        /*---------------------------------------------------------------------------------------
+        Gatekeeper: persisted archive rows must match latest-run values for core decision, exposure,
+        affordability, Expected Loss, reason-code, and lineage fields.
+
+        Business purpose:
+            Confirm Section 12 persisted the already-materialized strategy result rather than
+            recalculating or altering it.
+
+        Fields checked:
+            key metadata,
+            application lineage,
+            product and score policy keys,
+            final decision fields,
+            final decision flags,
+            final exposure fields,
+            final affordability fields,
+            requested and approved Expected Loss fields,
+            simulated reason-code fields.
+
+        Boundary:
+            archive_inserted_ts is intentionally not compared to latest_output_created_ts.
+
+            They are different audit timestamps with different meanings.
+        ---------------------------------------------------------------------------------------*/
+        SELECT COUNT(*)
+        INTO v_persistence_mismatch_count
+        FROM credit_decisioning_sim.strategy_decisions sd
+        JOIN credit_decisioning_sim.strategy_decisions_archive ar
+            ON ar.strategy_set_name = sd.strategy_set_name
+           AND ar.strategy_name = sd.strategy_name
+           AND ar.strategy_version = sd.strategy_version
+           AND ar.module1_scenario_set_name = sd.module1_scenario_set_name
+           AND ar.module1_scenario_name = sd.module1_scenario_name
+           AND ar.population_id = sd.population_id
+           AND ar.application_id = sd.application_id
+        WHERE sd.strategy_set_name = a.strategy_set_name
+          AND sd.strategy_name = a.strategy_name
+          AND sd.strategy_version = a.strategy_version
+          AND sd.module1_scenario_set_name = a.module1_scenario_set_name
+          AND sd.module1_scenario_name = a.module1_scenario_name
+          AND sd.population_id = a.population_id
+          AND (
+                /* Key metadata and lineage fields. */
+                ar.strategy_set_name IS DISTINCT FROM sd.strategy_set_name
+             OR ar.strategy_name IS DISTINCT FROM sd.strategy_name
+             OR ar.strategy_version IS DISTINCT FROM sd.strategy_version
+             OR ar.module1_scenario_set_name IS DISTINCT FROM sd.module1_scenario_set_name
+             OR ar.module1_scenario_name IS DISTINCT FROM sd.module1_scenario_name
+             OR ar.population_id IS DISTINCT FROM sd.population_id
+             OR ar.application_id IS DISTINCT FROM sd.application_id
+             OR ar.applicant_id IS DISTINCT FROM sd.applicant_id
+             OR ar.product_type_policy_key IS DISTINCT FROM sd.product_type_policy_key
+             OR ar.score_band_policy_key IS DISTINCT FROM sd.score_band_policy_key
+
+                /* Final decision fields. */
+             OR ar.decision_outcome IS DISTINCT FROM sd.decision_outcome
+             OR ar.decision_path IS DISTINCT FROM sd.decision_path
+             OR ar.decision_priority_rank IS DISTINCT FROM sd.decision_priority_rank
+             OR ar.decision_resolution_source IS DISTINCT FROM sd.decision_resolution_source
+
+                /* Final decision flags. */
+             OR ar.approval_flag IS DISTINCT FROM sd.approval_flag
+             OR ar.counteroffer_flag IS DISTINCT FROM sd.counteroffer_flag
+             OR ar.manual_review_flag IS DISTINCT FROM sd.manual_review_flag
+             OR ar.decline_flag IS DISTINCT FROM sd.decline_flag
+             OR ar.simulated_offer_exposure_flag IS DISTINCT FROM sd.simulated_offer_exposure_flag
+
+                /* Final exposure fields. */
+             OR ar.approved_amount IS DISTINCT FROM sd.approved_amount
+             OR ar.counteroffer_amount IS DISTINCT FROM sd.counteroffer_amount
+             OR ar.exposure_reduction_flag IS DISTINCT FROM sd.exposure_reduction_flag
+             OR ar.exposure_reduction_amount IS DISTINCT FROM sd.exposure_reduction_amount
+             OR ar.exposure_reduction_pct IS DISTINCT FROM sd.exposure_reduction_pct
+
+                /* Final affordability fields. */
+             OR ar.approved_monthly_payment_proxy IS DISTINCT FROM sd.approved_monthly_payment_proxy
+             OR ar.approved_payment_to_income_ratio IS DISTINCT FROM sd.approved_payment_to_income_ratio
+
+                /* Requested and approved Expected Loss fields. */
+             OR ar.requested_expected_loss_amount IS DISTINCT FROM sd.requested_expected_loss_amount
+             OR ar.approved_expected_loss_amount IS DISTINCT FROM sd.approved_expected_loss_amount
+             OR ar.approved_el_reduction_amount IS DISTINCT FROM sd.approved_el_reduction_amount
+             OR ar.approved_el_reduction_pct IS DISTINCT FROM sd.approved_el_reduction_pct
+
+                /* Simulated reason-code fields. */
+             OR ar.primary_reason_code IS DISTINCT FROM sd.primary_reason_code
+             OR ar.secondary_reason_code IS DISTINCT FROM sd.secondary_reason_code
+             OR ar.tertiary_reason_code IS DISTINCT FROM sd.tertiary_reason_code
+             OR ar.primary_reason_family IS DISTINCT FROM sd.primary_reason_family
+             OR ar.triggered_reason_code_list IS DISTINCT FROM sd.triggered_reason_code_list
+             OR ar.reason_priority_rank IS DISTINCT FROM sd.reason_priority_rank
+             OR ar.reason_code_count IS DISTINCT FROM sd.reason_code_count
+          );
+
+        IF v_persistence_mismatch_count > 0 THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: % archived row(s) do not match latest-run core decision / exposure / economics / reason-code / lineage fields.',
+                v_persistence_mismatch_count;
+        END IF;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive mode behavior — preserve unrelated archive inventory where applicable.
+
+    NONE and STRATEGY_SCENARIO_ONLY should not change archive slices outside the current replacement
+    key.
+
+    SQL mechanics:
+        FULL OUTER JOIN compares before and after inventory rows by archive replacement key.
+
+        The WHERE clause excludes the current replacement key and then counts any row-count changes
+        outside that key.
+    -------------------------------------------------------------------------------------------*/
+    IF a.archive_run_flag IS TRUE
+       AND a.strategy_archive_reset_mode IN ('NONE', 'STRATEGY_SCENARIO_ONLY') THEN
+
+        SELECT COUNT(*)
+        INTO v_inventory_diff_count
+        FROM (
+            SELECT
+                COALESCE(b.strategy_set_name, aft.strategy_set_name) AS strategy_set_name,
+                COALESCE(b.strategy_name, aft.strategy_name) AS strategy_name,
+                COALESCE(b.strategy_version, aft.strategy_version) AS strategy_version,
+                COALESCE(b.module1_scenario_set_name, aft.module1_scenario_set_name) AS module1_scenario_set_name,
+                COALESCE(b.module1_scenario_name, aft.module1_scenario_name) AS module1_scenario_name,
+                COALESCE(b.population_id, aft.population_id) AS population_id,
+                COALESCE(b.row_count, 0) AS before_row_count,
+                COALESCE(aft.row_count, 0) AS after_row_count
+            FROM tmp_m2_archive_inventory_before b
+            FULL OUTER JOIN tmp_m2_archive_inventory_after aft
+                ON aft.strategy_set_name = b.strategy_set_name
+               AND aft.strategy_name = b.strategy_name
+               AND aft.strategy_version = b.strategy_version
+               AND aft.module1_scenario_set_name = b.module1_scenario_set_name
+               AND aft.module1_scenario_name = b.module1_scenario_name
+               AND aft.population_id = b.population_id
+        ) d
+        WHERE NOT (
+                strategy_set_name = a.strategy_set_name
+            AND strategy_name = a.strategy_name
+            AND strategy_version = a.strategy_version
+            AND module1_scenario_set_name = a.module1_scenario_set_name
+            AND module1_scenario_name = a.module1_scenario_name
+            AND population_id = a.population_id
+        )
+          AND before_row_count <> after_row_count;
+
+        IF v_inventory_diff_count > 0 THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: archive inventory outside the current replacement key changed under mode %.',
+                a.strategy_archive_reset_mode;
+        END IF;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: STRATEGY_SET_ONLY scope control.
+
+    STRATEGY_SET_ONLY may change any archive group within:
+        current strategy_set_name,
+        current Module 1 scenario,
+        current population_id.
+
+    It should not change groups outside that selected strategy set / scenario / population scope.
+    -------------------------------------------------------------------------------------------*/
+    IF a.archive_run_flag IS TRUE
+       AND a.strategy_archive_reset_mode = 'STRATEGY_SET_ONLY' THEN
+
+        SELECT COUNT(*)
+        INTO v_inventory_diff_count
+        FROM (
+            SELECT
+                COALESCE(b.strategy_set_name, aft.strategy_set_name) AS strategy_set_name,
+                COALESCE(b.strategy_name, aft.strategy_name) AS strategy_name,
+                COALESCE(b.strategy_version, aft.strategy_version) AS strategy_version,
+                COALESCE(b.module1_scenario_set_name, aft.module1_scenario_set_name) AS module1_scenario_set_name,
+                COALESCE(b.module1_scenario_name, aft.module1_scenario_name) AS module1_scenario_name,
+                COALESCE(b.population_id, aft.population_id) AS population_id,
+                COALESCE(b.row_count, 0) AS before_row_count,
+                COALESCE(aft.row_count, 0) AS after_row_count
+            FROM tmp_m2_archive_inventory_before b
+            FULL OUTER JOIN tmp_m2_archive_inventory_after aft
+                ON aft.strategy_set_name = b.strategy_set_name
+               AND aft.strategy_name = b.strategy_name
+               AND aft.strategy_version = b.strategy_version
+               AND aft.module1_scenario_set_name = b.module1_scenario_set_name
+               AND aft.module1_scenario_name = b.module1_scenario_name
+               AND aft.population_id = b.population_id
+        ) d
+        WHERE NOT (
+                strategy_set_name = a.strategy_set_name
+            AND module1_scenario_set_name = a.module1_scenario_set_name
+            AND module1_scenario_name = a.module1_scenario_name
+            AND population_id = a.population_id
+        )
+          AND before_row_count <> after_row_count;
+
+        IF v_inventory_diff_count > 0 THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: archive inventory outside the selected strategy set / scenario / population changed under STRATEGY_SET_ONLY mode.';
+        END IF;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: ALL mode scope control.
+
+    Expected:
+        ALL mode should leave only the current latest-run replacement group after insertion.
+
+    Business interpretation:
+        ALL is a complete archive reset followed by current-run insertion.
+    -------------------------------------------------------------------------------------------*/
+    IF a.archive_run_flag IS TRUE
+       AND a.strategy_archive_reset_mode = 'ALL' THEN
+
+        SELECT COUNT(*)
+        INTO v_after_inventory_group_count
+        FROM tmp_m2_archive_inventory_after;
+
+        IF v_after_inventory_group_count <> 1 THEN
+            RAISE EXCEPTION
+                'Module 2 Section 12 failure: ALL reset mode should leave exactly one archive inventory group after current insert. Found %.',
+                v_after_inventory_group_count;
+        END IF;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive row-level grain uniqueness must be enforced.
+
+    The unique index created before Section 12.6 is the authoritative archive-grain control.
+
+    This avoids repeatedly scanning and grouping the full archive as the archive grows.
+
+    If duplicate archive grain existed, the unique index creation would have failed before this
+    gatekeeper. This check confirms that the uniqueness control exists and is valid.
+    -------------------------------------------------------------------------------------------*/
+    SELECT EXISTS (
+        SELECT 1
+        FROM pg_index i
+        JOIN pg_class idx
+            ON idx.oid = i.indexrelid
+        JOIN pg_class tbl
+            ON tbl.oid = i.indrelid
+        JOIN pg_namespace ns
+            ON ns.oid = tbl.relnamespace
+        WHERE ns.nspname = 'credit_decisioning_sim'
+          AND tbl.relname = 'strategy_decisions_archive'
+          AND idx.relname = 'idx_m2_strategy_decisions_archive_unique_grain'
+          AND i.indisunique IS TRUE
+          AND i.indisvalid IS TRUE
+    )
+    INTO v_archive_unique_grain_index_valid;
+
+    IF v_archive_unique_grain_index_valid IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 12 failure: archive unique row-level grain index is missing or invalid.';
+    END IF;
+
+    /*
+    Boundary confirmation:
+        Section 12 does not recalculate decision_outcome.
+        Section 12 does not recalculate approved_amount.
+        Section 12 does not recalculate approved_expected_loss_amount.
+        Section 12 does not reassign simulated reason codes.
+        Section 12 does not build matched strategy comparison queries.
+        Section 12 does not build the full Module 2 QA framework.
+    */
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 12.7 — ARCHIVE INDEXES
+****************************************************************************************************
+
+PURPOSE:
+    Support archive inventory, replacement-key lookup, row-level matching, strategy comparison, and
+    reporting diagnostics.
+
+BUSINESS PURPOSE:
+    Archive history becomes more useful as it grows across strategy runs and Module 1 scenarios.
+
+    Practical indexes support archive diagnostics and later matched comparison without changing any
+    archived values.
+
+SQL PURPOSE:
+    Create practical archive indexes for:
+        strategy identity,
+        Module 1 lineage,
+        archive replacement key,
+        decision outcome,
+        product × decision outcome,
+        score band × decision outcome,
+        primary reason code,
+        simulated offer-exposure flag,
+        archive insertion timestamp.
+
+WHY INDEXES ARE CREATED AFTER PERSISTENCE:
+    Section 12.5A creates the validation-critical row-level indexes before fail-fast checks.
+
+    Section 12.7 creates broader review and reporting indexes after archive validation has run.
+
+SQL MECHANICS:
+    CREATE INDEX IF NOT EXISTS is rerunnable.
+
+BOUNDARY:
+    Index creation does not change strategy outcomes, exposure economics, reason codes, or archive
+    row content.
+
+****************************************************************************************************/
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_strategy_identity
+    ON credit_decisioning_sim.strategy_decisions_archive (
+        strategy_set_name,
+        strategy_name,
+        strategy_version
+    );
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_module1_lineage
+    ON credit_decisioning_sim.strategy_decisions_archive (
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    );
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_replacement_key
+    ON credit_decisioning_sim.strategy_decisions_archive (
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    );
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_decision_outcome
+    ON credit_decisioning_sim.strategy_decisions_archive (decision_outcome);
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_product_decision
+    ON credit_decisioning_sim.strategy_decisions_archive (
+        product_type_policy_key,
+        decision_outcome
+    );
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_score_decision
+    ON credit_decisioning_sim.strategy_decisions_archive (
+        score_band_policy_key,
+        decision_outcome
+    );
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_primary_reason
+    ON credit_decisioning_sim.strategy_decisions_archive (primary_reason_code);
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_offer_exposure
+    ON credit_decisioning_sim.strategy_decisions_archive (simulated_offer_exposure_flag);
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_inserted_ts
+    ON credit_decisioning_sim.strategy_decisions_archive (archive_inserted_ts);
+
+
+
+/***************************************************************************************************
+SECTION 12.8 — LOCAL ARCHIVE PERSISTENCE DIAGNOSTICS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight archive diagnostics after persistence.
+
+BUSINESS PURPOSE:
+    Let reviewers confirm what Section 12 did before moving to archive inventory, matched comparison,
+    frontier summary, or evidence capture.
+
+SQL PURPOSE:
+    Display:
+        archive persistence audit summary,
+        before and after archive inventory,
+        current archived slice row count,
+        current archived slice outcome distribution,
+        current archived slice reason-code distribution,
+        current archived slice product × outcome distribution,
+        current archived slice score-band × outcome distribution,
+        current archived slice simulated offer-exposure profile,
+        current archived slice exposure / Expected Loss / timestamp summary,
+        archive mode diagnostic.
+
+INTERPRETATION:
+    These are archive diagnostics only.
+
+    They are not:
+        matched strategy comparison,
+        full Module 2 QA,
+        validation-summary evidence by themselves,
+        or executive story capture.
+
+SQL TEACHING POINT:
+    These SELECT statements are read-only diagnostics.
+
+    CTE archive_context reads the one-row audit helper so every current-slice diagnostic uses the same
+    replacement key.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.1 Archive persistence audit summary.
+
+Interpretation:
+    Shows whether Section 12 skipped, inserted, replaced, reset, and how many rows were affected.
+
+Expected:
+    exactly one row.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    archive_run_flag,
+    strategy_archive_reset_mode,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    latest_run_row_count,
+    latest_run_distinct_application_count,
+
+    archive_row_count_before,
+    archive_deleted_rows,
+    archive_inserted_rows,
+    archive_row_count_after,
+
+    archive_action,
+    archive_action_ts
+FROM tmp_m2_archive_persistence_audit;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.2 Archive inventory before persistence.
+
+Interpretation:
+    Shows archive slices before Section 12.4 archive controls were applied.
+
+Use:
+    Review this alongside 12.8.3 to confirm archive reset behavior.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    row_count
+FROM tmp_m2_archive_inventory_before
+ORDER BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.3 Archive inventory after persistence.
+
+Interpretation:
+    Shows archive slices after Section 12.4 archive controls were applied.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    row_count
+FROM tmp_m2_archive_inventory_after
+ORDER BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.4 Current archived slice row count and distinct application_id count.
+
+Expected when archive_run_flag = TRUE:
+    current_archived_slice_row_count = latest_run_row_count
+    current_archived_slice_distinct_application_id_count = latest_run_distinct_application_count
+
+Expected when archive_run_flag = FALSE:
+    zero rows may return if the current slice was not previously archived.
+
+Interpretation:
+    This is the fastest current-slice archive completeness diagnostic.
+-----------------------------------------------------------------------------------------------*/
+
+WITH archive_context AS (
+    SELECT *
+    FROM tmp_m2_archive_persistence_audit
+    LIMIT 1
+)
+SELECT
+    a.archive_run_flag,
+    a.strategy_archive_reset_mode,
+    a.strategy_set_name,
+    a.strategy_name,
+    a.strategy_version,
+    a.module1_scenario_set_name,
+    a.module1_scenario_name,
+    a.population_id,
+    a.latest_run_row_count,
+    COUNT(ar.*) AS current_archived_slice_row_count,
+    COUNT(DISTINCT ar.application_id) AS current_archived_slice_distinct_application_id_count
+FROM archive_context a
+LEFT JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = a.strategy_set_name
+   AND ar.strategy_name = a.strategy_name
+   AND ar.strategy_version = a.strategy_version
+   AND ar.module1_scenario_set_name = a.module1_scenario_set_name
+   AND ar.module1_scenario_name = a.module1_scenario_name
+   AND ar.population_id = a.population_id
+GROUP BY
+    a.archive_run_flag,
+    a.strategy_archive_reset_mode,
+    a.strategy_set_name,
+    a.strategy_name,
+    a.strategy_version,
+    a.module1_scenario_set_name,
+    a.module1_scenario_name,
+    a.population_id,
+    a.latest_run_row_count;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.5 Current archived slice count by decision_outcome.
+
+Interpretation:
+    Archive-level outcome distribution for the current replacement key.
+
+Boundary:
+    This reads archived output. It does not validate full latest-run behavior.
+-----------------------------------------------------------------------------------------------*/
+
+WITH archive_context AS (
+    SELECT *
+    FROM tmp_m2_archive_persistence_audit
+    LIMIT 1
+)
+SELECT
+    ar.decision_outcome,
+    COUNT(*) AS row_count,
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_current_archived_slice
+FROM archive_context a
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = a.strategy_set_name
+   AND ar.strategy_name = a.strategy_name
+   AND ar.strategy_version = a.strategy_version
+   AND ar.module1_scenario_set_name = a.module1_scenario_set_name
+   AND ar.module1_scenario_name = a.module1_scenario_name
+   AND ar.population_id = a.population_id
+GROUP BY ar.decision_outcome
+ORDER BY
+    CASE ar.decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.6 Current archived slice count by primary_reason_code.
+
+Interpretation:
+    Reason-code fields are simulated strategy explanation codes.
+
+Boundary:
+    These are not customer communications, regulatory notices, adverse-action reasons, or fair-lending
+    conclusions.
+-----------------------------------------------------------------------------------------------*/
+
+WITH archive_context AS (
+    SELECT *
+    FROM tmp_m2_archive_persistence_audit
+    LIMIT 1
+)
+SELECT
+    ar.primary_reason_family,
+    ar.primary_reason_code,
+    COUNT(*) AS row_count
+FROM archive_context a
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = a.strategy_set_name
+   AND ar.strategy_name = a.strategy_name
+   AND ar.strategy_version = a.strategy_version
+   AND ar.module1_scenario_set_name = a.module1_scenario_set_name
+   AND ar.module1_scenario_name = a.module1_scenario_name
+   AND ar.population_id = a.population_id
+GROUP BY
+    ar.primary_reason_family,
+    ar.primary_reason_code
+ORDER BY
+    ar.primary_reason_family,
+    ar.primary_reason_code;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.7 Current archived slice product × decision_outcome.
+
+Interpretation:
+    Product-level archive diagnostic for the current replacement key.
+
+Credit risk interpretation:
+    Product type affects exposure, payment mechanics, LGD, affordability, counteroffer feasibility,
+    and approved Expected Loss.
+-----------------------------------------------------------------------------------------------*/
+
+WITH archive_context AS (
+    SELECT *
+    FROM tmp_m2_archive_persistence_audit
+    LIMIT 1
+)
+SELECT
+    ar.product_type_policy_key,
+    ar.decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(ar.estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(ar.requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(ar.approved_payment_to_income_ratio)
+        FILTER (WHERE ar.simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows
+FROM archive_context a
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = a.strategy_set_name
+   AND ar.strategy_name = a.strategy_name
+   AND ar.strategy_version = a.strategy_version
+   AND ar.module1_scenario_set_name = a.module1_scenario_set_name
+   AND ar.module1_scenario_name = a.module1_scenario_name
+   AND ar.population_id = a.population_id
+GROUP BY
+    ar.product_type_policy_key,
+    ar.decision_outcome
+ORDER BY
+    ar.product_type_policy_key,
+    CASE ar.decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.8 Current archived slice score band × decision_outcome.
+
+Interpretation:
+    estimated_pd remains the SQL field name and is interpreted as the synthetic estimated-PD proxy.
+
+Credit risk interpretation:
+    Score band and synthetic estimated-risk proxy should generally align directionally while
+    preserving realistic overlap.
+-----------------------------------------------------------------------------------------------*/
+
+WITH archive_context AS (
+    SELECT *
+    FROM tmp_m2_archive_persistence_audit
+    LIMIT 1
+)
+SELECT
+    ar.score_band_policy_key,
+    ar.decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(ar.credit_score) AS avg_credit_score,
+    AVG(ar.estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM archive_context a
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = a.strategy_set_name
+   AND ar.strategy_name = a.strategy_name
+   AND ar.strategy_version = a.strategy_version
+   AND ar.module1_scenario_set_name = a.module1_scenario_set_name
+   AND ar.module1_scenario_name = a.module1_scenario_name
+   AND ar.population_id = a.population_id
+GROUP BY
+    ar.score_band_policy_key,
+    ar.decision_outcome
+ORDER BY
+    CASE ar.score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    CASE ar.decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.9 Current archived slice simulated_offer_exposure_flag profile.
+
+Interpretation:
+    simulated_offer_exposure_flag indicates simulated positive offer exposure only.
+
+    It does not imply booked exposure, funded exposure, production approval, or real applicant
+    treatment.
+-----------------------------------------------------------------------------------------------*/
+
+WITH archive_context AS (
+    SELECT *
+    FROM tmp_m2_archive_persistence_audit
+    LIMIT 1
+)
+SELECT
+    ar.simulated_offer_exposure_flag,
+    COUNT(*) AS row_count,
+    SUM(COALESCE(ar.approved_amount, 0)) AS total_approved_amount,
+    AVG(ar.estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    SUM(COALESCE(ar.approved_expected_loss_amount, 0))
+        AS total_approved_expected_loss_amount
+FROM archive_context a
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = a.strategy_set_name
+   AND ar.strategy_name = a.strategy_name
+   AND ar.strategy_version = a.strategy_version
+   AND ar.module1_scenario_set_name = a.module1_scenario_set_name
+   AND ar.module1_scenario_name = a.module1_scenario_name
+   AND ar.population_id = a.population_id
+GROUP BY ar.simulated_offer_exposure_flag
+ORDER BY ar.simulated_offer_exposure_flag;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.10 Current archived slice exposure, Expected Loss, and timestamp summary.
+
+Interpretation:
+    requested_expected_loss_amount is requested-exposure Expected Loss.
+
+    approved_expected_loss_amount is approved-exposure Expected Loss.
+
+    archive_inserted_ts is archive persistence metadata.
+-----------------------------------------------------------------------------------------------*/
+
+WITH archive_context AS (
+    SELECT *
+    FROM tmp_m2_archive_persistence_audit
+    LIMIT 1
+)
+SELECT
+    ar.decision_outcome,
+    COUNT(*) AS row_count,
+
+    SUM(ar.requested_amount) AS total_requested_amount,
+    SUM(COALESCE(ar.approved_amount, 0)) AS total_approved_amount,
+
+    SUM(ar.requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+    SUM(COALESCE(ar.approved_expected_loss_amount, 0))
+        AS total_approved_expected_loss_amount,
+
+    AVG(ar.requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(ar.approved_payment_to_income_ratio)
+        FILTER (WHERE ar.simulated_offer_exposure_flag IS TRUE)
+        AS avg_approved_payment_to_income_ratio_offer_rows,
+
+    MIN(ar.latest_output_created_ts) AS min_latest_output_created_ts,
+    MAX(ar.latest_output_created_ts) AS max_latest_output_created_ts,
+    MIN(ar.archive_inserted_ts) AS min_archive_inserted_ts,
+    MAX(ar.archive_inserted_ts) AS max_archive_inserted_ts
+FROM archive_context a
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = a.strategy_set_name
+   AND ar.strategy_name = a.strategy_name
+   AND ar.strategy_version = a.strategy_version
+   AND ar.module1_scenario_set_name = a.module1_scenario_set_name
+   AND ar.module1_scenario_name = a.module1_scenario_name
+   AND ar.population_id = a.population_id
+GROUP BY ar.decision_outcome
+ORDER BY
+    CASE ar.decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+12.8.11 Archive mode diagnostic.
+
+Purpose:
+    Provide the clearest diagnostic for whether Section 12 skipped, replaced, reset, or inserted.
+
+Interpretation:
+    This mirrors 12.8.1 and is intentionally repeated at the end of diagnostics so reviewers do not
+    need to scroll back after reviewing current-slice diagnostics.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    archive_run_flag,
+    strategy_archive_reset_mode,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    latest_run_row_count,
+    latest_run_distinct_application_count,
+
+    archive_row_count_before,
+    archive_deleted_rows,
+    archive_inserted_rows,
+    archive_row_count_after,
+
+    archive_action,
+    archive_action_ts
+FROM tmp_m2_archive_persistence_audit;
+
+
+
+/***************************************************************************************************
+END OF SECTION 12 — STRATEGY DECISION ARCHIVE PERSISTENCE LAYER
+
+If execution reaches this point:
+    1. credit_decisioning_sim.strategy_decisions_archive exists.
+    2. archive_inserted_ts exists.
+    3. Archive table contains all latest-run columns plus archive_inserted_ts.
+    4. Common latest-run / archive columns have aligned data types.
+    5. Unexpected archive columns do not exist, except archive_inserted_ts.
+    6. latest-run archive controls are populated and unambiguous.
+    7. archive_run_flag = FALSE skips persistence without deleting or inserting archive rows.
+    8. archive_run_flag = TRUE persists latest-run rows according to strategy_archive_reset_mode.
+    9. STRATEGY_SCENARIO_ONLY replaces only the current replacement key.
+    10. STRATEGY_SET_ONLY replaces the selected strategy set for the selected Module 1 scenario and
+        population.
+    11. ALL resets the full archive before inserting the current latest-run output.
+    12. NONE inserts only when the current replacement key does not already exist.
+    13. Archive row-level grain is protected by a unique index.
+    14. Archive diagnostics are available for inventory and current-slice review.
+    15. Section 12 does not recalculate decision outcomes, exposure, Expected Loss, or simulated
+        reason codes.
+    16. Section 12 does not perform matched strategy comparison.
+    17. Section 12 does not perform full Module 2 QA.
+    18. Campaign registry IDs remain evidence-linkage metadata handled later through evidence capture.
+
+No matched strategy comparison queries have been created.
+No full Module 2 QA framework has been created.
+No executive evidence rows have been inserted.
+No BRD or Validation Summary documentation has been drafted.
+
+Next section:
+    Section 13 should consume credit_decisioning_sim.strategy_decisions_archive and build read-only
+    archive inventory plus matched baseline / challenger strategy comparison diagnostics.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M00958 -->
+
+
+---
+
+<a id="c038-m00959"></a>
+
+### C038-M00959
+
+**Andrew** · 2026-05-10T00:53:27.742000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00959 -->
+let's do one more pass for commentary. Please note that besides the headers we want instructional commentary that details how the sql logic is working. the commentary/headers are supposed to do 3 main things: 1) Advise on the who/what/why/how to run and interpret the code and parameters; 2) teach the credit risk concepts and nuts and bolts; 3) teach how the sql logic is working. folks going through this code should not only understand how to use/interpret but also should learn about credit risk analytics and SQL. this is the elite level we are striving for. besides header comments, we expect in line comments explaining the sql logic and line by line process. here is the section 13 again. if suggested changes, return the full copy paste of those sections in one copy paste block.
+<!-- END_MESSAGE C038-M00959 -->
+
+
+**Attachments in export:** `Pasted text(151).txt`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_48.md) · [Next](Part_50.md)

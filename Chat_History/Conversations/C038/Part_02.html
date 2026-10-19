@@ -1,0 +1,3830 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 2</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 02 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_01.html">Previous</a><a href="Part_03.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00052" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00052 · 2026-05-06T11:08:08.966100-04:00 · active path</p><div class="body"><p>One implementation clarification before the SQL: I split the previously stated single “review / decline boundary” for requested Expected Loss into separate <code>product_review_max_requested_el</code> and <code>product_decline_min_requested_el</code> parameters. The defaults preserve the same intent but give later decision logic a cleaner review band before a hard simulated policy stop.</p>
+<p>This first build follows Module 1’s governed parameter-layer and fail-fast gatekeeper pattern, while preserving the documented Module 1 boundaries around synthetic data, scenario lineage, the synthetic estimated-PD proxy, and comparative Expected Loss. fileciteturn4file0 It also preserves the validated deterministic / matched-scenario foundation confirmed in the Module 1 Validation Summary. fileciteturn4file1</p>
+<pre><code class="language-sql">/***************************************************************************************************
+MODULE 2 — CREDIT POLICY STRATEGY &amp; DECISION OUTCOME SIMULATION ENGINE v1.0
+Enterprise Credit Decisioning Strategy Simulator
+
+SQL SCRIPT:
+module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+
+SECTIONS INCLUDED IN THIS BUILD:
+    Section 0 — Executive Purpose, Boundaries, and SQL Section Map
+    Section 1 — Schema Setup / Clean Rerun Reset for Module 2 Temporary Objects
+    Section 2 — Strategy Parameter Framework and Product Policy Parameter Framework
+    Section 3 — Fail-Fast Strategy Parameter Gatekeeper
+
+SECTIONS INTENTIONALLY NOT INCLUDED YET:
+    Section 4+ source-selection staging
+    derived strategy segments
+    rule flags
+    decision hierarchy
+    reason-code assignment
+    approved exposure calculation
+    approved Expected Loss calculation
+    latest-run final output creation
+    archive insert logic
+    QA / strategy comparison queries
+
+AUTHORING STANDARD:
+    This script is intentionally written as both executable SQL and a governed design artifact.
+    Comments explain the business purpose, SQL purpose, modeling boundary, and validation intent
+    behind each parameter family and gatekeeper.
+
+POSTGRESQL TARGET:
+    PostgreSQL
+
+***************************************************************************************************/
+
+
+/***************************************************************************************************
+SECTION 0 — EXECUTIVE PURPOSE, MODULE 2 BOUNDARIES, AND SQL SECTION MAP
+****************************************************************************************************
+
+0.1 MODULE 2 PURPOSE
+----------------------------------------------------------------------------------------------------
+Module 2 consumes finalized Module 1 synthetic application and risk outputs and applies a governed
+simulated credit strategy layer.
+
+The business question answered by later Module 2 sections will be:
+
+    &quot;Under this simulated strategy, what strategy outcome would this synthetic applicant trigger?&quot;
+
+The locked Module 2 v1.0 primary decision_outcome taxonomy is:
+
+    APPROVE
+    COUNTEROFFER
+    MANUAL_REVIEW
+    DECLINE
+
+COUNTEROFFER is a distinct primary decision_outcome.
+Detailed counteroffer type will be captured later in decision_path.
+
+
+0.2 RELATIONSHIP TO MODULE 1
+----------------------------------------------------------------------------------------------------
+Module 1 remains authoritative and is not redesigned by Module 2.
+
+Module 2 consumes Module 1 outputs such as:
+
+    application_id
+    applicant_id
+    product_type
+    score_band
+    credit_score
+    requested_amount
+    annual_income
+    monthly_payment_proxy
+    payment_to_income_ratio
+    debt_to_income_ratio
+    estimated_pd
+    estimated_lgd
+    expected_loss_amount
+    scenario_set_name / module1_scenario_set_name
+    scenario_name     / module1_scenario_name
+    population_id
+
+Module 2 output naming will later alias:
+
+    Module 1 scenario_set_name     -&gt; module1_scenario_set_name
+    Module 1 scenario_name         -&gt; module1_scenario_name
+    Module 1 expected_loss_amount  -&gt; requested_expected_loss_amount
+
+This avoids overloading Module 1 scenario terminology with Module 2 strategy terminology.
+
+
+0.3 ESTIMATED-PD PROXY TERMINOLOGY NOTE
+----------------------------------------------------------------------------------------------------
+The finalized Module 1 SQL field is named:
+
+    estimated_pd
+
+Module 2 v1.0 consumes that field as-is.
+
+However, in comments, documentation, QA interpretation, and business explanation, estimated_pd must
+be interpreted as the:
+
+    synthetic estimated-PD proxy
+
+Module 2 v1.0 does NOT recalculate estimated_pd.
+Module 2 v1.0 does NOT create a post-decision risk model.
+Module 2 v1.0 does NOT treat estimated_pd as a calibrated production probability of default.
+
+The synthetic estimated-PD proxy is a governed Module 1 risk-translation input used by Module 2 for
+policy simulation, segmentation, and approved-exposure Expected Loss calculations.
+
+
+0.4 REASON-CODE BOUNDARY
+----------------------------------------------------------------------------------------------------
+Later Module 2 sections will assign simulated reason codes.
+
+These codes are:
+
+    simulated strategy explanation codes
+    simulated policy reasons
+    decision-path reasons
+    policy stop reasons
+    review trigger reasons
+    counteroffer reasons
+
+They are NOT regulatory adverse-action reasons.
+They are NOT compliance-approved customer communication codes.
+They are NOT production decision notices.
+
+Reason-code purpose in Module 2:
+
+    strategy transparency
+    QA review
+    segmentation analysis
+    decision-path traceability
+    portfolio interpretation
+
+
+0.5 APPROVED EXPOSURE BOUNDARY
+----------------------------------------------------------------------------------------------------
+Later Module 2 sections will calculate:
+
+    approved_amount
+    counteroffer_amount
+    approved_monthly_payment_proxy
+    approved_payment_to_income_ratio
+    approved_expected_loss_amount
+
+These are simulated strategy outputs only.
+
+Approved exposure in Module 2 means:
+
+    simulated offer exposure under a strategy
+
+It does NOT mean:
+
+    booked account exposure
+    real customer approval
+    operational account opening
+    final underwriting decision
+
+For this reason, the locked inclusion flag is:
+
+    simulated_offer_exposure_flag
+
+Do NOT use:
+
+    booked_exposure_flag
+
+because &quot;booked&quot; can imply real account booking, which is outside the Module 2 boundary.
+
+
+0.6 LOCKED OUTCOME CONVENTIONS FOR LATER SECTIONS
+----------------------------------------------------------------------------------------------------
+These conventions are locked here so later CASE logic remains unambiguous.
+
+APPROVE:
+    approved_amount                    = requested_amount
+    counteroffer_amount                = NULL
+    approved_monthly_payment_proxy     = monthly_payment_proxy
+    approved_payment_to_income_ratio   = payment_to_income_ratio
+    approved_expected_loss_amount      = approved_amount * estimated_pd * estimated_lgd
+    simulated_offer_exposure_flag      = TRUE
+    primary_reason_code                = APPROVED_AS_REQUESTED
+
+COUNTEROFFER:
+    approved_amount                    &lt; requested_amount
+    counteroffer_amount                = approved_amount
+    exposure_reduction_flag            = TRUE
+    exposure_reduction_amount          = requested_amount - approved_amount
+    exposure_reduction_pct             = exposure_reduction_amount / NULLIF(requested_amount, 0)
+    approved_monthly_payment_proxy     =
+        monthly_payment_proxy * approved_amount / NULLIF(requested_amount, 0)
+    approved_payment_to_income_ratio   =
+        approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)
+    approved_expected_loss_amount      = approved_amount * estimated_pd * estimated_lgd
+    simulated_offer_exposure_flag      = TRUE
+
+DECLINE:
+    approved_amount                    = 0
+    counteroffer_amount                = NULL
+    approved_monthly_payment_proxy     = 0
+    approved_payment_to_income_ratio   = 0
+    approved_expected_loss_amount      = 0
+    simulated_offer_exposure_flag      = FALSE
+
+MANUAL_REVIEW:
+    approved_amount                    = NULL
+    counteroffer_amount                = NULL
+    approved_monthly_payment_proxy     = NULL
+    approved_payment_to_income_ratio   = NULL
+    approved_expected_loss_amount      = NULL
+    simulated_offer_exposure_flag      = FALSE
+
+Manual review is unresolved by design.
+
+
+0.7 MODULE 1 SCENARIO METADATA VS MODULE 2 STRATEGY METADATA
+----------------------------------------------------------------------------------------------------
+Module 1 scenario metadata describes the upstream synthetic population and risk environment:
+
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+
+Module 2 strategy metadata describes the downstream simulated decision strategy:
+
+    strategy_set_name
+    strategy_name
+    strategy_version
+    strategy_run_id
+    strategy_run_ts
+
+Do not overload scenario_name to mean decision strategy.
+
+
+0.8 LOCKED PHYSICAL ARCHITECTURE FOR LATER SECTIONS
+----------------------------------------------------------------------------------------------------
+Latest-run strategy decision table:
+
+    credit_decisioning_sim.strategy_decisions
+
+Strategy decision archive table:
+
+    credit_decisioning_sim.strategy_decisions_archive
+
+Archive grain:
+
+    one row per application
+    x Module 1 scenario
+    x Module 2 strategy version
+
+Archive grain fields:
+
+    strategy_set_name
+    strategy_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+    application_id
+
+Archive replacement / rerun key:
+
+    strategy_set_name
+    strategy_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+
+The replacement / rerun key intentionally excludes application_id.
+The row-level archive grain additionally includes application_id.
+
+
+0.9 HIGH-LEVEL SQL SECTION MAP
+----------------------------------------------------------------------------------------------------
+Section 0  — Executive purpose, boundaries, terminology, and section map
+Section 1  — Schema setup and clean reset of temporary Module 2 objects
+Section 2  — Strategy parameter framework and product policy parameter framework
+Section 3  — Fail-fast strategy parameter gatekeeper
+
+Future sections, not included in this build:
+
+Section 4  — Module 1 source-selection and lineage-normalization layer
+Section 5  — Derived strategy segmentation layer
+Section 6  — Rule flag construction
+Section 7  — Decision hierarchy
+Section 8  — Simulated reason-code assignment
+Section 9  — Approved exposure calculation
+Section 10 — Approved Expected Loss calculation
+Section 11 — Latest-run strategy output table creation
+Section 12 — Strategy archive persistence
+Section 13 — Validation, QA, and Strategy Tuning Pass
+Section 14 — Matched strategy comparison queries
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 1 — SCHEMA SETUP / CLEAN RERUN RESET
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Reuse the dedicated simulation schema established by Module 1 and prepare the current Module 2
+    run for a clean parameter and gatekeeper build.
+
+SQL PURPOSE:
+    1. Ensure the credit_decisioning_sim schema exists.
+    2. Set the search path so permanent simulator objects are resolved consistently.
+    3. Drop temporary Module 2 parameter objects from prior attempts.
+    4. Drop the latest-run Module 2 output table for clean rerun behavior.
+    5. Preserve the Module 2 archive table by default.
+
+GOVERNANCE RATIONALE:
+    The latest-run table should represent only the current completed Module 2 strategy output.
+    It is safe to drop and recreate in later sections.
+
+    The archive table is different. It is the governed history layer for completed strategy runs
+    and must not be dropped casually.
+
+IMPORTANT:
+    This first build does NOT create the final strategy_decisions table yet.
+    This first build does NOT insert into the strategy_decisions_archive table yet.
+    Those actions occur only after the source-selection, decision logic, reason-code, and approved
+    exposure layers are built.
+
+***************************************************************************************************/
+
+CREATE SCHEMA IF NOT EXISTS credit_decisioning_sim;
+
+SET search_path TO credit_decisioning_sim, public;
+
+
+/*-----------------------------------------------------------------------------------------------
+Clean reset of temporary Module 2 objects.
+
+These temp tables are parameter and validation objects only. They are safe to drop at the beginning
+of each development run because they do not contain persisted strategy decisions.
+-----------------------------------------------------------------------------------------------*/
+DROP TABLE IF EXISTS tmp_module2_strategy_params;
+DROP TABLE IF EXISTS tmp_module2_product_policy_params;
+
+
+/*-----------------------------------------------------------------------------------------------
+Clean reset of latest-run Module 2 output.
+
+This table will be recreated in a later section after the decision logic is built. Dropping it now
+prevents stale strategy outputs from being mistaken for current results during early development.
+
+The strategy archive table is intentionally NOT dropped here.
+-----------------------------------------------------------------------------------------------*/
+DROP TABLE IF EXISTS credit_decisioning_sim.strategy_decisions;
+
+
+/*-----------------------------------------------------------------------------------------------
+Archive preservation rule.
+
+Do not drop this table by default:
+
+    credit_decisioning_sim.strategy_decisions_archive
+
+Archive creation and insert logic are intentionally deferred until the final output schema is built.
+-----------------------------------------------------------------------------------------------*/
+
+
+
+/***************************************************************************************************
+SECTION 2 — STRATEGY PARAMETER FRAMEWORK AND PRODUCT POLICY PARAMETER FRAMEWORK
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Centralize all Module 2 v1.0 strategy assumptions before any decision logic is written.
+
+SQL PURPOSE:
+    Create temporary parameter tables that later sections will join to Module 1 source outputs.
+
+DESIGN PRINCIPLES:
+    Parameterized over hard-coded:
+        Strategy thresholds, product exposure limits, and output conventions are declared here.
+
+    Product-aware over generic:
+        Product policy parameters differ across Mortgage, HELOC, Auto Loan, Unsecured Personal
+        Loan, and Revolving Line.
+
+    Boundary-aware over production-claiming:
+        These thresholds are synthetic strategy defaults for simulation. They are not production
+        underwriting rules, not empirically calibrated cutoffs, and not customer treatment policy.
+
+    Validation-first over output-only:
+        Section 3 will fail fast if these assumptions are incomplete, incoherent, or unsafe.
+
+***************************************************************************************************/
+
+
+/***************************************************************************************************
+SECTION 2.1 — STRATEGY PARAMETER TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_module2_strategy_params
+
+GRAIN:
+    One active row for the selected strategy run.
+
+WHY ONE ACTIVE ROW:
+    A single strategy run must have exactly one strategy identity, one source-selection definition,
+    one set of global thresholds, one archive-control convention, and one output-convention set.
+    Multiple active rows would create ambiguous decision logic.
+
+PARAMETER FAMILIES:
+    1. Strategy identity
+    2. Module 1 source selection
+    3. Archive controls
+    4. Global synthetic estimated-PD proxy thresholds
+    5. Global PTI thresholds
+    6. DTI thresholds
+    7. Decision convention controls
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_module2_strategy_params (
+    /* Strategy identity */
+    active_strategy_flag                         BOOLEAN,
+    module2_model_version                        TEXT,
+    strategy_set_name                            TEXT,
+    strategy_name                                TEXT,
+    strategy_version                             TEXT,
+    strategy_run_id                              TEXT,
+    strategy_run_ts                              TIMESTAMPTZ,
+
+    /* Module 1 source selection */
+    module1_input_source                         TEXT,
+    source_module1_scenario_set_name             TEXT,
+    source_module1_scenario_name                 TEXT,
+    source_population_id                         TEXT,
+
+    /* Archive controls */
+    archive_run_flag                             BOOLEAN,
+    strategy_archive_reset_mode                  TEXT,
+
+    /* Global synthetic estimated-PD proxy thresholds */
+    approve_max_estimated_pd_proxy               NUMERIC(12,6),
+    counteroffer_max_estimated_pd_proxy          NUMERIC(12,6),
+    review_max_estimated_pd_proxy                NUMERIC(12,6),
+    decline_min_estimated_pd_proxy               NUMERIC(12,6),
+
+    /* Global PTI thresholds */
+    global_approve_max_pti                       NUMERIC(12,6),
+    global_review_max_pti                        NUMERIC(12,6),
+    global_decline_min_pti                       NUMERIC(12,6),
+
+    /* DTI thresholds */
+    approve_max_dti                              NUMERIC(12,6),
+    review_max_dti                               NUMERIC(12,6),
+    decline_min_dti                              NUMERIC(12,6),
+
+    /* Decision convention controls */
+    approve_reason_code                          TEXT,
+    reason_code_required_flag                    BOOLEAN,
+    simulated_offer_exposure_flag_enabled        BOOLEAN,
+    manual_review_approved_amount_convention     TEXT,
+    decline_approved_amount_convention           TEXT,
+    approved_el_decline_convention               TEXT,
+    approved_el_manual_review_convention         TEXT,
+    allow_approved_amount_above_requested_flag   BOOLEAN
+) ON COMMIT PRESERVE ROWS;
+
+
+/*-----------------------------------------------------------------------------------------------
+Default strategy row.
+
+These defaults define an initial baseline simulated strategy. They are deliberately conservative
+enough to produce meaningful APPROVE / COUNTEROFFER / MANUAL_REVIEW / DECLINE separation later,
+but they are not production policy and are not empirically calibrated cutoffs.
+
+module1_input_source:
+    LATEST is the default for initial development and QA.
+    ARCHIVE should be used later when comparing strategies against a specific archived Module 1
+    scenario slice.
+
+strategy_run_id:
+    This is audit metadata. It supports run traceability but does not replace the archive
+    replacement / rerun key.
+
+Archive replacement / rerun key, later:
+    strategy_set_name
+    strategy_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+-----------------------------------------------------------------------------------------------*/
+
+INSERT INTO tmp_module2_strategy_params (
+    active_strategy_flag,
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    module1_input_source,
+    source_module1_scenario_set_name,
+    source_module1_scenario_name,
+    source_population_id,
+
+    archive_run_flag,
+    strategy_archive_reset_mode,
+
+    approve_max_estimated_pd_proxy,
+    counteroffer_max_estimated_pd_proxy,
+    review_max_estimated_pd_proxy,
+    decline_min_estimated_pd_proxy,
+
+    global_approve_max_pti,
+    global_review_max_pti,
+    global_decline_min_pti,
+
+    approve_max_dti,
+    review_max_dti,
+    decline_min_dti,
+
+    approve_reason_code,
+    reason_code_required_flag,
+    simulated_offer_exposure_flag_enabled,
+    manual_review_approved_amount_convention,
+    decline_approved_amount_convention,
+    approved_el_decline_convention,
+    approved_el_manual_review_convention,
+    allow_approved_amount_above_requested_flag
+)
+VALUES (
+    TRUE,
+    &#39;MODULE2_CREDIT_POLICY_STRATEGY_ENGINE_V1_0&#39;,
+    &#39;MODULE2_BASELINE_STRATEGY_SET&#39;,
+    &#39;BASELINE_STRATEGY&#39;,
+    &#39;V1_0&#39;,
+    &#39;M2_BASELINE_STRATEGY_V1_0_&#39; || TO_CHAR(CLOCK_TIMESTAMP(), &#39;YYYYMMDDHH24MISSMS&#39;),
+    CLOCK_TIMESTAMP(),
+
+    &#39;LATEST&#39;,
+    NULL,
+    NULL,
+    NULL,
+
+    TRUE,
+    &#39;STRATEGY_SCENARIO_ONLY&#39;,
+
+    /* Synthetic estimated-PD proxy thresholds.
+       These govern later simulated strategy routing, not production risk scoring. */
+    0.120000,  -- Clean approval ceiling for lower-to-moderate synthetic estimated-risk profiles.
+    0.300000,  -- Upper synthetic estimated-risk level eligible for reduced exposure treatment.
+    0.350000,  -- Upper manual review governance boundary.
+    0.350000,  -- Hard simulated risk stop at or above this value.
+
+    /* Global PTI thresholds.
+       Product-specific PTI thresholds in the product policy table will override these later. */
+    0.200000,  -- Default clean approval PTI ceiling before product override.
+    0.500000,  -- Default review-zone PTI upper boundary.
+    0.500000,  -- Default severe PTI stop where unresolved.
+
+    /* DTI thresholds.
+       DTI is treated as an existing-obligation capacity signal, not as exposure-adjustable PTI. */
+    0.430000,  -- Clean approval DTI ceiling.
+    0.600000,  -- Manual review DTI upper boundary.
+    0.600000,  -- Hard simulated DTI stop at or above this value.
+
+    /* Decision convention controls. */
+    &#39;APPROVED_AS_REQUESTED&#39;,
+    TRUE,
+    TRUE,
+    &#39;NULL_UNRESOLVED&#39;,
+    &#39;ZERO&#39;,
+    &#39;ZERO&#39;,
+    &#39;NULL_UNRESOLVED&#39;,
+    FALSE
+);
+
+
+
+/***************************************************************************************************
+SECTION 2.2 — PRODUCT POLICY PARAMETER TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_module2_product_policy_params
+
+GRAIN:
+    One row per supported Module 1 product_type.
+
+SUPPORTED MODULE 1 PRODUCT SET:
+    MORTGAGE
+    HELOC
+    AUTO_LOAN
+    UNSECURED_PERSONAL_LOAN
+    REVOLVING_LINE
+
+WHY PRODUCT-SPECIFIC PARAMETERS:
+    Module 1 is product-aware. Module 2 must preserve that design principle.
+
+    A mortgage, HELOC, auto loan, unsecured personal loan, and revolving line do not carry the same:
+        exposure scale
+        payment behavior
+        affordability sensitivity
+        LGD profile
+        Expected Loss tolerance
+        counteroffer flexibility
+
+    Therefore, Module 2 strategy parameters must be product-aware rather than generic.
+
+THRESHOLD INTERPRETATION:
+    These are initial synthetic strategy defaults intended for simulation and QA tuning.
+    They are not production underwriting policy.
+    They are not customer treatment rules.
+    They are not empirically calibrated cutoffs.
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_module2_product_policy_params (
+    /* Product identity */
+    product_type                            TEXT,
+
+    /* Product-specific PTI thresholds */
+    product_approve_max_pti                 NUMERIC(12,6),
+    product_review_max_pti                  NUMERIC(12,6),
+    product_decline_min_pti                 NUMERIC(12,6),
+    counteroffer_target_pti                 NUMERIC(12,6),
+
+    /* Requested-exposure Expected Loss thresholds */
+    product_approve_max_requested_el         NUMERIC(18,2),
+    product_review_max_requested_el          NUMERIC(18,2),
+    product_decline_min_requested_el         NUMERIC(18,2),
+    product_approved_el_cap                  NUMERIC(18,2),
+
+    /* Approved exposure limits */
+    product_min_approved_amount              NUMERIC(18,2),
+    product_max_approved_amount              NUMERIC(18,2),
+
+    /* Counteroffer and manual review controls */
+    counteroffer_allowed_flag                BOOLEAN,
+    manual_review_allowed_flag               BOOLEAN,
+    product_min_counteroffer_pct             NUMERIC(12,6),
+    product_max_exposure_reduction_pct       NUMERIC(12,6),
+    exposure_assignment_method               TEXT,
+
+    /* Approved amount rounding */
+    approved_amount_rounding_increment       NUMERIC(18,2)
+) ON COMMIT PRESERVE ROWS;
+
+
+/*-----------------------------------------------------------------------------------------------
+Product policy defaults.
+
+PTI defaults:
+    Mortgage can support higher PTI than unsecured products because Module 1 mortgage structure
+    reflects long-term secured amortization.
+    Revolving and unsecured personal loan thresholds are tighter because payment burden can create
+    faster affordability pressure.
+
+Expected Loss defaults:
+    Requested Expected Loss thresholds are higher for larger secured products and lower for smaller
+    or higher-LGD unsecured products.
+    The approved EL cap is the later approved-exposure loss appetite after counteroffer treatment.
+
+Exposure defaults:
+    Approved exposure caps are lower than or equal to practical product ceilings to allow Module 2
+    to simulate exposure treatment independently from the Module 1 requested amount.
+
+Counteroffer defaults:
+    Mortgage and auto are less flexible because the requested amount may be tied to an asset purchase.
+    HELOC, unsecured personal loan, and revolving line are more flexible because line / amount
+    adjustment is more natural in a strategy simulator.
+-----------------------------------------------------------------------------------------------*/
+
+INSERT INTO tmp_module2_product_policy_params (
+    product_type,
+
+    product_approve_max_pti,
+    product_review_max_pti,
+    product_decline_min_pti,
+    counteroffer_target_pti,
+
+    product_approve_max_requested_el,
+    product_review_max_requested_el,
+    product_decline_min_requested_el,
+    product_approved_el_cap,
+
+    product_min_approved_amount,
+    product_max_approved_amount,
+
+    counteroffer_allowed_flag,
+    manual_review_allowed_flag,
+    product_min_counteroffer_pct,
+    product_max_exposure_reduction_pct,
+    exposure_assignment_method,
+
+    approved_amount_rounding_increment
+)
+VALUES
+    (
+        &#39;MORTGAGE&#39;,
+        0.360000, 0.550000, 0.550000, 0.360000,
+        15000.00, 25000.00, 35000.00, 15000.00,
+        75000.00, 1000000.00,
+        TRUE, TRUE,
+        0.800000, 0.200000, &#39;MIN_OF_CAPS&#39;,
+        1000.00
+    ),
+    (
+        &#39;HELOC&#39;,
+        0.250000, 0.450000, 0.450000, 0.250000,
+        10000.00, 16000.00, 22000.00, 10000.00,
+        10000.00, 200000.00,
+        TRUE, TRUE,
+        0.500000, 0.500000, &#39;MIN_OF_CAPS&#39;,
+        500.00
+    ),
+    (
+        &#39;AUTO_LOAN&#39;,
+        0.180000, 0.400000, 0.400000, 0.180000,
+        6000.00, 9000.00, 12000.00, 6000.00,
+        5000.00, 65000.00,
+        TRUE, TRUE,
+        0.750000, 0.250000, &#39;MIN_OF_CAPS&#39;,
+        100.00
+    ),
+    (
+        &#39;UNSECURED_PERSONAL_LOAN&#39;,
+        0.160000, 0.350000, 0.350000, 0.160000,
+        6000.00, 9000.00, 12000.00, 6000.00,
+        1000.00, 35000.00,
+        TRUE, TRUE,
+        0.500000, 0.500000, &#39;MIN_OF_CAPS&#39;,
+        100.00
+    ),
+    (
+        &#39;REVOLVING_LINE&#39;,
+        0.120000, 0.300000, 0.300000, 0.120000,
+        4500.00, 6500.00, 9000.00, 4500.00,
+        1000.00, 25000.00,
+        TRUE, TRUE,
+        0.500000, 0.500000, &#39;MIN_OF_CAPS&#39;,
+        100.00
+    );
+
+
+
+/***************************************************************************************************
+SECTION 3 — FAIL-FAST STRATEGY PARAMETER GATEKEEPER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Prevent invalid strategy configuration from producing misleading simulated strategy outcomes.
+
+SQL PURPOSE:
+    Run validation checks before any Module 1 source-selection, rule flags, decision hierarchy,
+    reason-code assignment, approved exposure calculation, or output creation occurs.
+
+FAIL-FAST PRINCIPLE:
+    A failed parameter run is preferable to a completed run with incoherent strategy assumptions.
+
+GATEKEEPER FAMILIES:
+    3.1 Strategy parameter cardinality and identity validation
+    3.2 Strategy threshold and output-convention validation
+    3.3 Product policy parameter validation
+    3.4 Source-input validation against Module 1 latest or archive outputs
+    3.5 Threshold equality convention documentation for later CASE logic
+
+***************************************************************************************************/
+
+
+/***************************************************************************************************
+SECTION 3.0 — LOCKED THRESHOLD EQUALITY CONVENTIONS FOR LATER CASE LOGIC
+****************************************************************************************************
+
+These conventions are documented now so later Section 6 / Section 7 CASE blocks are not ambiguous.
+
+Synthetic estimated-PD proxy:
+    APPROVE eligibility:
+        estimated_pd &lt;= approve_max_estimated_pd_proxy
+
+    COUNTEROFFER eligibility:
+        estimated_pd &gt; approve_max_estimated_pd_proxy
+        AND estimated_pd &lt;= counteroffer_max_estimated_pd_proxy
+
+    MANUAL_REVIEW:
+        estimated_pd &gt; counteroffer_max_estimated_pd_proxy
+        AND estimated_pd &lt; decline_min_estimated_pd_proxy
+
+    DECLINE:
+        estimated_pd &gt;= decline_min_estimated_pd_proxy
+
+    Note:
+        estimated_pd is the Module 1 SQL column.
+        Its interpretation is the synthetic estimated-PD proxy.
+
+PTI:
+    APPROVE eligibility:
+        payment_to_income_ratio &lt;= product_approve_max_pti
+
+    COUNTEROFFER eligibility:
+        payment_to_income_ratio &gt; product_approve_max_pti
+        AND counteroffer can reduce approved_payment_to_income_ratio to the target
+
+    MANUAL_REVIEW:
+        payment_to_income_ratio &gt; product_approve_max_pti
+        AND payment_to_income_ratio &lt; product_decline_min_pti
+        where counteroffer is not cleanly viable
+
+    DECLINE:
+        payment_to_income_ratio &gt;= product_decline_min_pti
+        and no viable counteroffer or intended review path exists
+
+DTI:
+    APPROVE eligibility:
+        debt_to_income_ratio &lt;= approve_max_dti
+
+    MANUAL_REVIEW:
+        debt_to_income_ratio &gt; approve_max_dti
+        AND debt_to_income_ratio &lt; decline_min_dti
+
+    DECLINE:
+        debt_to_income_ratio &gt;= decline_min_dti
+
+Requested Expected Loss:
+    Clean approval must satisfy:
+        requested_expected_loss_amount &lt;= product_approve_max_requested_el
+
+    Counteroffer may be considered when:
+        requested_expected_loss_amount exceeds clean approval tolerance
+        but approved_expected_loss_amount can satisfy product_approved_el_cap
+
+    Decline / review boundary:
+        product_review_max_requested_el and product_decline_min_requested_el define the
+        intermediate and severe requested-exposure Expected Loss zones for later strategy hierarchy.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 3.1 — STRATEGY PARAMETER CARDINALITY, IDENTITY, THRESHOLD, AND CONVENTION VALIDATION
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_active_count INTEGER;
+    p RECORD;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exactly one active strategy row.
+
+    Why this matters:
+        The downstream strategy logic must be driven by one and only one active configuration.
+        Multiple active strategies would make outputs non-interpretable because one application
+        could be evaluated against conflicting thresholds.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_active_count
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE;
+
+    IF v_active_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: expected exactly one active strategy parameter row, found %.&#39;,
+            v_active_count;
+    END IF;
+
+    SELECT *
+    INTO p
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required strategy identity fields.
+
+    These fields identify the downstream Module 2 strategy. They must remain separate from Module 1
+    scenario fields.
+    -------------------------------------------------------------------------------------------*/
+    IF NULLIF(BTRIM(p.module2_model_version), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: module2_model_version is null or blank.&#39;;
+    END IF;
+
+    IF NULLIF(BTRIM(p.strategy_set_name), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_set_name is null or blank.&#39;;
+    END IF;
+
+    IF NULLIF(BTRIM(p.strategy_name), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_name is null or blank.&#39;;
+    END IF;
+
+    IF NULLIF(BTRIM(p.strategy_version), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_version is null or blank.&#39;;
+    END IF;
+
+    IF NULLIF(BTRIM(p.strategy_run_id), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_run_id is null or blank.&#39;;
+    END IF;
+
+    IF p.strategy_run_ts IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_run_ts is null.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Module 1 source selector.
+
+    module1_input_source controls whether Module 2 reads from:
+        LATEST  -&gt; credit_decisioning_sim.synthetic_applications
+        ARCHIVE -&gt; credit_decisioning_sim.synthetic_applications_scenario_archive
+
+    Multi-scenario processing is intentionally not designed in Module 2 v1.0 Sections 0-3.
+    -------------------------------------------------------------------------------------------*/
+    IF p.module1_input_source NOT IN (&#39;LATEST&#39;, &#39;ARCHIVE&#39;) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: module1_input_source must be LATEST or ARCHIVE. Found: %.&#39;,
+            p.module1_input_source;
+    END IF;
+
+    IF p.module1_input_source = &#39;ARCHIVE&#39; THEN
+        IF NULLIF(BTRIM(p.source_module1_scenario_set_name), &#39;&#39;) IS NULL THEN
+            RAISE EXCEPTION
+                &#39;Module 2 gatekeeper failure: source_module1_scenario_set_name is required when module1_input_source = ARCHIVE.&#39;;
+        END IF;
+
+        IF NULLIF(BTRIM(p.source_module1_scenario_name), &#39;&#39;) IS NULL THEN
+            RAISE EXCEPTION
+                &#39;Module 2 gatekeeper failure: source_module1_scenario_name is required when module1_input_source = ARCHIVE.&#39;;
+        END IF;
+
+        IF NULLIF(BTRIM(p.source_population_id), &#39;&#39;) IS NULL THEN
+            RAISE EXCEPTION
+                &#39;Module 2 gatekeeper failure: source_population_id is required when module1_input_source = ARCHIVE.&#39;;
+        END IF;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive controls.
+
+    Archive reset modes are defined here but archive insert logic is intentionally deferred.
+
+    NONE:
+        Preserve existing archive rows. Later insert logic must guard against unintended duplicates.
+
+    STRATEGY_SCENARIO_ONLY:
+        Replace only the exact strategy / Module 1 scenario / population slice.
+
+    STRATEGY_SET_ONLY:
+        Replace the current strategy set for the selected Module 1 scenario / population.
+
+    ALL:
+        Clear the full Module 2 strategy archive. This is powerful and should be used deliberately.
+    -------------------------------------------------------------------------------------------*/
+    IF p.archive_run_flag IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: archive_run_flag is null.&#39;;
+    END IF;
+
+    IF p.strategy_archive_reset_mode NOT IN (&#39;NONE&#39;, &#39;STRATEGY_SCENARIO_ONLY&#39;, &#39;STRATEGY_SET_ONLY&#39;, &#39;ALL&#39;) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: invalid strategy_archive_reset_mode: %.&#39;,
+            p.strategy_archive_reset_mode;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: synthetic estimated-PD proxy thresholds.
+
+    These thresholds govern strategy routing using Module 1 estimated_pd as a synthetic estimated-PD
+    proxy input. They do not define a production PD model.
+    -------------------------------------------------------------------------------------------*/
+    IF p.approve_max_estimated_pd_proxy IS NULL
+       OR p.counteroffer_max_estimated_pd_proxy IS NULL
+       OR p.review_max_estimated_pd_proxy IS NULL
+       OR p.decline_min_estimated_pd_proxy IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: one or more synthetic estimated-PD proxy thresholds are null.&#39;;
+    END IF;
+
+    IF p.approve_max_estimated_pd_proxy NOT BETWEEN 0 AND 1
+       OR p.counteroffer_max_estimated_pd_proxy NOT BETWEEN 0 AND 1
+       OR p.review_max_estimated_pd_proxy NOT BETWEEN 0 AND 1
+       OR p.decline_min_estimated_pd_proxy NOT BETWEEN 0 AND 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: synthetic estimated-PD proxy thresholds must be between 0 and 1.&#39;;
+    END IF;
+
+    IF NOT (
+        p.approve_max_estimated_pd_proxy &lt; p.counteroffer_max_estimated_pd_proxy
+        AND p.counteroffer_max_estimated_pd_proxy &lt;= p.review_max_estimated_pd_proxy
+        AND p.review_max_estimated_pd_proxy &lt;= p.decline_min_estimated_pd_proxy
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: incoherent synthetic estimated-PD proxy threshold ordering. Required: approve &lt; counteroffer &lt;= review &lt;= decline.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: global PTI thresholds.
+
+    Product-specific PTI thresholds will override these later. Global PTI thresholds remain useful
+    as defaults and as a coherence check.
+    -------------------------------------------------------------------------------------------*/
+    IF p.global_approve_max_pti IS NULL
+       OR p.global_review_max_pti IS NULL
+       OR p.global_decline_min_pti IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: one or more global PTI thresholds are null.&#39;;
+    END IF;
+
+    IF p.global_approve_max_pti NOT BETWEEN 0 AND 1.5
+       OR p.global_review_max_pti NOT BETWEEN 0 AND 1.5
+       OR p.global_decline_min_pti NOT BETWEEN 0 AND 1.5 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: global PTI thresholds must be between 0 and 1.5.&#39;;
+    END IF;
+
+    IF NOT (
+        p.global_approve_max_pti &lt; p.global_review_max_pti
+        AND p.global_review_max_pti &lt;= p.global_decline_min_pti
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: incoherent global PTI threshold ordering. Required: approve &lt; review &lt;= decline.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: DTI thresholds.
+
+    DTI represents existing-obligation capacity from Module 1. In Module 2 v1.0, counteroffer
+    logic can reduce PTI by lowering approved exposure, but it does not directly solve existing DTI.
+    -------------------------------------------------------------------------------------------*/
+    IF p.approve_max_dti IS NULL
+       OR p.review_max_dti IS NULL
+       OR p.decline_min_dti IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: one or more DTI thresholds are null.&#39;;
+    END IF;
+
+    IF p.approve_max_dti NOT BETWEEN 0 AND 1
+       OR p.review_max_dti NOT BETWEEN 0 AND 1
+       OR p.decline_min_dti NOT BETWEEN 0 AND 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: DTI thresholds must be between 0 and 1.&#39;;
+    END IF;
+
+    IF NOT (
+        p.approve_max_dti &lt; p.review_max_dti
+        AND p.review_max_dti &lt;= p.decline_min_dti
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: incoherent DTI threshold ordering. Required: approve &lt; review &lt;= decline.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: decision output conventions.
+
+    These controls lock the Module 2 v1.0 amount and Expected Loss conventions before output logic
+    is written. They ensure later outputs remain internally consistent.
+    -------------------------------------------------------------------------------------------*/
+    IF NULLIF(BTRIM(p.approve_reason_code), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: approve_reason_code is null or blank.&#39;;
+    END IF;
+
+    IF p.approve_reason_code &lt;&gt; &#39;APPROVED_AS_REQUESTED&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approve_reason_code must be APPROVED_AS_REQUESTED for Module 2 v1.0.&#39;;
+    END IF;
+
+    IF p.reason_code_required_flag IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: reason_code_required_flag must be TRUE. Every row must be explainable.&#39;;
+    END IF;
+
+    IF p.simulated_offer_exposure_flag_enabled IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: simulated_offer_exposure_flag_enabled must be TRUE for Module 2 v1.0.&#39;;
+    END IF;
+
+    IF p.allow_approved_amount_above_requested_flag IS DISTINCT FROM FALSE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: allow_approved_amount_above_requested_flag must be FALSE for Module 2 v1.0.&#39;;
+    END IF;
+
+    IF p.decline_approved_amount_convention &lt;&gt; &#39;ZERO&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: decline_approved_amount_convention must be ZERO.&#39;;
+    END IF;
+
+    IF p.manual_review_approved_amount_convention &lt;&gt; &#39;NULL_UNRESOLVED&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: manual_review_approved_amount_convention must be NULL_UNRESOLVED.&#39;;
+    END IF;
+
+    IF p.approved_el_decline_convention &lt;&gt; &#39;ZERO&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approved_el_decline_convention must be ZERO.&#39;;
+    END IF;
+
+    IF p.approved_el_manual_review_convention &lt;&gt; &#39;NULL_UNRESOLVED&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approved_el_manual_review_convention must be NULL_UNRESOLVED.&#39;;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 3.2 — PRODUCT POLICY PARAMETER VALIDATION
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_supported_products TEXT[] := ARRAY[
+        &#39;MORTGAGE&#39;,
+        &#39;HELOC&#39;,
+        &#39;AUTO_LOAN&#39;,
+        &#39;UNSECURED_PERSONAL_LOAN&#39;,
+        &#39;REVOLVING_LINE&#39;
+    ];
+    v_expected_count INTEGER := 5;
+    v_actual_count INTEGER;
+    v_bad_list TEXT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exactly one policy row per supported product.
+
+    Why this matters:
+        Module 2 decision logic will join each Module 1 application to one product policy row.
+        Missing rows create null thresholds. Duplicate rows create row multiplication and ambiguous
+        decision outcomes.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_actual_count
+    FROM tmp_module2_product_policy_params;
+
+    IF v_actual_count &lt;&gt; v_expected_count THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: expected % product policy rows, found %.&#39;,
+            v_expected_count,
+            v_actual_count;
+    END IF;
+
+    SELECT STRING_AGG(COALESCE(product_type, &#39;&lt;NULL&gt;&#39;), &#39;, &#39; ORDER BY COALESCE(product_type, &#39;&lt;NULL&gt;&#39;))
+    INTO v_bad_list
+    FROM tmp_module2_product_policy_params
+    WHERE product_type IS NULL
+       OR product_type &lt;&gt; ALL(v_supported_products);
+
+    IF v_bad_list IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: unsupported or null product_type values found in product policy parameters: %.&#39;,
+            v_bad_list;
+    END IF;
+
+    SELECT STRING_AGG(product_type, &#39;, &#39; ORDER BY product_type)
+    INTO v_bad_list
+    FROM (
+        SELECT product_type
+        FROM tmp_module2_product_policy_params
+        GROUP BY product_type
+        HAVING COUNT(*) &lt;&gt; 1
+    ) d;
+
+    IF v_bad_list IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: duplicate or non-unique product policy rows found for: %.&#39;,
+            v_bad_list;
+    END IF;
+
+    SELECT STRING_AGG(s.product_type, &#39;, &#39; ORDER BY s.product_type)
+    INTO v_bad_list
+    FROM UNNEST(v_supported_products) AS s(product_type)
+    LEFT JOIN tmp_module2_product_policy_params p
+        ON p.product_type = s.product_type
+    WHERE p.product_type IS NULL;
+
+    IF v_bad_list IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: missing product policy rows for supported product types: %.&#39;,
+            v_bad_list;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required product policy thresholds and controls are populated.
+
+    Null thresholds would silently route applications into fallback logic later. This is not allowed.
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM tmp_module2_product_policy_params
+        WHERE product_approve_max_pti IS NULL
+           OR product_review_max_pti IS NULL
+           OR product_decline_min_pti IS NULL
+           OR counteroffer_target_pti IS NULL
+           OR product_approve_max_requested_el IS NULL
+           OR product_review_max_requested_el IS NULL
+           OR product_decline_min_requested_el IS NULL
+           OR product_approved_el_cap IS NULL
+           OR product_min_approved_amount IS NULL
+           OR product_max_approved_amount IS NULL
+           OR counteroffer_allowed_flag IS NULL
+           OR manual_review_allowed_flag IS NULL
+           OR product_min_counteroffer_pct IS NULL
+           OR product_max_exposure_reduction_pct IS NULL
+           OR NULLIF(BTRIM(exposure_assignment_method), &#39;&#39;) IS NULL
+           OR approved_amount_rounding_increment IS NULL
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: one or more required product policy parameters are null or blank.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product PTI threshold ordering.
+
+    Required:
+        product_approve_max_pti &lt; product_review_max_pti &lt;= product_decline_min_pti
+
+    Equality is allowed at review &lt;= decline because v1.0 defaults treat the upper review boundary
+    and hard-stop boundary as adjacent. Later CASE logic will use strict / inclusive rules documented
+    in Section 3.0.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(product_type, &#39;, &#39; ORDER BY product_type)
+    INTO v_bad_list
+    FROM tmp_module2_product_policy_params
+    WHERE product_approve_max_pti NOT BETWEEN 0 AND 1.5
+       OR product_review_max_pti NOT BETWEEN 0 AND 1.5
+       OR product_decline_min_pti NOT BETWEEN 0 AND 1.5
+       OR counteroffer_target_pti NOT BETWEEN 0 AND 1.5
+       OR NOT (
+            product_approve_max_pti &lt; product_review_max_pti
+            AND product_review_max_pti &lt;= product_decline_min_pti
+       );
+
+    IF v_bad_list IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: incoherent product PTI thresholds for product(s): %. Required: approve &lt; review &lt;= decline, all between 0 and 1.5.&#39;,
+            v_bad_list;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Expected Loss thresholds.
+
+    Module 1 expected_loss_amount will later be carried forward as requested_expected_loss_amount.
+    Module 2 approved_expected_loss_amount will be calculated from approved exposure.
+
+    These product thresholds govern requested-exposure and approved-exposure loss tolerance in the
+    simulated strategy layer.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(product_type, &#39;, &#39; ORDER BY product_type)
+    INTO v_bad_list
+    FROM tmp_module2_product_policy_params
+    WHERE product_approve_max_requested_el &lt; 0
+       OR product_review_max_requested_el &lt; 0
+       OR product_decline_min_requested_el &lt; 0
+       OR product_approved_el_cap &lt; 0
+       OR NOT (
+            product_approve_max_requested_el &lt;= product_review_max_requested_el
+            AND product_review_max_requested_el &lt;= product_decline_min_requested_el
+       )
+       OR product_approved_el_cap &gt; product_approve_max_requested_el;
+
+    IF v_bad_list IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: incoherent Expected Loss thresholds for product(s): %. Required: nonnegative, approve &lt;= review &lt;= decline, approved EL cap &lt;= clean approval requested EL tolerance.&#39;,
+            v_bad_list;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exposure limits.
+
+    Approved exposure cannot be negative and cannot exceed requested exposure in Module 2 v1.0.
+    Product exposure caps must therefore be positive, ordered, and meaningful.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(product_type, &#39;, &#39; ORDER BY product_type)
+    INTO v_bad_list
+    FROM tmp_module2_product_policy_params
+    WHERE product_min_approved_amount &lt;= 0
+       OR product_max_approved_amount &lt;= product_min_approved_amount
+       OR approved_amount_rounding_increment &lt;= 0;
+
+    IF v_bad_list IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: incoherent approved exposure limits or rounding increments for product(s): %.&#39;,
+            v_bad_list;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: counteroffer controls.
+
+    product_min_counteroffer_pct:
+        Minimum viable counteroffer as a share of requested amount.
+
+    product_max_exposure_reduction_pct:
+        Maximum allowed exposure reduction as a share of requested amount.
+
+    Coherence condition:
+        min counteroffer pct + max exposure reduction pct must not exceed 1.
+        Otherwise, the strategy would permit reductions below the stated minimum viable offer.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(product_type, &#39;, &#39; ORDER BY product_type)
+    INTO v_bad_list
+    FROM tmp_module2_product_policy_params
+    WHERE product_min_counteroffer_pct &lt;= 0
+       OR product_min_counteroffer_pct &gt; 1
+       OR product_max_exposure_reduction_pct &lt; 0
+       OR product_max_exposure_reduction_pct &gt;= 1
+       OR (product_min_counteroffer_pct + product_max_exposure_reduction_pct) &gt; 1.000000;
+
+    IF v_bad_list IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: incoherent counteroffer percentage controls for product(s): %.&#39;,
+            v_bad_list;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exposure assignment method.
+
+    The method is declared now so later approved amount logic can be parameter-driven and
+    explainable instead of hard-coded inside opaque CASE expressions.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(product_type, &#39;, &#39; ORDER BY product_type)
+    INTO v_bad_list
+    FROM tmp_module2_product_policy_params
+    WHERE exposure_assignment_method NOT IN (
+        &#39;MIN_OF_CAPS&#39;,
+        &#39;AFFORDABILITY_BASED&#39;,
+        &#39;EL_BASED&#39;,
+        &#39;PRODUCT_CAP_ONLY&#39;
+    );
+
+    IF v_bad_list IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: invalid exposure_assignment_method for product(s): %.&#39;,
+            v_bad_list;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 3.3 — SOURCE-INPUT VALIDATION AGAINST MODULE 1 LATEST OR ARCHIVE OUTPUTS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that Module 2 can safely consume the selected Module 1 output before decision logic is
+    built.
+
+SQL PURPOSE:
+    Validate table existence, required fields, source row count, source scenario uniqueness, duplicate
+    application_id behavior, and required non-null fields.
+
+WHY THIS EXISTS BEFORE SOURCE-SELECTION STAGING:
+    Later Section 4 will build the actual source-selection staging table. This gatekeeper confirms the
+    selected source is usable before any strategy outcomes are generated.
+
+SOURCE OPTIONS:
+    LATEST:
+        credit_decisioning_sim.synthetic_applications
+
+    ARCHIVE:
+        credit_decisioning_sim.synthetic_applications_scenario_archive
+
+IMPORTANT NAMING NOTE:
+    Module 1 source tables may expose scenario fields as:
+        scenario_set_name
+        scenario_name
+
+    Module 2 outputs will later alias them as:
+        module1_scenario_set_name
+        module1_scenario_name
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    p RECORD;
+
+    v_source_schema TEXT := &#39;credit_decisioning_sim&#39;;
+    v_source_table TEXT;
+    v_source_qualified TEXT;
+    v_source_regclass REGCLASS;
+
+    v_scenario_set_col TEXT;
+    v_scenario_name_col TEXT;
+
+    v_missing_cols TEXT;
+    v_row_count BIGINT;
+    v_distinct_scenario_count BIGINT;
+    v_duplicate_application_count BIGINT;
+    v_required_null_count BIGINT;
+    v_domain_violation_count BIGINT;
+
+    v_required_null_condition TEXT;
+    v_domain_condition TEXT;
+BEGIN
+    SELECT *
+    INTO p
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1;
+
+    IF p.module1_input_source = &#39;LATEST&#39; THEN
+        v_source_table := &#39;synthetic_applications&#39;;
+        v_source_regclass := TO_REGCLASS(&#39;credit_decisioning_sim.synthetic_applications&#39;);
+    ELSE
+        v_source_table := &#39;synthetic_applications_scenario_archive&#39;;
+        v_source_regclass := TO_REGCLASS(&#39;credit_decisioning_sim.synthetic_applications_scenario_archive&#39;);
+    END IF;
+
+    v_source_qualified := FORMAT(&#39;%I.%I&#39;, v_source_schema, v_source_table);
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: selected Module 1 source table exists.
+    -------------------------------------------------------------------------------------------*/
+    IF v_source_regclass IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: required Module 1 source table does not exist: %.&#39;,
+            v_source_qualified;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required non-scenario Module 1 fields are present.
+
+    These fields preserve applicant lineage, product identity, borrower signals, affordability,
+    synthetic estimated-PD proxy input, LGD, and requested-exposure Expected Loss.
+    -------------------------------------------------------------------------------------------*/
+    WITH required_columns AS (
+        SELECT UNNEST(ARRAY[
+            &#39;application_id&#39;,
+            &#39;applicant_id&#39;,
+            &#39;product_type&#39;,
+            &#39;score_band&#39;,
+            &#39;credit_score&#39;,
+            &#39;requested_amount&#39;,
+            &#39;annual_income&#39;,
+            &#39;monthly_payment_proxy&#39;,
+            &#39;payment_to_income_ratio&#39;,
+            &#39;debt_to_income_ratio&#39;,
+            &#39;estimated_pd&#39;,
+            &#39;estimated_lgd&#39;,
+            &#39;expected_loss_amount&#39;,
+            &#39;population_id&#39;
+        ]) AS column_name
+    )
+    SELECT STRING_AGG(r.column_name, &#39;, &#39; ORDER BY r.column_name)
+    INTO v_missing_cols
+    FROM required_columns r
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns c
+        WHERE c.table_schema = v_source_schema
+          AND c.table_name = v_source_table
+          AND c.column_name = r.column_name
+    );
+
+    IF v_missing_cols IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: required Module 1 field(s) missing from %: %.&#39;,
+            v_source_qualified,
+            v_missing_cols;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: source scenario field names are present.
+
+    Module 1 latest/archive outputs are expected to use scenario_set_name and scenario_name.
+    Module 2 can also tolerate pre-aliased module1_scenario_set_name and module1_scenario_name.
+    Later source-selection logic will normalize these fields to the Module 2 output names.
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;scenario_set_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;module1_scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;module1_scenario_set_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: % must contain scenario_set_name or module1_scenario_set_name.&#39;,
+            v_source_qualified;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;scenario_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;module1_scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;module1_scenario_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: % must contain scenario_name or module1_scenario_name.&#39;,
+            v_source_qualified;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Build reusable null and domain validation conditions.
+
+    Required non-null fields:
+        These fields must be populated before simulated strategy outcomes can be assigned.
+
+    Domain validation:
+        These checks protect later approved amount and approved Expected Loss calculations from
+        impossible negative or out-of-range source values.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(FORMAT(&#39;%I IS NULL&#39;, column_name), &#39; OR &#39;)
+    INTO v_required_null_condition
+    FROM UNNEST(ARRAY[
+        &#39;application_id&#39;,
+        &#39;applicant_id&#39;,
+        &#39;product_type&#39;,
+        &#39;score_band&#39;,
+        &#39;credit_score&#39;,
+        &#39;requested_amount&#39;,
+        &#39;annual_income&#39;,
+        &#39;monthly_payment_proxy&#39;,
+        &#39;payment_to_income_ratio&#39;,
+        &#39;debt_to_income_ratio&#39;,
+        &#39;estimated_pd&#39;,
+        &#39;estimated_lgd&#39;,
+        &#39;expected_loss_amount&#39;,
+        &#39;population_id&#39;,
+        v_scenario_set_col,
+        v_scenario_name_col
+    ]) AS required(column_name);
+
+    v_domain_condition :=
+        &#39;requested_amount &lt;= 0
+         OR annual_income &lt;= 0
+         OR monthly_payment_proxy &lt; 0
+         OR payment_to_income_ratio &lt; 0
+         OR debt_to_income_ratio &lt; 0
+         OR estimated_pd &lt; 0
+         OR estimated_pd &gt; 1
+         OR estimated_lgd &lt; 0
+         OR estimated_lgd &gt; 1
+         OR expected_loss_amount &lt; 0
+         OR BTRIM(application_id::TEXT) = &#39;&#39;&#39;&#39;
+         OR BTRIM(applicant_id::TEXT) = &#39;&#39;&#39;&#39;
+         OR BTRIM(product_type::TEXT) = &#39;&#39;&#39;&#39;
+         OR BTRIM(score_band::TEXT) = &#39;&#39;&#39;&#39;
+         OR BTRIM(population_id::TEXT) = &#39;&#39;&#39;&#39;
+         OR BTRIM(&#39; || FORMAT(&#39;%I&#39;, v_scenario_set_col) || &#39;::TEXT) = &#39;&#39;&#39;&#39;
+         OR BTRIM(&#39; || FORMAT(&#39;%I&#39;, v_scenario_name_col) || &#39;::TEXT) = &#39;&#39;&#39;&#39;&#39;;
+
+
+    IF p.module1_input_source = &#39;LATEST&#39; THEN
+
+        /*---------------------------------------------------------------------------------------
+        LATEST source validation:
+            The latest-run Module 1 table must contain rows and must represent exactly one Module 1
+            scenario / population for Module 2 v1.0 processing.
+        ---------------------------------------------------------------------------------------*/
+        EXECUTE FORMAT(&#39;SELECT COUNT(*) FROM %s&#39;, v_source_qualified)
+        INTO v_row_count;
+
+        IF v_row_count = 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected LATEST source table % contains zero rows.&#39;,
+                v_source_qualified;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM (
+                 SELECT DISTINCT %I, %I, population_id
+                 FROM %s
+             ) s&#39;,
+             v_scenario_set_col,
+             v_scenario_name_col,
+             v_source_qualified
+        )
+        INTO v_distinct_scenario_count;
+
+        IF v_distinct_scenario_count &lt;&gt; 1 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: LATEST source % must represent exactly one Module 1 scenario / population for v1.0 processing. Found % distinct scenario/population combinations.&#39;,
+                v_source_qualified,
+                v_distinct_scenario_count;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM (
+                 SELECT application_id
+                 FROM %s
+                 GROUP BY application_id
+                 HAVING COUNT(*) &gt; 1
+             ) d&#39;,
+             v_source_qualified
+        )
+        INTO v_duplicate_application_count;
+
+        IF v_duplicate_application_count &gt; 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: LATEST source % contains % duplicate application_id value(s).&#39;,
+                v_source_qualified,
+                v_duplicate_application_count;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM %s WHERE %s&#39;,
+            v_source_qualified,
+            v_required_null_condition
+        )
+        INTO v_required_null_count;
+
+        IF v_required_null_count &gt; 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: LATEST source % contains % row(s) with null required Module 1 fields.&#39;,
+                v_source_qualified,
+                v_required_null_count;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM %s WHERE %s&#39;,
+            v_source_qualified,
+            v_domain_condition
+        )
+        INTO v_domain_violation_count;
+
+        IF v_domain_violation_count &gt; 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: LATEST source % contains % row(s) with invalid source value domains for Module 2 strategy simulation.&#39;,
+                v_source_qualified,
+                v_domain_violation_count;
+        END IF;
+
+    ELSE
+
+        /*---------------------------------------------------------------------------------------
+        ARCHIVE source validation:
+            The archive source must select exactly one Module 1 scenario / population slice.
+            Multi-scenario processing is intentionally deferred until explicitly designed.
+        ---------------------------------------------------------------------------------------*/
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM %s
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3&#39;,
+            v_source_qualified,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_row_count
+        USING p.source_module1_scenario_set_name,
+              p.source_module1_scenario_name,
+              p.source_population_id;
+
+        IF v_row_count = 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected ARCHIVE slice contains zero rows for scenario_set=%, scenario=%, population_id=%.&#39;,
+                p.source_module1_scenario_set_name,
+                p.source_module1_scenario_name,
+                p.source_population_id;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM (
+                 SELECT DISTINCT %I, %I, population_id
+                 FROM %s
+                 WHERE %I = $1
+                   AND %I = $2
+                   AND population_id = $3
+             ) s&#39;,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_source_qualified,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_distinct_scenario_count
+        USING p.source_module1_scenario_set_name,
+              p.source_module1_scenario_name,
+              p.source_population_id;
+
+        IF v_distinct_scenario_count &lt;&gt; 1 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected ARCHIVE slice must represent exactly one Module 1 scenario / population. Found %.&#39;,
+                v_distinct_scenario_count;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM (
+                 SELECT application_id
+                 FROM %s
+                 WHERE %I = $1
+                   AND %I = $2
+                   AND population_id = $3
+                 GROUP BY application_id
+                 HAVING COUNT(*) &gt; 1
+             ) d&#39;,
+            v_source_qualified,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_duplicate_application_count
+        USING p.source_module1_scenario_set_name,
+              p.source_module1_scenario_name,
+              p.source_population_id;
+
+        IF v_duplicate_application_count &gt; 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected ARCHIVE slice contains % duplicate application_id value(s).&#39;,
+                v_duplicate_application_count;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM %s
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3
+               AND (%s)&#39;,
+            v_source_qualified,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_required_null_condition
+        )
+        INTO v_required_null_count
+        USING p.source_module1_scenario_set_name,
+              p.source_module1_scenario_name,
+              p.source_population_id;
+
+        IF v_required_null_count &gt; 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected ARCHIVE slice contains % row(s) with null required Module 1 fields.&#39;,
+                v_required_null_count;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM %s
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3
+               AND (%s)&#39;,
+            v_source_qualified,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_domain_condition
+        )
+        INTO v_domain_violation_count
+        USING p.source_module1_scenario_set_name,
+              p.source_module1_scenario_name,
+              p.source_population_id;
+
+        IF v_domain_violation_count &gt; 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected ARCHIVE slice contains % row(s) with invalid source value domains for Module 2 strategy simulation.&#39;,
+                v_domain_violation_count;
+        END IF;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+END OF MODULE 2 FIRST SQL BUILD — SECTIONS 0 THROUGH 3 ONLY
+
+If execution reaches this point:
+    1. Module 2 schema setup is complete.
+    2. Temporary strategy parameters are populated.
+    3. Temporary product policy parameters are populated.
+    4. Strategy identity controls are valid.
+    5. Archive controls are valid.
+    6. Threshold ordering is coherent.
+    7. Output conventions are locked.
+    8. Product policy rows are complete and product-aware.
+    9. Selected Module 1 source input exists and is structurally safe to consume.
+
+No decision outcomes have been generated yet.
+No reason codes have been assigned yet.
+No approved exposure has been calculated yet.
+No approved Expected Loss has been calculated yet.
+No latest-run strategy output has been created yet.
+No strategy archive rows have been inserted yet.
+
+***************************************************************************************************/
+</code></pre>
+<h2>What this first build establishes</h2>
+<p>It creates the Module 2 starting scaffold: schema reuse, clean temporary reset, latest-run reset, strategy parameter table, product policy parameter table, default baseline strategy values, product-specific policy defaults, and fail-fast validation for strategy identity, source inputs, thresholds, exposure controls, archive controls, and output conventions.</p>
+<p>It also locks the interpretation boundaries inside the SQL itself: <code>estimated_pd</code> is consumed as the Module 1 synthetic estimated-PD proxy, reason codes are simulated strategy explanation codes, and approved exposure is simulated offer exposure rather than booked exposure.</p>
+<h2>What it intentionally does not build</h2>
+<p>It does not build Module 1 source-selection staging, derived strategy segments, rule flags, decision hierarchy, reason-code assignment, approved amount logic, approved Expected Loss logic, final latest-run output, archive insertion, QA queries, or matched strategy comparison.</p>
+<h2>Next build step</h2>
+<p>Next should be <strong>Section 4 — Module 1 Source Selection and Lineage Normalization</strong>: create a staged source table that selects either the latest Module 1 output or one archived Module 1 scenario slice, aliases <code>scenario_set_name</code> and <code>scenario_name</code> into <code>module1_scenario_set_name</code> and <code>module1_scenario_name</code>, carries forward required Module 1 fields, and aliases <code>expected_loss_amount</code> as <code>requested_expected_loss_amount</code>.</p>
+</div></article><article id="c038-m00053" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00053 · 2026-05-06T11:25:12.575000-04:00 · active path</p><div class="body"><p>This is a strong first SQL build. I agree with the direction.</p>
+<p>Sections 0–3 establish the right foundation:</p>
+<ul>
+<li>Module 2 purpose and boundary framing</li>
+<li>latest-run + archive architecture</li>
+<li>strategy parameter table</li>
+<li>product policy parameter table</li>
+<li>fail-fast gatekeeper logic</li>
+<li>source-input validation</li>
+<li>product-policy validation</li>
+<li>threshold-ordering validation</li>
+<li>archive-control validation</li>
+<li>output-convention validation</li>
+</ul>
+<p>Before moving into decision logic, please treat Sections 0–3 as provisionally accepted, subject to the clarifications below.</p>
+<p>Do not build decision rules, reason codes, approved amount logic, approved Expected Loss, latest-run final output, archive insert logic, or full QA sections yet.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>SECTION 0–3 PRE-FLIGHT REVIEW</h1>
+</li>
+</ol>
+<p>Before writing Section 4, please do a brief self-review of Sections 0–3 for:</p>
+<ul>
+<li>PostgreSQL syntax consistency</li>
+<li>temporary table names</li>
+<li>strategy parameter column names</li>
+<li>product policy parameter column names</li>
+<li>gatekeeper references to those columns</li>
+<li>source-input validation references</li>
+<li>archive reset mode naming</li>
+<li>estimated-PD proxy terminology</li>
+<li>reason-code boundary language</li>
+<li>approved exposure / approved Expected Loss convention language</li>
+<li>simulated_offer_exposure_flag terminology</li>
+<li>any remaining “booked” or production-decision language</li>
+</ul>
+<p>If you find any issue in Sections 0–3, provide a targeted BEFORE / AFTER patch first.</p>
+<p>Do not rewrite the full Sections 0–3 unless a structural correction is needed.</p>
+<p>If no issue is found, explicitly state:
+“Sections 0–3 pre-flight review passed; no patch required.”</p>
+<p>================================================================================
+2. LOCK AUDIT METADATA BOUNDARY
+================================================================================</p>
+<p>Please explicitly preserve this interpretation:</p>
+<p>strategy_run_id and strategy_run_ts are audit metadata.</p>
+<p>They should:</p>
+<ul>
+<li>support run traceability</li>
+<li>appear in latest-run and archive outputs later</li>
+<li>not replace the archive replacement / rerun key</li>
+<li>not be used as the grain for matched strategy comparison</li>
+</ul>
+<p>Because strategy_run_ts may change across reruns, deterministic validation of strategy outcomes should compare business fields and decision fields, excluding purely time-based audit fields unless the test is specifically validating run metadata.</p>
+<p>The archive replacement / rerun key remains:</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+</ul>
+<p>The row-level archive grain additionally includes:</p>
+<ul>
+<li>application_id</li>
+</ul>
+<p>================================================================================
+3. PRODUCT TYPE NORMALIZATION REQUIREMENT
+================================================================================</p>
+<p>Before downstream product-policy joins are built, Section 4 must confirm that Module 1 product_type values align to Module 2 product policy parameter values.</p>
+<p>Module 2 product policy parameters currently use values such as:</p>
+<ul>
+<li>MORTGAGE</li>
+<li>HELOC</li>
+<li>AUTO_LOAN</li>
+<li>UNSECURED_PERSONAL_LOAN</li>
+<li>REVOLVING_LINE</li>
+</ul>
+<p>Section 4 should preserve the original Module 1 product_type value and also create a normalized product policy key.</p>
+<p>Required fields:</p>
+<ul>
+<li>product_type</li>
+<li>product_type_policy_key</li>
+</ul>
+<p>If Module 1 already outputs product_type values that exactly match the policy table, product_type_policy_key can simply equal product_type.</p>
+<p>If Module 1 uses display-style values, Section 4 should normalize them, for example:</p>
+<ul>
+<li>Mortgage → MORTGAGE</li>
+<li>HELOC → HELOC</li>
+<li>Auto Loan → AUTO_LOAN</li>
+<li>Unsecured Personal Loan → UNSECURED_PERSONAL_LOAN</li>
+<li>Revolving Line → REVOLVING_LINE</li>
+</ul>
+<p>Do not modify Module 1.</p>
+<p>Normalize only inside the Module 2 source-staging layer.</p>
+<p>Section 4 should fail fast or clearly flag the issue if any Module 1 product_type cannot be mapped to a supported Module 2 product policy key.</p>
+<p>================================================================================
+4. NEXT BUILD SCOPE: SECTION 4 ONLY
+================================================================================</p>
+<p>The next SQL build should be:</p>
+<p>SECTION 4 — MODULE 1 SOURCE SELECTION AND LINEAGE NORMALIZATION</p>
+<p>Build only Section 4.</p>
+<p>Do not build:</p>
+<ul>
+<li>derived strategy segments</li>
+<li>risk tiers</li>
+<li>affordability tiers</li>
+<li>rule flags</li>
+<li>hard simulated policy stop logic</li>
+<li>counteroffer logic</li>
+<li>decision hierarchy</li>
+<li>reason-code assignment</li>
+<li>approved amount calculation</li>
+<li>approved payment calculation</li>
+<li>approved Expected Loss calculation</li>
+<li>final latest-run output table</li>
+<li>archive insert logic</li>
+<li>full QA queries</li>
+</ul>
+<p>Those belong to later sections.</p>
+<p>================================================================================
+5. SECTION 4 OBJECTIVE
+================================================================================</p>
+<p>Section 4 should safely consume either:</p>
+<ol>
+<li>Module 1 latest-run output:
+credit_decisioning_sim.synthetic_applications</li>
+</ol>
+<p>or</p>
+<ol start="2">
+<li>Module 1 scenario archive output:
+credit_decisioning_sim.synthetic_applications_scenario_archive</li>
+</ol>
+<p>based on tmp_module2_strategy_params.module1_input_source.</p>
+<p>Section 4 should create a staged source table, recommended name:</p>
+<p>tmp_m2_stage_1_source_applications</p>
+<p>This table should be the clean Module 2 input foundation.</p>
+<p>Purpose:</p>
+<ul>
+<li>normalize source lineage</li>
+<li>preserve Module 1 scenario metadata</li>
+<li>preserve application-level identifiers</li>
+<li>preserve requested-structure economics</li>
+<li>preserve Module 1 synthetic estimated-PD proxy and LGD</li>
+<li>alias requested-exposure fields clearly for Module 2</li>
+<li>create product_type_policy_key for later product policy joins</li>
+</ul>
+<p>No Module 2 decision outputs should be created in Section 4.</p>
+<p>================================================================================
+6. REQUIRED SECTION 4 OUTPUT FIELDS
+================================================================================</p>
+<p>The staged source table should carry forward and normalize the following fields.</p>
+<p>Module 1 lineage:</p>
+<ul>
+<li>module1_model_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+<li>anchor_date</li>
+<li>module1_input_source</li>
+<li>module1_source_table_name</li>
+</ul>
+<p>Application lineage:</p>
+<ul>
+<li>application_seq</li>
+<li>application_id</li>
+<li>applicant_id</li>
+<li>application_date</li>
+</ul>
+<p>Product / score:</p>
+<ul>
+<li>product_type</li>
+<li>product_type_policy_key</li>
+<li>score_band</li>
+<li>credit_score</li>
+</ul>
+<p>Borrower / behavioral fields:</p>
+<ul>
+<li>annual_income</li>
+<li>debt_to_income_ratio</li>
+<li>utilization_rate</li>
+<li>tradeline_count</li>
+<li>months_since_oldest_trade</li>
+<li>recent_inquiry_count</li>
+<li>delinquency_count_12m</li>
+<li>major_derogatory_flag</li>
+<li>bankruptcy_flag</li>
+</ul>
+<p>Optional Module 1 relationship / context fields, if available:</p>
+<ul>
+<li>prequalified_flag</li>
+<li>returning_customer_flag</li>
+</ul>
+<p>Requested structure from Module 1:</p>
+<ul>
+<li>requested_amount</li>
+<li>loan_term_months</li>
+<li>base_apr_for_payment_calc</li>
+<li>monthly_payment_proxy</li>
+<li>payment_to_income_ratio</li>
+<li>amount_to_income_ratio</li>
+</ul>
+<p>Recommended Module 2 aliases for clarity:</p>
+<ul>
+<li>requested_monthly_payment_proxy = monthly_payment_proxy</li>
+<li>requested_payment_to_income_ratio = payment_to_income_ratio</li>
+<li>requested_expected_loss_amount = expected_loss_amount</li>
+</ul>
+<p>Module 1 risk economics:</p>
+<ul>
+<li>estimated_pd</li>
+<li>estimated_lgd</li>
+<li>expected_loss_amount</li>
+</ul>
+<p>Important interpretation:</p>
+<ul>
+<li>estimated_pd remains the SQL field name from Module 1</li>
+<li>comments must describe it as the synthetic estimated-PD proxy</li>
+<li>expected_loss_amount from Module 1 should be treated as requested-exposure Expected Loss</li>
+<li>requested_expected_loss_amount is the preferred Module 2 name for that value</li>
+</ul>
+<p>No Module 2 decision outputs should be created in Section 4.</p>
+<p>================================================================================
+7. SOURCE SELECTION LOGIC
+================================================================================</p>
+<p>If module1_input_source = &#39;LATEST&#39;:</p>
+<ul>
+<li>Select from credit_decisioning_sim.synthetic_applications</li>
+<li>Use the existing Module 1 scenario_set_name and scenario_name fields as upstream lineage</li>
+<li>Alias them as:<ul>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+</ul>
+</li>
+<li>Preserve population_id</li>
+<li>Preserve application_id and applicant_id</li>
+<li>Do not require source_module1_scenario_set_name or source_module1_scenario_name</li>
+<li>Confirm that the latest-run table represents exactly one Module 1 scenario / population for the current Module 2 run, unless multi-scenario processing is explicitly designed later</li>
+</ul>
+<p>If module1_input_source = &#39;ARCHIVE&#39;:</p>
+<ul>
+<li>Select from credit_decisioning_sim.synthetic_applications_scenario_archive</li>
+<li>Filter to:<ul>
+<li>source_module1_scenario_set_name</li>
+<li>source_module1_scenario_name</li>
+<li>source_population_id</li>
+</ul>
+</li>
+<li>Alias archive scenario fields as:<ul>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+</ul>
+</li>
+<li>Preserve population_id</li>
+<li>Preserve application_id and applicant_id</li>
+<li>Confirm that the selected archive slice contains exactly one Module 1 scenario / population for the current Module 2 run, unless multi-scenario processing is explicitly designed later</li>
+</ul>
+<p>The goal is that downstream Module 2 logic does not need to care whether the input came from latest-run or archive.</p>
+<p>Downstream logic should read from:</p>
+<p>tmp_m2_stage_1_source_applications</p>
+<p>not directly from Module 1 tables.</p>
+<p>================================================================================
+8. SECTION 4 PRODUCT POLICY JOIN / VALIDATION
+================================================================================</p>
+<p>Section 4 should create product_type_policy_key and perform a lightweight validation join to tmp_module2_product_policy_params.</p>
+<p>Recommended approach:</p>
+<ul>
+<li>create product_type_policy_key in Section 4</li>
+<li>perform a lightweight LEFT JOIN to tmp_module2_product_policy_params</li>
+<li>create a product_policy_config_found_flag or equivalent diagnostic field</li>
+<li>fail fast if any staged source row does not map to exactly one product policy row</li>
+<li>defer actual product policy logic to Section 5+</li>
+</ul>
+<p>The purpose of this join is only to confirm that every staged source row has a valid product policy configuration available.</p>
+<p>Do not apply product policy rules yet.</p>
+<p>Do not calculate product-specific caps, counteroffer limits, strategy tiers, or decision flags in Section 4.</p>
+<p>================================================================================
+9. SECTION 4 LOCAL SANITY CHECKS
+================================================================================</p>
+<p>At the end of Section 4, include a small local sanity-check query block.</p>
+<p>This should not become the full QA framework yet.</p>
+<p>Suggested local checks:</p>
+<ol>
+<li>Row count of tmp_m2_stage_1_source_applications</li>
+<li>Count distinct application_id</li>
+<li>Count rows by module1_scenario_set_name, module1_scenario_name, population_id</li>
+<li>Count rows by module1_input_source and module1_source_table_name</li>
+<li>Count rows by product_type and product_type_policy_key</li>
+<li>Count rows with unmapped product_type_policy_key</li>
+<li>Count rows with missing product policy configuration</li>
+<li>Count rows with null required source fields</li>
+<li>Confirm expected_loss_amount has been aliased to requested_expected_loss_amount</li>
+<li>Confirm monthly_payment_proxy has been aliased to requested_monthly_payment_proxy</li>
+<li>Confirm payment_to_income_ratio has been aliased to requested_payment_to_income_ratio</li>
+<li>Confirm estimated_pd is present and documented as the synthetic estimated-PD proxy</li>
+</ol>
+<p>These are staging sanity checks only.</p>
+<p>Do not build full Section 14 QA yet.</p>
+<p>================================================================================
+10. SECTION 4 LOCAL FAIL-FAST CHECKS
+================================================================================</p>
+<p>In addition to sanity-check queries, include local fail-fast checks if appropriate.</p>
+<p>Section 4 should fail if:</p>
+<ul>
+<li>staged row count = 0</li>
+<li>duplicate application_id exists in the selected source slice</li>
+<li>any required source field is null where it must be populated</li>
+<li>any product_type cannot be normalized into product_type_policy_key</li>
+<li>any product_type_policy_key does not map to exactly one product policy row</li>
+<li>more than one Module 1 scenario / population appears in the staged source table</li>
+</ul>
+<p>These checks protect the decision engine from consuming ambiguous or malformed input.</p>
+<p>================================================================================
+11. SECTION 4 COMMENTARY QUALITY
+================================================================================</p>
+<p>Please keep the same elite commentary standard as Module 1 and Sections 0–3.</p>
+<p>Section 4 comments should explain:</p>
+<ul>
+<li>why Module 2 consumes Module 1 rather than rewriting Module 1</li>
+<li>why latest-run and archive inputs are both supported</li>
+<li>why Module 1 scenario lineage must be preserved</li>
+<li>why product_type may need a policy key</li>
+<li>why product policy validation happens before policy rules are applied</li>
+<li>why expected_loss_amount is aliased to requested_expected_loss_amount</li>
+<li>why monthly_payment_proxy is aliased to requested_monthly_payment_proxy</li>
+<li>why payment_to_income_ratio is aliased to requested_payment_to_income_ratio</li>
+<li>why estimated_pd remains the column name but is interpreted as synthetic estimated-PD proxy</li>
+<li>why no decision outcomes are created in Section 4</li>
+<li>why product-policy joins in Section 4 are validation-only, not decision logic</li>
+</ul>
+<p>================================================================================
+12. DELIVERABLE FOR THIS NEXT STEP
+================================================================================</p>
+<p>Please now provide:</p>
+<ol>
+<li>Any necessary targeted patch to Sections 0–3, if your pre-flight review finds one.</li>
+<li>Section 4 SQL only:
+MODULE 1 SOURCE SELECTION AND LINEAGE NORMALIZATION.</li>
+<li>A short explanation of what Section 4 establishes.</li>
+<li>A short explanation of what Section 4 intentionally does not build.</li>
+<li>The recommended next build step after Section 4.</li>
+</ol>
+<p>Do not write Sections 5+ yet.</p>
+</div></article><article id="c038-m00071" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00071 · 2026-05-06T11:33:41.823830-04:00 · active path</p><div class="body"><h2>Sections 0–3 pre-flight review</h2>
+<p>Sections 0–3 pre-flight review found a few targeted hardening items. No structural rewrite is needed.</p>
+<p>The parameter tables, column names, gatekeeper references, product-policy values, archive reset mode naming, synthetic estimated-PD proxy terminology, simulated reason-code boundary, approved-exposure boundary, and <code>simulated_offer_exposure_flag</code> terminology are directionally consistent with the locked Module 2 design.</p>
+<p>The targeted patch below tightens null handling and adds the audit metadata boundary for <code>strategy_run_id</code> / <code>strategy_run_ts</code>. This preserves Module 1’s deterministic, scenario-comparable design principle and keeps Module 2 aligned to the validated Module 1 boundary that outputs support controlled synthetic strategy simulation, not production decisions or calibrated default modeling. fileciteturn4file0 fileciteturn4file1</p>
+<hr>
+<h1>1. Targeted patch to Sections 0–3</h1>
+<h2>Patch 0–3.A — Add audit metadata boundary to Section 0</h2>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">0.8 LOCKED PHYSICAL ARCHITECTURE FOR LATER SECTIONS
+----------------------------------------------------------------------------------------------------
+Latest-run strategy decision table:
+
+    credit_decisioning_sim.strategy_decisions
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">0.8 LOCKED PHYSICAL ARCHITECTURE FOR LATER SECTIONS
+----------------------------------------------------------------------------------------------------
+Latest-run strategy decision table:
+
+    credit_decisioning_sim.strategy_decisions
+</code></pre>
+<pre><code class="language-sql">0.8A STRATEGY RUN AUDIT METADATA BOUNDARY
+----------------------------------------------------------------------------------------------------
+strategy_run_id and strategy_run_ts are audit metadata.
+
+They support:
+    run traceability
+    execution review
+    latest-run and archive output auditability
+
+They do NOT replace the archive replacement / rerun key.
+They are NOT the grain for matched strategy comparison.
+
+The locked archive replacement / rerun key remains:
+
+    strategy_set_name
+    strategy_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+
+The row-level archive grain additionally includes:
+
+    application_id
+
+Because strategy_run_ts may change across reruns, deterministic validation of strategy
+outcomes should compare business fields and decision fields while excluding purely
+time-based audit fields unless the test is specifically validating run metadata.
+</code></pre>
+<hr>
+<h2>Patch 0–3.B — Harden <code>module1_input_source</code> null handling</h2>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">IF p.module1_input_source NOT IN (&#39;LATEST&#39;, &#39;ARCHIVE&#39;) THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: module1_input_source must be LATEST or ARCHIVE. Found: %.&#39;,
+        p.module1_input_source;
+END IF;
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">IF p.module1_input_source IS NULL
+   OR p.module1_input_source NOT IN (&#39;LATEST&#39;, &#39;ARCHIVE&#39;) THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: module1_input_source must be LATEST or ARCHIVE. Found: %.&#39;,
+        COALESCE(p.module1_input_source, &#39;&lt;NULL&gt;&#39;);
+END IF;
+</code></pre>
+<hr>
+<h2>Patch 0–3.C — Harden archive reset mode null handling</h2>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">IF p.strategy_archive_reset_mode NOT IN (&#39;NONE&#39;, &#39;STRATEGY_SCENARIO_ONLY&#39;, &#39;STRATEGY_SET_ONLY&#39;, &#39;ALL&#39;) THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: invalid strategy_archive_reset_mode: %.&#39;,
+        p.strategy_archive_reset_mode;
+END IF;
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">IF p.strategy_archive_reset_mode IS NULL
+   OR p.strategy_archive_reset_mode NOT IN (&#39;NONE&#39;, &#39;STRATEGY_SCENARIO_ONLY&#39;, &#39;STRATEGY_SET_ONLY&#39;, &#39;ALL&#39;) THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: invalid strategy_archive_reset_mode: %.&#39;,
+        COALESCE(p.strategy_archive_reset_mode, &#39;&lt;NULL&gt;&#39;);
+END IF;
+</code></pre>
+<hr>
+<h2>Patch 0–3.D — Harden decision convention text checks</h2>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">IF p.decline_approved_amount_convention &lt;&gt; &#39;ZERO&#39; THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: decline_approved_amount_convention must be ZERO.&#39;;
+END IF;
+
+IF p.manual_review_approved_amount_convention &lt;&gt; &#39;NULL_UNRESOLVED&#39; THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: manual_review_approved_amount_convention must be NULL_UNRESOLVED.&#39;;
+END IF;
+
+IF p.approved_el_decline_convention &lt;&gt; &#39;ZERO&#39; THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: approved_el_decline_convention must be ZERO.&#39;;
+END IF;
+
+IF p.approved_el_manual_review_convention &lt;&gt; &#39;NULL_UNRESOLVED&#39; THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: approved_el_manual_review_convention must be NULL_UNRESOLVED.&#39;;
+END IF;
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">IF p.decline_approved_amount_convention IS DISTINCT FROM &#39;ZERO&#39; THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: decline_approved_amount_convention must be ZERO.&#39;;
+END IF;
+
+IF p.manual_review_approved_amount_convention IS DISTINCT FROM &#39;NULL_UNRESOLVED&#39; THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: manual_review_approved_amount_convention must be NULL_UNRESOLVED.&#39;;
+END IF;
+
+IF p.approved_el_decline_convention IS DISTINCT FROM &#39;ZERO&#39; THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: approved_el_decline_convention must be ZERO.&#39;;
+END IF;
+
+IF p.approved_el_manual_review_convention IS DISTINCT FROM &#39;NULL_UNRESOLVED&#39; THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: approved_el_manual_review_convention must be NULL_UNRESOLVED.&#39;;
+END IF;
+</code></pre>
+<hr>
+<h1>2. Section 4 SQL only — Module 1 source selection and lineage normalization</h1>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 4 — MODULE 1 SOURCE SELECTION AND LINEAGE NORMALIZATION
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Consume finalized Module 1 outputs as the authoritative synthetic application and risk foundation
+    for Module 2 strategy simulation.
+
+    Module 2 does not regenerate the synthetic population.
+    Module 2 does not rewrite Module 1 product, affordability, risk, LGD, or Expected Loss logic.
+    Module 2 does not recalculate estimated_pd.
+
+    Instead, Module 2 stages a clean, normalized input layer that downstream strategy logic can use
+    without caring whether the source came from the Module 1 latest-run table or the Module 1 scenario
+    archive.
+
+SQL PURPOSE:
+    1. Select exactly one Module 1 source slice based on tmp_module2_strategy_params.
+    2. Normalize Module 1 scenario lineage into Module 2 naming:
+            scenario_set_name -&gt; module1_scenario_set_name
+            scenario_name     -&gt; module1_scenario_name
+    3. Preserve application-level identifiers and borrower / product / affordability / risk fields.
+    4. Alias Module 1 requested-structure fields for Module 2 clarity:
+            monthly_payment_proxy     -&gt; requested_monthly_payment_proxy
+            payment_to_income_ratio   -&gt; requested_payment_to_income_ratio
+            expected_loss_amount      -&gt; requested_expected_loss_amount
+    5. Preserve estimated_pd as the finalized Module 1 SQL field while documenting it as the
+       synthetic estimated-PD proxy.
+    6. Create product_type_policy_key for later joins to Module 2 product policy parameters.
+    7. Validate that every staged source row maps to exactly one Module 2 product policy row.
+
+BOUNDARY NOTES:
+    Section 4 creates no Module 2 decision outcomes.
+    Section 4 creates no rule flags.
+    Section 4 creates no reason codes.
+    Section 4 creates no approved amount.
+    Section 4 creates no approved Expected Loss.
+    Section 4 performs no policy rule application.
+
+    Product policy validation in this section is intentionally lightweight. It confirms that a product
+    policy configuration exists for each staged row, but it does not apply product caps, PTI thresholds,
+    counteroffer rules, review rules, or policy stop rules.
+
+WHY LATEST AND ARCHIVE INPUTS ARE BOTH SUPPORTED:
+    LATEST supports single-run development, debugging, and immediate QA against the current Module 1
+    output table.
+
+    ARCHIVE supports governed strategy comparison against a specific preserved Module 1 scenario slice.
+    This matters because matched strategy comparison requires preserving Module 1 scenario lineage and
+    population_id.
+
+WHY PRODUCT_TYPE_POLICY_KEY EXISTS:
+    Module 1 product_type values may already be normalized codes such as MORTGAGE or AUTO_LOAN.
+    Some future Module 1 or demonstration outputs may use display-style values such as Mortgage or
+    Auto Loan.
+
+    Module 2 should not modify Module 1. Instead, Section 4 preserves the original product_type and
+    creates product_type_policy_key as the normalized join key used by Module 2 product policy
+    parameters.
+
+WHY EXPECTED LOSS IS ALIASED:
+    Module 1 expected_loss_amount is calculated from requested exposure:
+
+        requested_amount * synthetic estimated-PD proxy * LGD
+
+    Module 2 will later calculate approved_expected_loss_amount from approved exposure.
+
+    Therefore, Module 1 expected_loss_amount is carried forward as requested_expected_loss_amount
+    so downstream reporting can distinguish requested-exposure Expected Loss from approved-exposure
+    Expected Loss.
+
+WHY PAYMENT AND PTI ARE ALIASED:
+    Module 1 monthly_payment_proxy and payment_to_income_ratio describe the original requested
+    structure.
+
+    Module 2 will later calculate approved_monthly_payment_proxy and
+    approved_payment_to_income_ratio after simulated exposure treatment.
+
+    Therefore, Section 4 aliases:
+        monthly_payment_proxy   -&gt; requested_monthly_payment_proxy
+        payment_to_income_ratio -&gt; requested_payment_to_income_ratio
+
+WHY ESTIMATED_PD IS NOT RENAMED IN SQL:
+    estimated_pd is the finalized Module 1 SQL field name.
+    Module 2 preserves that field name for lineage and compatibility.
+
+    In commentary and interpretation, estimated_pd means the synthetic estimated-PD proxy.
+    It is not a calibrated production probability of default.
+
+***************************************************************************************************/
+
+
+/***************************************************************************************************
+SECTION 4.1 — CLEAN RESET OF SECTION 4 STAGING OBJECT
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_stage_1_source_applications;
+
+
+
+/***************************************************************************************************
+SECTION 4.2 — CREATE NORMALIZED MODULE 1 SOURCE STAGE
+****************************************************************************************************
+
+IMPLEMENTATION NOTE:
+    This section uses dynamic SQL because Module 2 can consume either the Module 1 latest-run table
+    or a selected Module 1 archive slice.
+
+    It also tolerates either of the following source naming patterns for scenario lineage:
+
+        scenario_set_name / scenario_name
+        module1_scenario_set_name / module1_scenario_name
+
+    The staged output always uses:
+
+        module1_scenario_set_name
+        module1_scenario_name
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    p RECORD;
+
+    v_source_schema TEXT := &#39;credit_decisioning_sim&#39;;
+    v_source_table TEXT;
+    v_source_qualified TEXT;
+
+    v_scenario_set_col TEXT;
+    v_scenario_name_col TEXT;
+    v_model_version_col TEXT;
+
+    v_prequalified_expr TEXT;
+    v_returning_customer_expr TEXT;
+
+    v_missing_cols TEXT;
+    v_sql TEXT;
+BEGIN
+    SELECT *
+    INTO p
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1;
+
+    IF p.module1_input_source = &#39;LATEST&#39; THEN
+        v_source_table := &#39;synthetic_applications&#39;;
+    ELSIF p.module1_input_source = &#39;ARCHIVE&#39; THEN
+        v_source_table := &#39;synthetic_applications_scenario_archive&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: module1_input_source must be LATEST or ARCHIVE. Found: %.&#39;,
+            COALESCE(p.module1_input_source, &#39;&lt;NULL&gt;&#39;);
+    END IF;
+
+    v_source_qualified := FORMAT(&#39;%I.%I&#39;, v_source_schema, v_source_table);
+
+
+    /*-------------------------------------------------------------------------------------------
+    Resolve Module 1 scenario lineage field names.
+
+    Module 1 finalized outputs use scenario_set_name and scenario_name.
+    Module 2 can also tolerate already-normalized module1_scenario_set_name and module1_scenario_name.
+    Downstream Module 2 logic should read only the normalized names created by this stage.
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;scenario_set_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;module1_scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;module1_scenario_set_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % must contain scenario_set_name or module1_scenario_set_name.&#39;,
+            v_source_qualified;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;scenario_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;module1_scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;module1_scenario_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % must contain scenario_name or module1_scenario_name.&#39;,
+            v_source_qualified;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Resolve Module 1 model-version lineage.
+
+    The finalized Module 1 latest-run output uses model_version.
+    Module 2 stages this as module1_model_version.
+
+    If a future source already exposes module1_model_version, this stage can consume it directly.
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;model_version&#39;
+    ) THEN
+        v_model_version_col := &#39;model_version&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;module1_model_version&#39;
+    ) THEN
+        v_model_version_col := &#39;module1_model_version&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % must contain model_version or module1_model_version.&#39;,
+            v_source_qualified;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Optional relationship / context fields.
+
+    These fields exist in the finalized Module 1 V2.0 output. They remain optional here because
+    Module 2 v1.0 should not fail solely because a future source omits relationship-context fields.
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;prequalified_flag&#39;
+    ) THEN
+        v_prequalified_expr := &#39;src.prequalified_flag&#39;;
+    ELSE
+        v_prequalified_expr := &#39;NULL::BOOLEAN&#39;;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_schema
+          AND table_name = v_source_table
+          AND column_name = &#39;returning_customer_flag&#39;
+    ) THEN
+        v_returning_customer_expr := &#39;src.returning_customer_flag&#39;;
+    ELSE
+        v_returning_customer_expr := &#39;NULL::BOOLEAN&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Expanded Section 4 required source-field check.
+
+    Section 3 already validates the minimum Module 1 fields needed to protect the parameter layer.
+    Section 4 now validates the fuller staged input shape needed for downstream Module 2 logic.
+
+    loan_term_months is included as a source field, but later nullability treatment recognizes that
+    revolving products may not have a fixed amortizing term.
+    -------------------------------------------------------------------------------------------*/
+    WITH required_columns AS (
+        SELECT UNNEST(ARRAY[
+            &#39;anchor_date&#39;,
+            &#39;application_seq&#39;,
+            &#39;application_id&#39;,
+            &#39;applicant_id&#39;,
+            &#39;application_date&#39;,
+            &#39;product_type&#39;,
+            &#39;score_band&#39;,
+            &#39;credit_score&#39;,
+            &#39;annual_income&#39;,
+            &#39;debt_to_income_ratio&#39;,
+            &#39;utilization_rate&#39;,
+            &#39;tradeline_count&#39;,
+            &#39;months_since_oldest_trade&#39;,
+            &#39;recent_inquiry_count&#39;,
+            &#39;delinquency_count_12m&#39;,
+            &#39;major_derogatory_flag&#39;,
+            &#39;bankruptcy_flag&#39;,
+            &#39;requested_amount&#39;,
+            &#39;loan_term_months&#39;,
+            &#39;base_apr_for_payment_calc&#39;,
+            &#39;monthly_payment_proxy&#39;,
+            &#39;payment_to_income_ratio&#39;,
+            &#39;amount_to_income_ratio&#39;,
+            &#39;estimated_pd&#39;,
+            &#39;estimated_lgd&#39;,
+            &#39;expected_loss_amount&#39;,
+            &#39;population_id&#39;
+        ]) AS column_name
+    )
+    SELECT STRING_AGG(r.column_name, &#39;, &#39; ORDER BY r.column_name)
+    INTO v_missing_cols
+    FROM required_columns r
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns c
+        WHERE c.table_schema = v_source_schema
+          AND c.table_name = v_source_table
+          AND c.column_name = r.column_name
+    );
+
+    IF v_missing_cols IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: required staging field(s) missing from %: %.&#39;,
+            v_source_qualified,
+            v_missing_cols;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Build the staged source table.
+
+    product_type normalization approach:
+        1. Preserve original product_type exactly as supplied by Module 1.
+        2. Convert display-style values into a normalized product_type_policy_key.
+        3. Use product_type_policy_key only for Module 2 product policy joins.
+
+    Product policy join:
+        The lateral subquery counts matching product policy rows.
+        This avoids row multiplication even if a future parameter error creates duplicate policy rows.
+        Section 4 then fails if the match count is not exactly one.
+
+    No decision logic is created here.
+    -------------------------------------------------------------------------------------------*/
+    v_sql := FORMAT($SQL$
+        CREATE TEMP TABLE tmp_m2_stage_1_source_applications
+        ON COMMIT PRESERVE ROWS
+        AS
+        WITH active_params AS (
+            SELECT *
+            FROM tmp_module2_strategy_params
+            WHERE active_strategy_flag IS TRUE
+            LIMIT 1
+        ),
+        selected_source AS (
+            SELECT
+                src.%1$I::TEXT AS module1_model_version,
+                src.%2$I::TEXT AS module1_scenario_set_name,
+                src.%3$I::TEXT AS module1_scenario_name,
+                src.population_id::TEXT AS population_id,
+                src.anchor_date,
+                %4$L::TEXT AS module1_input_source,
+                %5$L::TEXT AS module1_source_table_name,
+
+                src.application_seq,
+                src.application_id::TEXT AS application_id,
+                src.applicant_id::TEXT AS applicant_id,
+                src.application_date,
+
+                src.product_type::TEXT AS product_type,
+                src.score_band::TEXT AS score_band,
+                src.credit_score,
+
+                src.annual_income,
+                src.debt_to_income_ratio,
+                src.utilization_rate,
+                src.tradeline_count,
+                src.months_since_oldest_trade,
+                src.recent_inquiry_count,
+                src.delinquency_count_12m,
+                src.major_derogatory_flag,
+                src.bankruptcy_flag,
+
+                %6$s AS prequalified_flag,
+                %7$s AS returning_customer_flag,
+
+                src.requested_amount,
+                src.loan_term_months,
+                src.base_apr_for_payment_calc,
+                src.monthly_payment_proxy,
+                src.payment_to_income_ratio,
+                src.amount_to_income_ratio,
+
+                src.monthly_payment_proxy AS requested_monthly_payment_proxy,
+                src.payment_to_income_ratio AS requested_payment_to_income_ratio,
+                src.expected_loss_amount AS requested_expected_loss_amount,
+
+                /*
+                estimated_pd:
+                    Finalized Module 1 SQL field name.
+
+                Interpretation:
+                    synthetic estimated-PD proxy.
+
+                Boundary:
+                    This is not recalculated in Module 2 Section 4.
+                    This is not a calibrated production probability of default.
+                */
+                src.estimated_pd,
+                src.estimated_lgd,
+                src.expected_loss_amount
+
+            FROM %8$s src
+            CROSS JOIN active_params p
+            %9$s
+        ),
+        normalized_product AS (
+            SELECT
+                s.*,
+
+                /*
+                product_type_policy_key:
+                    Normalized product key used by Module 2 product policy parameters.
+
+                This preserves original Module 1 product_type while giving Module 2 a stable policy
+                join key. If Module 1 already outputs normalized product codes, the key will equal
+                product_type.
+                */
+                CASE
+                    WHEN TRIM(BOTH &#39;_&#39; FROM REGEXP_REPLACE(UPPER(BTRIM(s.product_type)), &#39;[^A-Z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (&#39;MORTGAGE&#39;)
+                        THEN &#39;MORTGAGE&#39;
+
+                    WHEN TRIM(BOTH &#39;_&#39; FROM REGEXP_REPLACE(UPPER(BTRIM(s.product_type)), &#39;[^A-Z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (&#39;HELOC&#39;, &#39;HOME_EQUITY_LINE_OF_CREDIT&#39;, &#39;HOME_EQUITY_LINE&#39;)
+                        THEN &#39;HELOC&#39;
+
+                    WHEN TRIM(BOTH &#39;_&#39; FROM REGEXP_REPLACE(UPPER(BTRIM(s.product_type)), &#39;[^A-Z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (&#39;AUTO_LOAN&#39;, &#39;AUTO&#39;, &#39;AUTOLOAN&#39;, &#39;VEHICLE_LOAN&#39;)
+                        THEN &#39;AUTO_LOAN&#39;
+
+                    WHEN TRIM(BOTH &#39;_&#39; FROM REGEXP_REPLACE(UPPER(BTRIM(s.product_type)), &#39;[^A-Z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (&#39;UNSECURED_PERSONAL_LOAN&#39;, &#39;PERSONAL_LOAN&#39;, &#39;UNSECURED_LOAN&#39;)
+                        THEN &#39;UNSECURED_PERSONAL_LOAN&#39;
+
+                    WHEN TRIM(BOTH &#39;_&#39; FROM REGEXP_REPLACE(UPPER(BTRIM(s.product_type)), &#39;[^A-Z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (&#39;REVOLVING_LINE&#39;, &#39;REVOLVING&#39;, &#39;CREDIT_CARD&#39;, &#39;CREDIT_CARD_LINE&#39;, &#39;REVOLVING_CREDIT_LINE&#39;)
+                        THEN &#39;REVOLVING_LINE&#39;
+
+                    ELSE NULL
+                END AS product_type_policy_key
+
+            FROM selected_source s
+        )
+        SELECT
+            n.*,
+
+            /*
+            Validation-only product policy diagnostics.
+
+            product_policy_match_count:
+                Number of Module 2 product policy parameter rows that match the normalized product key.
+
+            product_policy_config_found_flag:
+                TRUE only when exactly one product policy row is available.
+
+            These are not decision outputs.
+            These do not apply product policy rules.
+            They only protect downstream sections from unmapped or ambiguous product logic.
+            */
+            ppm.product_policy_match_count,
+            (ppm.product_policy_match_count = 1) AS product_policy_config_found_flag
+
+        FROM normalized_product n
+        LEFT JOIN LATERAL (
+            SELECT COUNT(*)::INT AS product_policy_match_count
+            FROM tmp_module2_product_policy_params pp
+            WHERE pp.product_type = n.product_type_policy_key
+        ) ppm ON TRUE
+    $SQL$,
+        v_model_version_col,
+        v_scenario_set_col,
+        v_scenario_name_col,
+        p.module1_input_source,
+        v_source_qualified,
+        v_prequalified_expr,
+        v_returning_customer_expr,
+        v_source_qualified,
+        CASE
+            WHEN p.module1_input_source = &#39;ARCHIVE&#39; THEN
+                FORMAT(
+                    &#39;WHERE src.%I = %L
+                       AND src.%I = %L
+                       AND src.population_id = %L&#39;,
+                    v_scenario_set_col,
+                    p.source_module1_scenario_set_name,
+                    v_scenario_name_col,
+                    p.source_module1_scenario_name,
+                    p.source_population_id
+                )
+            ELSE
+                &#39;&#39;
+        END
+    );
+
+    EXECUTE v_sql;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 4.3 — LOCAL FAIL-FAST CHECKS FOR STAGED MODULE 1 SOURCE
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Prevent downstream decision strategy logic from consuming ambiguous, unmapped, or malformed
+    staged input.
+
+SQL PURPOSE:
+    Validate the staged table after source selection and normalization.
+
+WHY THESE CHECKS ARE LOCAL TO SECTION 4:
+    Section 3 validates the selected Module 1 source table before staging.
+    Section 4 validates the actual staged table that downstream Module 2 logic will consume.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_row_count BIGINT;
+    v_distinct_application_count BIGINT;
+    v_duplicate_application_count BIGINT;
+    v_distinct_scenario_count BIGINT;
+
+    v_null_required_count BIGINT;
+    v_domain_violation_count BIGINT;
+    v_unmapped_product_count BIGINT;
+    v_bad_policy_match_count BIGINT;
+
+    v_alias_mismatch_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: staged row count must be positive.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_row_count
+    FROM tmp_m2_stage_1_source_applications;
+
+    IF v_row_count = 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: tmp_m2_stage_1_source_applications contains zero rows.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: one staged row per application_id.
+
+    Downstream Module 2 strategy outcomes are assigned one row per application per strategy run.
+    Duplicate application_id values would create duplicate strategy outcomes and invalidate matched
+    strategy comparison.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_distinct_application_count
+    FROM tmp_m2_stage_1_source_applications;
+
+    IF v_distinct_application_count &lt;&gt; v_row_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_count
+        FROM (
+            SELECT application_id
+            FROM tmp_m2_stage_1_source_applications
+            GROUP BY application_id
+            HAVING COUNT(*) &gt; 1
+        ) d;
+
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: staged source has % rows but % distinct application_id values. Duplicate application_id group count: %.&#39;,
+            v_row_count,
+            v_distinct_application_count,
+            v_duplicate_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exactly one Module 1 scenario / population in the staged table.
+
+    Multi-scenario processing is intentionally not part of Module 2 v1.0 Section 4.
+    This prevents downstream strategy logic from accidentally mixing Module 1 scenarios.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_distinct_scenario_count
+    FROM (
+        SELECT DISTINCT
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id
+        FROM tmp_m2_stage_1_source_applications
+    ) s;
+
+    IF v_distinct_scenario_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: staged source must contain exactly one Module 1 scenario / population. Found %.&#39;,
+            v_distinct_scenario_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required staged fields must be populated.
+
+    prequalified_flag and returning_customer_flag are intentionally excluded because they are optional
+    relationship / context fields.
+
+    loan_term_months is conditionally required:
+        required for all products except REVOLVING_LINE, because revolving lines do not require a
+        fixed amortizing term in the Module 1 design.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_null_required_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE module1_model_version IS NULL
+       OR NULLIF(BTRIM(module1_model_version), &#39;&#39;) IS NULL
+       OR module1_scenario_set_name IS NULL
+       OR NULLIF(BTRIM(module1_scenario_set_name), &#39;&#39;) IS NULL
+       OR module1_scenario_name IS NULL
+       OR NULLIF(BTRIM(module1_scenario_name), &#39;&#39;) IS NULL
+       OR population_id IS NULL
+       OR NULLIF(BTRIM(population_id), &#39;&#39;) IS NULL
+       OR anchor_date IS NULL
+       OR module1_input_source IS NULL
+       OR module1_source_table_name IS NULL
+
+       OR application_seq IS NULL
+       OR application_id IS NULL
+       OR NULLIF(BTRIM(application_id), &#39;&#39;) IS NULL
+       OR applicant_id IS NULL
+       OR NULLIF(BTRIM(applicant_id), &#39;&#39;) IS NULL
+       OR application_date IS NULL
+
+       OR product_type IS NULL
+       OR NULLIF(BTRIM(product_type), &#39;&#39;) IS NULL
+       OR product_type_policy_key IS NULL
+       OR NULLIF(BTRIM(product_type_policy_key), &#39;&#39;) IS NULL
+       OR score_band IS NULL
+       OR NULLIF(BTRIM(score_band), &#39;&#39;) IS NULL
+       OR credit_score IS NULL
+
+       OR annual_income IS NULL
+       OR debt_to_income_ratio IS NULL
+       OR utilization_rate IS NULL
+       OR tradeline_count IS NULL
+       OR months_since_oldest_trade IS NULL
+       OR recent_inquiry_count IS NULL
+       OR delinquency_count_12m IS NULL
+       OR major_derogatory_flag IS NULL
+       OR bankruptcy_flag IS NULL
+
+       OR requested_amount IS NULL
+       OR (
+            product_type_policy_key &lt;&gt; &#39;REVOLVING_LINE&#39;
+            AND loan_term_months IS NULL
+       )
+       OR base_apr_for_payment_calc IS NULL
+       OR monthly_payment_proxy IS NULL
+       OR payment_to_income_ratio IS NULL
+       OR amount_to_income_ratio IS NULL
+       OR requested_monthly_payment_proxy IS NULL
+       OR requested_payment_to_income_ratio IS NULL
+       OR requested_expected_loss_amount IS NULL
+
+       OR estimated_pd IS NULL
+       OR estimated_lgd IS NULL
+       OR expected_loss_amount IS NULL;
+
+    IF v_null_required_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: staged source contains % row(s) with null required staged fields.&#39;,
+            v_null_required_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: core staged value domains.
+
+    These checks protect downstream approved exposure and approved Expected Loss calculations.
+
+    estimated_pd remains the Module 1 SQL field name and is interpreted as the synthetic
+    estimated-PD proxy.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_domain_violation_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE requested_amount &lt;= 0
+       OR annual_income &lt;= 0
+       OR monthly_payment_proxy &lt; 0
+       OR requested_monthly_payment_proxy &lt; 0
+       OR payment_to_income_ratio &lt; 0
+       OR requested_payment_to_income_ratio &lt; 0
+       OR amount_to_income_ratio &lt; 0
+       OR debt_to_income_ratio &lt; 0
+       OR utilization_rate &lt; 0
+       OR estimated_pd &lt; 0
+       OR estimated_pd &gt; 1
+       OR estimated_lgd &lt; 0
+       OR estimated_lgd &gt; 1
+       OR expected_loss_amount &lt; 0
+       OR requested_expected_loss_amount &lt; 0;
+
+    IF v_domain_violation_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: staged source contains % row(s) with invalid value domains.&#39;,
+            v_domain_violation_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product_type must normalize to a supported Module 2 product policy key.
+
+    Module 1 is not modified. Any display-style product names are normalized only inside this
+    Module 2 staging layer.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_unmapped_product_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE product_type_policy_key IS NULL;
+
+    IF v_unmapped_product_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % staged row(s) have product_type values that cannot be normalized into a supported product_type_policy_key.&#39;,
+            v_unmapped_product_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product policy configuration must match exactly one policy row.
+
+    This is validation-only. It confirms policy configuration availability but does not apply any
+    product-specific policy rule.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_bad_policy_match_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE product_policy_match_count &lt;&gt; 1
+       OR product_policy_config_found_flag IS DISTINCT FROM TRUE;
+
+    IF v_bad_policy_match_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % staged row(s) do not map to exactly one Module 2 product policy configuration.&#39;,
+            v_bad_policy_match_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Module 2 aliases must match original Module 1 requested-structure values.
+
+    These aliases are naming clarity controls only. Section 4 should not change the underlying
+    Module 1 economics.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_alias_mismatch_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE requested_expected_loss_amount IS DISTINCT FROM expected_loss_amount
+       OR requested_monthly_payment_proxy IS DISTINCT FROM monthly_payment_proxy
+       OR requested_payment_to_income_ratio IS DISTINCT FROM payment_to_income_ratio;
+
+    IF v_alias_mismatch_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % staged row(s) have alias mismatches between Module 1 fields and Module 2 requested-structure aliases.&#39;,
+            v_alias_mismatch_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 4.4 — LOCAL STAGING SANITY CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight local staging checks after Section 4 completes.
+
+IMPORTANT:
+    These are not the full Module 2 QA framework.
+    They are staging sanity checks only.
+
+    Full decision distribution, risk ordering, affordability sensitivity, reason-code coverage,
+    approved exposure, archive validation, and matched strategy comparison QA will be built later.
+
+***************************************************************************************************/
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.1 Staged row count and application identity count.
+
+Expected:
+    row_count = distinct_application_id_count
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS staged_row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+FROM tmp_m2_stage_1_source_applications;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.2 Module 1 scenario / population lineage.
+
+Expected:
+    exactly one row in this output for Module 2 v1.0 single-scenario processing.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.3 Source-input lineage.
+
+Expected:
+    one module1_input_source and one module1_source_table_name.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    module1_input_source,
+    module1_source_table_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    module1_input_source,
+    module1_source_table_name
+ORDER BY
+    module1_input_source,
+    module1_source_table_name;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.4 Product normalization summary.
+
+Purpose:
+    Confirm original Module 1 product_type values and their normalized Module 2 product policy keys.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    product_type,
+    product_type_policy_key,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    product_type,
+    product_type_policy_key
+ORDER BY
+    product_type_policy_key,
+    product_type;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.5 Product mapping and product policy configuration diagnostics.
+
+Expected:
+    unmapped_product_type_policy_key_rows = 0
+    missing_or_ambiguous_product_policy_rows = 0
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) FILTER (WHERE product_type_policy_key IS NULL) AS unmapped_product_type_policy_key_rows,
+    COUNT(*) FILTER (
+        WHERE product_policy_match_count &lt;&gt; 1
+           OR product_policy_config_found_flag IS DISTINCT FROM TRUE
+    ) AS missing_or_ambiguous_product_policy_rows
+FROM tmp_m2_stage_1_source_applications;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.6 Required source-field null check.
+
+Expected:
+    null_required_field_rows = 0
+
+Note:
+    loan_term_months is conditionally required for non-revolving products.
+    prequalified_flag and returning_customer_flag are optional relationship-context fields.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS null_required_field_rows
+FROM tmp_m2_stage_1_source_applications
+WHERE module1_model_version IS NULL
+   OR module1_scenario_set_name IS NULL
+   OR module1_scenario_name IS NULL
+   OR population_id IS NULL
+   OR anchor_date IS NULL
+   OR application_seq IS NULL
+   OR application_id IS NULL
+   OR applicant_id IS NULL
+   OR application_date IS NULL
+   OR product_type IS NULL
+   OR product_type_policy_key IS NULL
+   OR score_band IS NULL
+   OR credit_score IS NULL
+   OR annual_income IS NULL
+   OR debt_to_income_ratio IS NULL
+   OR utilization_rate IS NULL
+   OR tradeline_count IS NULL
+   OR months_since_oldest_trade IS NULL
+   OR recent_inquiry_count IS NULL
+   OR delinquency_count_12m IS NULL
+   OR major_derogatory_flag IS NULL
+   OR bankruptcy_flag IS NULL
+   OR requested_amount IS NULL
+   OR (
+        product_type_policy_key &lt;&gt; &#39;REVOLVING_LINE&#39;
+        AND loan_term_months IS NULL
+   )
+   OR base_apr_for_payment_calc IS NULL
+   OR monthly_payment_proxy IS NULL
+   OR payment_to_income_ratio IS NULL
+   OR amount_to_income_ratio IS NULL
+   OR requested_monthly_payment_proxy IS NULL
+   OR requested_payment_to_income_ratio IS NULL
+   OR requested_expected_loss_amount IS NULL
+   OR estimated_pd IS NULL
+   OR estimated_lgd IS NULL
+   OR expected_loss_amount IS NULL;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.7 Alias confirmation for requested-exposure economics.
+
+Expected:
+    all mismatch counts = 0
+
+Interpretation:
+    requested_expected_loss_amount is the Module 2-preferred alias for Module 1
+    expected_loss_amount because Module 1 Expected Loss is calculated on requested exposure.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) FILTER (
+        WHERE requested_expected_loss_amount IS DISTINCT FROM expected_loss_amount
+    ) AS requested_expected_loss_alias_mismatch_rows,
+
+    COUNT(*) FILTER (
+        WHERE requested_monthly_payment_proxy IS DISTINCT FROM monthly_payment_proxy
+    ) AS requested_monthly_payment_alias_mismatch_rows,
+
+    COUNT(*) FILTER (
+        WHERE requested_payment_to_income_ratio IS DISTINCT FROM payment_to_income_ratio
+    ) AS requested_pti_alias_mismatch_rows
+FROM tmp_m2_stage_1_source_applications;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.8 Synthetic estimated-PD proxy source check.
+
+estimated_pd:
+    Finalized Module 1 SQL field name.
+
+Interpretation:
+    synthetic estimated-PD proxy.
+
+Expected:
+    rows_with_null_estimated_pd = 0
+    min and max should remain within 0 to 1 due to Section 3 and Section 4 gatekeepers.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) FILTER (WHERE estimated_pd IS NULL) AS rows_with_null_estimated_pd,
+    MIN(estimated_pd) AS min_synthetic_estimated_pd_proxy,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    MAX(estimated_pd) AS max_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_1_source_applications;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.9 Requested-exposure Expected Loss source check.
+
+expected_loss_amount:
+    Module 1 requested-exposure Expected Loss.
+
+requested_expected_loss_amount:
+    Module 2 alias for the same requested-exposure Expected Loss value.
+
+approved_expected_loss_amount:
+    Not created in Section 4. It will be calculated later from approved exposure.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS row_count,
+    MIN(requested_expected_loss_amount) AS min_requested_expected_loss_amount,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    MAX(requested_expected_loss_amount) AS max_requested_expected_loss_amount
+FROM tmp_m2_stage_1_source_applications;
+
+
+/***************************************************************************************************
+END OF SECTION 4 — MODULE 1 SOURCE SELECTION AND LINEAGE NORMALIZATION
+
+If execution reaches this point:
+    1. The selected Module 1 source has been staged into tmp_m2_stage_1_source_applications.
+    2. Module 1 scenario lineage has been normalized to module1_scenario_set_name and
+       module1_scenario_name.
+    3. population_id and application_id have been preserved.
+    4. expected_loss_amount has been aliased as requested_expected_loss_amount.
+    5. monthly_payment_proxy has been aliased as requested_monthly_payment_proxy.
+    6. payment_to_income_ratio has been aliased as requested_payment_to_income_ratio.
+    7. estimated_pd has been preserved as the finalized Module 1 SQL field and remains interpreted
+       as the synthetic estimated-PD proxy.
+    8. product_type has been preserved and product_type_policy_key has been created.
+    9. Every staged row has been validated to map to exactly one product policy configuration.
+
+No decision outcomes have been generated.
+No reason codes have been assigned.
+No approved amount has been calculated.
+No approved payment proxy has been calculated.
+No approved Expected Loss has been calculated.
+No latest-run strategy decision output has been created.
+No strategy archive rows have been inserted.
+
+***************************************************************************************************/
+</code></pre>
+<hr>
+<h1>3. What Section 4 establishes</h1>
+<p>Section 4 creates the clean Module 2 source foundation:</p>
+<pre><code class="language-text">tmp_m2_stage_1_source_applications
+</code></pre>
+<p>It normalizes Module 1 lineage, preserves application identifiers, carries forward borrower / product / affordability / risk fields, aliases requested-exposure economics for Module 2 clarity, preserves <code>estimated_pd</code> as the Module 1 synthetic estimated-PD proxy input, and creates <code>product_type_policy_key</code> for later product-policy joins.</p>
+<p>It also confirms that the staged input contains exactly one Module 1 scenario / population, no duplicate <code>application_id</code> values, no missing required source fields, and exactly one product policy configuration per staged row.</p>
+<hr>
+<h1>4. What Section 4 intentionally does not build</h1>
+<p>Section 4 does not build derived risk tiers, affordability tiers, rule flags, hard simulated policy stop logic, counteroffer logic, decision hierarchy, reason-code assignment, approved amount logic, approved payment logic, approved Expected Loss, latest-run final output, archive insert logic, or full QA.</p>
+<p>The product policy join is validation-only. It confirms that product policy configuration is available; it does not apply policy rules.</p>
+<hr>
+<h1>5. Recommended next build step</h1>
+<p>Next should be <strong>Section 5 — Derived Strategy Segmentation Layer</strong>.</p>
+<p>That section should derive non-decisioning segmentation fields only, such as:</p>
+<pre><code class="language-text">synthetic estimated-risk tier
+requested PTI bucket
+DTI bucket
+requested exposure tier
+requested Expected Loss tier
+affordability tier
+product × score policy segment
+</code></pre>
+<p>It should still avoid final decision outcomes, reason codes, approved amount, and approved Expected Loss until the rule-flag and decision-hierarchy sections are built.</p>
+</div></article><article id="c038-m00073" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00073 · 2026-05-06T11:56:15.543000-04:00 · active path</p><div class="body"><p>This is a strong Section 4 build. I agree with the direction.</p>
+<p>Section 4 is directionally correct and should be treated as provisionally accepted after the targeted patches below.</p>
+<p>It correctly:</p>
+<ul>
+<li>consumes Module 1 latest-run or archive output</li>
+<li>normalizes Module 1 scenario lineage into Module 2 naming</li>
+<li>preserves application and applicant identifiers</li>
+<li>preserves borrower, product, affordability, and risk fields</li>
+<li>aliases requested-exposure economics for Module 2 clarity</li>
+<li>creates product_type_policy_key</li>
+<li>validates product-policy configuration availability</li>
+<li>avoids decision outcomes, reason codes, approved amount, approved Expected Loss, archive insert logic, and full QA</li>
+</ul>
+<p>Before we move to Section 5, please make two targeted Section 4 patches.</p>
+<p>Do not rewrite Sections 0–4 in full unless absolutely necessary.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>TARGETED PATCH TO SECTION 4 COMMENTARY</h1>
+</li>
+</ol>
+<p>In the Section 4 implementation note, please correct any wording that says Module 2 can consume the “Module 2 latest-run table.”</p>
+<p>It should say:</p>
+<p>Module 2 can consume either:</p>
+<ul>
+<li>the Module 1 latest-run table; or</li>
+<li>a selected Module 1 scenario archive slice.</li>
+</ul>
+<p>Reason:
+Section 4 is the Module 1 → Module 2 handoff layer. It should never imply that Module 2 is sourcing from a Module 2 latest-run table at this point.</p>
+<p>================================================================================
+2. TARGETED PATCH TO SECTION 4 STAGED OUTPUT
+================================================================================</p>
+<p>Please add Module 2 strategy metadata from tmp_module2_strategy_params into tmp_m2_stage_1_source_applications.</p>
+<p>The staged source table should include:</p>
+<ul>
+<li>module2_model_version</li>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>strategy_run_id</li>
+<li>strategy_run_ts</li>
+</ul>
+<p>These fields should come from the single active strategy parameter row.</p>
+<p>Reason:
+Every downstream Module 2 stage should carry both:</p>
+<ul>
+<li>Module 1 source lineage; and</li>
+<li>Module 2 strategy lineage.</li>
+</ul>
+<p>This keeps traceability clean and prevents later stages from needing to rejoin strategy metadata repeatedly.</p>
+<p>Important:
+strategy_run_id and strategy_run_ts are audit metadata.
+They should support run traceability but should not replace the archive replacement / rerun key.</p>
+<p>================================================================================
+3. SECTION 4 ACCEPTANCE CRITERIA
+================================================================================</p>
+<p>After the two targeted patches, Section 4 should be treated as accepted if it establishes:</p>
+<ul>
+<li>one staged row per application_id</li>
+<li>exactly one Module 1 scenario / population slice</li>
+<li>preserved Module 1 scenario lineage</li>
+<li>preserved Module 2 strategy metadata</li>
+<li>preserved application and applicant identifiers</li>
+<li>preserved borrower, product, requested-structure, affordability, and risk fields</li>
+<li>product_type_policy_key created</li>
+<li>every product_type maps to exactly one product policy row</li>
+<li>expected_loss_amount aliased as requested_expected_loss_amount</li>
+<li>monthly_payment_proxy aliased as requested_monthly_payment_proxy</li>
+<li>payment_to_income_ratio aliased as requested_payment_to_income_ratio</li>
+<li>estimated_pd preserved as the Module 1 SQL field and interpreted as the synthetic estimated-PD proxy</li>
+<li>no decision outcomes created</li>
+<li>no decision flags created</li>
+<li>no reason codes assigned</li>
+<li>no approved amount calculated</li>
+<li>no approved payment calculated</li>
+<li>no approved PTI calculated</li>
+<li>no approved Expected Loss calculated</li>
+<li>no final latest-run strategy output created</li>
+<li>no archive rows inserted</li>
+</ul>
+<p>================================================================================
+4. NEXT BUILD SCOPE: SECTION 5 ONLY
+================================================================================</p>
+<p>After making the Section 4 patches, please build only:</p>
+<p>SECTION 5 — DERIVED STRATEGY SEGMENTATION LAYER</p>
+<p>Do not build:</p>
+<ul>
+<li>rule flags</li>
+<li>hard simulated policy stop logic</li>
+<li>decline logic</li>
+<li>counteroffer logic</li>
+<li>decision hierarchy</li>
+<li>reason-code assignment</li>
+<li>approved amount calculation</li>
+<li>approved payment calculation</li>
+<li>approved PTI calculation</li>
+<li>approved Expected Loss calculation</li>
+<li>final latest-run output table</li>
+<li>archive insert logic</li>
+<li>full QA framework</li>
+</ul>
+<p>Those belong to later sections.</p>
+<p>================================================================================
+5. SECTION 5 OBJECTIVE
+================================================================================</p>
+<p>Section 5 should create a non-decisioning segmentation layer that prepares the data for later strategy rules.</p>
+<p>Recommended staged table:</p>
+<p>tmp_m2_stage_2_strategy_segments</p>
+<p>Section 5 should derive interpretable strategy segmentation fields only.</p>
+<p>It should not assign decision outcomes.</p>
+<p>It should not create approval, decline, manual review, or counteroffer flags.</p>
+<p>It should not assign reason codes.</p>
+<p>It should not calculate approved exposure.</p>
+<p>It should not calculate approved Expected Loss.</p>
+<p>Purpose:
+Section 5 should translate continuous and categorical Module 1 inputs into policy-readable diagnostic segments that later rule sections can consume.</p>
+<p>This is a staging and interpretability layer, not a decision layer.</p>
+<p>================================================================================
+6. REQUIRED SECTION 5 INPUT
+================================================================================</p>
+<p>Section 5 should read from:</p>
+<p>tmp_m2_stage_1_source_applications</p>
+<p>It should preserve all Section 4 fields and add segmentation fields.</p>
+<p>It may join to:</p>
+<ul>
+<li>tmp_module2_strategy_params</li>
+<li>tmp_module2_product_policy_params</li>
+</ul>
+<p>Purpose of those joins:</p>
+<ul>
+<li>attach threshold values needed for segmentation</li>
+<li>expose product-specific policy context</li>
+<li>support later rule logic</li>
+</ul>
+<p>Do not apply final policy outcomes yet.</p>
+<p>================================================================================
+7. REQUIRED SECTION 5 OUTPUT FIELDS
+================================================================================</p>
+<p>Please create the following derived segmentation fields.</p>
+<hr>
+<ol>
+<li>Synthetic estimated-risk tier</li>
+</ol>
+<hr>
+<p>Field:</p>
+<ul>
+<li>strategy_risk_tier</li>
+</ul>
+<p>Suggested values:</p>
+<ul>
+<li>LOW_SYNTHETIC_RISK</li>
+<li>MODERATE_SYNTHETIC_RISK</li>
+<li>ELEVATED_SYNTHETIC_RISK</li>
+<li>HIGH_SYNTHETIC_RISK</li>
+<li>SEVERE_SYNTHETIC_RISK</li>
+</ul>
+<p>This tier should use Module 1 estimated_pd as the synthetic estimated-PD proxy input.</p>
+<p>Do not recalculate estimated_pd.</p>
+<p>Recommended threshold logic should use the existing strategy parameters:</p>
+<ul>
+<li>approve_max_estimated_pd_proxy</li>
+<li>counteroffer_max_estimated_pd_proxy</li>
+<li>review_max_estimated_pd_proxy</li>
+<li>decline_min_estimated_pd_proxy</li>
+</ul>
+<p>Please document equality handling clearly.</p>
+<hr>
+<ol start="2">
+<li>Requested PTI bucket</li>
+</ol>
+<hr>
+<p>Field:</p>
+<ul>
+<li>requested_pti_bucket</li>
+</ul>
+<p>Suggested values:</p>
+<ul>
+<li>LOW_REQUESTED_PTI</li>
+<li>MODERATE_REQUESTED_PTI</li>
+<li>ELEVATED_REQUESTED_PTI</li>
+<li>HIGH_REQUESTED_PTI</li>
+<li>SEVERE_REQUESTED_PTI</li>
+</ul>
+<p>This should use requested_payment_to_income_ratio from Section 4.</p>
+<p>Requested PTI buckets should use product-specific PTI thresholds where available:</p>
+<ul>
+<li>product_approve_max_pti</li>
+<li>product_review_max_pti</li>
+<li>product_decline_min_pti</li>
+<li>counteroffer_target_pti</li>
+</ul>
+<p>Do not use a generic one-size-fits-all PTI classification unless the product-specific threshold is missing, which should be treated as a gatekeeper failure.</p>
+<hr>
+<ol start="3">
+<li>DTI bucket</li>
+</ol>
+<hr>
+<p>Field:</p>
+<ul>
+<li>dti_bucket</li>
+</ul>
+<p>Suggested values:</p>
+<ul>
+<li>LOW_DTI</li>
+<li>MODERATE_DTI</li>
+<li>ELEVATED_DTI</li>
+<li>HIGH_DTI</li>
+<li>SEVERE_DTI</li>
+</ul>
+<p>This should use debt_to_income_ratio.</p>
+<p>DTI bucket logic should use the global DTI thresholds:</p>
+<ul>
+<li>approve_max_dti</li>
+<li>review_max_dti</li>
+<li>decline_min_dti</li>
+</ul>
+<p>Important interpretation:
+DTI is an existing-obligation capacity signal. It is not directly fixed by a counteroffer in Module 2 v1.0.</p>
+<hr>
+<ol start="4">
+<li>Requested exposure tier</li>
+</ol>
+<hr>
+<p>Field:</p>
+<ul>
+<li>requested_exposure_tier</li>
+</ul>
+<p>Suggested values:</p>
+<ul>
+<li>BELOW_PRODUCT_MINIMUM</li>
+<li>WITHIN_PRODUCT_LIMITS</li>
+<li>ABOVE_PRODUCT_APPROVAL_CAP</li>
+<li>EXTREME_REQUESTED_EXPOSURE</li>
+</ul>
+<p>This should use:</p>
+<ul>
+<li>requested_amount</li>
+<li>product_min_approved_amount</li>
+<li>product_max_approved_amount</li>
+<li>product_max_exposure_reduction_pct</li>
+</ul>
+<p>Please define the tier logic explicitly.</p>
+<p>Recommended interpretation:</p>
+<ul>
+<li><p>BELOW_PRODUCT_MINIMUM:
+  requested_amount &lt; product_min_approved_amount</p>
+</li>
+<li><p>WITHIN_PRODUCT_LIMITS:
+  requested_amount between product_min_approved_amount and product_max_approved_amount</p>
+</li>
+<li><p>ABOVE_PRODUCT_APPROVAL_CAP:
+  requested_amount &gt; product_max_approved_amount, but potentially reducible through a counteroffer within the allowed exposure-reduction constraint</p>
+</li>
+<li><p>EXTREME_REQUESTED_EXPOSURE:
+  requested_amount is above the product cap by more than the allowed exposure-reduction framework can reasonably address</p>
+</li>
+</ul>
+<p>If you use a formula to distinguish ABOVE_PRODUCT_APPROVAL_CAP from EXTREME_REQUESTED_EXPOSURE, explain it clearly and do not introduce an undocumented magic number.</p>
+<hr>
+<ol start="5">
+<li>Requested Expected Loss tier</li>
+</ol>
+<hr>
+<p>Field:</p>
+<ul>
+<li>requested_expected_loss_tier</li>
+</ul>
+<p>Suggested values:</p>
+<ul>
+<li>LOW_REQUESTED_EL</li>
+<li>MODERATE_REQUESTED_EL</li>
+<li>ELEVATED_REQUESTED_EL</li>
+<li>HIGH_REQUESTED_EL</li>
+<li>SEVERE_REQUESTED_EL</li>
+</ul>
+<p>This should use requested_expected_loss_amount and product-specific Expected Loss thresholds:</p>
+<ul>
+<li>product_approve_max_requested_el</li>
+<li>product_review_max_requested_el</li>
+<li>product_decline_min_requested_el</li>
+<li>product_approved_el_cap</li>
+</ul>
+<p>Important:
+requested_expected_loss_amount comes from Module 1 requested exposure.
+approved_expected_loss_amount does not exist yet and should not be calculated in Section 5.</p>
+<hr>
+<ol start="6">
+<li>Product × score policy segment</li>
+</ol>
+<hr>
+<p>Field:</p>
+<ul>
+<li>product_score_policy_segment</li>
+</ul>
+<p>Recommended construction:
+product_type_policy_key || &#39;_&#39; || score_band</p>
+<p>If score_band normalization is necessary, preserve original score_band and create a score_band_policy_key.</p>
+<p>If Module 1 score_band values already match the expected format, use score_band directly.</p>
+<p>Do not modify Module 1.</p>
+<hr>
+<ol start="7">
+<li>Mixed-signal profile type</li>
+</ol>
+<hr>
+<p>Field:</p>
+<ul>
+<li>mixed_signal_profile_type</li>
+</ul>
+<p>Suggested values:</p>
+<ul>
+<li>STRONG_CREDIT_HIGH_PTI</li>
+<li>WEAK_CREDIT_LOW_PTI</li>
+<li>LARGE_EXPOSURE_LOW_RISK</li>
+<li>HIGH_RISK_LOW_EXPOSURE</li>
+<li>HIGH_DTI_LOW_REQUESTED_PTI</li>
+<li>MULTIPLE_MIXED_SIGNALS</li>
+<li>NO_MIXED_SIGNAL_PROFILE</li>
+</ul>
+<p>This should be diagnostic only.</p>
+<p>It should not drive final decisions in Section 5.</p>
+<p>Please define priority handling.</p>
+<p>Recommended approach:</p>
+<ul>
+<li>If exactly one mixed-signal condition applies, assign that type.</li>
+<li>If more than one applies, assign MULTIPLE_MIXED_SIGNALS.</li>
+<li>If none applies, assign NO_MIXED_SIGNAL_PROFILE.</li>
+</ul>
+<p>Do not silently choose one mixed-signal condition over another without documenting the priority convention.</p>
+<hr>
+<ol start="8">
+<li>Borderline profile indicator</li>
+</ol>
+<hr>
+<p>Field:</p>
+<ul>
+<li>borderline_profile_flag</li>
+</ul>
+<p>This should identify profiles close to strategy thresholds but should not assign manual review yet.</p>
+<p>Important:
+Do not introduce a hidden hardcoded borderline buffer.</p>
+<p>If borderline_profile_flag requires a proximity buffer, either:</p>
+<p>A. Use an existing strategy parameter if one already exists; or</p>
+<p>B. Provide a targeted Section 2 / Section 3 patch adding a parameter such as:</p>
+<ul>
+<li>borderline_threshold_buffer_pct</li>
+</ul>
+<p>with a clear gatekeeper rule and commentary; or</p>
+<p>C. Omit borderline_profile_flag from Module 2 v1.0 and document it as a future enhancement.</p>
+<p>Preferred approach:
+If the current parameter framework does not already contain a governed borderline buffer, provide a targeted patch adding one before implementing borderline_profile_flag.</p>
+<p>Do not create a 5%, 10%, or similar threshold-adjacent rule without a governed parameter and commentary.</p>
+<p>================================================================================
+8. THRESHOLD ATTACHMENT REQUIREMENT
+================================================================================</p>
+<p>Section 5 should attach or carry forward the relevant threshold values used to create segmentation.</p>
+<p>This may include:</p>
+<p>Global thresholds:</p>
+<ul>
+<li>approve_max_estimated_pd_proxy</li>
+<li>counteroffer_max_estimated_pd_proxy</li>
+<li>review_max_estimated_pd_proxy</li>
+<li>decline_min_estimated_pd_proxy</li>
+<li>global_approve_max_pti</li>
+<li>global_review_max_pti</li>
+<li>global_decline_min_pti</li>
+<li>approve_max_dti</li>
+<li>review_max_dti</li>
+<li>decline_min_dti</li>
+</ul>
+<p>Product thresholds:</p>
+<ul>
+<li>product_approve_max_pti</li>
+<li>product_review_max_pti</li>
+<li>product_decline_min_pti</li>
+<li>counteroffer_target_pti</li>
+<li>product_approve_max_requested_el</li>
+<li>product_review_max_requested_el</li>
+<li>product_decline_min_requested_el</li>
+<li>product_approved_el_cap</li>
+<li>product_min_approved_amount</li>
+<li>product_max_approved_amount</li>
+<li>counteroffer_allowed_flag</li>
+<li>manual_review_allowed_flag</li>
+<li>product_min_counteroffer_pct</li>
+<li>product_max_exposure_reduction_pct</li>
+<li>exposure_assignment_method</li>
+<li>approved_amount_rounding_increment</li>
+</ul>
+<p>Reason:
+Later rule logic should be explainable because the thresholds used for segmentation and strategy rules are visible in the staged data.</p>
+<p>================================================================================
+9. SECTION 5 LOCAL GATEKEEPERS
+================================================================================</p>
+<p>At the end of Section 5, include local fail-fast checks.</p>
+<p>These should validate:</p>
+<ul>
+<li>row count is unchanged from tmp_m2_stage_1_source_applications</li>
+<li>application_id remains unique</li>
+<li>no null strategy_risk_tier</li>
+<li>no null requested_pti_bucket</li>
+<li>no null dti_bucket</li>
+<li>no null requested_exposure_tier</li>
+<li>no null requested_expected_loss_tier</li>
+<li>no null product_score_policy_segment</li>
+<li>no null mixed_signal_profile_type</li>
+<li>no null product_type_policy_key</li>
+<li>all rows still have exactly one matching product policy configuration</li>
+<li>all required threshold values are available for every row</li>
+</ul>
+<p>If borderline_profile_flag is implemented:</p>
+<ul>
+<li>no null borderline_profile_flag</li>
+<li>borderline threshold buffer parameter is present, validated, and documented</li>
+</ul>
+<p>If borderline_profile_flag is not implemented:</p>
+<ul>
+<li>explicitly state it is deferred and do not include it in the local gatekeeper checks.</li>
+</ul>
+<p>Do not turn these into the full QA framework yet.
+These are Section 5 local staging gatekeepers only.</p>
+<p>================================================================================
+10. SECTION 5 LOCAL SANITY CHECKS
+================================================================================</p>
+<p>After local gatekeepers, include lightweight sanity-check queries.</p>
+<p>Suggested outputs:</p>
+<ol>
+<li>Row count and distinct application_id count</li>
+<li>Count by strategy_risk_tier</li>
+<li>Count by requested_pti_bucket</li>
+<li>Count by dti_bucket</li>
+<li>Count by requested_exposure_tier</li>
+<li>Count by requested_expected_loss_tier</li>
+<li>Count by product_score_policy_segment</li>
+<li>Count by mixed_signal_profile_type</li>
+<li>Count by borderline_profile_flag, if implemented</li>
+<li>Product × strategy_risk_tier summary</li>
+<li>Score band × strategy_risk_tier summary</li>
+<li>PTI bucket × strategy_risk_tier summary</li>
+</ol>
+<p>These are staging diagnostics only.</p>
+<p>They should not be interpreted as final strategy validation.</p>
+<p>================================================================================
+11. SECTION 5 COMMENTARY QUALITY
+================================================================================</p>
+<p>Please keep the same elite commentary standard.</p>
+<p>Section 5 comments should explain:</p>
+<ul>
+<li>why segmentation is separated from decision rules</li>
+<li>why estimated_pd is used only as the synthetic estimated-PD proxy input</li>
+<li>why PTI buckets use the requested structure from Module 1</li>
+<li>why DTI remains a borrower-capacity signal rather than a counteroffer-adjustable field</li>
+<li>why requested exposure and approved exposure are separate concepts</li>
+<li>why requested_expected_loss_amount is used before approved_expected_loss_amount exists</li>
+<li>why mixed-signal profiles are diagnostic and not automatic decisions</li>
+<li>why borderline logic requires governed parameterization if implemented</li>
+<li>why threshold values are attached for transparency</li>
+<li>why no decision outcomes are created in Section 5</li>
+<li>why no reason codes are assigned in Section 5</li>
+<li>why no approved amount or approved Expected Loss is calculated in Section 5</li>
+</ul>
+<p>================================================================================
+12. DELIVERABLE FOR THIS NEXT STEP
+================================================================================</p>
+<p>Please now provide:</p>
+<ol>
+<li><p>Targeted Section 4 patches only:</p>
+<ul>
+<li>commentary correction from “Module 2 latest-run table” to “Module 1 latest-run table”</li>
+<li>addition of Module 2 strategy metadata into tmp_m2_stage_1_source_applications</li>
+</ul>
+</li>
+<li><p>If borderline_profile_flag requires a new governed parameter, provide a targeted Section 2 / Section 3 patch before Section 5.</p>
+</li>
+<li><p>Section 5 SQL only:
+DERIVED STRATEGY SEGMENTATION LAYER.</p>
+</li>
+<li><p>A short explanation of what Section 5 establishes.</p>
+</li>
+<li><p>A short explanation of what Section 5 intentionally does not build.</p>
+</li>
+<li><p>The recommended next build step after Section 5.</p>
+</li>
+</ol>
+<p>Do not write Sections 6+ yet.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

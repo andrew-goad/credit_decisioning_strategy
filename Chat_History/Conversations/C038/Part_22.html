@@ -1,0 +1,3938 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 22</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 22 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_21.html">Previous</a><a href="Part_23.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00449" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00449 · 2026-05-08T13:29:21.894035-04:00 · active path</p><div class="body"><p>Yes. With only 50k–100k archived rows, <strong>Section 12.6 should not run for over an hour</strong>. That points to a runtime/blocking issue or an expensive join pattern, not normal archive volume.</p>
+<p>Most likely causes, in priority order:</p>
+<h2>1. Prior disconnected session is holding a lock</h2>
+<p>Because you previously had a network disconnection, the old PostgreSQL session may still be open and holding a lock on:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions
+credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p>If Section 12.6 is trying to create an index, delete/replace archive rows, insert rows, or run a validation join, it may simply be <strong>waiting</strong>, not actually processing.</p>
+<p>Run this first:</p>
+<pre><code class="language-sql">SELECT
+    pid,
+    usename,
+    state,
+    wait_event_type,
+    wait_event,
+    now() - query_start AS runtime,
+    left(query, 500) AS running_query
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND state &lt;&gt; &#39;idle&#39;
+ORDER BY query_start;
+</code></pre>
+<p>If you see:</p>
+<pre><code class="language-text">wait_event_type = Lock
+</code></pre>
+<p>then it is blocked.</p>
+<p>Then run:</p>
+<pre><code class="language-sql">SELECT
+    blocked.pid AS blocked_pid,
+    blocked.query AS blocked_query,
+    blocking.pid AS blocking_pid,
+    blocking.query AS blocking_query,
+    blocking.state AS blocking_state,
+    now() - blocking.query_start AS blocking_runtime
+FROM pg_stat_activity blocked
+JOIN pg_locks blocked_locks
+    ON blocked_locks.pid = blocked.pid
+JOIN pg_locks blocking_locks
+    ON blocking_locks.locktype = blocked_locks.locktype
+   AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+   AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+   AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+   AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+   AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+   AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+   AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+   AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+   AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+   AND blocking_locks.pid &lt;&gt; blocked_locks.pid
+JOIN pg_stat_activity blocking
+    ON blocking.pid = blocking_locks.pid
+WHERE NOT blocked_locks.granted;
+</code></pre>
+<p>If the blocker is an abandoned/disconnected run, cancel the blocked query or terminate the blocker carefully.</p>
+<p>Cancel current long-running query:</p>
+<pre><code class="language-sql">SELECT pg_cancel_backend(&lt;blocked_pid&gt;);
+</code></pre>
+<p>Terminate an abandoned blocking session:</p>
+<pre><code class="language-sql">SELECT pg_terminate_backend(&lt;blocking_pid&gt;);
+</code></pre>
+<p>Only terminate a backend if you are confident it is your stale session.</p>
+<hr>
+<h2>2. Section 12.6 may be doing a row-explosion join</h2>
+<p>If Section 12.6 is the archive persistence mismatch check, it should join latest-run rows to archive rows at the <strong>full row grain</strong>, including:</p>
+<pre><code class="language-sql">application_id
+</code></pre>
+<p>If it joins only on the replacement key:</p>
+<pre><code class="language-sql">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+</code></pre>
+<p>then each 50,000-row latest slice can join to 50,000 archived rows, producing:</p>
+<pre><code class="language-text">50,000 × 50,000 = 2.5 billion joined rows
+</code></pre>
+<p>That would absolutely explain an hour-long query.</p>
+<p>The join should look directionally like this:</p>
+<pre><code class="language-sql">FROM credit_decisioning_sim.strategy_decisions sd
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = sd.strategy_set_name
+   AND ar.strategy_name = sd.strategy_name
+   AND ar.strategy_version = sd.strategy_version
+   AND ar.module1_scenario_set_name = sd.module1_scenario_set_name
+   AND ar.module1_scenario_name = sd.module1_scenario_name
+   AND ar.population_id = sd.population_id
+   AND ar.application_id = sd.application_id
+</code></pre>
+<p>If <code>application_id</code> is missing from that join, that is a <strong>BLOCKER patch</strong>.</p>
+<hr>
+<h2>3. Unique index creation could be waiting on locks</h2>
+<p>If Section 12.6 is the unique archive grain index creation, it should also be quick at this size unless blocked.</p>
+<p>The unique index is important:</p>
+<pre><code class="language-sql">strategy_set_name,
+strategy_name,
+strategy_version,
+module1_scenario_set_name,
+module1_scenario_name,
+population_id,
+application_id
+</code></pre>
+<p>But if another session is touching the archive table, <code>CREATE UNIQUE INDEX</code> may wait.</p>
+<p>Check index activity:</p>
+<pre><code class="language-sql">SELECT
+    pid,
+    datname,
+    relid::regclass AS table_name,
+    index_relid::regclass AS index_name,
+    phase,
+    blocks_total,
+    blocks_done,
+    tuples_total,
+    tuples_done
+FROM pg_stat_progress_create_index;
+</code></pre>
+<p>If this returns a row and is progressing, let it run. If it is waiting on a lock, use the lock diagnostics above.</p>
+<hr>
+<h2>My recommendation right now</h2>
+<p>Do not assume this is normal processing.</p>
+<p>Run these two diagnostics first:</p>
+<pre><code class="language-sql">SELECT
+    pid,
+    usename,
+    state,
+    wait_event_type,
+    wait_event,
+    now() - query_start AS runtime,
+    left(query, 500) AS running_query
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND state &lt;&gt; &#39;idle&#39;
+ORDER BY query_start;
+</code></pre>
+<p>Then:</p>
+<pre><code class="language-sql">SELECT
+    pid,
+    wait_event_type,
+    wait_event,
+    now() - query_start AS runtime,
+    left(query, 1000) AS running_query
+FROM pg_stat_activity
+WHERE query ILIKE &#39;%strategy_decisions_archive%&#39;
+   OR query ILIKE &#39;%strategy_decisions%&#39;;
+</code></pre>
+<p>Send me the output and, if possible, the exact Section 12.6 SQL block currently running.</p>
+<p>Most likely outcome:</p>
+<pre><code class="language-text">If wait_event_type = Lock:
+    stale disconnected session / blocking lock.
+
+If no lock but query is running actively:
+    likely row-explosion join or missing application_id join predicate.
+
+If pg_stat_progress_create_index shows progress:
+    index creation is running; wait unless blocked.
+</code></pre>
+</div></article><article id="c038-m00451" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00451 · 2026-05-08T13:32:07.178000-04:00 · active path</p><div class="body"><p><em>No text body is present in the export. This message may contain an image or attachment.</em></p>
+<p><strong>Attachments in export:</strong> <code>image(67).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00453" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00453 · 2026-05-08T13:33:50.950671-04:00 · active path</p><div class="body"><p>Your screenshot shows this is <strong>not a lock wait</strong>.</p>
+<p>The long-running session has:</p>
+<pre><code class="language-text">pid = 13664
+state = active
+wait_event_type = NULL
+wait_event = NULL
+runtime ≈ 1h55m
+running_query starts with SECTION 12.6 — LOCAL FAI...
+</code></pre>
+<p>That means PostgreSQL is actively working through the Section 12.6 block. With a 50,000-row latest table and 50,000-row archived slice, this is almost certainly a <strong>row-explosion join</strong> inside the Section 12.6 persistence mismatch check.</p>
+<h2>Most likely cause</h2>
+<p>Section 12.6 is probably joining:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions
+</code></pre>
+<p>to:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p>using only the archive replacement key:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+</code></pre>
+<p>but not:</p>
+<pre><code class="language-text">application_id
+</code></pre>
+<p>If so, the join becomes:</p>
+<pre><code class="language-text">50,000 latest rows × 50,000 archived rows = 2.5 billion joined rows
+</code></pre>
+<p>That would explain the multi-hour runtime.</p>
+<p>The archive <strong>replacement key</strong> excludes <code>application_id</code>, but the archive <strong>row-level comparison / persistence mismatch check</strong> must include <code>application_id</code>.</p>
+<h2>Immediate action</h2>
+<p>Cancel the running query:</p>
+<pre><code class="language-sql">SELECT pg_cancel_backend(13664);
+</code></pre>
+<p>If it does not cancel after a reasonable wait:</p>
+<pre><code class="language-sql">SELECT pg_terminate_backend(13664);
+</code></pre>
+<p>Only terminate it if you are sure this is your abandoned / stuck Section 12.6 run.</p>
+<h2>Targeted blocker patch — Section 12.6 persistence mismatch check</h2>
+<p>This is a <strong>BLOCKER</strong> if confirmed. It does not change strategy logic. It only fixes the archive validation join so it compares each latest-run application to its matching archived application.</p>
+<h3>BEFORE — problematic pattern</h3>
+<p>Look for a Section 12.6 block that joins latest-run to archive like this, or directionally like this:</p>
+<pre><code class="language-sql">FROM credit_decisioning_sim.strategy_decisions sd
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = sd.strategy_set_name
+   AND ar.strategy_name = sd.strategy_name
+   AND ar.strategy_version = sd.strategy_version
+   AND ar.module1_scenario_set_name = sd.module1_scenario_set_name
+   AND ar.module1_scenario_name = sd.module1_scenario_name
+   AND ar.population_id = sd.population_id
+WHERE
+       ar.decision_outcome IS DISTINCT FROM sd.decision_outcome
+    OR ar.decision_path IS DISTINCT FROM sd.decision_path
+    OR ...
+</code></pre>
+<p>The issue is that this compares every latest row to every archived row in the same replacement slice.</p>
+<h3>AFTER — corrected row-level comparison</h3>
+<p>Patch the join to include <code>application_id</code>:</p>
+<pre><code class="language-sql">FROM credit_decisioning_sim.strategy_decisions sd
+JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = sd.strategy_set_name
+   AND ar.strategy_name = sd.strategy_name
+   AND ar.strategy_version = sd.strategy_version
+   AND ar.module1_scenario_set_name = sd.module1_scenario_set_name
+   AND ar.module1_scenario_name = sd.module1_scenario_name
+   AND ar.population_id = sd.population_id
+
+   /*
+   Archive persistence comparison must be row-level.
+
+   The archive replacement / rerun key intentionally excludes application_id because it
+   identifies the full strategy × Module 1 scenario × population slice to replace.
+
+   However, latest-run versus archive field comparison must include application_id,
+   because the archive grain is one row per application within that replacement slice.
+
+   Without application_id, a 50,000-row latest table joined to a 50,000-row archive slice
+   creates 2.5 billion joined pairs and can run for hours.
+   */
+   AND ar.application_id = sd.application_id
+WHERE
+       ar.decision_outcome IS DISTINCT FROM sd.decision_outcome
+    OR ar.decision_path IS DISTINCT FROM sd.decision_path
+    OR ...
+</code></pre>
+<h2>Safer full replacement for the mismatch check</h2>
+<p>If you want to replace the full mismatch-count logic cleanly, use this pattern inside Section 12.6:</p>
+<pre><code class="language-sql">WITH latest_run AS (
+    SELECT
+        *
+    FROM credit_decisioning_sim.strategy_decisions
+),
+archived_current_slice AS (
+    SELECT
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN (
+        SELECT DISTINCT
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id
+        FROM credit_decisioning_sim.strategy_decisions
+    ) k
+        ON ar.strategy_set_name = k.strategy_set_name
+       AND ar.strategy_name = k.strategy_name
+       AND ar.strategy_version = k.strategy_version
+       AND ar.module1_scenario_set_name = k.module1_scenario_set_name
+       AND ar.module1_scenario_name = k.module1_scenario_name
+       AND ar.population_id = k.population_id
+),
+persistence_mismatches AS (
+    SELECT
+        lr.application_id
+    FROM latest_run lr
+    JOIN archived_current_slice ar
+        ON ar.strategy_set_name = lr.strategy_set_name
+       AND ar.strategy_name = lr.strategy_name
+       AND ar.strategy_version = lr.strategy_version
+       AND ar.module1_scenario_set_name = lr.module1_scenario_set_name
+       AND ar.module1_scenario_name = lr.module1_scenario_name
+       AND ar.population_id = lr.population_id
+       AND ar.application_id = lr.application_id
+    WHERE
+           ar.decision_outcome IS DISTINCT FROM lr.decision_outcome
+        OR ar.decision_path IS DISTINCT FROM lr.decision_path
+        OR ar.decision_priority_rank IS DISTINCT FROM lr.decision_priority_rank
+        OR ar.decision_resolution_source IS DISTINCT FROM lr.decision_resolution_source
+        OR ar.approval_flag IS DISTINCT FROM lr.approval_flag
+        OR ar.counteroffer_flag IS DISTINCT FROM lr.counteroffer_flag
+        OR ar.manual_review_flag IS DISTINCT FROM lr.manual_review_flag
+        OR ar.decline_flag IS DISTINCT FROM lr.decline_flag
+        OR ar.simulated_offer_exposure_flag IS DISTINCT FROM lr.simulated_offer_exposure_flag
+        OR ar.approved_amount IS DISTINCT FROM lr.approved_amount
+        OR ar.counteroffer_amount IS DISTINCT FROM lr.counteroffer_amount
+        OR ar.exposure_reduction_flag IS DISTINCT FROM lr.exposure_reduction_flag
+        OR ar.exposure_reduction_amount IS DISTINCT FROM lr.exposure_reduction_amount
+        OR ar.exposure_reduction_pct IS DISTINCT FROM lr.exposure_reduction_pct
+        OR ar.approved_monthly_payment_proxy IS DISTINCT FROM lr.approved_monthly_payment_proxy
+        OR ar.approved_payment_to_income_ratio IS DISTINCT FROM lr.approved_payment_to_income_ratio
+        OR ar.requested_expected_loss_amount IS DISTINCT FROM lr.requested_expected_loss_amount
+        OR ar.approved_expected_loss_amount IS DISTINCT FROM lr.approved_expected_loss_amount
+        OR ar.approved_el_reduction_amount IS DISTINCT FROM lr.approved_el_reduction_amount
+        OR ar.approved_el_reduction_pct IS DISTINCT FROM lr.approved_el_reduction_pct
+        OR ar.primary_reason_code IS DISTINCT FROM lr.primary_reason_code
+        OR ar.secondary_reason_code IS DISTINCT FROM lr.secondary_reason_code
+        OR ar.tertiary_reason_code IS DISTINCT FROM lr.tertiary_reason_code
+        OR ar.primary_reason_family IS DISTINCT FROM lr.primary_reason_family
+        OR ar.triggered_reason_code_list IS DISTINCT FROM lr.triggered_reason_code_list
+        OR ar.reason_priority_rank IS DISTINCT FROM lr.reason_priority_rank
+        OR ar.reason_code_count IS DISTINCT FROM lr.reason_code_count
+        OR ar.strategy_set_name IS DISTINCT FROM lr.strategy_set_name
+        OR ar.strategy_name IS DISTINCT FROM lr.strategy_name
+        OR ar.strategy_version IS DISTINCT FROM lr.strategy_version
+        OR ar.module1_scenario_set_name IS DISTINCT FROM lr.module1_scenario_set_name
+        OR ar.module1_scenario_name IS DISTINCT FROM lr.module1_scenario_name
+        OR ar.population_id IS DISTINCT FROM lr.population_id
+        OR ar.application_id IS DISTINCT FROM lr.application_id
+        OR ar.applicant_id IS DISTINCT FROM lr.applicant_id
+        OR ar.product_type_policy_key IS DISTINCT FROM lr.product_type_policy_key
+        OR ar.score_band_policy_key IS DISTINCT FROM lr.score_band_policy_key
+)
+SELECT
+    COUNT(*) AS archive_persistence_mismatch_count
+FROM persistence_mismatches;
+</code></pre>
+<p>Expected result after patch:</p>
+<pre><code class="language-text">archive_persistence_mismatch_count = 0
+</code></pre>
+<h2>Quick proof query</h2>
+<p>After cancellation, run this to confirm the row-explosion risk:</p>
+<pre><code class="language-sql">WITH counts AS (
+    SELECT
+        (SELECT COUNT(*) FROM credit_decisioning_sim.strategy_decisions) AS latest_rows,
+        (
+            SELECT COUNT(*)
+            FROM credit_decisioning_sim.strategy_decisions_archive ar
+            JOIN (
+                SELECT DISTINCT
+                    strategy_set_name,
+                    strategy_name,
+                    strategy_version,
+                    module1_scenario_set_name,
+                    module1_scenario_name,
+                    population_id
+                FROM credit_decisioning_sim.strategy_decisions
+            ) k
+                ON ar.strategy_set_name = k.strategy_set_name
+               AND ar.strategy_name = k.strategy_name
+               AND ar.strategy_version = k.strategy_version
+               AND ar.module1_scenario_set_name = k.module1_scenario_set_name
+               AND ar.module1_scenario_name = k.module1_scenario_name
+               AND ar.population_id = k.population_id
+        ) AS archived_slice_rows
+)
+SELECT
+    latest_rows,
+    archived_slice_rows,
+    latest_rows::NUMERIC * archived_slice_rows::NUMERIC AS rows_if_joined_without_application_id
+FROM counts;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">latest_rows = 50,000
+archived_slice_rows = 50,000
+rows_if_joined_without_application_id = 2,500,000,000
+</code></pre>
+<h2>Bottom line</h2>
+<p>This is almost certainly not a data-volume issue and not a lock issue. It is likely a Section 12.6 archive validation join missing <code>application_id</code>.</p>
+<p>Cancel the current run, patch the Section 12.6 latest-vs-archive mismatch join to include <code>application_id</code>, then rerun Section 12. The archive output itself is probably fine; the problem is the validation check comparing it inefficiently.</p>
+</div></article><article id="c038-m00455" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00455 · 2026-05-08T13:46:18.804000-04:00 · active path</p><div class="body"><p>this is the full 12.6 logic and it is preceded by: /***************************************************************************************************
+SECTION 12.5 — ARCHIVE INVENTORY SNAPSHOT AFTER PERSISTENCE
+***************************************************************************************************/</p>
+<p>DROP TABLE IF EXISTS tmp_m2_archive_inventory_after;</p>
+<p>CREATE TEMP TABLE tmp_m2_archive_inventory_after
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    COUNT(*) AS row_count
+FROM credit_decisioning_sim.strategy_decisions_archive
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(105).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00458" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00458 · 2026-05-08T13:48:50.888465-04:00 · active path</p><div class="body"><p>You are right to paste the full block. My earlier row-explosion diagnosis needs to be corrected.</p>
+<p>In the Section 12.6 code you pasted, the persistence mismatch join <strong>already includes <code>application_id</code></strong>:</p>
+<pre><code class="language-sql">AND ar.application_id = sd.application_id
+</code></pre>
+<p>So the long runtime is <strong>not</strong> caused by the missing-<code>application_id</code> join issue I suspected. The uploaded Section 12.6 logic confirms the row-level join predicate is present. fileciteturn4file0</p>
+<p>The more likely issue is now <strong>performance / indexing / stale statistics before the Section 12.6 gatekeeper</strong>, especially because Section 12.6 runs several archive-wide or archive-slice checks before the Section 12 index creation layer has a chance to help.</p>
+<h2>Most likely cause</h2>
+<p>Section 12.6 is doing several operations against:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p>including:</p>
+<pre><code class="language-sql">COUNT(DISTINCT application_id)
+GROUP BY application_id
+latest-run vs archive comparison
+full archive duplicate-grain GROUP BY
+</code></pre>
+<p>Those should be fast for one 50,000-row archived slice. But if the archive table has more rows than expected, lacks the full archive-grain index, or PostgreSQL has stale stats, the planner can choose a very poor plan.</p>
+<p>The heaviest candidate in your pasted block is probably the <strong>full archive duplicate grain check</strong> near the end:</p>
+<pre><code class="language-sql">SELECT COUNT(*)
+INTO v_archive_duplicate_grain_count
+FROM (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+    HAVING COUNT(*) &gt; 1
+) d;
+</code></pre>
+<p>That checks the <strong>entire archive</strong>, not only the current archived slice. That is logically valid, but it can become expensive as the archive grows, especially before a unique archive-grain index exists.</p>
+<h2>Immediate action</h2>
+<p>Cancel the running Section 12.6 session:</p>
+<pre><code class="language-sql">SELECT pg_cancel_backend(13664);
+</code></pre>
+<p>If it does not cancel cleanly:</p>
+<pre><code class="language-sql">SELECT pg_terminate_backend(13664);
+</code></pre>
+<p>Then run this quick size check:</p>
+<pre><code class="language-sql">SELECT
+    c.relname,
+    c.reltuples::BIGINT AS estimated_rows,
+    pg_size_pretty(pg_total_relation_size(c.oid)) AS total_table_size
+FROM pg_class c
+JOIN pg_namespace n
+    ON n.oid = c.relnamespace
+WHERE n.nspname = &#39;credit_decisioning_sim&#39;
+  AND c.relname IN (&#39;strategy_decisions&#39;, &#39;strategy_decisions_archive&#39;);
+</code></pre>
+<h2>Targeted performance patch</h2>
+<p>This is not a business-logic patch. It is a <strong>Section 12 execution-order / validation-performance patch</strong>.</p>
+<p>Add this immediately after Section 12.5 and before Section 12.6.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 12.5A — ARCHIVE VALIDATION INDEX SUPPORT BEFORE FAIL-FAST CHECKS
+****************************************************************************************************
+
+Purpose:
+    Section 12.6 performs archive persistence gatekeepers that compare the latest-run table
+    to the current archived slice and validate archive grain integrity.
+
+    These checks are validation checks, not strategy logic. They should not become a runtime
+    bottleneck. The latest-run and archive tables therefore need practical indexes before
+    Section 12.6 performs row-level comparison and archive grain review.
+
+Boundary:
+    This section does not recalculate decision_outcome.
+    This section does not recalculate approved exposure.
+    This section does not recalculate approved Expected Loss.
+    This section does not reassign simulated reason codes.
+    This section only supports efficient archive validation.
+
+Why this exists:
+    The archive replacement / rerun key identifies the strategy × Module 1 scenario × population
+    slice. The row-level archive grain additionally includes application_id.
+
+    Section 12.6 compares latest-run rows to archived rows at the row-level grain. Without a
+    supporting index, PostgreSQL may choose a poor plan, especially as the archive grows across
+    multiple strategy and scenario slices.
+
+***************************************************************************************************/
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_validation_grain
+ON credit_decisioning_sim.strategy_decisions (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_validation_grain
+ON credit_decisioning_sim.strategy_decisions_archive (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+/*
+Unique archive grain enforcement:
+    The archive should not contain duplicate rows for the same application under the same
+    Module 1 scenario and Module 2 strategy version.
+
+    If duplicates already exist, this index creation will fail clearly. That is preferable to
+    allowing ambiguous matched comparison later.
+*/
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_unique_grain
+ON credit_decisioning_sim.strategy_decisions_archive (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+ANALYZE credit_decisioning_sim.strategy_decisions;
+ANALYZE credit_decisioning_sim.strategy_decisions_archive;
+</code></pre>
+<h2>Optional Section 12.6 hardening patch</h2>
+<p>Because the unique index above enforces the full archive row-level grain, you can replace the expensive full-archive duplicate <code>GROUP BY</code> check with an index-existence / validity check.</p>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">/*-------------------------------------------------------------------------------------------
+Gatekeeper: archive row-level grain must be unique across the full archive.
+-------------------------------------------------------------------------------------------*/
+SELECT COUNT(*)
+INTO v_archive_duplicate_grain_count
+FROM (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+    HAVING COUNT(*) &gt; 1
+) d;
+
+IF v_archive_duplicate_grain_count &gt; 0 THEN
+    RAISE EXCEPTION
+        &#39;Module 2 Section 12 failure: archive contains % duplicate row-level grain group(s).&#39;,
+        v_archive_duplicate_grain_count;
+END IF;
+</code></pre>
+<h3>AFTER</h3>
+<p>Add this variable to the <code>DECLARE</code> block:</p>
+<pre><code class="language-sql">v_archive_unique_grain_index_valid BOOLEAN;
+</code></pre>
+<p>Then replace the duplicate-grain block with:</p>
+<pre><code class="language-sql">/*-------------------------------------------------------------------------------------------
+Gatekeeper: archive row-level grain uniqueness must be enforced.
+
+The unique index created before Section 12.6 is the authoritative archive-grain control.
+This avoids repeatedly scanning and grouping the full archive as the archive grows.
+
+If duplicate archive grain existed, the unique index creation would have failed before
+this gatekeeper. This check confirms that the uniqueness control exists and is valid.
+-------------------------------------------------------------------------------------------*/
+SELECT EXISTS (
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class idx
+        ON idx.oid = i.indexrelid
+    JOIN pg_class tbl
+        ON tbl.oid = i.indrelid
+    JOIN pg_namespace ns
+        ON ns.oid = tbl.relnamespace
+    WHERE ns.nspname = &#39;credit_decisioning_sim&#39;
+      AND tbl.relname = &#39;strategy_decisions_archive&#39;
+      AND idx.relname = &#39;idx_m2_strategy_decisions_archive_unique_grain&#39;
+      AND i.indisunique IS TRUE
+      AND i.indisvalid IS TRUE
+)
+INTO v_archive_unique_grain_index_valid;
+
+IF v_archive_unique_grain_index_valid IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION
+        &#39;Module 2 Section 12 failure: archive unique row-level grain index is missing or invalid.&#39;;
+END IF;
+</code></pre>
+<h2>Why this is the right patch</h2>
+<p>This preserves all accepted logic.</p>
+<p>It does <strong>not</strong> change:</p>
+<pre><code class="language-text">decision outcomes
+approved amounts
+approved Expected Loss
+reason codes
+archive replacement behavior
+archive grain
+archive replacement key
+strategy metadata
+Module 1 scenario metadata
+</code></pre>
+<p>It only changes the validation performance posture so the archive gatekeeper can scale.</p>
+<h2>What to rerun</h2>
+<p>After applying the Section 12.5A patch:</p>
+<ol>
+<li>Rerun Section 12.</li>
+<li>Confirm Section 12.6 completes quickly.</li>
+<li>Confirm the archive slice still shows:</li>
+</ol>
+<pre><code class="language-text">archived_rows = 50,000
+distinct_application_id_count = 50,000
+archive_inserted_ts populated
+persistence mismatch count = 0
+</code></pre>
+<ol start="4">
+<li>Continue to Section 13.</li>
+</ol>
+<p>If the unique index creation fails, send the duplicate-key error. That would mean the archive really does contain duplicate row-level grain and needs cleanup before comparison.</p>
+</div></article><article id="c038-m00460" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00460 · 2026-05-08T13:55:10.180000-04:00 · active path</p><div class="body"><p>if i wanted to just re-run the full code top to bottom is that ok too?</p>
+</div></article><article id="c038-m00462" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00462 · 2026-05-08T13:56:28.548346-04:00 · active path</p><div class="body"><p>Yes, rerunning the full Module 2 code top to bottom is okay, but <strong>do not rerun it unchanged while the current Section 12.6 session is still active</strong>.</p>
+<p>The current long-running Section 12.6 block is a validation-performance issue, not a strategy-output issue. Your pasted Section 12.6 already includes the correct row-level archive comparison join on <code>application_id</code>, so the earlier suspected row-explosion join is not the issue. fileciteturn4file0</p>
+<h2>Recommended path</h2>
+<p>First cancel the currently running backend:</p>
+<pre><code class="language-sql">SELECT pg_cancel_backend(13664);
+</code></pre>
+<p>If it does not cancel:</p>
+<pre><code class="language-sql">SELECT pg_terminate_backend(13664);
+</code></pre>
+<p>Then add the Section 12 validation index support before rerunning. The safest place is <strong>between Section 12.5 and Section 12.6</strong>.</p>
+<p>At minimum, add:</p>
+<pre><code class="language-sql">CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_validation_grain
+ON credit_decisioning_sim.strategy_decisions (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_validation_grain
+ON credit_decisioning_sim.strategy_decisions_archive (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_decisions_archive_unique_grain
+ON credit_decisioning_sim.strategy_decisions_archive (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+ANALYZE credit_decisioning_sim.strategy_decisions;
+ANALYZE credit_decisioning_sim.strategy_decisions_archive;
+</code></pre>
+<p>Then rerun the full code top to bottom.</p>
+<h2>What the full rerun will do</h2>
+<p>With:</p>
+<pre><code class="language-text">archive_run_flag = TRUE
+strategy_archive_reset_mode = STRATEGY_SCENARIO_ONLY
+</code></pre>
+<p>a full rerun should:</p>
+<pre><code class="language-text">rebuild the latest-run strategy_decisions table
+recreate all temp staging tables
+preserve the archive table
+delete only the current strategy / Module 1 scenario / population archive slice
+insert the refreshed 50,000-row latest-run output
+</code></pre>
+<p>That is okay.</p>
+<p>For the same baseline strategy / same Module 1 <code>BASELINE_V2</code> slice, you should expect:</p>
+<pre><code class="language-text">Sections 3–11 business outputs unchanged
+latest timestamps changed
+archive_inserted_ts changed
+Section 12 deleted rows = 50,000 if the slice already existed
+Section 12 inserted rows = 50,000
+current archived slice rows = 50,000
+archive duplicate grain = 0
+persistence mismatch count = 0
+</code></pre>
+<h2>One caution</h2>
+<p>Do <strong>not</strong> use full rerun if the active parameters are accidentally set to:</p>
+<pre><code class="language-text">strategy_archive_reset_mode = ALL
+</code></pre>
+<p>unless you intentionally want to clear the entire Module 2 archive.</p>
+<p>For your current case, <code>STRATEGY_SCENARIO_ONLY</code> is the correct rerun mode.</p>
+<h2>Bottom line</h2>
+<p>Yes: full top-to-bottom rerun is acceptable.</p>
+<p>But the clean sequence is:</p>
+<pre><code class="language-text">1. Cancel/terminate the long-running Section 12.6 backend.
+2. Add the Section 12.5A index-support patch before Section 12.6.
+3. Confirm archive_run_flag = TRUE and reset mode = STRATEGY_SCENARIO_ONLY.
+4. Rerun full Module 2 SQL.
+5. Review Section 12 again.
+</code></pre>
+<p>This preserves all accepted strategy logic and should prevent Section 12.6 from becoming a runtime bottleneck.</p>
+</div></article><article id="c038-m00464" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00464 · 2026-05-08T14:05:42.814000-04:00 · active path</p><div class="body"><p>the full code ran in less than 5 minutes successfully!  I will prepare and send the section 13 QA next to review.</p>
+</div></article><article id="c038-m00465" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00465 · 2026-05-08T14:06:17.877227-04:00 · active path</p><div class="body"><p>Great — that is strong confirmation.</p>
+<p>The fact that the <strong>full code ran successfully in under five minutes</strong> means the Section 12 runtime issue is resolved for practical execution. Your pasted Section 12.6 block already included the row-level <code>application_id</code> join, so the long runtime was not a missing-grain join; it was more likely planner/index/statistics related around archive validation checks. The successful rerun confirms the current script is executable at the current archive scale.</p>
+<p>For context, this is exactly the kind of staged, QA-integrated execution discipline Module 1 established: the SQL implementation is meant to be a governed artifact with archive persistence, validation gates, and comparison readiness rather than just an executable script. The Module 1 BRD’s SQL guidance emphasizes staged materialization, archive persistence, embedded QA, and implementation readability as part of the system design, not afterthoughts. fileciteturn4file2 Module 1’s Validation Summary also reinforces that scenario comparison should be matched, controlled, and supported by validation evidence, not inferred from a successful run alone. fileciteturn4file3</p>
+<p>Send the Section 13 QA when ready. I’ll review it specifically for:</p>
+<pre><code class="language-text">archive inventory completeness
+baseline/challenger slice counts
+matched application_id count
+readiness_status
+same-strategy prevention
+source-field consistency
+portfolio-level deltas
+decision migration matrix
+product × score deltas
+reason-code movement
+simulated offer-exposure comparison
+unmatched-row diagnostics
+</code></pre>
+<p>The key expected result, once the tighter synthetic-risk challenger is archived under the same Module 1 baseline slice, is:</p>
+<pre><code class="language-text">readiness_status = READY_FOR_MATCHED_COMPARISON
+matched_application_id_count = 50,000
+baseline_only_application_id_count = 0
+challenger_only_application_id_count = 0
+source_consistency_status = SOURCE_FIELDS_MATCH
+</code></pre>
+</div></article><article id="c038-m00467" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00467 · 2026-05-08T14:24:58.005000-04:00 · active path</p><div class="body"><p>13.4 through 13.7 QA are blank.  here is the 13.0 through 13.3 QA to review. full section 13 code attached to help evaluate why 13.4 through 13.7 would be blank.</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.1_QA_archive_inventory.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.1_QA_outcome_inventory_for_archived_strategy_slices.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.1_QA_archive_grain_diagnostic_expected_result_zero_rows.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.2_QA_archive_inventory_and_matched_strategy_comparison_framework_selected_comparison_readiness.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.3_QA_portfolio_level_archived_strategy_summary.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.0_QA_archive_inventory_and_matched_strategy_comparison_framework_parameter_setup.csv</code>, <code>Pasted text(106).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00471" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00471 · 2026-05-08T14:27:37.655636-04:00 · active path</p><div class="body"><h2>Section 13.0–13.3 review</h2>
+<p><strong>Verdict: Section 13 archive inventory is healthy, but the comparison parameter selection is wrong for the intended baseline-vs-challenger run.</strong></p>
+<p>This is why Sections <strong>13.4 through 13.7 are blank</strong>.</p>
+<p>The archive itself looks good. The issue is not missing archived data. The issue is that <code>tmp_m2_strategy_comparison_params</code> is currently pointing to:</p>
+<pre><code class="language-text">baseline_strategy_name    = TIGHTER_SYNTHETIC_RISK_STRATEGY
+challenger_strategy_name  = CHALLENGER_STRATEGY_PLACEHOLDER
+</code></pre>
+<p>So Section 13 is comparing:</p>
+<pre><code class="language-text">TIGHTER_SYNTHETIC_RISK_STRATEGY
+vs
+CHALLENGER_STRATEGY_PLACEHOLDER
+</code></pre>
+<p>and the placeholder strategy does not exist in the archive.</p>
+<p>That is why readiness returns:</p>
+<pre><code class="language-text">NOT_READY_CHALLENGER_MISSING
+</code></pre>
+<p>and why the matched comparison sections are blank.</p>
+<hr>
+<h2>What the QA shows</h2>
+<h3>13.1 archive inventory — PASS</h3>
+<p>Your archive contains both required strategy slices:</p>
+<table>
+<thead>
+<tr>
+<th>strategy_name</th>
+<th align="right">rows</th>
+<th align="right">distinct applications</th>
+<th align="right">approvals</th>
+<th align="right">counteroffers</th>
+<th align="right">manual reviews</th>
+<th align="right">declines</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">11,291</td>
+<td align="right">19,067</td>
+<td align="right">6,939</td>
+<td align="right">12,703</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">10,649</td>
+<td align="right">18,452</td>
+<td align="right">6,017</td>
+<td align="right">14,882</td>
+</tr>
+</tbody></table>
+<p>This is exactly what we need for matched strategy comparison.</p>
+<h3>13.1 archive grain diagnostic — PASS</h3>
+<p>The duplicate archive grain diagnostic returned zero rows.</p>
+<p>That means the archive grain is clean at:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+application_id
+</code></pre>
+<h3>13.2 comparison readiness — NOT READY due to parameter selection</h3>
+<p>Current readiness result:</p>
+<pre><code class="language-text">readiness_status = NOT_READY_CHALLENGER_MISSING
+baseline_archived_row_count = 50,000
+challenger_archived_row_count = 0
+matched_application_id_count = 0
+baseline_only_application_id_count = 50,000
+challenger_only_application_id_count = 0
+</code></pre>
+<p>This is not an archive failure. It means Section 13 did not select the archived challenger slice.</p>
+<h3>13.3 portfolio summary — misleading until parameters are corrected</h3>
+<p>Section 13.3 returned one row labeled:</p>
+<pre><code class="language-text">comparison_role = BASELINE
+strategy_name   = TIGHTER_SYNTHETIC_RISK_STRATEGY
+</code></pre>
+<p>That is technically consistent with the current temporary comparison parameter table, but analytically it is not the intended baseline. It is labeling the tighter strategy as the comparison baseline because Section 13.0 defaulted the baseline from the current latest-run table.</p>
+<p>The Section 13.0 code is designed to insert the current latest-run strategy as the baseline and a placeholder challenger unless the user updates the temp comparison parameters. Since your latest-run table is now the tighter strategy, the temp comparison table selected that as baseline and left the challenger as the placeholder. fileciteturn4file0</p>
+<hr>
+<h2>Why 13.4 through 13.7 are blank</h2>
+<p>Those sections require both a baseline slice and a challenger slice.</p>
+<p>Because the selected challenger is:</p>
+<pre><code class="language-text">CHALLENGER_STRATEGY_PLACEHOLDER
+</code></pre>
+<p>the challenger CTE is empty. Then:</p>
+<ul>
+<li>Section 13.4 joins baseline summary to challenger summary, so no challenger row means no output.</li>
+<li>Section 13.5 decision migration joins baseline rows to challenger rows, so no challenger rows means no matched rows.</li>
+<li>Section 13.6 matched applicant delta sample has no matched challenger rows.</li>
+<li>Section 13.7 product / score / product × score deltas have no matched challenger rows.</li>
+</ul>
+<p>So the blank outputs are expected under the current Section 13.0 parameter setup.</p>
+<hr>
+<h2>Correct comparison parameter setup</h2>
+<p>Run this <strong>after Section 13.0 creates <code>tmp_m2_strategy_comparison_params</code> and before rerunning Sections 13.2 onward</strong>.</p>
+<pre><code class="language-sql">UPDATE tmp_m2_strategy_comparison_params
+SET
+    comparison_set_name = &#39;BASELINE_V2_BASELINE_STRATEGY_VS_TIGHTER_SYNTHETIC_RISK&#39;,
+
+    baseline_strategy_set_name = &#39;MODULE2_BASELINE_STRATEGY_SET&#39;,
+    baseline_strategy_name = &#39;BASELINE_STRATEGY&#39;,
+    baseline_strategy_version = &#39;V1_0&#39;,
+
+    challenger_strategy_set_name = &#39;MODULE2_BASELINE_STRATEGY_SET&#39;,
+    challenger_strategy_name = &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;,
+    challenger_strategy_version = &#39;V1_0&#39;,
+
+    module1_scenario_set_name = &#39;MODULE1_V2_BASELINE_SET&#39;,
+    module1_scenario_name = &#39;BASELINE_V2&#39;,
+    population_id = &#39;BASE_POPULATION_V1&#39;;
+</code></pre>
+<p>Then rerun:</p>
+<pre><code class="language-text">13.2 onward
+</code></pre>
+<p>You do not need to rerun Sections 0–12.</p>
+<hr>
+<h2>Expected Section 13.2 result after the fix</h2>
+<p>You should expect:</p>
+<pre><code class="language-text">readiness_status = READY_FOR_MATCHED_COMPARISON
+baseline_archived_row_count = 50,000
+challenger_archived_row_count = 50,000
+baseline_distinct_application_id_count = 50,000
+challenger_distinct_application_id_count = 50,000
+matched_application_id_count = 50,000
+baseline_only_application_id_count = 0
+challenger_only_application_id_count = 0
+</code></pre>
+<hr>
+<h2>Expected high-level comparison direction</h2>
+<p>Based on the archive inventory already shown, the tighter synthetic-risk strategy should produce these directional deltas versus baseline:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Baseline</th>
+<th align="right">Tighter risk</th>
+<th align="right">Delta</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approval count</td>
+<td align="right">11,291</td>
+<td align="right">10,649</td>
+<td align="right">-642</td>
+</tr>
+<tr>
+<td>Counteroffer count</td>
+<td align="right">19,067</td>
+<td align="right">18,452</td>
+<td align="right">-615</td>
+</tr>
+<tr>
+<td>Manual review count</td>
+<td align="right">6,939</td>
+<td align="right">6,017</td>
+<td align="right">-922</td>
+</tr>
+<tr>
+<td>Decline count</td>
+<td align="right">12,703</td>
+<td align="right">14,882</td>
+<td align="right">+2,179</td>
+</tr>
+<tr>
+<td>Simulated offer-exposure count</td>
+<td align="right">30,358</td>
+<td align="right">29,101</td>
+<td align="right">-1,257</td>
+</tr>
+</tbody></table>
+<p>That is directionally consistent with a tighter synthetic estimated-risk proxy strategy.</p>
+<hr>
+<h2>Recommended small Section 13.0 improvement for later</h2>
+<p>This is not required immediately, but later I recommend changing Section 13.0 so the default comparison parameters are explicit rather than using the current latest-run strategy as the baseline.</p>
+<p>Current behavior is safe but easy to misread:</p>
+<pre><code class="language-text">baseline = whatever strategy_decisions currently contains
+challenger = placeholder
+</code></pre>
+<p>For production-quality usability, Section 13.0 should either:</p>
+<ol>
+<li>insert no default row and require the user to set parameters, or  </li>
+<li>insert a clearly documented baseline-vs-tighter default if those slices exist.</li>
+</ol>
+<p>For now, the smallest fix is just the <code>UPDATE</code> statement above.</p>
+<h2>Bottom line</h2>
+<p>Section 13 archive data is good. The comparison is blank because the comparison parameter table selected the wrong baseline and a nonexistent challenger placeholder.</p>
+<p>Apply the parameter update, rerun Section 13.2–13.7, and the matched comparison outputs should populate.</p>
+</div></article><article id="c038-m00472" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00472 · 2026-05-08T15:14:32.263000-04:00 · active path</p><div class="body"><p>I&#39;d rather a more permanent section 13 solution.  Please advise on the permanent section 13 solution to fix this issue forever</p>
+</div></article><article id="c038-m00477" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00477 · 2026-05-08T15:18:02.679498-04:00 · active path</p><div class="body"><p>Yes. The permanent fix is to <strong>stop Section 13.0 from inferring comparison parameters from the latest-run table</strong>.</p>
+<p>That inference is the root cause. Your current Section 13.0 creates <code>tmp_m2_strategy_comparison_params</code>, then inserts the <strong>current latest-run strategy</strong> as the baseline and uses <code>CHALLENGER_STRATEGY_PLACEHOLDER</code> as the challenger. That worked poorly once your latest-run table became <code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code>, because Section 13 then treated the tighter strategy as the baseline and compared it to a nonexistent placeholder. fileciteturn6file0</p>
+<h2>Permanent Section 13 design recommendation</h2>
+<p>Replace Section 13.0 with a <strong>governed comparison registry + active selector</strong>.</p>
+<p>The permanent structure should be:</p>
+<pre><code class="language-text">tmp_m2_strategy_comparison_registry
+    = contains one or more named comparison setups
+
+tmp_m2_strategy_comparison_params
+    = contains exactly one selected active comparison
+</code></pre>
+<p>Then Sections 13.1–13.11 can continue reading from:</p>
+<pre><code class="language-sql">tmp_m2_strategy_comparison_params
+</code></pre>
+<p>No downstream Section 13 logic needs to change.</p>
+<h2>Why this fixes the issue permanently</h2>
+<p>This prevents Section 13 from depending on whatever strategy happened to be materialized last in:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions
+</code></pre>
+<p>That latest-run table changes every time you run a new strategy. It should not determine the baseline/challenger comparison.</p>
+<p>The corrected Section 13.0 should require explicit comparison identity:</p>
+<pre><code class="language-text">baseline_strategy_name
+challenger_strategy_name
+module1_scenario_name
+population_id
+</code></pre>
+<p>That makes Section 13 deterministic, reviewable, and safe for future strategy libraries.</p>
+<hr>
+<h1>Recommended permanent Section 13.0 patch</h1>
+<p>Replace the current Section 13.0 comparison parameter setup with this structure.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 13.0 — GOVERNED COMPARISON PARAMETER SETUP
+****************************************************************************************************
+
+PURPOSE:
+    Define the selected baseline and challenger archived strategy slices for read-only matched
+    comparison.
+
+PERMANENT DESIGN CHANGE:
+    Section 13 no longer infers the baseline strategy from credit_decisioning_sim.strategy_decisions.
+
+    The latest-run table changes whenever a new strategy is executed. Using it as the default
+    comparison baseline can silently select the wrong strategy after a challenger run.
+
+    Instead, Section 13 uses a governed temporary comparison registry. Users explicitly select
+    one active comparison, and downstream Section 13 queries read from the canonical
+    tmp_m2_strategy_comparison_params table.
+
+BUSINESS INTERPRETATION:
+    A Module 2 strategy comparison should answer:
+
+        &quot;How did the challenger Module 2 strategy change outcomes relative to the baseline
+         Module 2 strategy when both were applied to the same Module 1 scenario and population?&quot;
+
+V1.0 MATCHED COMPARISON BOUNDARY:
+    Baseline and challenger strategy slices must share:
+
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    This isolates downstream Module 2 strategy effects.
+
+WHY LATEST-RUN INFERENCE IS NOT USED:
+    credit_decisioning_sim.strategy_decisions is the current latest-run output.
+    It is intentionally replaceable.
+
+    It is appropriate for latest-run QA.
+    It is not appropriate as an implicit comparison selector.
+
+WHY A REGISTRY IS USED:
+    The registry allows multiple planned comparisons to be listed while selecting exactly one
+    active comparison for the current Section 13 review.
+
+READ-ONLY BOUNDARY:
+    This section creates temporary helper tables only.
+    It does not insert, delete, update, or modify archive rows.
+    It does not recalculate decisions, approved exposure, approved Expected Loss, or simulated
+    reason codes.
+
+***************************************************************************************************/
+
+
+DROP TABLE IF EXISTS tmp_m2_strategy_comparison_registry;
+
+CREATE TEMP TABLE tmp_m2_strategy_comparison_registry (
+    active_comparison_flag              BOOLEAN NOT NULL,
+    comparison_set_name                 TEXT NOT NULL,
+    comparison_description              TEXT,
+
+    baseline_strategy_set_name          TEXT NOT NULL,
+    baseline_strategy_name              TEXT NOT NULL,
+    baseline_strategy_version           TEXT NOT NULL,
+
+    challenger_strategy_set_name        TEXT NOT NULL,
+    challenger_strategy_name            TEXT NOT NULL,
+    challenger_strategy_version         TEXT NOT NULL,
+
+    module1_scenario_set_name           TEXT NOT NULL,
+    module1_scenario_name               TEXT NOT NULL,
+    population_id                       TEXT NOT NULL
+) ON COMMIT PRESERVE ROWS;
+
+
+/*
+Primary active comparison for the current Module 2 validation workflow.
+
+Users should update this registry row when changing the comparison being reviewed.
+
+Do not use CHALLENGER_STRATEGY_PLACEHOLDER.
+Do not infer baseline or challenger from the latest-run table.
+*/
+INSERT INTO tmp_m2_strategy_comparison_registry (
+    active_comparison_flag,
+    comparison_set_name,
+    comparison_description,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+)
+VALUES (
+    TRUE,
+    &#39;BASELINE_V2_BASELINE_STRATEGY_VS_TIGHTER_SYNTHETIC_RISK&#39;,
+    &#39;Compares Module 2 baseline strategy against tighter synthetic-risk strategy on the same Module 1 BASELINE_V2 archived population.&#39;,
+
+    &#39;MODULE2_BASELINE_STRATEGY_SET&#39;,
+    &#39;BASELINE_STRATEGY&#39;,
+    &#39;V1_0&#39;,
+
+    &#39;MODULE2_BASELINE_STRATEGY_SET&#39;,
+    &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;,
+    &#39;V1_0&#39;,
+
+    &#39;MODULE1_V2_BASELINE_SET&#39;,
+    &#39;BASELINE_V2&#39;,
+    &#39;BASE_POPULATION_V1&#39;
+);
+
+
+/*
+Optional future comparisons can be added here with active_comparison_flag = FALSE.
+
+Only one comparison should be active at a time. The selected active row is copied into
+tmp_m2_strategy_comparison_params, which is the canonical table used by Sections 13.2+.
+*/
+
+
+/***************************************************************************************************
+SECTION 13.0A — COMPARISON PARAMETER GATEKEEPER
+****************************************************************************************************
+
+PURPOSE:
+    Validate that exactly one active comparison has been selected and that the selected comparison
+    is meaningful before downstream Section 13 matched-comparison queries run.
+
+WHY THIS GATEKEEPER EXISTS:
+    Section 13 comparison outputs can appear blank if the challenger strategy slice does not exist
+    or if placeholder comparison parameters are used.
+
+    This gatekeeper prevents accidental placeholder comparison setup and protects reviewers from
+    interpreting blank output as a strategy result.
+
+BOUNDARY:
+    This gatekeeper validates comparison selection only.
+    It does not modify archive rows.
+    It does not recalculate any strategy output.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_active_comparison_count BIGINT;
+    v_placeholder_count BIGINT;
+    v_same_strategy_count BIGINT;
+BEGIN
+    SELECT COUNT(*)
+    INTO v_active_comparison_count
+    FROM tmp_m2_strategy_comparison_registry
+    WHERE active_comparison_flag IS TRUE;
+
+    IF v_active_comparison_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13.0 failure: expected exactly one active strategy comparison, found %.&#39;,
+            v_active_comparison_count;
+    END IF;
+
+
+    SELECT COUNT(*)
+    INTO v_placeholder_count
+    FROM tmp_m2_strategy_comparison_registry
+    WHERE active_comparison_flag IS TRUE
+      AND (
+             baseline_strategy_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR challenger_strategy_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR baseline_strategy_set_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR challenger_strategy_set_name ILIKE &#39;%PLACEHOLDER%&#39;
+          OR comparison_set_name ILIKE &#39;%PLACEHOLDER%&#39;
+      );
+
+    IF v_placeholder_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13.0 failure: active comparison contains placeholder strategy identifiers. Update tmp_m2_strategy_comparison_registry before running matched comparison.&#39;;
+    END IF;
+
+
+    SELECT COUNT(*)
+    INTO v_same_strategy_count
+    FROM tmp_m2_strategy_comparison_registry
+    WHERE active_comparison_flag IS TRUE
+      AND baseline_strategy_set_name = challenger_strategy_set_name
+      AND baseline_strategy_name = challenger_strategy_name
+      AND baseline_strategy_version = challenger_strategy_version;
+
+    IF v_same_strategy_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 13.0 failure: active comparison selects the same strategy as both baseline and challenger.&#39;;
+    END IF;
+END $$;
+
+
+/***************************************************************************************************
+SECTION 13.0B — CANONICAL ACTIVE COMPARISON PARAMETER TABLE
+****************************************************************************************************
+
+PURPOSE:
+    Materialize the single active comparison into the canonical parameter table used by all
+    downstream Section 13 queries.
+
+WHY THIS TABLE IS PRESERVED:
+    Sections 13.2 through 13.11 already reference tmp_m2_strategy_comparison_params.
+
+    By loading the active registry row into this canonical table, the permanent Section 13 fix
+    avoids rewriting downstream comparison queries.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_comparison_params;
+
+CREATE TEMP TABLE tmp_m2_strategy_comparison_params (
+    comparison_set_name                   TEXT,
+
+    baseline_strategy_set_name            TEXT,
+    baseline_strategy_name                TEXT,
+    baseline_strategy_version             TEXT,
+
+    challenger_strategy_set_name          TEXT,
+    challenger_strategy_name              TEXT,
+    challenger_strategy_version           TEXT,
+
+    module1_scenario_set_name             TEXT,
+    module1_scenario_name                 TEXT,
+    population_id                         TEXT
+) ON COMMIT PRESERVE ROWS;
+
+
+INSERT INTO tmp_m2_strategy_comparison_params (
+    comparison_set_name,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+)
+SELECT
+    comparison_set_name,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+FROM tmp_m2_strategy_comparison_registry
+WHERE active_comparison_flag IS TRUE;
+
+
+/*
+Diagnostic display of the selected active comparison.
+
+This is the comparison that Sections 13.2 through 13.11 will use.
+*/
+SELECT
+    comparison_set_name,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+FROM tmp_m2_strategy_comparison_params;
+</code></pre>
+<hr>
+<h2>What this fixes</h2>
+<p>This permanently fixes the problem where Section 13 accidentally compares:</p>
+<pre><code class="language-text">latest-run strategy
+vs
+CHALLENGER_STRATEGY_PLACEHOLDER
+</code></pre>
+<p>Instead, Section 13 will now compare the explicitly selected active comparison:</p>
+<pre><code class="language-text">BASELINE_STRATEGY
+vs
+TIGHTER_SYNTHETIC_RISK_STRATEGY
+</code></pre>
+<p>on:</p>
+<pre><code class="language-text">MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+</code></pre>
+<h2>What should happen after this patch</h2>
+<p>After rerunning Section 13 with this Section 13.0 replacement, Section 13.2 should show:</p>
+<pre><code class="language-text">readiness_status = READY_FOR_MATCHED_COMPARISON
+baseline_archived_row_count = 50,000
+challenger_archived_row_count = 50,000
+matched_application_id_count = 50,000
+baseline_only_application_id_count = 0
+challenger_only_application_id_count = 0
+</code></pre>
+<p>Then Sections 13.4 through 13.7 should populate normally.</p>
+<h2>Recommended adoption</h2>
+<p>I recommend treating this as a <strong>required Section 13 hardening patch</strong> before further matched strategy comparison.</p>
+<p>It does not change:</p>
+<pre><code class="language-text">decision logic
+approved exposure logic
+approved Expected Loss logic
+reason-code logic
+archive persistence logic
+latest-run output
+archive rows
+</code></pre>
+<p>It only fixes the comparison-selection framework so Section 13 is stable, explicit, and reusable as your strategy library grows.</p>
+</div></article><article id="c038-m00478" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00478 · 2026-05-08T15:38:55.408000-04:00 · active path</p><div class="body"><p>review section 13 QA: </p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.4_QA_baseline_vs_challenger_portfolio_level_delta_summary.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.5_QA_archive_inventory_and_matched_strategy_comparison_framework_decision_migration_matrix.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.6_QA_archive_inventory_and_matched_strategy_comparison_framework_matched_applicant_level_delta_sample.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.7A_QA_archive_inventory_and_matched_strategy_comparison_framework_product_level_matched_strategy_delta_summary.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.7B_QA_archive_inventory_and_matched_strategy_comparison_framework_score_band_level_matched_strategy_delta_summary.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.7C_QA_archive_inventory_and_matched_strategy_comparison_framework_product_x_score_band_matched_strategy_delta_summary.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.8A_QA_archive_inventory_and_matched_strategy_comparison_framework_primary_reason_distribution_by_selected_strategy.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.8B_QA_archive_inventory_and_matched_strategy_comparison_framework_matched_reason_code_migration.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.9_QA_archive_inventory_and_matched_strategy_comparison_framework_simulated_offer_exposure_comparison.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.10_QA_archive_inventory_and_matched_strategy_comparison_framework_unmatched_row_diagnostic_expected_result_zero_rows.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.11_QA_archive_inventory_and_matched_strategy_comparison_framework_matched_module_1_source_field_consistency_diagnostic.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.0_QA_archive_inventory_and_matched_strategy_comparison_framework_parameter_setup(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.1_QA_archive_inventory(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.1_QA_outcome_inventory_for_archived_strategy_slices(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.1_QA_archive_grain_diagnostic_expected_result_zero_rows(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.2_QA_archive_inventory_and_matched_strategy_comparison_framework_selected_comparison_readiness(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_13.3_QA_portfolio_level_archived_strategy_summary(1).csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00489" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00489 · 2026-05-08T15:43:44.999069-04:00 · active path</p><div class="body"><h2>Section 13 QA review — Archive Inventory and Matched Strategy Comparison Framework</h2>
+<p><strong>Verdict: PASS, with one code-control note.</strong></p>
+<p>The Section 13 QA now behaves correctly. The comparison parameter issue is resolved for this run, both archived strategy slices are present, the matched comparison is ready, source fields match exactly, and Sections 13.4–13.11 now produce meaningful baseline-versus-challenger outputs.</p>
+<p>This confirms that Section 13 is successfully comparing:</p>
+<pre><code class="language-text">Baseline:
+MODULE2_BASELINE_STRATEGY_SET / BASELINE_STRATEGY / V1_0
+
+Challenger:
+MODULE2_BASELINE_STRATEGY_SET / TIGHTER_SYNTHETIC_RISK_STRATEGY / V1_0
+
+Module 1 source:
+MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+</code></pre>
+<p>That is the correct comparison design: same Module 1 scenario and population, different Module 2 strategy.</p>
+<hr>
+<h1>1. Section 13.0 — Comparison parameter setup</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The comparison parameter row is now correct:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>comparison_set_name</code></td>
+<td><code>BASELINE_V2_BASELINE_STRATEGY_VS_TIGHTER_SYNTHETIC_RISK</code></td>
+</tr>
+<tr>
+<td>Baseline strategy</td>
+<td><code>BASELINE_STRATEGY / V1_0</code></td>
+</tr>
+<tr>
+<td>Challenger strategy</td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY / V1_0</code></td>
+</tr>
+<tr>
+<td>Module 1 scenario</td>
+<td><code>MODULE1_V2_BASELINE_SET / BASELINE_V2</code></td>
+</tr>
+<tr>
+<td>Population</td>
+<td><code>BASE_POPULATION_V1</code></td>
+</tr>
+</tbody></table>
+<p>This fixes the earlier problem where the comparison selected a placeholder challenger and caused Sections 13.4–13.7 to return blank outputs.</p>
+<p><strong>Code-control note:</strong> the attached Section 13 code excerpt still appears to show the earlier placeholder-based default behavior, where baseline is inferred from <code>strategy_decisions</code> and challenger is set to <code>CHALLENGER_STRATEGY_PLACEHOLDER</code>. If that is still in the canonical SQL, the permanent Section 13.0 registry patch should be integrated before final code recapture. The current QA proves the comparison parameters were corrected for this run, but the final script should not rely on a manual update after Section 13.0. fileciteturn6file0</p>
+<hr>
+<h1>2. Section 13.1 — Archive inventory</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The archive contains both required strategy slices:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th align="right">Rows</th>
+<th align="right">Distinct applications</th>
+<th align="right">Approve</th>
+<th align="right">Counteroffer</th>
+<th align="right">Manual review</th>
+<th align="right">Decline</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">11,291</td>
+<td align="right">19,067</td>
+<td align="right">6,939</td>
+<td align="right">12,703</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">10,649</td>
+<td align="right">18,452</td>
+<td align="right">6,017</td>
+<td align="right">14,882</td>
+</tr>
+</tbody></table>
+<p>The archive grain diagnostic returns zero rows, so there are no duplicate archive rows at:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+application_id
+</code></pre>
+<p>This confirms archive readiness for matched strategy comparison.</p>
+<hr>
+<h1>3. Section 13.2 — Selected comparison readiness</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Readiness status is:</p>
+<pre><code class="language-text">READY_FOR_MATCHED_COMPARISON
+</code></pre>
+<p>Key readiness values:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th align="right">Observed</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline archived rows</td>
+<td align="right">50,000</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Challenger archived rows</td>
+<td align="right">50,000</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Baseline distinct applications</td>
+<td align="right">50,000</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Challenger distinct applications</td>
+<td align="right">50,000</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Matched <code>application_id</code> count</td>
+<td align="right">50,000</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Baseline-only applications</td>
+<td align="right">0</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Challenger-only applications</td>
+<td align="right">0</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Duplicate application rows</td>
+<td align="right">0 both sides</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Same strategy selected</td>
+<td align="right"><code>FALSE</code></td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>This is the core Section 13 acceptance result.</p>
+<p>The matched comparison is valid because the baseline and challenger are applied to the same Module 1 archived scenario and the same <code>population_id</code>. This preserves the interpretation that deltas are downstream Module 2 strategy effects, not upstream Module 1 scenario drift.</p>
+<hr>
+<h1>4. Section 13.3 — Portfolio-level archived strategy summary</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The portfolio summary shows the tighter synthetic-risk strategy behaving directionally as expected.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Baseline</th>
+<th align="right">Tighter synthetic-risk</th>
+<th align="right">Delta</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Applications</td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Approval rate</td>
+<td align="right">22.58%</td>
+<td align="right">21.30%</td>
+<td align="right">-1.28 pts</td>
+</tr>
+<tr>
+<td>Counteroffer rate</td>
+<td align="right">38.13%</td>
+<td align="right">36.90%</td>
+<td align="right">-1.23 pts</td>
+</tr>
+<tr>
+<td>Manual review rate</td>
+<td align="right">13.88%</td>
+<td align="right">12.03%</td>
+<td align="right">-1.84 pts</td>
+</tr>
+<tr>
+<td>Decline rate</td>
+<td align="right">25.41%</td>
+<td align="right">29.76%</td>
+<td align="right">+4.36 pts</td>
+</tr>
+<tr>
+<td>Simulated offer-exposure rate</td>
+<td align="right">60.72%</td>
+<td align="right">58.20%</td>
+<td align="right">-2.51 pts</td>
+</tr>
+<tr>
+<td>Total approved amount</td>
+<td align="right">$3.880B</td>
+<td align="right">$3.728B</td>
+<td align="right">-$151.3M</td>
+</tr>
+<tr>
+<td>Total approved Expected Loss</td>
+<td align="right">$58.93M</td>
+<td align="right">$51.67M</td>
+<td align="right">-$7.26M</td>
+</tr>
+<tr>
+<td>Avg synthetic estimated-PD proxy among offer rows</td>
+<td align="right">0.0642</td>
+<td align="right">0.0564</td>
+<td align="right">-0.0079</td>
+</tr>
+<tr>
+<td>Avg approved PTI among offer rows</td>
+<td align="right">0.1221</td>
+<td align="right">0.1197</td>
+<td align="right">-0.0024</td>
+</tr>
+</tbody></table>
+<p>This is a strong result. The tighter synthetic-risk strategy reduces offer exposure, total approved amount, and approved Expected Loss. The tradeoff is a higher decline rate.</p>
+<p>Requested amount and requested Expected Loss are unchanged across strategies, which is exactly what we want in a matched Module 2 strategy comparison. The same Module 1 inputs were used; only the downstream strategy changed.</p>
+<hr>
+<h1>5. Section 13.4 — Baseline vs challenger portfolio delta summary</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Section 13.4 confirms the same portfolio-level tradeoff in explicit <code>baseline_*</code>, <code>challenger_*</code>, and <code>delta_*</code> form.</p>
+<p>Important deltas:</p>
+<pre><code class="language-text">delta_approval_rate                    = -0.01284
+delta_counteroffer_rate                = -0.01230
+delta_manual_review_rate               = -0.01844
+delta_decline_rate                     = +0.04358
+delta_simulated_offer_exposure_rate    = -0.02514
+delta_total_approved_amount            = -151,306,405.84
+delta_total_approved_expected_loss     = -7,257,884.13
+delta_avg_approved_expected_loss_all_apps = -145.16
+delta_avg_synthetic_estimated_pd_proxy_offer_rows = -0.00785
+</code></pre>
+<p>This is exactly the strategic story expected from a tighter synthetic estimated-risk proxy strategy:</p>
+<pre><code class="language-text">less offer exposure
+lower approved Expected Loss
+lower offered-population risk proxy
+more final declines
+</code></pre>
+<p>No issue indicated.</p>
+<hr>
+<h1>6. Section 13.5 — Decision migration matrix</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The decision migration matrix is populated and interpretable.</p>
+<p>Total stability / migration:</p>
+<table>
+<thead>
+<tr>
+<th>Migration type</th>
+<th align="right">Rows</th>
+<th align="right">Share</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Stable final outcome</td>
+<td align="right">45,469</td>
+<td align="right">90.94%</td>
+</tr>
+<tr>
+<td>Migrated final outcome</td>
+<td align="right">4,531</td>
+<td align="right">9.06%</td>
+</tr>
+</tbody></table>
+<p>Decision migration detail:</p>
+<table>
+<thead>
+<tr>
+<th>Baseline outcome</th>
+<th>Challenger outcome</th>
+<th align="right">Rows</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">10,649</td>
+<td>Stable approvals</td>
+</tr>
+<tr>
+<td><code>APPROVE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">581</td>
+<td>Tightening converts clean approvals to constrained offers</td>
+</tr>
+<tr>
+<td><code>APPROVE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">61</td>
+<td>Tightening moves a small approval population into unresolved review</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">17,324</td>
+<td>Stable counteroffers</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">1,163</td>
+<td>Counteroffers become unresolved under tighter risk</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">580</td>
+<td>Counteroffers become no-offer paths</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">547</td>
+<td>Previously unresolved rows become reduced-offer feasible</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,793</td>
+<td>Stable manual review</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">1,599</td>
+<td>Review rows become no-offer paths</td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">12,703</td>
+<td>Stable declines</td>
+</tr>
+</tbody></table>
+<p>This is one of the most valuable Section 13 outputs.</p>
+<p>The largest strategic movement is toward more declines, especially from manual review and counteroffer populations. That is directionally consistent with tighter synthetic-risk thresholds.</p>
+<p>The <code>MANUAL_REVIEW → COUNTEROFFER</code> movement is not automatically a defect. It reflects the fact that threshold changes can alter routing and feasibility paths, not merely tighten outcomes monotonically at the aggregate level. The key validation point is that source fields match, archive rows match, and the movement is explainable in reason-code migration.</p>
+<hr>
+<h1>7. Section 13.6 — Matched applicant-level delta sample</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The top 50 row-level movements are concentrated in:</p>
+<pre><code class="language-text">MORTGAGE / SUBPRIME
+baseline COUNTEROFFER → challenger DECLINE
+</code></pre>
+<p>The dominant reason-code movement is:</p>
+<pre><code class="language-text">COUNTEROFFER_EXPECTED_LOSS_LIMIT
+or
+COUNTEROFFER_AFFORDABILITY_ADJUSTMENT
+
+moving to
+
+POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+</code></pre>
+<p>The top 50 rows show large approved-exposure and approved Expected Loss reductions:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Typical observed pattern</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Baseline approved amount</td>
+<td align="right">about $145K–$165K</td>
+</tr>
+<tr>
+<td>Challenger approved amount</td>
+<td align="right">$0</td>
+</tr>
+<tr>
+<td>Delta approved amount</td>
+<td align="right">about -$145K to -$165K</td>
+</tr>
+<tr>
+<td>Baseline approved Expected Loss</td>
+<td align="right">about $9.94K–$10.00K</td>
+</tr>
+<tr>
+<td>Challenger approved Expected Loss</td>
+<td align="right">$0</td>
+</tr>
+<tr>
+<td>Delta approved Expected Loss</td>
+<td align="right">about -$9.94K to -$10.00K</td>
+</tr>
+</tbody></table>
+<p>This is a strong diagnostic result. The largest row-level deltas are exactly where a tighter synthetic-risk strategy should have the most visible impact: high-risk, high-exposure, previously feasible counteroffer rows becoming no-offer paths.</p>
+<hr>
+<h1>8. Section 13.7 — Product / score / product × score deltas</h1>
+<h2>13.7A — Product-level deltas</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Every product shows increased decline rate under the tighter strategy.</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Delta approval rate</th>
+<th align="right">Delta counteroffer rate</th>
+<th align="right">Delta manual review rate</th>
+<th align="right">Delta decline rate</th>
+<th align="right">Delta offer-exposure rate</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">-2.07 pts</td>
+<td align="right">+0.82 pts</td>
+<td align="right">-2.87 pts</td>
+<td align="right">+4.11 pts</td>
+<td align="right">-1.25 pts</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right">-1.51 pts</td>
+<td align="right">-1.83 pts</td>
+<td align="right">-0.81 pts</td>
+<td align="right">+4.15 pts</td>
+<td align="right">-3.35 pts</td>
+</tr>
+<tr>
+<td><code>MORTGAGE</code></td>
+<td align="right">-0.74 pts</td>
+<td align="right">-3.97 pts</td>
+<td align="right">+0.09 pts</td>
+<td align="right">+4.61 pts</td>
+<td align="right">-4.71 pts</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">-1.28 pts</td>
+<td align="right">+0.07 pts</td>
+<td align="right">-3.23 pts</td>
+<td align="right">+4.43 pts</td>
+<td align="right">-1.20 pts</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">-1.20 pts</td>
+<td align="right">-0.22 pts</td>
+<td align="right">-2.76 pts</td>
+<td align="right">+4.19 pts</td>
+<td align="right">-1.43 pts</td>
+</tr>
+</tbody></table>
+<p>Mortgage has the largest offer-exposure reduction and the largest average approved amount reduction:</p>
+<pre><code class="language-text">Mortgage delta offer-exposure rate = -4.71 pts
+Mortgage delta avg approved amount all apps = -$8,338.51
+Mortgage delta avg approved Expected Loss all apps = -$348.50
+</code></pre>
+<p>That is intuitive because mortgage has large exposure and approved Expected Loss is sensitive to exposure treatment.</p>
+<h2>13.7B — Score-band deltas</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Score-band movement is highly interpretable.</p>
+<table>
+<thead>
+<tr>
+<th>Score band</th>
+<th align="right">Delta approval rate</th>
+<th align="right">Delta counteroffer rate</th>
+<th align="right">Delta manual review rate</th>
+<th align="right">Delta decline rate</th>
+<th align="right">Delta offer-exposure rate</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SUPER_PRIME</code></td>
+<td align="right">0.00 pts</td>
+<td align="right">0.00 pts</td>
+<td align="right">0.00 pts</td>
+<td align="right">0.00 pts</td>
+<td align="right">0.00 pts</td>
+</tr>
+<tr>
+<td><code>PRIME</code></td>
+<td align="right">-0.59 pts</td>
+<td align="right">+1.05 pts</td>
+<td align="right">-0.46 pts</td>
+<td align="right">0.00 pts</td>
+<td align="right">+0.46 pts</td>
+</tr>
+<tr>
+<td><code>NEAR_PRIME</code></td>
+<td align="right">-4.63 pts</td>
+<td align="right">-1.51 pts</td>
+<td align="right">+6.02 pts</td>
+<td align="right">+0.12 pts</td>
+<td align="right">-6.14 pts</td>
+</tr>
+<tr>
+<td><code>SUBPRIME</code></td>
+<td align="right">0.00 pts</td>
+<td align="right">-6.50 pts</td>
+<td align="right">-17.63 pts</td>
+<td align="right">+24.13 pts</td>
+<td align="right">-6.50 pts</td>
+</tr>
+<tr>
+<td><code>DEEP_SUBPRIME</code></td>
+<td align="right">0.00 pts</td>
+<td align="right">-0.02 pts</td>
+<td align="right">-0.26 pts</td>
+<td align="right">+0.28 pts</td>
+<td align="right">-0.02 pts</td>
+</tr>
+</tbody></table>
+<p>This is very strong.</p>
+<p>Interpretation:</p>
+<ul>
+<li><code>SUPER_PRIME</code> is unaffected by the tighter synthetic-risk strategy.</li>
+<li><code>PRIME</code> sees only minor movement, mostly approvals becoming counteroffers or review moving to offer.</li>
+<li><code>NEAR_PRIME</code> becomes the main threshold-sensitive middle-risk zone.</li>
+<li><code>SUBPRIME</code> sees the largest tightening effect, with a +24.13 percentage-point decline-rate increase.</li>
+<li><code>DEEP_SUBPRIME</code> was already almost entirely declined under baseline, so the challenger has little room to move it further.</li>
+</ul>
+<p>This is exactly the kind of segment-level behavior that makes the strategy comparison marketable.</p>
+<h2>13.7C — Product × score deltas</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The product × score matrix shows where tightening concentrates.</p>
+<p>Most important movements:</p>
+<table>
+<thead>
+<tr>
+<th>Segment</th>
+<th>Key movement</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE / SUBPRIME</code></td>
+<td>Decline rate +25.96 pts; offer-exposure rate -10.31 pts</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE / SUBPRIME</code></td>
+<td>Decline rate +24.64 pts; manual review -20.54 pts</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN / SUBPRIME</code></td>
+<td>Decline rate +22.85 pts</td>
+</tr>
+<tr>
+<td><code>HELOC / SUBPRIME</code></td>
+<td>Decline rate +22.26 pts</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN / SUBPRIME</code></td>
+<td>Decline rate +22.66 pts</td>
+</tr>
+<tr>
+<td><code>MORTGAGE / NEAR_PRIME</code></td>
+<td>Offer-exposure rate -13.50 pts; manual review +13.25 pts</td>
+</tr>
+<tr>
+<td><code>HELOC / NEAR_PRIME</code></td>
+<td>Offer-exposure rate -8.42 pts; manual review +8.08 pts</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN / NEAR_PRIME</code></td>
+<td>Approval rate -8.45 pts; counteroffer +7.24 pts</td>
+</tr>
+</tbody></table>
+<p>This is excellent segment evidence. It shows that the challenger strategy does not affect all segments equally. It concentrates in the middle and weak-score bands, especially where product exposure is material.</p>
+<hr>
+<h1>9. Section 13.8 — Reason-code movement</h1>
+<h2>13.8A — Primary reason distribution by selected strategy</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The reason-code distribution changes in the expected direction.</p>
+<p>Most important changes:</p>
+<table>
+<thead>
+<tr>
+<th>Reason code</th>
+<th align="right">Baseline</th>
+<th align="right">Challenger</th>
+<th>Direction</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+<td align="right">11,291</td>
+<td align="right">10,649</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+<td align="right">8,905</td>
+<td align="right">8,905</td>
+<td>Stable</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_AFFORDABILITY_ADJUSTMENT</code></td>
+<td align="right">5,021</td>
+<td align="right">4,713</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_EXPECTED_LOSS_LIMIT</code></td>
+<td align="right">1,288</td>
+<td align="right">770</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_SYNTHETIC_RISK_EXPOSURE_LIMIT</code></td>
+<td align="right">3,853</td>
+<td align="right">4,064</td>
+<td>Up</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW_BORDERLINE_SYNTHETIC_RISK</code></td>
+<td align="right">2,961</td>
+<td align="right">2,788</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW_COUNTEROFFER_BELOW_MINIMUM_OFFER</code></td>
+<td align="right">2,130</td>
+<td align="right">1,144</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code></td>
+<td align="right">6,369</td>
+<td align="right">8,623</td>
+<td>Up materially</td>
+</tr>
+</tbody></table>
+<p>This is exactly what a tighter synthetic-risk strategy should show: more final no-offer outcomes explained by high synthetic estimated-PD proxy, fewer approvals, fewer feasible counteroffers, and lower approved Expected Loss.</p>
+<h2>13.8B — Matched reason-code migration</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Reason-code migration summary:</p>
+<table>
+<thead>
+<tr>
+<th>Reason migration type</th>
+<th align="right">Rows</th>
+<th align="right">Share</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Stable reason code</td>
+<td align="right">45,214</td>
+<td align="right">90.43%</td>
+</tr>
+<tr>
+<td>Moved across reason family</td>
+<td align="right">4,531</td>
+<td align="right">9.06%</td>
+</tr>
+<tr>
+<td>Moved within reason family</td>
+<td align="right">255</td>
+<td align="right">0.51%</td>
+</tr>
+</tbody></table>
+<p>This reconciles perfectly with the decision migration matrix:</p>
+<pre><code class="language-text">4,531 migrated outcomes = 4,531 moved across reason family
+</code></pre>
+<p>That is a clean result. When final outcomes changed, primary reason families changed accordingly.</p>
+<p>Important movement examples:</p>
+<ul>
+<li><code>MANUAL_REVIEW_COUNTEROFFER_BELOW_MINIMUM_OFFER → POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code>: 986 rows</li>
+<li><code>APPROVED_AS_REQUESTED → COUNTEROFFER_SYNTHETIC_RISK_EXPOSURE_LIMIT</code>: 576 rows</li>
+<li><code>COUNTEROFFER_SYNTHETIC_RISK_EXPOSURE_LIMIT → MANUAL_REVIEW_ELEVATED_SYNTHETIC_RISK</code>: 530 rows</li>
+<li><code>MANUAL_REVIEW_BORDERLINE_SYNTHETIC_RISK → COUNTEROFFER_SYNTHETIC_RISK_EXPOSURE_LIMIT</code>: 483 rows</li>
+<li><code>COUNTEROFFER_EXPECTED_LOSS_LIMIT → POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code>: 448 rows</li>
+</ul>
+<p>This is highly explainable and strong for portfolio storytelling.</p>
+<hr>
+<h1>10. Section 13.9 — Simulated offer-exposure comparison</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The tighter strategy reduces simulated offer exposure and improves offered-population risk quality.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Baseline</th>
+<th align="right">Challenger</th>
+<th>Direction</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Offer count</td>
+<td align="right">30,358</td>
+<td align="right">29,101</td>
+<td>Down 1,257</td>
+</tr>
+<tr>
+<td>Positive offer rate</td>
+<td align="right">60.72%</td>
+<td align="right">58.20%</td>
+<td>Down 2.51 pts</td>
+</tr>
+<tr>
+<td>Approval share of offers</td>
+<td align="right">37.19%</td>
+<td align="right">36.59%</td>
+<td>Slightly down</td>
+</tr>
+<tr>
+<td>Counteroffer share of offers</td>
+<td align="right">62.81%</td>
+<td align="right">63.41%</td>
+<td>Slightly up</td>
+</tr>
+<tr>
+<td>Total approved amount</td>
+<td align="right">$3.880B</td>
+<td align="right">$3.728B</td>
+<td>Down $151.3M</td>
+</tr>
+<tr>
+<td>Avg approved amount offer rows</td>
+<td align="right">$127,792</td>
+<td align="right">$128,113</td>
+<td>Slightly up</td>
+</tr>
+<tr>
+<td>Avg synthetic estimated-PD proxy offer rows</td>
+<td align="right">0.0642</td>
+<td align="right">0.0564</td>
+<td>Down</td>
+</tr>
+<tr>
+<td>Avg approved PTI offer rows</td>
+<td align="right">0.1221</td>
+<td align="right">0.1197</td>
+<td>Down</td>
+</tr>
+<tr>
+<td>Total approved Expected Loss</td>
+<td align="right">$58.93M</td>
+<td align="right">$51.67M</td>
+<td>Down $7.26M</td>
+</tr>
+<tr>
+<td>Avg approved Expected Loss offer rows</td>
+<td align="right">$1,941</td>
+<td align="right">$1,776</td>
+<td>Down</td>
+</tr>
+</tbody></table>
+<p>The slight increase in average approved amount among offer rows is not a defect. The tighter strategy removed or moved some riskier/lower-quality offered rows, while the remaining offer population has lower synthetic estimated-PD proxy and lower approved Expected Loss. The total approved amount falls materially, which is the more important portfolio-level exposure result.</p>
+<p>This is a very strong “strategy frontier” signal.</p>
+<hr>
+<h1>11. Section 13.10 — Unmatched row diagnostic</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The unmatched row diagnostic returns zero rows.</p>
+<p>That confirms:</p>
+<pre><code class="language-text">baseline-only application_id count = 0
+challenger-only application_id count = 0
+</code></pre>
+<p>No row-matching issue exists.</p>
+<hr>
+<h1>12. Section 13.11 — Matched Module 1 source-field consistency diagnostic</h1>
+<p><strong>Assessment: PASS.</strong></p>
+<p>This is one of the most important Section 13 outputs.</p>
+<p>Observed:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th align="right">Count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Matched applications</td>
+<td align="right">50,000</td>
+</tr>
+<tr>
+<td>Source field mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Product type mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Score band mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Credit score mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Annual income mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Requested amount mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Requested payment mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Requested PTI mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Amount-to-income mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Synthetic estimated-PD proxy mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>LGD mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Requested Expected Loss mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Module 1 lineage mismatches</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Source consistency status</td>
+<td align="right"><code>SOURCE_FIELDS_MATCH</code></td>
+</tr>
+</tbody></table>
+<p>This proves the comparison isolated Module 2 strategy effects. The baseline and challenger rows use the same Module 1 application profile, requested structure, affordability, synthetic estimated-PD proxy, LGD, requested Expected Loss, and scenario lineage.</p>
+<p>That is the exact evidence needed to support a clean matched strategy comparison.</p>
+<hr>
+<h1>Section 13 acceptance conclusion</h1>
+<p>Section 13 passes.</p>
+<p>Accepted evidence:</p>
+<ul>
+<li>Archive inventory contains both baseline and tighter synthetic-risk strategy slices.</li>
+<li>Both slices contain 50,000 rows and 50,000 distinct <code>application_id</code> values.</li>
+<li>Archive grain duplicate diagnostic returns zero rows.</li>
+<li>Comparison parameters correctly select baseline vs tighter synthetic-risk strategy.</li>
+<li>Readiness status is <code>READY_FOR_MATCHED_COMPARISON</code>.</li>
+<li>Matched application count is 50,000.</li>
+<li>No unmatched baseline-only or challenger-only rows exist.</li>
+<li>Portfolio-level deltas are populated and interpretable.</li>
+<li>Decision migration matrix is populated and uses the matched-population denominator.</li>
+<li>90.94% of rows are stable and 9.06% migrate under the tighter strategy.</li>
+<li>Tighter strategy reduces approvals, counteroffers, manual reviews, simulated offer exposure, total approved amount, and total approved Expected Loss.</li>
+<li>Tighter strategy increases final declines by 2,179 rows.</li>
+<li>Segment deltas concentrate primarily in Near Prime and Subprime, especially product × score segments with meaningful exposure.</li>
+<li>Reason-code movement is aligned to outcome movement.</li>
+<li>Simulated offer-exposure comparison shows lower offered-population synthetic estimated-PD proxy and lower approved Expected Loss.</li>
+<li>Matched Module 1 source-field consistency is perfect.</li>
+<li>Section 13 remains read-only.</li>
+<li>No decision outcomes, approved exposure values, approved Expected Loss values, or simulated reason codes are recalculated by Section 13.</li>
+</ul>
+<h2>Patch recommendation</h2>
+<p>No Section 13 comparison-logic patch is recommended.</p>
+<p>One required <strong>code-control confirmation</strong> remains:</p>
+<pre><code class="language-text">Confirm the permanent Section 13.0 comparison registry patch is embedded in the canonical SQL,
+not just applied manually through a temporary parameter update.
+</code></pre>
+<p>If the canonical code still contains the old placeholder-based Section 13.0 behavior, patch it before final code recapture.</p>
+<h2>Strategic interpretation</h2>
+<p>The tighter synthetic-risk strategy produced an excellent first challenger comparison.</p>
+<p>The story is clear:</p>
+<pre><code class="language-text">Tighter synthetic estimated-risk proxy thresholds reduced simulated offer exposure by 2.51 percentage points,
+reduced total approved amount by $151.3M,
+reduced approved Expected Loss by $7.26M,
+and increased final declines by 4.36 percentage points.
+</code></pre>
+<p>That is a clean senior-credit-strategy narrative:</p>
+<pre><code class="language-text">risk discipline reduced approved exposure and approved Expected Loss, with a measurable access / decline-rate tradeoff.
+</code></pre>
+<p>This is exactly the kind of result that can later feed the strategy frontier summary.</p>
+</div></article><article id="c038-m00491" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00491 · 2026-05-08T15:49:02.731000-04:00 · active path</p><div class="body"><p>ok, let&#39;s talk appropriate next step.  I think building the strategy frontier summary would be a potential next step.  thoughts?</p>
+</div></article><article id="c038-m00493" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00493 · 2026-05-08T15:50:42.318406-04:00 · active path</p><div class="body"><p>Yes — <strong>building the strategy frontier summary is the right next step</strong>, but I would do it in a controlled order.</p>
+<p>My recommendation:</p>
+<pre><code class="language-text">1. First: permanently patch Section 13.0 comparison selection.
+2. Then: add a new Section 15 — Strategy Frontier Summary.
+</code></pre>
+<p>The reason is simple: Section 13 is currently validated functionally, but your attached code still shows the older placeholder/default comparison setup that infers baseline from <code>strategy_decisions</code> and sets <code>CHALLENGER_STRATEGY_PLACEHOLDER</code>. That behavior caused the earlier blank 13.4–13.7 outputs, so it should be fixed in the canonical SQL before we add new comparison layers. fileciteturn8file0</p>
+<h2>Recommended next step</h2>
+<h3>Step 1 — Required code-control patch</h3>
+<p>Apply the permanent Section 13.0 comparison registry patch we discussed:</p>
+<pre><code class="language-text">tmp_m2_strategy_comparison_registry
+→ exactly one active comparison
+→ tmp_m2_strategy_comparison_params
+</code></pre>
+<p>This removes dependency on whatever latest-run strategy happens to be in:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions
+</code></pre>
+<p>That is important because latest-run output is intentionally replaceable, while archive comparison should be explicitly selected.</p>
+<h3>Step 2 — Add Section 15</h3>
+<p>Add:</p>
+<pre><code class="language-text">SECTION 15 — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW
+</code></pre>
+<p>I would <strong>not</strong> make this part of Section 13. Section 13 is pairwise matched comparison. The strategy frontier is broader: it compares many archived strategy / scenario slices and produces executive-level tradeoff metrics.</p>
+<h2>Why Section 15 is valuable</h2>
+<p>Section 13 answered:</p>
+<pre><code class="language-text">How did one challenger strategy differ from one baseline strategy?
+</code></pre>
+<p>The strategy frontier should answer:</p>
+<pre><code class="language-text">Across all archived strategy runs, which strategy posture gives the best tradeoff between
+offer exposure, approved amount, approved Expected Loss, affordability, manual-review burden,
+and synthetic estimated-risk profile?
+</code></pre>
+<p>That is a much more senior-credit-strategy artifact.</p>
+<p>It also aligns well with the Module 1 design philosophy: the system is built for scenario-comparable, governed experimentation, not isolated one-off outputs. Module 1’s BRD emphasizes parameter governance, scenario comparability, archive persistence, matched row-level comparison, and QA evidence as core design principles. fileciteturn8file3 Module 1’s Validation Summary also validates matched scenario comparison and emphasizes that scenario differences should be attributable to controlled assumptions rather than population drift. fileciteturn8file4</p>
+<h2>Recommended Section 15 structure</h2>
+<p>I would build Section 15 as read-only and archive-driven.</p>
+<pre><code class="language-text">15.0 Frontier scope and boundary
+15.1 Archived strategy frontier inventory
+15.2 Strategy frontier summary by Module 1 scenario × Module 2 strategy
+15.3 Baseline-relative strategy frontier deltas
+15.4 Strategy efficiency metrics
+15.5 Efficient-frontier ranking
+15.6 Segment-level frontier highlights
+15.7 GitHub / LinkedIn export-ready summary
+</code></pre>
+<h2>Core Section 15 metrics</h2>
+<p>Each archived slice should produce one row at this grain:</p>
+<pre><code class="language-text">module1_scenario_set_name
+module1_scenario_name
+population_id
+strategy_set_name
+strategy_name
+strategy_version
+</code></pre>
+<p>Minimum fields:</p>
+<pre><code class="language-text">applications
+approval_rate
+counteroffer_rate
+manual_review_rate
+decline_rate
+simulated_offer_exposure_rate
+counteroffer_share_of_offers
+total_requested_amount
+total_approved_amount
+avg_approved_amount_offer_rows
+avg_synthetic_estimated_pd_proxy_offer_rows
+avg_synthetic_estimated_pd_proxy_declined_rows
+avg_requested_payment_to_income_ratio
+avg_approved_payment_to_income_ratio_offer_rows
+total_requested_expected_loss_amount
+total_approved_expected_loss_amount
+avg_approved_expected_loss_offer_rows
+approved_expected_loss_rate
+top_primary_reason_code
+top_primary_reason_family
+</code></pre>
+<p>The key senior-level metric is:</p>
+<pre><code class="language-sql">approved_expected_loss_rate =
+    total_approved_expected_loss_amount / NULLIF(total_approved_amount, 0)
+</code></pre>
+<p>That gives you a clean risk-efficiency metric.</p>
+<h2>Frontier interpretation</h2>
+<p>The frontier should not simply rank the “best” strategy. It should classify strategy posture.</p>
+<p>Example classifications:</p>
+<pre><code class="language-text">GROWTH_ORIENTED_FRONTIER
+RISK_DISCIPLINE_FRONTIER
+EXPOSURE_EFFICIENT_FRONTIER
+AFFORDABILITY_DISCIPLINE_FRONTIER
+HIGH_REVIEW_BURDEN
+HIGH_DECLINE_BURDEN
+BALANCED_BASELINE
+</code></pre>
+<p>This makes the output useful for storytelling.</p>
+<p>For example, your current validated comparison already supports a strong frontier signal:</p>
+<pre><code class="language-text">TIGHTER_SYNTHETIC_RISK_STRATEGY:
+- lower offer-exposure rate
+- lower total approved amount
+- lower total approved Expected Loss
+- lower average synthetic estimated-PD proxy among offer rows
+- higher decline rate
+</code></pre>
+<p>That is a classic <strong>risk discipline</strong> point on the frontier.</p>
+<h2>Important boundary</h2>
+<p>There should be two types of frontier views:</p>
+<h3>1. Pure Module 2 strategy frontier</h3>
+<p>Same Module 1 scenario and population:</p>
+<pre><code class="language-text">BASELINE_V2 + BASELINE_STRATEGY
+BASELINE_V2 + TIGHTER_SYNTHETIC_RISK_STRATEGY
+BASELINE_V2 + GROWTH_ORIENTED_STRATEGY
+BASELINE_V2 + COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+</code></pre>
+<p>This is the cleanest apples-to-apples strategy frontier.</p>
+<h3>2. Scenario × strategy frontier</h3>
+<p>Multiple Module 1 scenarios and Module 2 strategies:</p>
+<pre><code class="language-text">RATE_UP_200BP + BASELINE_STRATEGY
+RATE_DOWN_200BP + GROWTH_ORIENTED_STRATEGY
+UNSECURED_GROWTH_MIX + PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+</code></pre>
+<p>This is more like an executive control tower. It is useful, but it should not be interpreted as a pure strategy effect unless the Module 1 scenario is held constant.</p>
+<h2>My recommendation</h2>
+<p>Proceed in this order:</p>
+<pre><code class="language-text">1. Patch Section 13.0 permanently.
+2. Add Section 15 as a read-only frontier layer.
+3. Build Section 15 first using the two archived strategies you already have.
+4. Then add more Module 2 strategies to make the frontier more interesting.
+</code></pre>
+<p>With only two strategies, Section 15 will work, but it becomes truly compelling once you add at least:</p>
+<pre><code class="language-text">BASELINE_STRATEGY
+TIGHTER_SYNTHETIC_RISK_STRATEGY
+GROWTH_ORIENTED_STRATEGY
+COUNTEROFFER_FIRST_EXPOSURE_STRATEGY
+PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY
+</code></pre>
+<p>That will create the marketable “strategy frontier” story:</p>
+<pre><code class="language-text">growth vs risk discipline vs affordability vs exposure management
+</code></pre>
+<p>So yes: <strong>Section 15 is the right next enhancement</strong>, but I would lock the Section 13.0 comparison registry patch first.</p>
+</div></article><article id="c038-m00495" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00495 · 2026-05-08T16:01:42.843000-04:00 · active path</p><div class="body"><p>13.0 patch is already installed.</p>
+</div></article><article id="c038-m00497" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00497 · 2026-05-08T16:02:43.901738-04:00 · active path</p><div class="body"><p>Great. If the <strong>local canonical SQL now has the Section 13.0 comparison registry patch installed</strong>, then Section 13 is structurally ready and we can proceed to the strategy frontier layer.</p>
+<p>One note: the older attached Section 13 excerpt still showed the prior placeholder-driven setup, where the challenger defaulted to <code>CHALLENGER_STRATEGY_PLACEHOLDER</code>. If that attachment is stale and your current script now uses the registry / active-comparison design, no issue. The executed QA already confirms the comparison worked correctly. fileciteturn8file0</p>
+<h2>Recommended next step</h2>
+<p>Add a new read-only section:</p>
+<pre><code class="language-text">SECTION 15 — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW
+</code></pre>
+<p>This should come <strong>after Section 14</strong>.</p>
+<p>Section 15 should consume:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p>It should not modify latest-run or archive rows.</p>
+<h2>Why Section 15 is the right next enhancement</h2>
+<p>Section 13 answers:</p>
+<pre><code class="language-text">How did one challenger strategy compare to one baseline strategy?
+</code></pre>
+<p>Section 15 should answer:</p>
+<pre><code class="language-text">Across archived Module 1 scenarios and Module 2 strategies, what are the risk / growth / exposure / affordability tradeoffs?
+</code></pre>
+<p>That becomes your senior-credit-strategy “frontier” artifact.</p>
+<h2>Proposed Section 15 structure</h2>
+<pre><code class="language-text">15.0 Frontier scope and boundary
+15.1 Archived frontier inventory
+15.2 Strategy frontier summary
+15.3 Baseline-relative frontier deltas
+15.4 Strategy efficiency metrics
+15.5 Frontier classification
+15.6 Segment-level frontier highlights
+15.7 Export-ready executive summary
+</code></pre>
+<h2>Core metrics Section 15 should produce</h2>
+<p>At minimum, one row per:</p>
+<pre><code class="language-text">module1_scenario_set_name
+module1_scenario_name
+population_id
+strategy_set_name
+strategy_name
+strategy_version
+</code></pre>
+<p>with:</p>
+<pre><code class="language-text">applications
+approval_rate
+counteroffer_rate
+manual_review_rate
+decline_rate
+simulated_offer_exposure_rate
+counteroffer_share_of_offers
+total_approved_amount
+avg_approved_amount_offer_rows
+avg_synthetic_estimated_pd_proxy_offer_rows
+avg_approved_payment_to_income_ratio_offer_rows
+total_approved_expected_loss_amount
+avg_approved_expected_loss_offer_rows
+approved_expected_loss_rate
+top_primary_reason_code
+top_primary_reason_family
+</code></pre>
+<p>The most important frontier metric should be:</p>
+<pre><code class="language-sql">approved_expected_loss_rate =
+    total_approved_expected_loss_amount / NULLIF(total_approved_amount, 0)
+</code></pre>
+<p>That gives you an executive-readable risk-efficiency measure.</p>
+<h2>Recommended next deliverable</h2>
+<p>The next SQL build should be:</p>
+<pre><code class="language-text">SECTION 15 ONLY — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW
+</code></pre>
+<p>No changes to Sections 0–14.</p>
+</div></article><article id="c038-m00499" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00499 · 2026-05-08T16:03:24.754000-04:00 · active path</p><div class="body"><p>I agree with that structure.  Proceed with SECTION 15 ONLY — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW</p>
+</div></article><article id="c038-m00504" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00504 · 2026-05-08T16:09:33.895612-04:00 · active path</p><div class="body"><pre><code class="language-sql">/***************************************************************************************************
+SECTION 15 — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide an executive-ready, read-only strategy frontier view across archived Module 2 strategy
+    outputs.
+
+    Section 13 answers:
+
+        &quot;How does one selected challenger strategy compare to one selected baseline strategy?&quot;
+
+    Section 15 answers:
+
+        &quot;Across archived strategy / scenario slices, what are the portfolio-level tradeoffs between
+         simulated offer exposure, approved amount, approved Expected Loss, affordability, synthetic
+         estimated-risk profile, counteroffer usage, manual-review burden, and decline rate?&quot;
+
+SQL PURPOSE:
+    1. Consume credit_decisioning_sim.strategy_decisions_archive.
+    2. Summarize every archived Module 1 scenario × Module 2 strategy slice.
+    3. Calculate strategy frontier metrics.
+    4. Calculate baseline-relative deltas where a baseline strategy exists for the same Module 1
+       scenario / population / strategy set.
+    5. Classify strategy frontier posture using transparent diagnostic labels.
+    6. Provide segment-level frontier highlights.
+    7. Produce an executive-ready summary table for GitHub / LinkedIn / portfolio storytelling.
+
+READ-ONLY BOUNDARY:
+    Section 15 does not insert archive rows.
+    Section 15 does not delete archive rows.
+    Section 15 does not update archive rows.
+    Section 15 does not modify credit_decisioning_sim.strategy_decisions.
+    Section 15 does not modify credit_decisioning_sim.strategy_decisions_archive.
+    Section 15 does not recalculate decision_outcome.
+    Section 15 does not recalculate approved exposure.
+    Section 15 does not recalculate approved Expected Loss.
+    Section 15 does not reassign simulated reason codes.
+
+TEMPORARY OUTPUTS CREATED:
+    tmp_m2_strategy_frontier_inventory
+    tmp_m2_strategy_frontier_summary
+    tmp_m2_strategy_frontier_baseline_deltas
+    tmp_m2_strategy_frontier_efficiency
+    tmp_m2_strategy_frontier_classification
+    tmp_m2_strategy_frontier_segment_highlights
+    tmp_m2_strategy_frontier_executive_summary
+
+INTERPRETATION BOUNDARIES:
+    estimated_pd remains the finalized Module 1 SQL field name and is interpreted here as the
+    synthetic estimated-PD proxy.
+
+    requested_expected_loss_amount is requested-exposure Expected Loss from Module 1.
+
+    approved_expected_loss_amount is simulated approved-exposure Expected Loss after Module 2
+    exposure treatment.
+
+    simulated_offer_exposure_flag identifies simulated positive offer-exposure outcomes:
+        APPROVE
+        COUNTEROFFER
+
+    It does not imply operational account creation, funding, operational approval, or real applicant
+    treatment.
+
+    Simulated reason codes remain strategy explanation codes for QA, transparency, and portfolio
+    interpretation. They are not customer communications or regulatory reason codes.
+
+STRATEGY FRONTIER CONCEPT:
+    A strategy frontier is not a single &quot;best strategy&quot; ranking.
+
+    It is a structured view of tradeoffs:
+        access / simulated offer exposure,
+        approved exposure,
+        approved Expected Loss,
+        synthetic estimated-risk profile,
+        affordability quality,
+        counteroffer reliance,
+        manual-review burden,
+        and decline concentration.
+
+    A growth-oriented point may increase simulated offer exposure while increasing approved Expected
+    Loss. A risk-discipline point may reduce approved Expected Loss while lowering simulated offer
+    exposure. A counteroffer-management point may preserve more access while reducing approved
+    exposure quality metrics. These are strategy tradeoffs, not production recommendations.
+
+SCENARIO / STRATEGY DISCIPLINE:
+    Pure Module 2 strategy frontier:
+        Compare multiple Module 2 strategies within the same Module 1 scenario and population.
+
+    Scenario × strategy frontier:
+        Compare archived outcomes across multiple Module 1 scenarios and Module 2 strategies.
+
+    The pure strategy frontier is strongest for isolating downstream strategy effects.
+    The broader scenario × strategy frontier is useful as an executive control-tower view, but users
+    must preserve the distinction between upstream Module 1 scenario effects and downstream Module 2
+    strategy effects.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 15.0 — FRONTIER SCOPE AND ARCHIVE READINESS SNAPSHOT
+****************************************************************************************************
+
+PURPOSE:
+    Provide a quick read-only snapshot showing whether the archive contains strategy slices that can
+    support frontier analysis.
+
+INTERPRETATION:
+    Frontier analysis becomes more useful as more archived strategies and scenarios are added.
+
+    With one archived strategy slice, the frontier is an inventory only.
+    With two archived strategies under the same Module 1 scenario, the frontier can show a basic
+    tradeoff.
+    With three or more strategies, the frontier can begin to show growth / risk / exposure management
+    posture.
+
+***************************************************************************************************/
+
+SELECT
+    &#39;SECTION_15_FRONTIER_SCOPE&#39; AS diagnostic_name,
+
+    COUNT(*) AS archived_rows,
+    COUNT(DISTINCT application_id) AS distinct_archived_application_ids,
+
+    COUNT(DISTINCT
+        strategy_set_name
+        || &#39;|&#39; || strategy_name
+        || &#39;|&#39; || strategy_version
+        || &#39;|&#39; || module1_scenario_set_name
+        || &#39;|&#39; || module1_scenario_name
+        || &#39;|&#39; || population_id
+    ) AS archived_strategy_scenario_slice_count,
+
+    COUNT(DISTINCT
+        module1_scenario_set_name
+        || &#39;|&#39; || module1_scenario_name
+        || &#39;|&#39; || population_id
+    ) AS module1_scenario_population_slice_count,
+
+    COUNT(DISTINCT
+        strategy_set_name
+        || &#39;|&#39; || strategy_name
+        || &#39;|&#39; || strategy_version
+    ) AS module2_strategy_version_count,
+
+    MIN(archive_inserted_ts) AS min_archive_inserted_ts,
+    MAX(archive_inserted_ts) AS max_archive_inserted_ts,
+
+    CASE
+        WHEN COUNT(*) = 0
+            THEN &#39;FRONTIER_NOT_READY_ARCHIVE_EMPTY&#39;
+        WHEN COUNT(DISTINCT
+                strategy_set_name
+                || &#39;|&#39; || strategy_name
+                || &#39;|&#39; || strategy_version
+                || &#39;|&#39; || module1_scenario_set_name
+                || &#39;|&#39; || module1_scenario_name
+                || &#39;|&#39; || population_id
+             ) = 1
+            THEN &#39;FRONTIER_INVENTORY_ONLY_SINGLE_ARCHIVED_SLICE&#39;
+        WHEN COUNT(DISTINCT
+                strategy_set_name
+                || &#39;|&#39; || strategy_name
+                || &#39;|&#39; || strategy_version
+             ) &gt;= 2
+            THEN &#39;FRONTIER_READY_FOR_MULTI_STRATEGY_REVIEW&#39;
+        ELSE &#39;FRONTIER_AVAILABLE_FOR_ARCHIVE_REVIEW&#39;
+    END AS frontier_scope_status
+FROM credit_decisioning_sim.strategy_decisions_archive;
+
+
+
+/***************************************************************************************************
+SECTION 15.1 — ARCHIVED FRONTIER INVENTORY
+****************************************************************************************************
+
+PURPOSE:
+    Create an inventory of archived strategy / scenario slices available for frontier analysis.
+
+BUSINESS INTERPRETATION:
+    This table answers:
+
+        &quot;What completed Module 2 strategy runs are available in the archive, and how many rows
+         does each contain?&quot;
+
+GOVERNANCE ROLE:
+    Frontier analysis should start from archive inventory, not latest-run output, because the archive
+    preserves completed strategy slices across runs.
+
+    latest-run output is intentionally replaceable.
+    archive output is the governed history layer.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_inventory;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_inventory
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS archived_row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+    COUNT(*) - COUNT(DISTINCT application_id) AS duplicate_application_row_count,
+
+    MIN(latest_output_created_ts) AS min_latest_output_created_ts,
+    MAX(latest_output_created_ts) AS max_latest_output_created_ts,
+
+    MIN(archive_inserted_ts) AS min_archive_inserted_ts,
+    MAX(archive_inserted_ts) AS max_archive_inserted_ts,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;) AS approval_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;) AS decline_count,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS simulated_offer_exposure_count
+FROM credit_decisioning_sim.strategy_decisions_archive
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+/*
+Review output:
+    Archive frontier inventory.
+
+Expected use:
+    Confirm which strategy / scenario slices exist before interpreting frontier metrics.
+*/
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_inventory
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.2 — STRATEGY FRONTIER SUMMARY
+****************************************************************************************************
+
+PURPOSE:
+    Produce one summary row per archived Module 1 scenario × Module 2 strategy slice.
+
+BUSINESS INTERPRETATION:
+    This is the core strategy frontier table.
+
+    It summarizes:
+        decision distribution,
+        simulated offer exposure,
+        approved amount,
+        approved affordability,
+        synthetic estimated-risk profile,
+        requested Expected Loss,
+        approved Expected Loss,
+        and primary reason-code concentration.
+
+METRIC CONVENTIONS:
+    approval_rate:
+        approval_count / applications
+
+    counteroffer_rate:
+        counteroffer_count / applications
+
+    manual_review_rate:
+        manual_review_count / applications
+
+    decline_rate:
+        decline_count / applications
+
+    simulated_offer_exposure_rate:
+        simulated_offer_exposure_count / applications
+
+    counteroffer_share_of_offers:
+        counteroffer_count / simulated_offer_exposure_count
+
+    approved_expected_loss_rate:
+        total_approved_expected_loss_amount / total_approved_amount
+
+    All-application approved exposure metrics:
+        Use COALESCE(approved_amount, 0)
+        Use COALESCE(approved_expected_loss_amount, 0)
+
+    Offer-row metrics:
+        Use FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+
+BOUNDARY:
+    approved_expected_loss_rate is a frontier efficiency metric for synthetic strategy comparison.
+    It is not a production loss-rate forecast.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_summary;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_summary
+ON COMMIT PRESERVE ROWS
+AS
+WITH slice_summary AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;) AS approval_count,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_count,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_count,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;) AS decline_count,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS simulated_offer_exposure_count,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE), 0)
+            AS approval_share_of_offers,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE), 0)
+            AS counteroffer_share_of_offers,
+
+        SUM(requested_amount) AS total_requested_amount,
+        SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+        AVG(requested_amount) AS avg_requested_amount,
+        AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+        AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_amount_offer_rows,
+
+        AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)
+            AS avg_exposure_reduction_pct_counteroffers,
+
+        AVG(requested_payment_to_income_ratio)
+            AS avg_requested_payment_to_income_ratio,
+
+        AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows,
+
+        AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy_all_apps,
+
+        AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+        AVG(estimated_pd) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)
+            AS avg_synthetic_estimated_pd_proxy_declined_rows,
+
+        AVG(estimated_pd) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;)
+            AS avg_synthetic_estimated_pd_proxy_manual_review_rows,
+
+        AVG(estimated_lgd) AS avg_estimated_lgd_all_apps,
+
+        AVG(estimated_lgd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_estimated_lgd_offer_rows,
+
+        SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            AS total_approved_expected_loss_amount,
+
+        AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+
+        AVG(COALESCE(approved_expected_loss_amount, 0))
+            AS avg_approved_expected_loss_all_apps,
+
+        AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_expected_loss_offer_rows,
+
+        SUM(requested_expected_loss_amount)
+            / NULLIF(SUM(requested_amount), 0)
+            AS requested_expected_loss_rate,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+            AS approved_expected_loss_rate
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+reason_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS primary_reason_row_count,
+
+        COUNT(*)::NUMERIC
+            / NULLIF(
+                SUM(COUNT(*)) OVER (
+                    PARTITION BY
+                        strategy_set_name,
+                        strategy_name,
+                        strategy_version,
+                        module1_scenario_set_name,
+                        module1_scenario_name,
+                        population_id
+                ),
+                0
+            ) AS primary_reason_population_share,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS reason_rank
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+)
+
+SELECT
+    s.*,
+
+    r.primary_reason_family AS top_primary_reason_family,
+    r.primary_reason_code AS top_primary_reason_code,
+    r.primary_reason_row_count AS top_primary_reason_row_count,
+    r.primary_reason_population_share AS top_primary_reason_population_share
+
+FROM slice_summary s
+LEFT JOIN reason_counts r
+    ON r.strategy_set_name = s.strategy_set_name
+   AND r.strategy_name = s.strategy_name
+   AND r.strategy_version = s.strategy_version
+   AND r.module1_scenario_set_name = s.module1_scenario_set_name
+   AND r.module1_scenario_name = s.module1_scenario_name
+   AND r.population_id = s.population_id
+   AND r.reason_rank = 1;
+
+
+/*
+Review output:
+    Core strategy frontier summary.
+*/
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_summary
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.3 — BASELINE-RELATIVE FRONTIER DELTAS
+****************************************************************************************************
+
+PURPOSE:
+    Calculate baseline-relative deltas for each archived strategy slice where a baseline strategy
+    exists for the same Module 1 scenario / population / strategy set.
+
+BASELINE DEFINITION:
+    The baseline reference is identified by:
+
+        strategy_name = &#39;BASELINE_STRATEGY&#39;
+
+    within the same:
+        strategy_set_name
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+WHY THIS MATTERS:
+    Frontier analysis is more interpretable when strategy points are compared against a consistent
+    baseline reference.
+
+BOUNDARY:
+    If no baseline strategy exists for a scenario / strategy set, baseline-relative fields are NULL
+    and baseline_available_flag is FALSE.
+
+    This is diagnostic behavior, not a failure.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_baseline_deltas;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_baseline_deltas
+ON COMMIT PRESERVE ROWS
+AS
+WITH baseline_reference AS (
+    SELECT *
+    FROM tmp_m2_strategy_frontier_summary
+    WHERE strategy_name = &#39;BASELINE_STRATEGY&#39;
+)
+
+SELECT
+    s.strategy_set_name,
+    s.strategy_name,
+    s.strategy_version,
+
+    s.module1_scenario_set_name,
+    s.module1_scenario_name,
+    s.population_id,
+
+    b.strategy_name AS baseline_strategy_name,
+    b.strategy_version AS baseline_strategy_version,
+
+    (b.strategy_name IS NOT NULL) AS baseline_available_flag,
+
+    s.applications,
+    b.applications AS baseline_applications,
+    s.applications - b.applications AS delta_applications,
+
+    s.approval_rate,
+    b.approval_rate AS baseline_approval_rate,
+    s.approval_rate - b.approval_rate AS delta_approval_rate,
+
+    s.counteroffer_rate,
+    b.counteroffer_rate AS baseline_counteroffer_rate,
+    s.counteroffer_rate - b.counteroffer_rate AS delta_counteroffer_rate,
+
+    s.manual_review_rate,
+    b.manual_review_rate AS baseline_manual_review_rate,
+    s.manual_review_rate - b.manual_review_rate AS delta_manual_review_rate,
+
+    s.decline_rate,
+    b.decline_rate AS baseline_decline_rate,
+    s.decline_rate - b.decline_rate AS delta_decline_rate,
+
+    s.simulated_offer_exposure_rate,
+    b.simulated_offer_exposure_rate AS baseline_simulated_offer_exposure_rate,
+    s.simulated_offer_exposure_rate - b.simulated_offer_exposure_rate
+        AS delta_simulated_offer_exposure_rate,
+
+    s.counteroffer_share_of_offers,
+    b.counteroffer_share_of_offers AS baseline_counteroffer_share_of_offers,
+    s.counteroffer_share_of_offers - b.counteroffer_share_of_offers
+        AS delta_counteroffer_share_of_offers,
+
+    s.total_approved_amount,
+    b.total_approved_amount AS baseline_total_approved_amount,
+    s.total_approved_amount - b.total_approved_amount AS delta_total_approved_amount,
+
+    s.avg_approved_amount_all_apps,
+    b.avg_approved_amount_all_apps AS baseline_avg_approved_amount_all_apps,
+    s.avg_approved_amount_all_apps - b.avg_approved_amount_all_apps
+        AS delta_avg_approved_amount_all_apps,
+
+    s.avg_approved_amount_offer_rows,
+    b.avg_approved_amount_offer_rows AS baseline_avg_approved_amount_offer_rows,
+    s.avg_approved_amount_offer_rows - b.avg_approved_amount_offer_rows
+        AS delta_avg_approved_amount_offer_rows,
+
+    s.avg_synthetic_estimated_pd_proxy_offer_rows,
+    b.avg_synthetic_estimated_pd_proxy_offer_rows
+        AS baseline_avg_synthetic_estimated_pd_proxy_offer_rows,
+    s.avg_synthetic_estimated_pd_proxy_offer_rows
+      - b.avg_synthetic_estimated_pd_proxy_offer_rows
+        AS delta_avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    s.avg_approved_payment_to_income_ratio_offer_rows,
+    b.avg_approved_payment_to_income_ratio_offer_rows
+        AS baseline_avg_approved_payment_to_income_ratio_offer_rows,
+    s.avg_approved_payment_to_income_ratio_offer_rows
+      - b.avg_approved_payment_to_income_ratio_offer_rows
+        AS delta_avg_approved_payment_to_income_ratio_offer_rows,
+
+    s.total_requested_expected_loss_amount,
+    b.total_requested_expected_loss_amount AS baseline_total_requested_expected_loss_amount,
+    s.total_requested_expected_loss_amount - b.total_requested_expected_loss_amount
+        AS delta_total_requested_expected_loss_amount,
+
+    s.total_approved_expected_loss_amount,
+    b.total_approved_expected_loss_amount AS baseline_total_approved_expected_loss_amount,
+    s.total_approved_expected_loss_amount - b.total_approved_expected_loss_amount
+        AS delta_total_approved_expected_loss_amount,
+
+    s.avg_approved_expected_loss_offer_rows,
+    b.avg_approved_expected_loss_offer_rows
+        AS baseline_avg_approved_expected_loss_offer_rows,
+    s.avg_approved_expected_loss_offer_rows
+      - b.avg_approved_expected_loss_offer_rows
+        AS delta_avg_approved_expected_loss_offer_rows,
+
+    s.approved_expected_loss_rate,
+    b.approved_expected_loss_rate AS baseline_approved_expected_loss_rate,
+    s.approved_expected_loss_rate - b.approved_expected_loss_rate
+        AS delta_approved_expected_loss_rate,
+
+    s.top_primary_reason_family,
+    s.top_primary_reason_code,
+    s.top_primary_reason_population_share
+
+FROM tmp_m2_strategy_frontier_summary s
+LEFT JOIN baseline_reference b
+    ON b.strategy_set_name = s.strategy_set_name
+   AND b.module1_scenario_set_name = s.module1_scenario_set_name
+   AND b.module1_scenario_name = s.module1_scenario_name
+   AND b.population_id = s.population_id;
+
+
+/*
+Review output:
+    Baseline-relative strategy frontier deltas.
+*/
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_baseline_deltas
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.4 — STRATEGY EFFICIENCY METRICS
+****************************************************************************************************
+
+PURPOSE:
+    Convert frontier summary metrics into executive-readable efficiency indicators.
+
+BUSINESS INTERPRETATION:
+    These metrics help compare strategy posture.
+
+    Examples:
+        How much approved exposure is produced per unit of approved Expected Loss?
+        How many simulated positive offer outcomes are produced per million dollars of approved
+        Expected Loss?
+        What is the approved Expected Loss rate on simulated approved exposure?
+        How much manual-review burden does the strategy create?
+
+IMPORTANT:
+    These are comparative synthetic strategy metrics.
+    They are not profitability, capital, pricing, or production risk-adjusted return metrics.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_efficiency;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_efficiency
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    d.*,
+
+    d.total_approved_expected_loss_amount
+        / NULLIF(d.total_approved_amount, 0)
+        AS frontier_approved_expected_loss_rate,
+
+    d.total_approved_amount
+        / NULLIF(d.total_approved_expected_loss_amount, 0)
+        AS approved_amount_per_approved_expected_loss_dollar,
+
+    d.simulated_offer_exposure_rate
+        / NULLIF(d.approved_expected_loss_rate, 0)
+        AS offer_rate_per_approved_expected_loss_rate_unit,
+
+    d.applications::NUMERIC
+        / NULLIF(d.total_approved_expected_loss_amount / 1000000.0, 0)
+        AS applications_per_million_approved_expected_loss,
+
+    d.simulated_offer_exposure_rate AS positive_offer_access_rate,
+
+    d.manual_review_rate AS manual_review_burden_rate,
+
+    d.decline_rate AS no_offer_outcome_rate,
+
+    CASE
+        WHEN d.total_approved_amount IS NULL
+          OR d.total_approved_amount = 0
+            THEN &#39;NO_SIMULATED_OFFER_EXPOSURE_FOR_EFFICIENCY_REVIEW&#39;
+
+        WHEN d.total_approved_expected_loss_amount IS NULL
+            THEN &#39;APPROVED_EXPECTED_LOSS_NOT_AVAILABLE_FOR_EFFICIENCY_REVIEW&#39;
+
+        ELSE &#39;FRONTIER_EFFICIENCY_METRICS_AVAILABLE&#39;
+    END AS frontier_efficiency_metric_status
+
+FROM tmp_m2_strategy_frontier_baseline_deltas d;
+
+
+/*
+Review output:
+    Strategy efficiency metrics.
+*/
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    applications,
+
+    approval_rate,
+    counteroffer_rate,
+    manual_review_rate,
+    decline_rate,
+    simulated_offer_exposure_rate,
+    counteroffer_share_of_offers,
+
+    total_approved_amount,
+    total_approved_expected_loss_amount,
+
+    frontier_approved_expected_loss_rate,
+    approved_amount_per_approved_expected_loss_dollar,
+    applications_per_million_approved_expected_loss,
+
+    avg_synthetic_estimated_pd_proxy_offer_rows,
+    avg_approved_payment_to_income_ratio_offer_rows,
+
+    top_primary_reason_family,
+    top_primary_reason_code,
+
+    frontier_efficiency_metric_status
+FROM tmp_m2_strategy_frontier_efficiency
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.5 — FRONTIER CLASSIFICATION
+****************************************************************************************************
+
+PURPOSE:
+    Assign diagnostic strategy posture labels to each archived frontier point.
+
+BUSINESS INTERPRETATION:
+    These labels help reviewers interpret what kind of tradeoff each strategy appears to represent.
+
+CLASSIFICATION BOUNDARY:
+    The classifications are diagnostic summaries.
+
+    They do not declare a strategy &quot;best.&quot;
+    They do not recommend production use.
+    They do not replace detailed Section 13 matched comparison or Section 14 validation.
+
+DIAGNOSTIC THRESHOLD NOTE:
+    Small threshold values are used only to avoid labeling immaterial changes as strategic movement.
+
+    These thresholds are not credit policy thresholds.
+    They are not underwriting cutoffs.
+    They are not calibrated empirical performance thresholds.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_classification;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_classification
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    e.*,
+
+    CASE
+        WHEN e.strategy_name = &#39;BASELINE_STRATEGY&#39;
+            THEN &#39;BASELINE_REFERENCE_POINT&#39;
+
+        WHEN e.baseline_available_flag IS DISTINCT FROM TRUE
+            THEN &#39;NO_BASELINE_REFERENCE_AVAILABLE&#39;
+
+        WHEN e.delta_simulated_offer_exposure_rate &lt;= -0.010
+         AND e.delta_total_approved_expected_loss_amount &lt; 0
+         AND e.delta_avg_synthetic_estimated_pd_proxy_offer_rows &lt; 0
+            THEN &#39;RISK_DISCIPLINE_FRONTIER_POINT&#39;
+
+        WHEN e.delta_simulated_offer_exposure_rate &gt;= 0.010
+         AND e.delta_total_approved_amount &gt; 0
+         AND e.delta_total_approved_expected_loss_amount &gt;= 0
+            THEN &#39;GROWTH_ORIENTED_FRONTIER_POINT&#39;
+
+        WHEN e.delta_total_approved_expected_loss_amount &lt; 0
+         AND e.delta_total_approved_amount &gt;= 0
+            THEN &#39;EXPOSURE_EFFICIENT_FRONTIER_POINT&#39;
+
+        WHEN e.delta_counteroffer_rate &gt;= 0.010
+         AND e.delta_approval_rate &lt;= 0
+            THEN &#39;COUNTEROFFER_MANAGEMENT_FRONTIER_POINT&#39;
+
+        WHEN e.delta_manual_review_rate &lt;= -0.010
+         AND e.delta_decline_rate &gt; 0
+            THEN &#39;REVIEW_BURDEN_REDUCTION_FRONTIER_POINT&#39;
+
+        ELSE &#39;BALANCED_OR_MIXED_FRONTIER_POINT&#39;
+    END AS frontier_position_type,
+
+    CASE
+        WHEN e.strategy_name = &#39;BASELINE_STRATEGY&#39;
+            THEN &#39;Reference point for same Module 1 scenario / population / strategy set.&#39;
+
+        WHEN e.baseline_available_flag IS DISTINCT FROM TRUE
+            THEN &#39;No baseline strategy slice exists for this Module 1 scenario / population / strategy set.&#39;
+
+        WHEN e.delta_simulated_offer_exposure_rate &lt;= -0.010
+         AND e.delta_total_approved_expected_loss_amount &lt; 0
+         AND e.delta_avg_synthetic_estimated_pd_proxy_offer_rows &lt; 0
+            THEN &#39;Strategy reduces simulated offer exposure and approved Expected Loss while improving offered-population synthetic estimated-risk profile.&#39;
+
+        WHEN e.delta_simulated_offer_exposure_rate &gt;= 0.010
+         AND e.delta_total_approved_amount &gt; 0
+         AND e.delta_total_approved_expected_loss_amount &gt;= 0
+            THEN &#39;Strategy expands simulated offer exposure and approved amount with measurable approved Expected Loss tradeoff.&#39;
+
+        WHEN e.delta_total_approved_expected_loss_amount &lt; 0
+         AND e.delta_total_approved_amount &gt;= 0
+            THEN &#39;Strategy improves approved Expected Loss while maintaining or expanding total approved amount.&#39;
+
+        WHEN e.delta_counteroffer_rate &gt;= 0.010
+         AND e.delta_approval_rate &lt;= 0
+            THEN &#39;Strategy shifts outcomes toward reduced-exposure treatment rather than clean approval.&#39;
+
+        WHEN e.delta_manual_review_rate &lt;= -0.010
+         AND e.delta_decline_rate &gt; 0
+            THEN &#39;Strategy reduces unresolved manual-review burden by routing more cases to final no-offer outcomes.&#39;
+
+        ELSE &#39;Strategy shows mixed tradeoffs requiring segment-level and reason-code review.&#39;
+    END AS frontier_interpretation_note
+
+FROM tmp_m2_strategy_frontier_efficiency e;
+
+
+/*
+Review output:
+    Strategy frontier classification.
+*/
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    frontier_position_type,
+    frontier_interpretation_note,
+
+    approval_rate,
+    counteroffer_rate,
+    manual_review_rate,
+    decline_rate,
+    simulated_offer_exposure_rate,
+
+    delta_approval_rate,
+    delta_counteroffer_rate,
+    delta_manual_review_rate,
+    delta_decline_rate,
+    delta_simulated_offer_exposure_rate,
+
+    total_approved_amount,
+    delta_total_approved_amount,
+
+    total_approved_expected_loss_amount,
+    delta_total_approved_expected_loss_amount,
+
+    approved_expected_loss_rate,
+    delta_approved_expected_loss_rate,
+
+    avg_synthetic_estimated_pd_proxy_offer_rows,
+    delta_avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    top_primary_reason_family,
+    top_primary_reason_code
+FROM tmp_m2_strategy_frontier_classification
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.6 — SEGMENT-LEVEL FRONTIER HIGHLIGHTS
+****************************************************************************************************
+
+PURPOSE:
+    Provide product, score-band, and product × score-band frontier summaries across archived slices.
+
+BUSINESS INTERPRETATION:
+    Portfolio frontier metrics can hide concentrated segment movement.
+
+    This segment table helps reviewers answer:
+        Which products carry the most approved exposure?
+        Which score bands dominate approved Expected Loss?
+        Which product × score combinations are most sensitive to strategy posture?
+
+BOUNDARY:
+    This is a segment summary over archived outputs.
+    It does not recalculate decisions or approved economics.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_segment_highlights;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_segment_highlights
+ON COMMIT PRESERVE ROWS
+AS
+WITH segment_base AS (
+    SELECT
+        &#39;PRODUCT&#39;::TEXT AS segment_level,
+        product_type_policy_key AS segment_key,
+        product_type_policy_key,
+        NULL::TEXT AS score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        decision_outcome,
+        simulated_offer_exposure_flag,
+        approved_amount,
+        approved_expected_loss_amount,
+        estimated_pd,
+        approved_payment_to_income_ratio,
+        primary_reason_family,
+        primary_reason_code
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    UNION ALL
+
+    SELECT
+        &#39;SCORE_BAND&#39;::TEXT AS segment_level,
+        score_band_policy_key AS segment_key,
+        NULL::TEXT AS product_type_policy_key,
+        score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        decision_outcome,
+        simulated_offer_exposure_flag,
+        approved_amount,
+        approved_expected_loss_amount,
+        estimated_pd,
+        approved_payment_to_income_ratio,
+        primary_reason_family,
+        primary_reason_code
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    UNION ALL
+
+    SELECT
+        &#39;PRODUCT_X_SCORE&#39;::TEXT AS segment_level,
+        product_type_policy_key || &#39; / &#39; || score_band_policy_key AS segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        decision_outcome,
+        simulated_offer_exposure_flag,
+        approved_amount,
+        approved_expected_loss_amount,
+        estimated_pd,
+        approved_payment_to_income_ratio,
+        primary_reason_family,
+        primary_reason_code
+    FROM credit_decisioning_sim.strategy_decisions_archive
+),
+
+segment_summary AS (
+    SELECT
+        segment_level,
+        segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+        AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_amount_offer_rows,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            AS total_approved_expected_loss_amount,
+
+        AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_expected_loss_offer_rows,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+        AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows
+    FROM segment_base
+    GROUP BY
+        segment_level,
+        segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+segment_reason_counts AS (
+    SELECT
+        segment_level,
+        segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS reason_row_count,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                segment_level,
+                segment_key,
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS reason_rank
+    FROM segment_base
+    GROUP BY
+        segment_level,
+        segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+)
+
+SELECT
+    s.*,
+
+    r.primary_reason_family AS top_segment_reason_family,
+    r.primary_reason_code AS top_segment_reason_code,
+    r.reason_row_count AS top_segment_reason_row_count
+
+FROM segment_summary s
+LEFT JOIN segment_reason_counts r
+    ON r.segment_level = s.segment_level
+   AND r.segment_key = s.segment_key
+   AND r.strategy_set_name = s.strategy_set_name
+   AND r.strategy_name = s.strategy_name
+   AND r.strategy_version = s.strategy_version
+   AND r.module1_scenario_set_name = s.module1_scenario_set_name
+   AND r.module1_scenario_name = s.module1_scenario_name
+   AND r.population_id = s.population_id
+   AND r.reason_rank = 1;
+
+
+/*
+Review output:
+    Segment-level frontier highlights.
+
+This output can be large as the archive grows. The ORDER BY prioritizes higher approved Expected Loss
+segments because those are usually the most important for risk / exposure review.
+*/
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_segment_highlights
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    segment_level,
+    total_approved_expected_loss_amount DESC NULLS LAST,
+    segment_key
+LIMIT 300;
+
+
+
+/***************************************************************************************************
+SECTION 15.7 — EXECUTIVE-READY STRATEGY FRONTIER SUMMARY
+****************************************************************************************************
+
+PURPOSE:
+    Produce a compact strategy frontier table suitable for export into a README, executive review,
+    or later presentation artifact.
+
+BUSINESS INTERPRETATION:
+    This table intentionally combines:
+        decision distribution,
+        simulated offer exposure,
+        approved exposure,
+        approved Expected Loss,
+        efficiency metrics,
+        strategy posture classification,
+        and primary reason-code concentration.
+
+    It is designed to support a concise story:
+        &quot;What tradeoff does each strategy / scenario point represent?&quot;
+
+RANKING BOUNDARY:
+    Rankings are calculated within each Module 1 scenario / population / strategy set.
+
+    These ranks support comparison, but they do not declare production suitability.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_executive_summary;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_executive_summary
+ON COMMIT PRESERVE ROWS
+AS
+WITH ranked AS (
+    SELECT
+        c.*,
+
+        COUNT(*) OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+        ) AS strategy_count_within_frontier_group,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                simulated_offer_exposure_rate DESC NULLS LAST
+        ) AS offer_access_rank_desc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                total_approved_amount DESC NULLS LAST
+        ) AS approved_amount_rank_desc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                total_approved_expected_loss_amount ASC NULLS LAST
+        ) AS total_approved_expected_loss_rank_asc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                approved_expected_loss_rate ASC NULLS LAST
+        ) AS approved_expected_loss_rate_rank_asc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                avg_synthetic_estimated_pd_proxy_offer_rows ASC NULLS LAST
+        ) AS offer_risk_profile_rank_asc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                manual_review_rate ASC NULLS LAST
+        ) AS manual_review_burden_rank_asc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                decline_rate ASC NULLS LAST
+        ) AS decline_burden_rank_asc
+    FROM tmp_m2_strategy_frontier_classification c
+)
+
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    frontier_position_type,
+    frontier_interpretation_note,
+
+    strategy_count_within_frontier_group,
+
+    applications,
+
+    approval_rate,
+    counteroffer_rate,
+    manual_review_rate,
+    decline_rate,
+    simulated_offer_exposure_rate,
+    counteroffer_share_of_offers,
+
+    total_approved_amount,
+    avg_approved_amount_offer_rows,
+
+    avg_synthetic_estimated_pd_proxy_offer_rows,
+    avg_approved_payment_to_income_ratio_offer_rows,
+
+    total_approved_expected_loss_amount,
+    avg_approved_expected_loss_offer_rows,
+    approved_expected_loss_rate,
+
+    approved_amount_per_approved_expected_loss_dollar,
+
+    top_primary_reason_family,
+    top_primary_reason_code,
+    top_primary_reason_population_share,
+
+    baseline_available_flag,
+
+    delta_approval_rate,
+    delta_counteroffer_rate,
+    delta_manual_review_rate,
+    delta_decline_rate,
+    delta_simulated_offer_exposure_rate,
+
+    delta_total_approved_amount,
+    delta_total_approved_expected_loss_amount,
+    delta_approved_expected_loss_rate,
+    delta_avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    offer_access_rank_desc,
+    approved_amount_rank_desc,
+    total_approved_expected_loss_rank_asc,
+    approved_expected_loss_rate_rank_asc,
+    offer_risk_profile_rank_asc,
+    manual_review_burden_rank_asc,
+    decline_burden_rank_asc,
+
+    CASE
+        WHEN strategy_count_within_frontier_group &lt; 2
+            THEN &#39;SINGLE_STRATEGY_FRONTIER_GROUP&#39;
+
+        WHEN offer_access_rank_desc &lt;= 2
+         AND approved_expected_loss_rate_rank_asc &lt;= 2
+            THEN &#39;HIGH_ACCESS_LOWER_APPROVED_EL_RATE&#39;
+
+        WHEN offer_access_rank_desc &lt;= 2
+         AND approved_expected_loss_rate_rank_asc &gt; 2
+            THEN &#39;HIGH_ACCESS_HIGHER_APPROVED_EL_RATE&#39;
+
+        WHEN offer_access_rank_desc &gt; 2
+         AND approved_expected_loss_rate_rank_asc &lt;= 2
+            THEN &#39;LOWER_ACCESS_LOWER_APPROVED_EL_RATE&#39;
+
+        ELSE &#39;LOWER_ACCESS_HIGHER_APPROVED_EL_RATE&#39;
+    END AS executive_frontier_quadrant
+
+FROM ranked;
+
+
+/*
+Review output:
+    Executive-ready strategy frontier summary.
+
+This is the primary Section 15 output for high-level strategy storytelling.
+*/
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_executive_summary
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    CASE
+        WHEN strategy_name = &#39;BASELINE_STRATEGY&#39; THEN 1
+        ELSE 2
+    END,
+    frontier_position_type,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.8 — FRONTIER DIAGNOSTIC SUMMARY
+****************************************************************************************************
+
+PURPOSE:
+    Provide compact diagnostic counts for the Section 15 temporary outputs.
+
+INTERPRETATION:
+    These checks are not full QA gatekeepers.
+
+    They confirm that the frontier layer produced populated temporary outputs and show whether
+    baseline-relative comparisons are available.
+
+***************************************************************************************************/
+
+SELECT
+    &#39;tmp_m2_strategy_frontier_inventory&#39; AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_inventory
+
+UNION ALL
+
+SELECT
+    &#39;tmp_m2_strategy_frontier_summary&#39; AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_summary
+
+UNION ALL
+
+SELECT
+    &#39;tmp_m2_strategy_frontier_baseline_deltas&#39; AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_baseline_deltas
+
+UNION ALL
+
+SELECT
+    &#39;tmp_m2_strategy_frontier_efficiency&#39; AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_efficiency
+
+UNION ALL
+
+SELECT
+    &#39;tmp_m2_strategy_frontier_classification&#39; AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_classification
+
+UNION ALL
+
+SELECT
+    &#39;tmp_m2_strategy_frontier_segment_highlights&#39; AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_segment_highlights
+
+UNION ALL
+
+SELECT
+    &#39;tmp_m2_strategy_frontier_executive_summary&#39; AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_executive_summary;
+
+
+/*
+Baseline availability diagnostic.
+
+If baseline_available_flag is FALSE, baseline-relative deltas for that archived strategy / scenario
+slice should be interpreted as unavailable rather than zero.
+*/
+SELECT
+    strategy_set_name,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS frontier_rows,
+    COUNT(*) FILTER (WHERE baseline_available_flag IS TRUE) AS rows_with_baseline_reference,
+    COUNT(*) FILTER (WHERE baseline_available_flag IS FALSE) AS rows_without_baseline_reference,
+
+    CASE
+        WHEN COUNT(*) FILTER (WHERE baseline_available_flag IS FALSE) = 0
+            THEN &#39;BASELINE_REFERENCES_AVAILABLE_FOR_ALL_FRONTIER_ROWS&#39;
+        ELSE &#39;BASELINE_REFERENCE_MISSING_FOR_ONE_OR_MORE_FRONTIER_ROWS&#39;
+    END AS baseline_reference_status
+FROM tmp_m2_strategy_frontier_baseline_deltas
+GROUP BY
+    strategy_set_name,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+ORDER BY
+    strategy_set_name,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+/***************************************************************************************************
+END OF SECTION 15 — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW
+
+Section 15 established:
+    1. Read-only archive-driven strategy frontier analysis.
+    2. One-row-per-archived-slice frontier summary.
+    3. Baseline-relative strategy deltas where BASELINE_STRATEGY exists.
+    4. Strategy efficiency metrics, including approved_expected_loss_rate.
+    5. Diagnostic frontier posture classifications.
+    6. Product, score, and product × score frontier segment highlights.
+    7. Executive-ready strategy frontier summary for portfolio storytelling.
+
+No archive rows have been inserted.
+No archive rows have been deleted.
+No archive rows have been updated.
+No latest-run rows have been modified.
+No decision outcomes have been recalculated.
+No simulated reason codes have been recalculated.
+No approved exposure has been recalculated.
+No approved Expected Loss has been recalculated.
+No BRD or Validation Summary documentation has been drafted.
+
+***************************************************************************************************/
+</code></pre>
+</div></article><article id="c038-m00505" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00505 · 2026-05-08T16:33:17.518000-04:00 · active path</p><div class="body"><p>review section 15 QA: </p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.2_QA_strategy_frontier_summary.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.3_QA_baseline_relative_frontier_deltas.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.4_QA_strategy_efficiency_metrics.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.5_QA_frontier_classification.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.6_QA_segment_level_frontier_highlights.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.7_QA_executive_ready_strategy_frontier_summary.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8_QA_frontier_diagnostic_summary.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8_QA_frontier_baseline_availability_diagnostic.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.0_QA_frontier_scope_and_archive_readiness_snapshot.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.1_QA_archived_frontier_inventory.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

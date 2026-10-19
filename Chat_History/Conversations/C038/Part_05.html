@@ -1,0 +1,4472 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 5</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 05 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_04.html">Previous</a><a href="Part_06.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00126" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00126 · 2026-05-06T13:45:27.884000-04:00 · active path</p><div class="body"><p>This is strong. I agree with the Section 8 Approved Exposure and Counteroffer Feasibility Layer.</p>
+<p>Section 8 should be treated as provisionally accepted, subject to the pre-flight review below.</p>
+<p>Section 8 correctly:</p>
+<ul>
+<li>consumes tmp_m2_stage_4_preliminary_decision_routing</li>
+<li>creates tmp_m2_stage_5_exposure_treatment</li>
+<li>preserves Module 1 lineage and Module 2 strategy metadata</li>
+<li>preserves preliminary routing fields</li>
+<li>calculates preliminary approved exposure treatment</li>
+<li>evaluates counteroffer feasibility</li>
+<li>distinguishes requested exposure from preliminary approved exposure</li>
+<li>calculates preliminary approved payment, approved PTI, and approved Expected Loss</li>
+<li>keeps manual review unresolved</li>
+<li>keeps failed counteroffers unresolved for later final decision resolution</li>
+<li>does not create final decision_outcome</li>
+<li>does not create final decision_path</li>
+<li>does not create final approval / decline / manual review / counteroffer flags</li>
+<li>does not create simulated_offer_exposure_flag</li>
+<li>does not assign reason codes</li>
+<li>does not create latest-run output</li>
+<li>does not insert archive rows</li>
+<li>does not build full QA</li>
+</ul>
+<p>Do not rewrite Sections 0–8 unless the pre-flight review identifies a specific dependency issue.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>SECTION 8 PRE-FLIGHT REVIEW BEFORE SECTION 9</h1>
+</li>
+</ol>
+<p>Before writing Section 9, please do a brief targeted pre-flight review of Section 8.</p>
+<p>Confirm that Section 8 includes the following output fields:</p>
+<p>Exposure treatment fields:</p>
+<ul>
+<li>exposure_treatment_status</li>
+<li>exposure_treatment_path</li>
+<li>approved_amount_preliminary</li>
+<li>counteroffer_amount_preliminary</li>
+<li>exposure_reduction_flag_preliminary</li>
+<li>exposure_reduction_amount_preliminary</li>
+<li>exposure_reduction_pct_preliminary</li>
+</ul>
+<p>Approved affordability fields:</p>
+<ul>
+<li>approved_monthly_payment_proxy_preliminary</li>
+<li>approved_payment_to_income_ratio_preliminary</li>
+</ul>
+<p>Approved economics fields:</p>
+<ul>
+<li>approved_expected_loss_amount_preliminary</li>
+<li>approved_el_reduction_amount_preliminary</li>
+<li>approved_el_reduction_pct_preliminary</li>
+</ul>
+<p>Counteroffer feasibility fields:</p>
+<ul>
+<li>counteroffer_feasibility_evaluated_flag</li>
+<li>counteroffer_feasibility_pass_flag</li>
+<li>counteroffer_feasibility_failure_reason</li>
+<li>counteroffer_feasibility_constraint_count</li>
+</ul>
+<p>Counteroffer calculation diagnostics:</p>
+<ul>
+<li>counteroffer_product_cap_amount</li>
+<li>counteroffer_pti_target_amount</li>
+<li>counteroffer_el_cap_amount</li>
+<li>counteroffer_raw_max_feasible_amount</li>
+<li>counteroffer_min_viable_amount</li>
+<li>counteroffer_rounded_amount</li>
+</ul>
+<p>Also confirm that Section 8 does NOT create:</p>
+<ul>
+<li>decision_outcome</li>
+<li>decision_path</li>
+<li>approval_flag</li>
+<li>decline_flag</li>
+<li>manual_review_flag</li>
+<li>counteroffer_flag</li>
+<li>simulated_offer_exposure_flag</li>
+<li>primary_reason_code</li>
+<li>secondary_reason_code</li>
+<li>tertiary_reason_code</li>
+<li>triggered_reason_code_list</li>
+<li>reason_priority_rank</li>
+<li>final latest-run output table</li>
+<li>archive insert logic</li>
+</ul>
+<p>Confirm that Section 8 treatment conventions are internally consistent:</p>
+<p>APPROVE preliminary route:</p>
+<ul>
+<li>approved_amount_preliminary = requested_amount</li>
+<li>approved_expected_loss_amount_preliminary = requested_expected_loss_amount</li>
+<li>counteroffer_feasibility_evaluated_flag = FALSE</li>
+</ul>
+<p>DECLINE preliminary route:</p>
+<ul>
+<li>approved_amount_preliminary = 0</li>
+<li>approved_expected_loss_amount_preliminary = 0</li>
+<li>counteroffer_feasibility_evaluated_flag = FALSE</li>
+</ul>
+<p>MANUAL_REVIEW preliminary route:</p>
+<ul>
+<li>approved_amount_preliminary IS NULL</li>
+<li>approved_expected_loss_amount_preliminary IS NULL</li>
+<li>counteroffer_feasibility_evaluated_flag = FALSE</li>
+</ul>
+<p>COUNTEROFFER preliminary route:</p>
+<ul>
+<li>counteroffer_feasibility_evaluated_flag = TRUE</li>
+<li>if counteroffer_feasibility_pass_flag = TRUE, approved_amount_preliminary is populated</li>
+<li>if counteroffer_feasibility_pass_flag = FALSE, approved_amount_preliminary remains NULL and failure reason is populated</li>
+</ul>
+<p>If the pre-flight review finds an issue, provide a targeted BEFORE / AFTER patch only.</p>
+<p>If no issue is found, explicitly state:</p>
+<p>“Section 8 pre-flight review passed; no patch required.”</p>
+<p>================================================================================
+2. NEXT BUILD SCOPE: SECTION 9 ONLY
+================================================================================</p>
+<p>After the Section 8 pre-flight review, please build only:</p>
+<p>SECTION 9 — FINAL DECISION RESOLUTION LAYER</p>
+<p>Recommended staged table:</p>
+<p>tmp_m2_stage_6_final_decision_resolution</p>
+<p>Section 9 should consume:</p>
+<p>tmp_m2_stage_5_exposure_treatment</p>
+<p>Section 9 should convert preliminary routing plus Section 8 exposure feasibility into final simulated strategy outcomes.</p>
+<p>Do not build:</p>
+<ul>
+<li>primary_reason_code</li>
+<li>secondary_reason_code</li>
+<li>tertiary_reason_code</li>
+<li>triggered_reason_code_list</li>
+<li>reason_priority_rank</li>
+<li>final latest-run output table</li>
+<li>archive insert logic</li>
+<li>full QA framework</li>
+</ul>
+<p>Those belong to later sections.</p>
+<p>================================================================================
+3. SECTION 9 OBJECTIVE
+================================================================================</p>
+<p>Section 9 should answer:</p>
+<p>“Given preliminary routing and exposure-treatment feasibility, what is the final simulated strategy outcome for this synthetic applicant?”</p>
+<p>Section 9 should create final outcome fields and final exposure economics.</p>
+<p>Section 9 should not assign simulated reason codes yet.</p>
+<p>Reason-code assignment should remain a separate later layer because reason-code prioritization should use:</p>
+<ul>
+<li>final decision outcome</li>
+<li>final decision path</li>
+<li>preliminary routing diagnostics</li>
+<li>rule trigger diagnostics</li>
+<li>exposure-treatment diagnostics</li>
+<li>counteroffer feasibility diagnostics</li>
+</ul>
+<p>================================================================================
+4. TARGETED PARAMETER PATCH BEFORE SECTION 9
+================================================================================</p>
+<p>Before writing Section 9, please add one governed strategy parameter if it does not already exist:</p>
+<p>failed_counteroffer_resolution</p>
+<p>Recommended default:
+MANUAL_REVIEW</p>
+<p>Allowed values:</p>
+<ul>
+<li>MANUAL_REVIEW</li>
+<li>DECLINE</li>
+</ul>
+<p>Purpose:
+Defines how preliminary COUNTEROFFER routes should resolve when Section 8 determines that no viable counteroffer exists.</p>
+<p>Default interpretation:
+A failed counteroffer is routed to MANUAL_REVIEW by default because:</p>
+<ul>
+<li>higher-priority hard simulated policy stops already route to DECLINE</li>
+<li>severe synthetic estimated-risk already routes to DECLINE</li>
+<li>severe DTI already routes to DECLINE</li>
+<li>a failed counteroffer often reflects unresolved exposure / affordability / approved Expected Loss feasibility rather than an automatic policy stop</li>
+<li>manual review preserves auditability and avoids silently converting all infeasible reduced-exposure cases to declines</li>
+</ul>
+<p>Boundary:
+This is a simulated strategy-control parameter, not production underwriting policy.</p>
+<p>Please add the corresponding Section 3 gatekeeper:</p>
+<ul>
+<li>failed_counteroffer_resolution is non-null</li>
+<li>failed_counteroffer_resolution IN (&#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;)</li>
+</ul>
+<p>If this parameter already exists under another name, identify it and use the existing field rather than adding a duplicate.</p>
+<p>================================================================================
+5. REQUIRED SECTION 9 OUTPUT FIELDS
+================================================================================</p>
+<p>Section 9 should preserve all fields from tmp_m2_stage_5_exposure_treatment and add final decision-resolution fields.</p>
+<p>Final decision fields:</p>
+<ul>
+<li>decision_outcome</li>
+<li>decision_path</li>
+<li>decision_priority_rank</li>
+<li>decision_resolution_source</li>
+</ul>
+<p>Final decision flags:</p>
+<ul>
+<li>approval_flag</li>
+<li>counteroffer_flag</li>
+<li>manual_review_flag</li>
+<li>decline_flag</li>
+<li>simulated_offer_exposure_flag</li>
+</ul>
+<p>Final exposure fields:</p>
+<ul>
+<li>approved_amount</li>
+<li>counteroffer_amount</li>
+<li>exposure_reduction_flag</li>
+<li>exposure_reduction_amount</li>
+<li>exposure_reduction_pct</li>
+</ul>
+<p>Final affordability fields:</p>
+<ul>
+<li>approved_monthly_payment_proxy</li>
+<li>approved_payment_to_income_ratio</li>
+</ul>
+<p>Final economics fields:</p>
+<ul>
+<li>approved_expected_loss_amount</li>
+<li>approved_el_reduction_amount</li>
+<li>approved_el_reduction_pct</li>
+</ul>
+<p>Do not add reason-code fields yet.</p>
+<p>Do not create the final latest-run output table yet.</p>
+<p>================================================================================
+6. FINAL DECISION RESOLUTION LOGIC
+================================================================================</p>
+<p>Use the following final decision resolution hierarchy.</p>
+<hr>
+<ol>
+<li>Preliminary DECLINE</li>
+</ol>
+<hr>
+<p>If preliminary_decision_outcome = &#39;DECLINE&#39;:</p>
+<ul>
+<li>decision_outcome = &#39;DECLINE&#39;</li>
+<li>decision_path = preliminary_decision_path</li>
+<li>decision_priority_rank = preliminary_decision_priority_rank</li>
+<li>decision_resolution_source = &#39;PRELIMINARY_DECLINE_CONFIRMED&#39;</li>
+</ul>
+<p>Final exposure convention:</p>
+<ul>
+<li>approved_amount = 0</li>
+<li>counteroffer_amount = NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount = requested_amount</li>
+<li>exposure_reduction_pct = 1.0</li>
+<li>approved_monthly_payment_proxy = 0</li>
+<li>approved_payment_to_income_ratio = 0</li>
+<li>approved_expected_loss_amount = 0</li>
+<li>approved_el_reduction_amount = requested_expected_loss_amount</li>
+<li>approved_el_reduction_pct =
+  CASE
+  WHEN requested_expected_loss_amount &gt; 0 THEN 1.0
+  ELSE 0
+  END</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<hr>
+<ol start="2">
+<li>Preliminary MANUAL_REVIEW</li>
+</ol>
+<hr>
+<p>If preliminary_decision_outcome = &#39;MANUAL_REVIEW&#39;:</p>
+<ul>
+<li>decision_outcome = &#39;MANUAL_REVIEW&#39;</li>
+<li>decision_path = preliminary_decision_path</li>
+<li>decision_priority_rank = preliminary_decision_priority_rank</li>
+<li>decision_resolution_source = &#39;PRELIMINARY_MANUAL_REVIEW_CONFIRMED&#39;</li>
+</ul>
+<p>Final exposure convention:</p>
+<ul>
+<li>approved_amount = NULL</li>
+<li>counteroffer_amount = NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount = NULL</li>
+<li>exposure_reduction_pct = NULL</li>
+<li>approved_monthly_payment_proxy = NULL</li>
+<li>approved_payment_to_income_ratio = NULL</li>
+<li>approved_expected_loss_amount = NULL</li>
+<li>approved_el_reduction_amount = NULL</li>
+<li>approved_el_reduction_pct = NULL</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<p>Manual review remains unresolved by design.</p>
+<hr>
+<ol start="3">
+<li>Preliminary APPROVE</li>
+</ol>
+<hr>
+<p>If preliminary_decision_outcome = &#39;APPROVE&#39;:</p>
+<ul>
+<li>decision_outcome = &#39;APPROVE&#39;</li>
+<li>decision_path = &#39;APPROVE_AS_REQUESTED&#39;</li>
+<li>decision_priority_rank = preliminary_decision_priority_rank</li>
+<li>decision_resolution_source = &#39;PRELIMINARY_APPROVE_CONFIRMED&#39;</li>
+</ul>
+<p>Final exposure convention:</p>
+<ul>
+<li>approved_amount = requested_amount</li>
+<li>counteroffer_amount = NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount = 0</li>
+<li>exposure_reduction_pct = 0</li>
+<li>approved_monthly_payment_proxy = requested_monthly_payment_proxy</li>
+<li>approved_payment_to_income_ratio = requested_payment_to_income_ratio</li>
+<li>approved_expected_loss_amount = requested_expected_loss_amount</li>
+<li>approved_el_reduction_amount = 0</li>
+<li>approved_el_reduction_pct = 0</li>
+<li>simulated_offer_exposure_flag = TRUE</li>
+</ul>
+<p>Important naming convention:
+Use decision_path = APPROVE_AS_REQUESTED.</p>
+<p>Reserve APPROVED_AS_REQUESTED for the later simulated reason-code layer, where it can be used as the approval primary_reason_code.</p>
+<hr>
+<ol start="4">
+<li>Preliminary COUNTEROFFER with feasible counteroffer</li>
+</ol>
+<hr>
+<p>If preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+and counteroffer_feasibility_pass_flag = TRUE:</p>
+<ul>
+<li>decision_outcome = &#39;COUNTEROFFER&#39;</li>
+<li>decision_path = &#39;COUNTEROFFER_FEASIBLE&#39;</li>
+<li>decision_priority_rank = preliminary_decision_priority_rank</li>
+<li>decision_resolution_source = &#39;COUNTEROFFER_FEASIBILITY_CONFIRMED&#39;</li>
+</ul>
+<p>Final exposure convention:</p>
+<ul>
+<li>approved_amount = approved_amount_preliminary</li>
+<li>counteroffer_amount = counteroffer_amount_preliminary</li>
+<li>exposure_reduction_flag = TRUE</li>
+<li>exposure_reduction_amount = exposure_reduction_amount_preliminary</li>
+<li>exposure_reduction_pct = exposure_reduction_pct_preliminary</li>
+<li>approved_monthly_payment_proxy = approved_monthly_payment_proxy_preliminary</li>
+<li>approved_payment_to_income_ratio = approved_payment_to_income_ratio_preliminary</li>
+<li>approved_expected_loss_amount = approved_expected_loss_amount_preliminary</li>
+<li>approved_el_reduction_amount = approved_el_reduction_amount_preliminary</li>
+<li>approved_el_reduction_pct = approved_el_reduction_pct_preliminary</li>
+<li>simulated_offer_exposure_flag = TRUE</li>
+</ul>
+<hr>
+<ol start="5">
+<li>Preliminary COUNTEROFFER with infeasible counteroffer</li>
+</ol>
+<hr>
+<p>If preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+and counteroffer_feasibility_pass_flag = FALSE
+and failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;:</p>
+<ul>
+<li>decision_outcome = &#39;MANUAL_REVIEW&#39;</li>
+<li>decision_path = &#39;COUNTEROFFER_NOT_FEASIBLE_REVIEW&#39;</li>
+<li>decision_priority_rank = preliminary_decision_priority_rank</li>
+<li>decision_resolution_source = &#39;COUNTEROFFER_FEASIBILITY_FAILED_TO_REVIEW&#39;</li>
+</ul>
+<p>Final exposure convention:</p>
+<ul>
+<li>approved_amount = NULL</li>
+<li>counteroffer_amount = NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount = NULL</li>
+<li>exposure_reduction_pct = NULL</li>
+<li>approved_monthly_payment_proxy = NULL</li>
+<li>approved_payment_to_income_ratio = NULL</li>
+<li>approved_expected_loss_amount = NULL</li>
+<li>approved_el_reduction_amount = NULL</li>
+<li>approved_el_reduction_pct = NULL</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<p>If preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+and counteroffer_feasibility_pass_flag = FALSE
+and failed_counteroffer_resolution = &#39;DECLINE&#39;:</p>
+<ul>
+<li>decision_outcome = &#39;DECLINE&#39;</li>
+<li>decision_path = &#39;COUNTEROFFER_NOT_FEASIBLE_DECLINE&#39;</li>
+<li>decision_priority_rank = preliminary_decision_priority_rank</li>
+<li>decision_resolution_source = &#39;COUNTEROFFER_FEASIBILITY_FAILED_TO_DECLINE&#39;</li>
+</ul>
+<p>Final exposure convention:</p>
+<ul>
+<li>approved_amount = 0</li>
+<li>counteroffer_amount = NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount = requested_amount</li>
+<li>exposure_reduction_pct = 1.0</li>
+<li>approved_monthly_payment_proxy = 0</li>
+<li>approved_payment_to_income_ratio = 0</li>
+<li>approved_expected_loss_amount = 0</li>
+<li>approved_el_reduction_amount = requested_expected_loss_amount</li>
+<li>approved_el_reduction_pct =
+  CASE
+  WHEN requested_expected_loss_amount &gt; 0 THEN 1.0
+  ELSE 0
+  END</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<hr>
+<ol start="6">
+<li>Residual fallback</li>
+</ol>
+<hr>
+<p>If no final outcome can be assigned:</p>
+<ul>
+<li>decision_outcome = &#39;MANUAL_REVIEW&#39;</li>
+<li>decision_path = &#39;FINAL_RESIDUAL_STRATEGY_REVIEW&#39;</li>
+<li>decision_priority_rank = 99</li>
+<li>decision_resolution_source = &#39;FINAL_RESIDUAL_FALLBACK&#39;</li>
+</ul>
+<p>Final exposure convention:</p>
+<ul>
+<li>approved_amount = NULL</li>
+<li>counteroffer_amount = NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount = NULL</li>
+<li>exposure_reduction_pct = NULL</li>
+<li>approved_monthly_payment_proxy = NULL</li>
+<li>approved_payment_to_income_ratio = NULL</li>
+<li>approved_expected_loss_amount = NULL</li>
+<li>approved_el_reduction_amount = NULL</li>
+<li>approved_el_reduction_pct = NULL</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<p>Residual fallback is intentionally conservative. Unresolved synthetic profiles should not silently become approvals or declines.</p>
+<p>================================================================================
+7. FINAL FLAG CONVENTIONS
+================================================================================</p>
+<p>Section 9 should create final flags using decision_outcome.</p>
+<p>Required reconciliation:</p>
+<p>APPROVE:</p>
+<ul>
+<li>approval_flag = TRUE</li>
+<li>counteroffer_flag = FALSE</li>
+<li>manual_review_flag = FALSE</li>
+<li>decline_flag = FALSE</li>
+<li>simulated_offer_exposure_flag = TRUE</li>
+</ul>
+<p>COUNTEROFFER:</p>
+<ul>
+<li>approval_flag = FALSE</li>
+<li>counteroffer_flag = TRUE</li>
+<li>manual_review_flag = FALSE</li>
+<li>decline_flag = FALSE</li>
+<li>simulated_offer_exposure_flag = TRUE</li>
+</ul>
+<p>MANUAL_REVIEW:</p>
+<ul>
+<li>approval_flag = FALSE</li>
+<li>counteroffer_flag = FALSE</li>
+<li>manual_review_flag = TRUE</li>
+<li>decline_flag = FALSE</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<p>DECLINE:</p>
+<ul>
+<li>approval_flag = FALSE</li>
+<li>counteroffer_flag = FALSE</li>
+<li>manual_review_flag = FALSE</li>
+<li>decline_flag = TRUE</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<p>Important:
+simulated_offer_exposure_flag means the simulated strategy produces a positive offer exposure in the current strategy output.</p>
+<p>It does not mean:</p>
+<ul>
+<li>booked account</li>
+<li>funded account</li>
+<li>production approval</li>
+<li>real customer treatment</li>
+</ul>
+<p>================================================================================
+8. SECTION 9 LOCAL GATEKEEPERS
+================================================================================</p>
+<p>At the end of Section 9, include local fail-fast checks.</p>
+<p>Validate:</p>
+<hr>
+<ol>
+<li>Structural preservation</li>
+</ol>
+<hr>
+<ul>
+<li>row count is unchanged from tmp_m2_stage_5_exposure_treatment</li>
+<li>application_id remains unique</li>
+</ul>
+<hr>
+<ol start="2">
+<li>Final decision completeness</li>
+</ol>
+<hr>
+<ul>
+<li><p>decision_outcome is non-null for every row</p>
+</li>
+<li><p>decision_outcome is one of:</p>
+<ul>
+<li>APPROVE</li>
+<li>COUNTEROFFER</li>
+<li>MANUAL_REVIEW</li>
+<li>DECLINE</li>
+</ul>
+</li>
+<li><p>decision_path is non-null for every row</p>
+</li>
+<li><p>decision_priority_rank is non-null and positive</p>
+</li>
+<li><p>decision_resolution_source is non-null for every row</p>
+</li>
+</ul>
+<hr>
+<ol start="3">
+<li>Final flag reconciliation</li>
+</ol>
+<hr>
+<p>Exactly one of the following should be TRUE per row:</p>
+<ul>
+<li>approval_flag</li>
+<li>counteroffer_flag</li>
+<li>manual_review_flag</li>
+<li>decline_flag</li>
+</ul>
+<p>Each flag should reconcile to decision_outcome:</p>
+<ul>
+<li>approval_flag = TRUE only when decision_outcome = APPROVE</li>
+<li>counteroffer_flag = TRUE only when decision_outcome = COUNTEROFFER</li>
+<li>manual_review_flag = TRUE only when decision_outcome = MANUAL_REVIEW</li>
+<li>decline_flag = TRUE only when decision_outcome = DECLINE</li>
+</ul>
+<p>simulated_offer_exposure_flag should reconcile to decision_outcome:</p>
+<ul>
+<li>TRUE only when decision_outcome IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;)</li>
+<li>FALSE when decision_outcome IN (&#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;)</li>
+</ul>
+<hr>
+<ol start="4">
+<li>APPROVE final convention checks</li>
+</ol>
+<hr>
+<p>For decision_outcome = APPROVE:</p>
+<ul>
+<li>approved_amount = requested_amount</li>
+<li>counteroffer_amount IS NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount = 0</li>
+<li>exposure_reduction_pct = 0</li>
+<li>approved_monthly_payment_proxy = requested_monthly_payment_proxy</li>
+<li>approved_payment_to_income_ratio = requested_payment_to_income_ratio</li>
+<li>approved_expected_loss_amount = requested_expected_loss_amount</li>
+<li>approved_el_reduction_amount = 0</li>
+<li>approved_el_reduction_pct = 0</li>
+<li>simulated_offer_exposure_flag = TRUE</li>
+</ul>
+<hr>
+<ol start="5">
+<li>COUNTEROFFER final convention checks</li>
+</ol>
+<hr>
+<p>For decision_outcome = COUNTEROFFER:</p>
+<ul>
+<li>counteroffer_feasibility_pass_flag = TRUE</li>
+<li>approved_amount IS NOT NULL</li>
+<li>approved_amount &gt; 0</li>
+<li>approved_amount &lt; requested_amount</li>
+<li>counteroffer_amount = approved_amount</li>
+<li>exposure_reduction_flag = TRUE</li>
+<li>exposure_reduction_amount = requested_amount - approved_amount</li>
+<li>exposure_reduction_pct = exposure_reduction_amount / NULLIF(requested_amount, 0)</li>
+<li>approved_monthly_payment_proxy IS NOT NULL</li>
+<li>approved_payment_to_income_ratio IS NOT NULL</li>
+<li>approved_expected_loss_amount IS NOT NULL</li>
+<li>approved_expected_loss_amount &lt;= product_approved_el_cap</li>
+<li>approved_payment_to_income_ratio &lt;= counteroffer_target_pti</li>
+<li>simulated_offer_exposure_flag = TRUE</li>
+</ul>
+<hr>
+<ol start="6">
+<li>MANUAL_REVIEW final convention checks</li>
+</ol>
+<hr>
+<p>For decision_outcome = MANUAL_REVIEW:</p>
+<ul>
+<li>approved_amount IS NULL</li>
+<li>counteroffer_amount IS NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount IS NULL</li>
+<li>exposure_reduction_pct IS NULL</li>
+<li>approved_monthly_payment_proxy IS NULL</li>
+<li>approved_payment_to_income_ratio IS NULL</li>
+<li>approved_expected_loss_amount IS NULL</li>
+<li>approved_el_reduction_amount IS NULL</li>
+<li>approved_el_reduction_pct IS NULL</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<hr>
+<ol start="7">
+<li>DECLINE final convention checks</li>
+</ol>
+<hr>
+<p>For decision_outcome = DECLINE:</p>
+<ul>
+<li>approved_amount = 0</li>
+<li>counteroffer_amount IS NULL</li>
+<li>exposure_reduction_flag = FALSE</li>
+<li>exposure_reduction_amount = requested_amount</li>
+<li>exposure_reduction_pct = 1.0</li>
+<li>approved_monthly_payment_proxy = 0</li>
+<li>approved_payment_to_income_ratio = 0</li>
+<li>approved_expected_loss_amount = 0</li>
+<li>approved_el_reduction_amount = requested_expected_loss_amount</li>
+<li>approved_el_reduction_pct =
+  CASE
+  WHEN requested_expected_loss_amount &gt; 0 THEN 1.0
+  ELSE 0
+  END</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<hr>
+<ol start="8">
+<li>Failed counteroffer resolution checks</li>
+</ol>
+<hr>
+<p>For preliminary_decision_outcome = COUNTEROFFER
+and counteroffer_feasibility_pass_flag = FALSE:</p>
+<ul>
+<li>if failed_counteroffer_resolution = MANUAL_REVIEW, final decision_outcome should be MANUAL_REVIEW</li>
+<li>if failed_counteroffer_resolution = DECLINE, final decision_outcome should be DECLINE</li>
+<li>final decision_path should clearly identify failed counteroffer resolution</li>
+</ul>
+<hr>
+<ol start="9">
+<li>No reason-code fields yet</li>
+</ol>
+<hr>
+<p>Validate or explicitly confirm:</p>
+<ul>
+<li>no primary_reason_code column exists yet</li>
+<li>no secondary_reason_code column exists yet</li>
+<li>no tertiary_reason_code column exists yet</li>
+<li>no triggered_reason_code_list column exists yet</li>
+<li>no reason_priority_rank column exists yet</li>
+</ul>
+<p>Reason codes belong to the next section.</p>
+<hr>
+<ol start="10">
+<li>No final output / archive yet</li>
+</ol>
+<hr>
+<p>Validate or explicitly confirm:</p>
+<ul>
+<li>no final latest-run strategy output table is created yet</li>
+<li>no strategy archive rows are inserted yet</li>
+</ul>
+<p>These are Section 9 local staging gatekeepers only, not full Module 2 QA.</p>
+<p>================================================================================
+9. SECTION 9 LOCAL SANITY CHECKS
+================================================================================</p>
+<p>After local gatekeepers, include lightweight staging diagnostics.</p>
+<p>Suggested checks:</p>
+<ol>
+<li>Count by decision_outcome</li>
+<li>Count by decision_path</li>
+<li>Count by decision_resolution_source</li>
+<li>Count by simulated_offer_exposure_flag</li>
+<li>Preliminary decision outcome × final decision outcome</li>
+<li>Exposure treatment status × final decision outcome</li>
+<li>Counteroffer feasibility pass flag × final decision outcome</li>
+<li>Counteroffer feasibility failure reason × final decision outcome</li>
+<li>Product × decision_outcome</li>
+<li>Score band × decision_outcome</li>
+<li>Strategy risk tier × decision_outcome</li>
+<li>Requested PTI bucket × decision_outcome</li>
+<li>Requested exposure tier × decision_outcome</li>
+<li>Requested Expected Loss tier × decision_outcome</li>
+<li>Mixed-signal profile × decision_outcome</li>
+<li>Borderline profile flag × decision_outcome</li>
+<li>Average requested_amount by decision_outcome</li>
+<li>Average approved_amount by decision_outcome</li>
+<li>Average requested_payment_to_income_ratio by decision_outcome</li>
+<li>Average approved_payment_to_income_ratio by decision_outcome</li>
+<li>Average requested_expected_loss_amount by decision_outcome</li>
+<li>Average approved_expected_loss_amount by decision_outcome</li>
+</ol>
+<p>These are staging diagnostics only.
+They should not be interpreted as full final strategy validation yet.</p>
+<p>================================================================================
+10. SECTION 9 COMMENTARY QUALITY
+================================================================================</p>
+<p>Please keep the same elite commentary standard.</p>
+<p>Section 9 comments should explain:</p>
+<ul>
+<li>why final decision resolution is separated from preliminary routing</li>
+<li>why Section 8 exposure feasibility is required before final counteroffer resolution</li>
+<li>why failed counteroffers use a governed resolution parameter</li>
+<li>why decision_outcome becomes final here, but reason codes remain deferred</li>
+<li>why APPROVE and COUNTEROFFER are simulated positive offer outcomes</li>
+<li>why MANUAL_REVIEW remains unresolved</li>
+<li>why DECLINE uses the zero-exposure convention</li>
+<li>why simulated_offer_exposure_flag does not imply a booked account</li>
+<li>why requested Expected Loss and approved Expected Loss remain separate</li>
+<li>why estimated_pd remains only the Module 1 synthetic estimated-PD proxy input</li>
+<li>why no reason codes are assigned in Section 9</li>
+<li>why no final latest-run table or archive insert occurs in Section 9</li>
+</ul>
+<p>No silent assumptions.
+No unexplained magic numbers.
+No production-decision language.
+No booked-account language.
+No adverse-action reason-code language.</p>
+<p>================================================================================
+11. SECTION 9 DELIVERABLE
+================================================================================</p>
+<p>Please now provide:</p>
+<ol>
+<li>Any targeted Section 8 patch required by the pre-flight review, if any.</li>
+<li>Any required targeted Section 2 / Section 3 parameter and gatekeeper patch for failed_counteroffer_resolution.</li>
+<li>Section 9 SQL only:
+FINAL DECISION RESOLUTION LAYER.</li>
+<li>A short explanation of what Section 9 establishes.</li>
+<li>A short explanation of what Section 9 intentionally does not build.</li>
+<li>The recommended next build step after Section 9.</li>
+</ol>
+<p>Do not write Section 10+ yet.</p>
+</div></article><article id="c038-m00129" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00129 · 2026-05-06T13:50:33.282362-04:00 · active path</p><div class="body"><p>Section 8 pre-flight review passed; no patch required.</p>
+<p>Section 8 includes all required exposure-treatment, preliminary approved affordability, preliminary approved economics, counteroffer feasibility, and counteroffer calculation diagnostic fields. It does not create final decision fields, final outcome flags, <code>simulated_offer_exposure_flag</code>, reason-code fields, the final latest-run table, or archive insert logic. Its treatment conventions for preliminary <code>APPROVE</code>, <code>DECLINE</code>, <code>MANUAL_REVIEW</code>, and <code>COUNTEROFFER</code> routes are internally consistent.</p>
+<p>The Section 9 build below preserves the Module 1 boundary that <code>estimated_pd</code> remains the finalized Module 1 SQL field and is interpreted as the synthetic estimated-PD proxy; Module 2 continues to use it as an input rather than recalculating it. Module 1’s BRD frames the engine as governed synthetic strategy simulation, not production underwriting, calibrated PD modeling, or production loss forecasting, and the validation summary confirms that Module 1 is accepted for controlled synthetic strategy simulation within those boundaries. fileciteturn4file0 fileciteturn4file1</p>
+<hr>
+<h1>1. Targeted Section 2 / Section 3 patch for <code>failed_counteroffer_resolution</code></h1>
+<h2>Patch 2.A — Add parameter column to <code>tmp_module2_strategy_params</code></h2>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">/* Decision convention controls */
+approve_reason_code                          TEXT,
+reason_code_required_flag                    BOOLEAN,
+simulated_offer_exposure_flag_enabled        BOOLEAN,
+manual_review_approved_amount_convention     TEXT,
+decline_approved_amount_convention           TEXT,
+approved_el_decline_convention               TEXT,
+approved_el_manual_review_convention         TEXT,
+allow_approved_amount_above_requested_flag   BOOLEAN
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">/* Decision convention controls */
+approve_reason_code                          TEXT,
+reason_code_required_flag                    BOOLEAN,
+simulated_offer_exposure_flag_enabled        BOOLEAN,
+manual_review_approved_amount_convention     TEXT,
+decline_approved_amount_convention           TEXT,
+approved_el_decline_convention               TEXT,
+approved_el_manual_review_convention         TEXT,
+allow_approved_amount_above_requested_flag   BOOLEAN,
+
+/* Final decision-resolution control */
+failed_counteroffer_resolution               TEXT
+
+/*
+failed_counteroffer_resolution:
+    Governs how preliminary COUNTEROFFER routes resolve when Section 8 determines that no
+    viable reduced-exposure treatment exists.
+
+Allowed values:
+    MANUAL_REVIEW
+    DECLINE
+
+Default:
+    MANUAL_REVIEW
+
+Interpretation:
+    A failed counteroffer is routed to MANUAL_REVIEW by default because higher-priority
+    hard simulated policy stops, severe synthetic estimated-risk, and severe DTI have already
+    routed to DECLINE before counteroffer feasibility is evaluated.
+
+Boundary:
+    This is a simulated strategy-control parameter, not production underwriting policy.
+*/
+</code></pre>
+<hr>
+<h2>Patch 2.B — Add parameter to the insert column list</h2>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">approved_el_manual_review_convention,
+allow_approved_amount_above_requested_flag
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">approved_el_manual_review_convention,
+allow_approved_amount_above_requested_flag,
+failed_counteroffer_resolution
+</code></pre>
+<hr>
+<h2>Patch 2.C — Add default value</h2>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">&#39;ZERO&#39;,
+&#39;NULL_UNRESOLVED&#39;,
+FALSE
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">&#39;ZERO&#39;,
+&#39;NULL_UNRESOLVED&#39;,
+FALSE,
+
+/*
+Failed counteroffer resolution default.
+
+MANUAL_REVIEW is intentionally conservative and audit-readable. It avoids silently converting
+all infeasible reduced-exposure cases into declines after higher-priority hard simulated policy
+stop, severe synthetic estimated-risk, and severe DTI routes have already been handled.
+*/
+&#39;MANUAL_REVIEW&#39;
+</code></pre>
+<hr>
+<h2>Patch 3.A — Add Section 3 gatekeeper validation</h2>
+<p>Place this in Section 3.1 after the decision convention controls are validated.</p>
+<pre><code class="language-sql">/*-------------------------------------------------------------------------------------------
+Gatekeeper: failed counteroffer resolution.
+
+This parameter governs final decision resolution for preliminary COUNTEROFFER rows where
+Section 8 determines that no viable reduced-exposure treatment exists.
+
+Allowed values:
+    MANUAL_REVIEW
+    DECLINE
+
+Default:
+    MANUAL_REVIEW
+
+This is a simulated strategy-control parameter. It is not production underwriting policy.
+-------------------------------------------------------------------------------------------*/
+IF p.failed_counteroffer_resolution IS NULL
+   OR p.failed_counteroffer_resolution NOT IN (&#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;) THEN
+    RAISE EXCEPTION
+        &#39;Module 2 gatekeeper failure: failed_counteroffer_resolution must be MANUAL_REVIEW or DECLINE. Found: %.&#39;,
+        COALESCE(p.failed_counteroffer_resolution, &#39;&lt;NULL&gt;&#39;);
+END IF;
+</code></pre>
+<hr>
+<h1>2. Section 9 SQL only — Final Decision Resolution Layer</h1>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 9 — FINAL DECISION RESOLUTION LAYER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Convert preliminary routing plus Section 8 exposure-treatment feasibility into one final simulated
+    strategy outcome per synthetic applicant.
+
+    Section 9 answers:
+
+        &quot;Given preliminary routing and exposure-treatment feasibility, what is the final simulated
+         strategy outcome for this synthetic applicant?&quot;
+
+SQL PURPOSE:
+    1. Read from tmp_m2_stage_5_exposure_treatment.
+    2. Preserve all prior source, lineage, strategy metadata, thresholds, segmentation, rule flags,
+       preliminary routing, and exposure-treatment diagnostics.
+    3. Apply final decision-resolution logic.
+    4. Create final outcome fields and final exposure economics.
+    5. Create final outcome flags and simulated_offer_exposure_flag.
+    6. Validate final decision completeness and internal consistency.
+    7. Confirm that reason-code fields, latest-run output creation, and archive persistence are still
+       deferred.
+
+WHY FINAL DECISION RESOLUTION IS SEPARATED FROM PRELIMINARY ROUTING:
+    Section 7 assigns a preliminary route based on overlapping trigger flags.
+    Section 8 determines whether approved exposure or reduced exposure is feasible.
+
+    Section 9 is the first point where both pieces of information are available:
+        preliminary route
+        exposure-treatment feasibility
+
+    This is why final decision_outcome is created here rather than earlier.
+
+WHY COUNTEROFFER FEASIBILITY IS REQUIRED BEFORE FINAL COUNTEROFFER:
+    A preliminary COUNTEROFFER route only means that the row should be tested for reduced-exposure
+    feasibility.
+
+    Final COUNTEROFFER requires Section 8 to confirm that the reduced exposure satisfies:
+        product cap
+        minimum approved amount
+        minimum viable counteroffer percentage
+        maximum exposure-reduction rule
+        approved PTI target
+        approved Expected Loss cap
+
+WHY FAILED COUNTEROFFERS USE A GOVERNED RESOLUTION PARAMETER:
+    failed_counteroffer_resolution controls whether infeasible preliminary COUNTEROFFER routes become:
+
+        MANUAL_REVIEW
+        DECLINE
+
+    Default:
+        MANUAL_REVIEW
+
+    Rationale:
+        Higher-priority hard simulated policy stops, severe synthetic estimated-risk, and severe DTI
+        already route to DECLINE before counteroffer feasibility is evaluated. A failed counteroffer
+        often reflects unresolved exposure, affordability, or approved Expected Loss feasibility, so
+        MANUAL_REVIEW is the conservative default.
+
+    Boundary:
+        This is a simulated strategy-control parameter, not production underwriting policy.
+
+WHY REASON CODES REMAIN DEFERRED:
+    Section 9 creates final decision outcomes, but simulated reason-code prioritization should use:
+
+        final decision_outcome
+        final decision_path
+        preliminary routing diagnostics
+        rule trigger diagnostics
+        exposure-treatment diagnostics
+        counteroffer feasibility diagnostics
+
+    Therefore reason-code assignment is built in the next section.
+
+SIMULATED OFFER EXPOSURE BOUNDARY:
+    APPROVE and COUNTEROFFER are simulated positive offer-exposure outcomes.
+
+    simulated_offer_exposure_flag = TRUE means:
+        the simulated strategy output includes positive offer exposure for the synthetic applicant.
+
+    It does not mean:
+        operational account creation
+        funded exposure
+        production approval
+        real customer treatment
+
+MANUAL REVIEW BOUNDARY:
+    MANUAL_REVIEW remains unresolved by design.
+
+    Final MANUAL_REVIEW rows receive NULL approved exposure, NULL approved payment, NULL approved PTI,
+    and NULL approved Expected Loss.
+
+DECLINE BOUNDARY:
+    DECLINE uses the locked zero-exposure convention.
+
+    Final DECLINE rows receive:
+        approved_amount = 0
+        approved_expected_loss_amount = 0
+
+    This is a simulated no-offer exposure convention, not a production decision notice.
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the finalized Module 1 SQL field name.
+
+    In Section 9, estimated_pd is still interpreted only as the synthetic estimated-PD proxy.
+    Module 2 does not recalculate estimated_pd.
+
+REQUESTED VS APPROVED EXPECTED LOSS:
+    requested_expected_loss_amount:
+        Module 2 alias for Module 1 expected_loss_amount.
+        This is requested-exposure Expected Loss.
+
+    approved_expected_loss_amount:
+        Final Module 2 approved-exposure Expected Loss.
+
+    The distinction is essential because requested exposure and final approved exposure may differ.
+
+FINAL OUTPUT BOUNDARY:
+    Section 9 creates a final decision-resolution staging table only.
+
+    It does not create:
+        credit_decisioning_sim.strategy_decisions
+        credit_decisioning_sim.strategy_decisions_archive rows
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 9.1 — CLEAN RESET OF SECTION 9 STAGING OBJECT
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_stage_6_final_decision_resolution;
+
+
+
+/***************************************************************************************************
+SECTION 9.2 — CREATE FINAL DECISION RESOLUTION TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_m2_stage_6_final_decision_resolution
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+INPUT:
+    tmp_m2_stage_5_exposure_treatment
+
+OUTPUT:
+    All Section 8 fields plus:
+        decision_outcome
+        decision_path
+        decision_priority_rank
+        decision_resolution_source
+        approval_flag
+        counteroffer_flag
+        manual_review_flag
+        decline_flag
+        simulated_offer_exposure_flag
+        approved_amount
+        counteroffer_amount
+        exposure_reduction_flag
+        exposure_reduction_amount
+        exposure_reduction_pct
+        approved_monthly_payment_proxy
+        approved_payment_to_income_ratio
+        approved_expected_loss_amount
+        approved_el_reduction_amount
+        approved_el_reduction_pct
+
+IMPORTANT:
+    This table does not contain simulated reason-code fields.
+    Reason-code assignment is intentionally deferred to Section 10.
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_stage_6_final_decision_resolution
+ON COMMIT PRESERVE ROWS
+AS
+WITH active_params AS (
+    SELECT *
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1
+),
+
+/*-----------------------------------------------------------------------------------------------
+Attach final decision-resolution parameter.
+
+failed_counteroffer_resolution is attached here so final decision logic does not rely on a hidden
+hardcoded treatment for infeasible preliminary COUNTEROFFER routes.
+-----------------------------------------------------------------------------------------------*/
+decision_inputs AS (
+    SELECT
+        e.*,
+        p.failed_counteroffer_resolution
+    FROM tmp_m2_stage_5_exposure_treatment e
+    CROSS JOIN active_params p
+),
+
+/*-----------------------------------------------------------------------------------------------
+Final decision assignment.
+
+This CTE creates final decision fields only.
+
+Reason-code fields are not created here.
+Final latest-run output is not created here.
+Archive persistence is not created here.
+-----------------------------------------------------------------------------------------------*/
+decision_assignment AS (
+    SELECT
+        di.*,
+
+        /*
+        decision_outcome:
+            Final simulated strategy outcome.
+
+        Allowed values:
+            APPROVE
+            COUNTEROFFER
+            MANUAL_REVIEW
+            DECLINE
+
+        This field is final within Module 2 decision-resolution logic, but it remains a simulated
+        strategy outcome on synthetic applicants.
+        */
+        CASE
+            WHEN di.preliminary_decision_outcome = &#39;DECLINE&#39;
+                THEN &#39;DECLINE&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN &#39;MANUAL_REVIEW&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;APPROVE&#39;
+                THEN &#39;APPROVE&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS TRUE
+                THEN &#39;COUNTEROFFER&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS FALSE
+             AND di.failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                THEN &#39;MANUAL_REVIEW&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS FALSE
+             AND di.failed_counteroffer_resolution = &#39;DECLINE&#39;
+                THEN &#39;DECLINE&#39;
+
+            ELSE &#39;MANUAL_REVIEW&#39;
+        END AS decision_outcome,
+
+
+        /*
+        decision_path:
+            Final route label for the simulated strategy outcome.
+
+        Naming discipline:
+            APPROVE_AS_REQUESTED is used as the decision path for final approvals.
+
+            APPROVED_AS_REQUESTED remains reserved for the later simulated reason-code layer,
+            where it can be used as the approval primary_reason_code.
+        */
+        CASE
+            WHEN di.preliminary_decision_outcome = &#39;DECLINE&#39;
+                THEN di.preliminary_decision_path
+
+            WHEN di.preliminary_decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN di.preliminary_decision_path
+
+            WHEN di.preliminary_decision_outcome = &#39;APPROVE&#39;
+                THEN &#39;APPROVE_AS_REQUESTED&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS TRUE
+                THEN &#39;COUNTEROFFER_FEASIBLE&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS FALSE
+             AND di.failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                THEN &#39;COUNTEROFFER_NOT_FEASIBLE_REVIEW&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS FALSE
+             AND di.failed_counteroffer_resolution = &#39;DECLINE&#39;
+                THEN &#39;COUNTEROFFER_NOT_FEASIBLE_DECLINE&#39;
+
+            ELSE &#39;FINAL_RESIDUAL_STRATEGY_REVIEW&#39;
+        END AS decision_path,
+
+
+        /*
+        decision_priority_rank:
+            Carries the preliminary routing rank where a normal route is resolved.
+            Uses 99 only for the residual final fallback.
+        */
+        CASE
+            WHEN di.preliminary_decision_outcome IN (&#39;DECLINE&#39;, &#39;MANUAL_REVIEW&#39;, &#39;APPROVE&#39;)
+                THEN di.preliminary_decision_priority_rank
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS NOT NULL
+                THEN di.preliminary_decision_priority_rank
+
+            ELSE 99
+        END AS decision_priority_rank,
+
+
+        /*
+        decision_resolution_source:
+            Explains how the preliminary route and exposure-treatment feasibility resolved into
+            the final simulated strategy outcome.
+
+        This is not a reason code.
+        */
+        CASE
+            WHEN di.preliminary_decision_outcome = &#39;DECLINE&#39;
+                THEN &#39;PRELIMINARY_DECLINE_CONFIRMED&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN &#39;PRELIMINARY_MANUAL_REVIEW_CONFIRMED&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;APPROVE&#39;
+                THEN &#39;PRELIMINARY_APPROVE_CONFIRMED&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS TRUE
+                THEN &#39;COUNTEROFFER_FEASIBILITY_CONFIRMED&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS FALSE
+             AND di.failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                THEN &#39;COUNTEROFFER_FEASIBILITY_FAILED_TO_REVIEW&#39;
+
+            WHEN di.preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+             AND di.counteroffer_feasibility_pass_flag IS FALSE
+             AND di.failed_counteroffer_resolution = &#39;DECLINE&#39;
+                THEN &#39;COUNTEROFFER_FEASIBILITY_FAILED_TO_DECLINE&#39;
+
+            ELSE &#39;FINAL_RESIDUAL_FALLBACK&#39;
+        END AS decision_resolution_source
+
+    FROM decision_inputs di
+),
+
+/*-----------------------------------------------------------------------------------------------
+Final exposure economics assignment.
+
+These final fields are derived from final decision_outcome and the Section 8 preliminary exposure
+treatment fields.
+
+No reason-code fields are created here.
+-----------------------------------------------------------------------------------------------*/
+final_exposure_assignment AS (
+    SELECT
+        da.*,
+
+        /*
+        approved_amount:
+            Final simulated approved exposure.
+
+        APPROVE:
+            requested_amount
+
+        COUNTEROFFER:
+            feasible reduced exposure from Section 8
+
+        MANUAL_REVIEW:
+            NULL, unresolved by design
+
+        DECLINE:
+            0, no simulated offer exposure
+        */
+        CASE
+            WHEN da.decision_outcome = &#39;APPROVE&#39;
+                THEN da.requested_amount
+
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN da.approved_amount_preliminary
+
+            WHEN da.decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN NULL::NUMERIC
+
+            WHEN da.decision_outcome = &#39;DECLINE&#39;
+                THEN 0::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_amount,
+
+        CASE
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN da.approved_amount_preliminary
+            ELSE NULL::NUMERIC
+        END AS counteroffer_amount,
+
+        CASE
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN TRUE
+            ELSE FALSE
+        END AS exposure_reduction_flag,
+
+        CASE
+            WHEN da.decision_outcome = &#39;APPROVE&#39;
+                THEN 0::NUMERIC
+
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN da.requested_amount - da.approved_amount_preliminary
+
+            WHEN da.decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN NULL::NUMERIC
+
+            WHEN da.decision_outcome = &#39;DECLINE&#39;
+                THEN da.requested_amount
+
+            ELSE NULL::NUMERIC
+        END AS exposure_reduction_amount,
+
+        CASE
+            WHEN da.decision_outcome = &#39;APPROVE&#39;
+                THEN 0::NUMERIC
+
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN (da.requested_amount - da.approved_amount_preliminary)
+                     / NULLIF(da.requested_amount, 0)
+
+            WHEN da.decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN NULL::NUMERIC
+
+            WHEN da.decision_outcome = &#39;DECLINE&#39;
+                THEN 1.0::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS exposure_reduction_pct,
+
+
+        /*
+        Final approved affordability fields.
+
+        approved_monthly_payment_proxy:
+            Simulated proportional payment proxy after final exposure treatment.
+
+        approved_payment_to_income_ratio:
+            Simulated post-exposure-treatment affordability ratio.
+
+        These are not contractual payment schedules.
+        */
+        CASE
+            WHEN da.decision_outcome = &#39;APPROVE&#39;
+                THEN da.requested_monthly_payment_proxy
+
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN da.approved_monthly_payment_proxy_preliminary
+
+            WHEN da.decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN NULL::NUMERIC
+
+            WHEN da.decision_outcome = &#39;DECLINE&#39;
+                THEN 0::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_monthly_payment_proxy,
+
+        CASE
+            WHEN da.decision_outcome = &#39;APPROVE&#39;
+                THEN da.requested_payment_to_income_ratio
+
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN da.approved_payment_to_income_ratio_preliminary
+
+            WHEN da.decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN NULL::NUMERIC
+
+            WHEN da.decision_outcome = &#39;DECLINE&#39;
+                THEN 0::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_payment_to_income_ratio,
+
+
+        /*
+        Final approved Expected Loss fields.
+
+        requested_expected_loss_amount:
+            Module 1 requested-exposure Expected Loss.
+
+        approved_expected_loss_amount:
+            Module 2 final approved-exposure Expected Loss.
+
+        estimated_pd remains the Module 1 synthetic estimated-PD proxy input.
+        */
+        CASE
+            WHEN da.decision_outcome = &#39;APPROVE&#39;
+                THEN da.requested_expected_loss_amount
+
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN da.approved_expected_loss_amount_preliminary
+
+            WHEN da.decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN NULL::NUMERIC
+
+            WHEN da.decision_outcome = &#39;DECLINE&#39;
+                THEN 0::NUMERIC
+
+            ELSE NULL::NUMERIC
+        END AS approved_expected_loss_amount,
+
+        CASE
+            WHEN da.decision_outcome = &#39;APPROVE&#39;
+                THEN 0::NUMERIC
+
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN da.requested_expected_loss_amount - da.approved_expected_loss_amount_preliminary
+
+            WHEN da.decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN NULL::NUMERIC
+
+            WHEN da.decision_outcome = &#39;DECLINE&#39;
+                THEN da.requested_expected_loss_amount
+
+            ELSE NULL::NUMERIC
+        END AS approved_el_reduction_amount,
+
+        CASE
+            WHEN da.decision_outcome = &#39;APPROVE&#39;
+                THEN 0::NUMERIC
+
+            WHEN da.decision_outcome = &#39;COUNTEROFFER&#39;
+                THEN (
+                    da.requested_expected_loss_amount - da.approved_expected_loss_amount_preliminary
+                ) / NULLIF(da.requested_expected_loss_amount, 0)
+
+            WHEN da.decision_outcome = &#39;MANUAL_REVIEW&#39;
+                THEN NULL::NUMERIC
+
+            WHEN da.decision_outcome = &#39;DECLINE&#39;
+                THEN CASE
+                    WHEN da.requested_expected_loss_amount &gt; 0 THEN 1.0::NUMERIC
+                    ELSE 0::NUMERIC
+                END
+
+            ELSE NULL::NUMERIC
+        END AS approved_el_reduction_pct
+
+    FROM decision_assignment da
+),
+
+/*-----------------------------------------------------------------------------------------------
+Final outcome flags.
+
+These flags reconcile directly to final decision_outcome.
+
+simulated_offer_exposure_flag:
+    TRUE for APPROVE and COUNTEROFFER.
+    FALSE for MANUAL_REVIEW and DECLINE.
+
+This is a simulated strategy exposure flag only.
+It does not imply operational account creation or real customer treatment.
+-----------------------------------------------------------------------------------------------*/
+final_flags AS (
+    SELECT
+        fea.*,
+
+        (fea.decision_outcome = &#39;APPROVE&#39;) AS approval_flag,
+        (fea.decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_flag,
+        (fea.decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_flag,
+        (fea.decision_outcome = &#39;DECLINE&#39;) AS decline_flag,
+
+        (fea.decision_outcome IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;))
+            AS simulated_offer_exposure_flag
+
+    FROM final_exposure_assignment fea
+)
+
+SELECT *
+FROM final_flags;
+
+
+
+/***************************************************************************************************
+SECTION 9.3 — LOCAL FAIL-FAST CHECKS FOR FINAL DECISION RESOLUTION
+****************************************************************************************************
+
+PURPOSE:
+    Validate the Section 9 final decision-resolution layer before simulated reason-code assignment,
+    latest-run output creation, or archive persistence is built.
+
+IMPORTANT:
+    These are local staging gatekeepers only.
+
+    They are not the full Module 2 QA framework.
+    They are not reason-code validation.
+    They are not archive validation.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage5_count BIGINT;
+    v_stage6_count BIGINT;
+    v_stage6_distinct_app_count BIGINT;
+
+    v_duplicate_application_count BIGINT;
+    v_final_decision_completeness_failure_count BIGINT;
+    v_final_flag_reconciliation_failure_count BIGINT;
+
+    v_approve_convention_failure_count BIGINT;
+    v_counteroffer_convention_failure_count BIGINT;
+    v_manual_review_convention_failure_count BIGINT;
+    v_decline_convention_failure_count BIGINT;
+    v_failed_counteroffer_resolution_failure_count BIGINT;
+
+    v_forbidden_reason_column_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: row count must be unchanged from Section 8 to Section 9.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage5_count
+    FROM tmp_m2_stage_5_exposure_treatment;
+
+    SELECT COUNT(*)
+    INTO v_stage6_count
+    FROM tmp_m2_stage_6_final_decision_resolution;
+
+    IF v_stage6_count &lt;&gt; v_stage5_count THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: row count changed from Section 8 to Section 9. Stage 5 rows: %, Stage 6 rows: %.&#39;,
+            v_stage5_count,
+            v_stage6_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id remains unique.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage6_distinct_app_count
+    FROM tmp_m2_stage_6_final_decision_resolution;
+
+    IF v_stage6_distinct_app_count &lt;&gt; v_stage6_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_count
+        FROM (
+            SELECT application_id
+            FROM tmp_m2_stage_6_final_decision_resolution
+            GROUP BY application_id
+            HAVING COUNT(*) &gt; 1
+        ) d;
+
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: application_id uniqueness was not preserved. Stage 6 rows: %, distinct application_id count: %, duplicate application_id group count: %.&#39;,
+            v_stage6_count,
+            v_stage6_distinct_app_count,
+            v_duplicate_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: final decision fields must be complete and valid.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_final_decision_completeness_failure_count
+    FROM tmp_m2_stage_6_final_decision_resolution
+    WHERE decision_outcome IS NULL
+       OR decision_outcome NOT IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;, &#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;)
+       OR decision_path IS NULL
+       OR NULLIF(BTRIM(decision_path), &#39;&#39;) IS NULL
+       OR decision_priority_rank IS NULL
+       OR decision_priority_rank &lt;= 0
+       OR decision_resolution_source IS NULL
+       OR NULLIF(BTRIM(decision_resolution_source), &#39;&#39;) IS NULL
+       OR failed_counteroffer_resolution IS NULL
+       OR failed_counteroffer_resolution NOT IN (&#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;);
+
+    IF v_final_decision_completeness_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: % row(s) have null or invalid final decision-resolution fields.&#39;,
+            v_final_decision_completeness_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: final flags must reconcile to decision_outcome.
+
+    Exactly one final outcome flag must be TRUE per row.
+    simulated_offer_exposure_flag must be TRUE only for APPROVE and COUNTEROFFER.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_final_flag_reconciliation_failure_count
+    FROM tmp_m2_stage_6_final_decision_resolution
+    WHERE (
+            COALESCE(approval_flag::INT, 0)
+            + COALESCE(counteroffer_flag::INT, 0)
+            + COALESCE(manual_review_flag::INT, 0)
+            + COALESCE(decline_flag::INT, 0)
+          ) &lt;&gt; 1
+       OR approval_flag
+          IS DISTINCT FROM (decision_outcome = &#39;APPROVE&#39;)
+       OR counteroffer_flag
+          IS DISTINCT FROM (decision_outcome = &#39;COUNTEROFFER&#39;)
+       OR manual_review_flag
+          IS DISTINCT FROM (decision_outcome = &#39;MANUAL_REVIEW&#39;)
+       OR decline_flag
+          IS DISTINCT FROM (decision_outcome = &#39;DECLINE&#39;)
+       OR simulated_offer_exposure_flag
+          IS DISTINCT FROM (decision_outcome IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;));
+
+    IF v_final_flag_reconciliation_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: % row(s) have final flag reconciliation failures.&#39;,
+            v_final_flag_reconciliation_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: final APPROVE convention.
+
+    APPROVE is a simulated approval-as-requested strategy outcome.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_approve_convention_failure_count
+    FROM tmp_m2_stage_6_final_decision_resolution
+    WHERE decision_outcome = &#39;APPROVE&#39;
+      AND (
+            approved_amount IS DISTINCT FROM requested_amount
+         OR counteroffer_amount IS NOT NULL
+         OR exposure_reduction_flag IS DISTINCT FROM FALSE
+         OR exposure_reduction_amount IS DISTINCT FROM 0::NUMERIC
+         OR exposure_reduction_pct IS DISTINCT FROM 0::NUMERIC
+         OR approved_monthly_payment_proxy IS DISTINCT FROM requested_monthly_payment_proxy
+         OR approved_payment_to_income_ratio IS DISTINCT FROM requested_payment_to_income_ratio
+         OR approved_expected_loss_amount IS DISTINCT FROM requested_expected_loss_amount
+         OR approved_el_reduction_amount IS DISTINCT FROM 0::NUMERIC
+         OR approved_el_reduction_pct IS DISTINCT FROM 0::NUMERIC
+         OR simulated_offer_exposure_flag IS DISTINCT FROM TRUE
+         OR decision_path &lt;&gt; &#39;APPROVE_AS_REQUESTED&#39;
+      );
+
+    IF v_approve_convention_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: % final APPROVE row(s) violate approval-as-requested conventions.&#39;,
+            v_approve_convention_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: final COUNTEROFFER convention.
+
+    COUNTEROFFER requires a feasible Section 8 reduced-exposure treatment.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_counteroffer_convention_failure_count
+    FROM tmp_m2_stage_6_final_decision_resolution
+    WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+      AND (
+            counteroffer_feasibility_pass_flag IS DISTINCT FROM TRUE
+         OR approved_amount IS NULL
+         OR approved_amount &lt;= 0
+         OR approved_amount &gt;= requested_amount
+         OR counteroffer_amount IS DISTINCT FROM approved_amount
+         OR exposure_reduction_flag IS DISTINCT FROM TRUE
+         OR exposure_reduction_amount IS DISTINCT FROM (requested_amount - approved_amount)
+         OR exposure_reduction_pct IS DISTINCT FROM (
+                exposure_reduction_amount / NULLIF(requested_amount, 0)
+            )
+         OR approved_monthly_payment_proxy IS NULL
+         OR approved_payment_to_income_ratio IS NULL
+         OR approved_expected_loss_amount IS NULL
+         OR approved_expected_loss_amount &gt; product_approved_el_cap
+         OR approved_payment_to_income_ratio &gt; counteroffer_target_pti
+         OR approved_amount &lt; product_min_approved_amount
+         OR approved_amount &gt; product_max_approved_amount
+         OR approved_amount &lt; requested_amount * product_min_counteroffer_pct
+         OR approved_amount &lt; requested_amount * (1.0 - product_max_exposure_reduction_pct)
+         OR approved_el_reduction_amount IS NULL
+         OR simulated_offer_exposure_flag IS DISTINCT FROM TRUE
+         OR decision_path &lt;&gt; &#39;COUNTEROFFER_FEASIBLE&#39;
+      );
+
+    IF v_counteroffer_convention_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: % final COUNTEROFFER row(s) violate feasible counteroffer conventions.&#39;,
+            v_counteroffer_convention_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: final MANUAL_REVIEW convention.
+
+    Manual review remains unresolved by design.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_manual_review_convention_failure_count
+    FROM tmp_m2_stage_6_final_decision_resolution
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND (
+            approved_amount IS NOT NULL
+         OR counteroffer_amount IS NOT NULL
+         OR exposure_reduction_flag IS DISTINCT FROM FALSE
+         OR exposure_reduction_amount IS NOT NULL
+         OR exposure_reduction_pct IS NOT NULL
+         OR approved_monthly_payment_proxy IS NOT NULL
+         OR approved_payment_to_income_ratio IS NOT NULL
+         OR approved_expected_loss_amount IS NOT NULL
+         OR approved_el_reduction_amount IS NOT NULL
+         OR approved_el_reduction_pct IS NOT NULL
+         OR simulated_offer_exposure_flag IS DISTINCT FROM FALSE
+      );
+
+    IF v_manual_review_convention_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: % final MANUAL_REVIEW row(s) violate unresolved-review conventions.&#39;,
+            v_manual_review_convention_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: final DECLINE convention.
+
+    DECLINE uses the locked zero-exposure convention.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_decline_convention_failure_count
+    FROM tmp_m2_stage_6_final_decision_resolution
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND (
+            approved_amount IS DISTINCT FROM 0::NUMERIC
+         OR counteroffer_amount IS NOT NULL
+         OR exposure_reduction_flag IS DISTINCT FROM FALSE
+         OR exposure_reduction_amount IS DISTINCT FROM requested_amount
+         OR exposure_reduction_pct IS DISTINCT FROM 1.0::NUMERIC
+         OR approved_monthly_payment_proxy IS DISTINCT FROM 0::NUMERIC
+         OR approved_payment_to_income_ratio IS DISTINCT FROM 0::NUMERIC
+         OR approved_expected_loss_amount IS DISTINCT FROM 0::NUMERIC
+         OR approved_el_reduction_amount IS DISTINCT FROM requested_expected_loss_amount
+         OR approved_el_reduction_pct IS DISTINCT FROM CASE
+                WHEN requested_expected_loss_amount &gt; 0 THEN 1.0::NUMERIC
+                ELSE 0::NUMERIC
+            END
+         OR simulated_offer_exposure_flag IS DISTINCT FROM FALSE
+      );
+
+    IF v_decline_convention_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: % final DECLINE row(s) violate zero-exposure conventions.&#39;,
+            v_decline_convention_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: failed counteroffer resolution.
+
+    Infeasible preliminary COUNTEROFFER rows must resolve according to failed_counteroffer_resolution.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_failed_counteroffer_resolution_failure_count
+    FROM tmp_m2_stage_6_final_decision_resolution
+    WHERE preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+      AND counteroffer_feasibility_pass_flag IS FALSE
+      AND (
+            (
+                failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+                AND NOT (
+                    decision_outcome = &#39;MANUAL_REVIEW&#39;
+                    AND decision_path = &#39;COUNTEROFFER_NOT_FEASIBLE_REVIEW&#39;
+                    AND decision_resolution_source = &#39;COUNTEROFFER_FEASIBILITY_FAILED_TO_REVIEW&#39;
+                )
+            )
+            OR
+            (
+                failed_counteroffer_resolution = &#39;DECLINE&#39;
+                AND NOT (
+                    decision_outcome = &#39;DECLINE&#39;
+                    AND decision_path = &#39;COUNTEROFFER_NOT_FEASIBLE_DECLINE&#39;
+                    AND decision_resolution_source = &#39;COUNTEROFFER_FEASIBILITY_FAILED_TO_DECLINE&#39;
+                )
+            )
+      );
+
+    IF v_failed_counteroffer_resolution_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: % failed preliminary COUNTEROFFER row(s) do not resolve according to failed_counteroffer_resolution.&#39;,
+            v_failed_counteroffer_resolution_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: reason-code fields must not exist yet.
+
+    Reason-code assignment belongs to the next section.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_forbidden_reason_column_count
+    FROM pg_attribute
+    WHERE attrelid = &#39;tmp_m2_stage_6_final_decision_resolution&#39;::REGCLASS
+      AND attnum &gt; 0
+      AND NOT attisdropped
+      AND attname IN (
+            &#39;primary_reason_code&#39;,
+            &#39;secondary_reason_code&#39;,
+            &#39;tertiary_reason_code&#39;,
+            &#39;triggered_reason_code_list&#39;,
+            &#39;reason_priority_rank&#39;,
+            &#39;primary_reason_family&#39;
+      );
+
+    IF v_forbidden_reason_column_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: reason-code field(s) were created before the reason-code assignment section.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: final latest-run output table must not exist yet.
+
+    Section 9 creates a temporary final decision-resolution staging table only.
+    The permanent latest-run strategy output is created in a later section.
+    -------------------------------------------------------------------------------------------*/
+    IF TO_REGCLASS(&#39;credit_decisioning_sim.strategy_decisions&#39;) IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 9 failure: final latest-run strategy_decisions table exists before the final output section.&#39;;
+    END IF;
+
+    /*
+    Archive note:
+        Section 9 contains no INSERT, DELETE, TRUNCATE, or CREATE logic for
+        credit_decisioning_sim.strategy_decisions_archive.
+
+        Archive persistence remains deferred to a later section.
+    */
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 9.4 — LOCAL STAGING SANITY CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight diagnostics for the Section 9 final decision-resolution staging layer.
+
+IMPORTANT:
+    These are not full Module 2 QA outputs.
+    These should not be treated as the final Validation Summary evidence set.
+
+    Full decision distribution, reason-code coverage, approved-book analysis, archive validation,
+    and matched strategy comparison QA will be built later.
+
+***************************************************************************************************/
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.1 Count by decision_outcome.
+
+Interpretation:
+    This is the first final simulated strategy outcome distribution, but it remains a staging
+    diagnostic until latest-run output and full QA are built.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    COUNT(*) AS row_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 2) AS pct_of_stage
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_outcome
+ORDER BY
+    CASE decision_outcome
+        WHEN &#39;APPROVE&#39; THEN 1
+        WHEN &#39;COUNTEROFFER&#39; THEN 2
+        WHEN &#39;MANUAL_REVIEW&#39; THEN 3
+        WHEN &#39;DECLINE&#39; THEN 4
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.2 Count by decision_path.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_path,
+    COUNT(*) AS row_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 2) AS pct_of_stage
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_path
+ORDER BY decision_path;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.3 Count by decision_resolution_source.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_resolution_source,
+    COUNT(*) AS row_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 2) AS pct_of_stage
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_resolution_source
+ORDER BY decision_resolution_source;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.4 Count by simulated_offer_exposure_flag.
+
+Interpretation:
+    simulated_offer_exposure_flag = TRUE for APPROVE and COUNTEROFFER.
+    It does not imply operational account creation or real customer treatment.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    simulated_offer_exposure_flag,
+    COUNT(*) AS row_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 2) AS pct_of_stage
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY simulated_offer_exposure_flag
+ORDER BY simulated_offer_exposure_flag;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.5 Preliminary decision outcome × final decision outcome.
+
+Purpose:
+    Shows how Section 8 feasibility and Section 9 final resolution changed preliminary routing.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    preliminary_decision_outcome,
+    decision_outcome,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    preliminary_decision_outcome,
+    decision_outcome
+ORDER BY
+    preliminary_decision_outcome,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.6 Exposure treatment status × final decision outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    exposure_treatment_status,
+    decision_outcome,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    exposure_treatment_status,
+    decision_outcome
+ORDER BY
+    exposure_treatment_status,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.7 Counteroffer feasibility pass flag × final decision outcome.
+
+NULL appears for rows that were not preliminary COUNTEROFFER routes.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    counteroffer_feasibility_pass_flag,
+    decision_outcome,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    counteroffer_feasibility_pass_flag,
+    decision_outcome
+ORDER BY
+    counteroffer_feasibility_pass_flag,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.8 Counteroffer feasibility failure reason × final decision outcome.
+
+Interpretation:
+    counteroffer_feasibility_failure_reason is a feasibility diagnostic, not a final reason code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    counteroffer_feasibility_failure_reason,
+    decision_outcome,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    counteroffer_feasibility_failure_reason,
+    decision_outcome
+ORDER BY
+    counteroffer_feasibility_failure_reason,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.9 Product × decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    product_type_policy_key,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) AS avg_approved_payment_to_income_ratio,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount) AS avg_approved_expected_loss_amount
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    product_type_policy_key,
+    decision_outcome
+ORDER BY
+    product_type_policy_key,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.10 Score band × decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    score_band_policy_key,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    score_band_policy_key,
+    decision_outcome
+ORDER BY
+    CASE score_band_policy_key
+        WHEN &#39;SUPER_PRIME&#39; THEN 1
+        WHEN &#39;PRIME&#39; THEN 2
+        WHEN &#39;NEAR_PRIME&#39; THEN 3
+        WHEN &#39;SUBPRIME&#39; THEN 4
+        WHEN &#39;DEEP_SUBPRIME&#39; THEN 5
+        ELSE 99
+    END,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.11 Strategy risk tier × decision_outcome.
+
+Interpretation:
+    strategy_risk_tier uses estimated_pd as the synthetic estimated-PD proxy input.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    strategy_risk_tier,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    strategy_risk_tier,
+    decision_outcome
+ORDER BY
+    CASE strategy_risk_tier
+        WHEN &#39;LOW_SYNTHETIC_RISK&#39; THEN 1
+        WHEN &#39;MODERATE_SYNTHETIC_RISK&#39; THEN 2
+        WHEN &#39;ELEVATED_SYNTHETIC_RISK&#39; THEN 3
+        WHEN &#39;HIGH_SYNTHETIC_RISK&#39; THEN 4
+        WHEN &#39;SEVERE_SYNTHETIC_RISK&#39; THEN 5
+        ELSE 99
+    END,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.12 Requested PTI bucket × decision_outcome.
+
+Interpretation:
+    requested_payment_to_income_ratio is the original requested-structure PTI from Module 1.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    requested_pti_bucket,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) AS avg_approved_payment_to_income_ratio
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    requested_pti_bucket,
+    decision_outcome
+ORDER BY
+    CASE requested_pti_bucket
+        WHEN &#39;LOW_REQUESTED_PTI&#39; THEN 1
+        WHEN &#39;MODERATE_REQUESTED_PTI&#39; THEN 2
+        WHEN &#39;ELEVATED_REQUESTED_PTI&#39; THEN 3
+        WHEN &#39;HIGH_REQUESTED_PTI&#39; THEN 4
+        WHEN &#39;SEVERE_REQUESTED_PTI&#39; THEN 5
+        ELSE 99
+    END,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.13 Requested exposure tier × decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    requested_exposure_tier,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(approved_amount) AS avg_approved_amount
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    requested_exposure_tier,
+    decision_outcome
+ORDER BY
+    CASE requested_exposure_tier
+        WHEN &#39;BELOW_PRODUCT_MINIMUM&#39; THEN 1
+        WHEN &#39;WITHIN_PRODUCT_LIMITS&#39; THEN 2
+        WHEN &#39;ABOVE_PRODUCT_APPROVAL_CAP&#39; THEN 3
+        WHEN &#39;EXTREME_REQUESTED_EXPOSURE&#39; THEN 4
+        ELSE 99
+    END,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.14 Requested Expected Loss tier × decision_outcome.
+
+Interpretation:
+    requested_expected_loss_amount uses requested exposure.
+    approved_expected_loss_amount uses final approved exposure.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    requested_expected_loss_tier,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount) AS avg_approved_expected_loss_amount
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    requested_expected_loss_tier,
+    decision_outcome
+ORDER BY
+    CASE requested_expected_loss_tier
+        WHEN &#39;LOW_REQUESTED_EL&#39; THEN 1
+        WHEN &#39;MODERATE_REQUESTED_EL&#39; THEN 2
+        WHEN &#39;ELEVATED_REQUESTED_EL&#39; THEN 3
+        WHEN &#39;HIGH_REQUESTED_EL&#39; THEN 4
+        WHEN &#39;SEVERE_REQUESTED_EL&#39; THEN 5
+        ELSE 99
+    END,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.15 Mixed-signal profile × decision_outcome.
+
+Interpretation:
+    mixed_signal_profile_type remains diagnostic. It is not a reason code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    mixed_signal_profile_type,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    mixed_signal_profile_type,
+    decision_outcome
+ORDER BY
+    CASE mixed_signal_profile_type
+        WHEN &#39;NO_MIXED_SIGNAL_PROFILE&#39; THEN 1
+        WHEN &#39;STRONG_CREDIT_HIGH_PTI&#39; THEN 2
+        WHEN &#39;WEAK_CREDIT_LOW_PTI&#39; THEN 3
+        WHEN &#39;LARGE_EXPOSURE_LOW_RISK&#39; THEN 4
+        WHEN &#39;HIGH_RISK_LOW_EXPOSURE&#39; THEN 5
+        WHEN &#39;HIGH_DTI_LOW_REQUESTED_PTI&#39; THEN 6
+        WHEN &#39;MULTIPLE_MIXED_SIGNALS&#39; THEN 7
+        ELSE 99
+    END,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.16 Borderline profile flag × decision_outcome.
+
+Interpretation:
+    borderline_profile_flag uses governed threshold proximity logic. It is not a reason code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    borderline_profile_flag,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY
+    borderline_profile_flag,
+    decision_outcome
+ORDER BY
+    borderline_profile_flag,
+    decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.17 Average requested_amount by decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(requested_amount) AS avg_requested_amount,
+    MIN(requested_amount) AS min_requested_amount,
+    MAX(requested_amount) AS max_requested_amount
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_outcome
+ORDER BY decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.18 Average approved_amount by decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(approved_amount) AS avg_approved_amount,
+    MIN(approved_amount) AS min_approved_amount,
+    MAX(approved_amount) AS max_approved_amount
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_outcome
+ORDER BY decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.19 Average requested_payment_to_income_ratio by decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    MIN(requested_payment_to_income_ratio) AS min_requested_payment_to_income_ratio,
+    MAX(requested_payment_to_income_ratio) AS max_requested_payment_to_income_ratio
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_outcome
+ORDER BY decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.20 Average approved_payment_to_income_ratio by decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(approved_payment_to_income_ratio) AS avg_approved_payment_to_income_ratio,
+    MIN(approved_payment_to_income_ratio) AS min_approved_payment_to_income_ratio,
+    MAX(approved_payment_to_income_ratio) AS max_approved_payment_to_income_ratio
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_outcome
+ORDER BY decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.21 Average requested_expected_loss_amount by decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    MIN(requested_expected_loss_amount) AS min_requested_expected_loss_amount,
+    MAX(requested_expected_loss_amount) AS max_requested_expected_loss_amount
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_outcome
+ORDER BY decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.22 Average approved_expected_loss_amount by decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(approved_expected_loss_amount) AS avg_approved_expected_loss_amount,
+    MIN(approved_expected_loss_amount) AS min_approved_expected_loss_amount,
+    MAX(approved_expected_loss_amount) AS max_approved_expected_loss_amount
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY decision_outcome
+ORDER BY decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+9.4.23 Final offer-exposure profile.
+
+Purpose:
+    Summarizes simulated positive offer exposure without implying operational account creation.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    simulated_offer_exposure_flag,
+    COUNT(*) AS row_count,
+    SUM(approved_amount) AS total_approved_amount,
+    AVG(approved_amount) AS avg_approved_amount,
+    SUM(approved_expected_loss_amount) AS total_approved_expected_loss_amount,
+    AVG(approved_expected_loss_amount) AS avg_approved_expected_loss_amount
+FROM tmp_m2_stage_6_final_decision_resolution
+GROUP BY simulated_offer_exposure_flag
+ORDER BY simulated_offer_exposure_flag;
+
+
+/***************************************************************************************************
+END OF SECTION 9 — FINAL DECISION RESOLUTION LAYER
+
+If execution reaches this point:
+    1. tmp_m2_stage_6_final_decision_resolution exists.
+    2. All Section 8 fields have been preserved.
+    3. Module 1 lineage remains attached.
+    4. Module 2 strategy metadata remains attached.
+    5. Final decision_outcome is populated for every row.
+    6. Final decision_path is populated for every row.
+    7. Final decision_priority_rank is populated for every row.
+    8. Final decision_resolution_source is populated for every row.
+    9. Final approval / counteroffer / manual review / decline flags reconcile to decision_outcome.
+    10. simulated_offer_exposure_flag reconciles to APPROVE and COUNTEROFFER outcomes.
+    11. Final approved exposure fields are populated according to outcome convention.
+    12. Final approved payment and approved PTI fields are populated according to outcome convention.
+    13. Final approved Expected Loss fields are populated according to outcome convention.
+    14. Failed counteroffers resolve according to failed_counteroffer_resolution.
+
+No simulated reason codes have been assigned.
+No primary_reason_code has been created.
+No secondary_reason_code has been created.
+No tertiary_reason_code has been created.
+No triggered_reason_code_list has been created.
+No reason_priority_rank has been created.
+No final latest-run strategy output table has been created.
+No strategy archive rows have been inserted.
+
+***************************************************************************************************/
+</code></pre>
+<hr>
+<h1>3. What Section 9 establishes</h1>
+<p>Section 9 creates:</p>
+<pre><code class="language-text">tmp_m2_stage_6_final_decision_resolution
+</code></pre>
+<p>It resolves preliminary routing plus Section 8 exposure feasibility into final simulated strategy outcomes:</p>
+<pre><code class="language-text">APPROVE
+COUNTEROFFER
+MANUAL_REVIEW
+DECLINE
+</code></pre>
+<p>It also creates final flags, final approved exposure fields, final approved payment / PTI fields, final approved Expected Loss fields, and <code>simulated_offer_exposure_flag</code>.</p>
+<hr>
+<h1>4. What Section 9 intentionally does not build</h1>
+<p>Section 9 does not assign simulated reason codes, create the final latest-run table, insert archive rows, or build the full QA framework.</p>
+<p>Reason-code assignment is intentionally deferred so it can use final decision outcomes, final decision paths, rule triggers, preliminary routing diagnostics, and exposure-treatment diagnostics.</p>
+<hr>
+<h1>5. Recommended next build step</h1>
+<p>Next should be:</p>
+<pre><code class="language-text">Section 10 — Simulated Reason-Code Assignment Layer
+</code></pre>
+<p>That section should add:</p>
+<pre><code class="language-text">primary_reason_code
+secondary_reason_code
+tertiary_reason_code
+primary_reason_family
+triggered_reason_code_list
+reason_priority_rank
+</code></pre>
+<p>It should use deterministic priority logic, and it should preserve the boundary that these are simulated strategy explanation codes, not regulatory adverse-action reason codes.</p>
+</div></article><article id="c038-m00130" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00130 · 2026-05-06T14:06:57.573000-04:00 · active path</p><div class="body"><p>This is strong. I agree with the Section 9 Final Decision Resolution Layer.</p>
+<p>Section 9 should be treated as provisionally accepted, subject to the pre-flight review below.</p>
+<p>Section 9 correctly:</p>
+<ul>
+<li>adds the governed failed_counteroffer_resolution parameter</li>
+<li>resolves preliminary routing plus Section 8 exposure feasibility into final simulated strategy outcomes</li>
+<li>creates final decision_outcome</li>
+<li>creates final decision_path</li>
+<li>creates decision_priority_rank</li>
+<li>creates decision_resolution_source</li>
+<li>creates final approval_flag, counteroffer_flag, manual_review_flag, and decline_flag</li>
+<li>creates simulated_offer_exposure_flag</li>
+<li>creates final approved_amount and counteroffer_amount</li>
+<li>creates final approved_monthly_payment_proxy and approved_payment_to_income_ratio</li>
+<li>creates final approved_expected_loss_amount</li>
+<li>preserves requested_expected_loss_amount as requested-exposure Expected Loss</li>
+<li>preserves preliminary routing diagnostics</li>
+<li>preserves counteroffer feasibility diagnostics</li>
+<li>keeps MANUAL_REVIEW unresolved</li>
+<li>uses the locked zero-exposure convention for DECLINE</li>
+<li>does not assign reason codes</li>
+<li>does not create the final latest-run output table</li>
+<li>does not insert archive rows</li>
+<li>does not build the full QA framework</li>
+</ul>
+<p>Do not rewrite Sections 0–9 unless the pre-flight review identifies a specific dependency issue.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>SECTION 9 PRE-FLIGHT REVIEW BEFORE SECTION 10</h1>
+</li>
+</ol>
+<p>Before writing Section 10, please do a targeted pre-flight review of Section 9.</p>
+<p>Confirm that Section 9 includes the following final decision fields:</p>
+<ul>
+<li>decision_outcome</li>
+<li>decision_path</li>
+<li>decision_priority_rank</li>
+<li>decision_resolution_source</li>
+</ul>
+<p>Confirm that Section 9 includes the following final flags:</p>
+<ul>
+<li>approval_flag</li>
+<li>counteroffer_flag</li>
+<li>manual_review_flag</li>
+<li>decline_flag</li>
+<li>simulated_offer_exposure_flag</li>
+</ul>
+<p>Confirm that Section 9 includes the following final exposure fields:</p>
+<ul>
+<li>approved_amount</li>
+<li>counteroffer_amount</li>
+<li>exposure_reduction_flag</li>
+<li>exposure_reduction_amount</li>
+<li>exposure_reduction_pct</li>
+</ul>
+<p>Confirm that Section 9 includes the following final affordability fields:</p>
+<ul>
+<li>approved_monthly_payment_proxy</li>
+<li>approved_payment_to_income_ratio</li>
+</ul>
+<p>Confirm that Section 9 includes the following final economics fields:</p>
+<ul>
+<li>approved_expected_loss_amount</li>
+<li>approved_el_reduction_amount</li>
+<li>approved_el_reduction_pct</li>
+</ul>
+<p>Also confirm that Section 9 does NOT create:</p>
+<ul>
+<li>primary_reason_code</li>
+<li>secondary_reason_code</li>
+<li>tertiary_reason_code</li>
+<li>triggered_reason_code_list</li>
+<li>primary_reason_family</li>
+<li>reason_priority_rank</li>
+<li>reason_code_count</li>
+<li>final latest-run output table</li>
+<li>archive insert logic</li>
+<li>full QA framework</li>
+</ul>
+<p>If the pre-flight review finds an issue, provide a targeted BEFORE / AFTER patch only.</p>
+<p>If no issue is found, explicitly state:</p>
+<p>“Section 9 pre-flight review passed; no patch required.”</p>
+<p>================================================================================
+2. LABEL ALIGNMENT REQUIREMENT BEFORE SECTION 10
+================================================================================</p>
+<p>Before writing Section 10, please list the exact string values currently created by Sections 8 and 9 for:</p>
+<p>Section 8:</p>
+<ul>
+<li>counteroffer_feasibility_failure_reason</li>
+<li>exposure_treatment_status</li>
+<li>exposure_treatment_path</li>
+</ul>
+<p>Section 9:</p>
+<ul>
+<li>decision_outcome</li>
+<li>decision_path</li>
+<li>decision_resolution_source</li>
+</ul>
+<p>Reason:
+Section 10 should not invent new string labels that are close but not identical to prior section values.</p>
+<p>For example, if Section 8 uses:</p>
+<ul>
+<li>COUNTEROFFER_PTI_STILL_ABOVE_TARGET</li>
+</ul>
+<p>then Section 10 should reference that exact string, not a similar alternative such as:</p>
+<ul>
+<li>COUNTEROFFER_EXCEEDS_TARGET_PTI</li>
+</ul>
+<p>Likewise, if Section 8 uses:</p>
+<ul>
+<li>COUNTEROFFER_BELOW_MINIMUM_REQUESTED_PERCENT</li>
+</ul>
+<p>then Section 10 should not reference:</p>
+<ul>
+<li>COUNTEROFFER_BELOW_MINIMUM_REQUEST_PERCENT</li>
+</ul>
+<p>unless the earlier Section 8 label is patched.</p>
+<p>Important:
+If you find label mismatches, provide a targeted label-alignment patch before writing Section 10.</p>
+<p>Do not proceed with reason-code assignment using inconsistent labels.</p>
+<p>================================================================================
+3. NEXT BUILD SCOPE: SECTION 10 ONLY
+================================================================================</p>
+<p>After the Section 9 pre-flight review and label-alignment review, please build only:</p>
+<p>SECTION 10 — SIMULATED REASON-CODE ASSIGNMENT LAYER</p>
+<p>Recommended staged table:</p>
+<p>tmp_m2_stage_7_reason_code_assignment</p>
+<p>Section 10 should consume:</p>
+<p>tmp_m2_stage_6_final_decision_resolution</p>
+<p>Do not build:</p>
+<ul>
+<li>final latest-run strategy_decisions table</li>
+<li>archive insert logic</li>
+<li>full QA framework</li>
+<li>matched strategy comparison queries</li>
+<li>BRD or Validation Summary documentation</li>
+</ul>
+<p>Those belong to later sections.</p>
+<p>================================================================================
+4. SECTION 10 OBJECTIVE
+================================================================================</p>
+<p>Section 10 should assign simulated strategy explanation codes based on:</p>
+<ul>
+<li>final decision_outcome</li>
+<li>final decision_path</li>
+<li>decision_resolution_source</li>
+<li>preliminary routing diagnostics</li>
+<li>Section 6 rule-trigger flags</li>
+<li>Section 8 counteroffer feasibility diagnostics</li>
+<li>exposure-treatment diagnostics</li>
+<li>mixed-signal diagnostics</li>
+<li>borderline diagnostics</li>
+</ul>
+<p>Section 10 should answer:</p>
+<p>“Why did this synthetic applicant receive this simulated strategy outcome?”</p>
+<p>Section 10 should not answer:</p>
+<p>“Was this a regulatory adverse-action reason?”</p>
+<p>Reason codes in Module 2 are simulated strategy explanation codes only.</p>
+<p>They support:</p>
+<ul>
+<li>transparency</li>
+<li>QA review</li>
+<li>strategy interpretation</li>
+<li>portfolio diagnostics</li>
+<li>decision-path traceability</li>
+</ul>
+<p>They do not support:</p>
+<ul>
+<li>production adverse-action notices</li>
+<li>regulatory compliance conclusions</li>
+<li>fair lending conclusions</li>
+<li>customer communication</li>
+<li>real-world underwriting decisions</li>
+</ul>
+<p>================================================================================
+5. REASON-CODE BOUNDARY
+================================================================================</p>
+<p>Reason codes are NOT:</p>
+<ul>
+<li>adverse-action reasons</li>
+<li>regulatory decision notices</li>
+<li>compliance-approved reason codes</li>
+<li>production customer communications</li>
+<li>fair lending conclusions</li>
+<li>final underwriting explanations for real applicants</li>
+</ul>
+<p>Reason codes ARE:</p>
+<ul>
+<li>simulated strategy explanation codes</li>
+<li>audit and QA aids</li>
+<li>decision-path transparency fields</li>
+<li>segmentation and portfolio interpretation fields</li>
+<li>synthetic policy-simulation diagnostics</li>
+</ul>
+<p>Please use neutral language throughout Section 10.</p>
+<p>Preferred terms:</p>
+<ul>
+<li>simulated reason code</li>
+<li>strategy explanation code</li>
+<li>policy stop reason</li>
+<li>review trigger reason</li>
+<li>counteroffer reason</li>
+<li>approval explanation code</li>
+</ul>
+<p>Avoid:</p>
+<ul>
+<li>adverse action</li>
+<li>regulatory reason</li>
+<li>customer notice</li>
+<li>compliance reason</li>
+<li>real customer treatment</li>
+</ul>
+<p>================================================================================
+6. REQUIRED SECTION 10 OUTPUT FIELDS
+================================================================================</p>
+<p>Section 10 should preserve all fields from tmp_m2_stage_6_final_decision_resolution and add:</p>
+<ul>
+<li>primary_reason_code</li>
+<li>secondary_reason_code</li>
+<li>tertiary_reason_code</li>
+<li>primary_reason_family</li>
+<li>triggered_reason_code_list</li>
+<li>reason_priority_rank</li>
+<li>reason_code_count</li>
+</ul>
+<p>The reason-code fields should be deterministic and auditable.</p>
+<p>Do not create final latest-run output yet.</p>
+<p>Do not insert archive rows yet.</p>
+<p>================================================================================
+7. REASON-CODE IMPLEMENTATION PATTERN
+================================================================================</p>
+<p>Please avoid one giant opaque CASE block if possible.</p>
+<p>Recommended implementation pattern:</p>
+<ol>
+<li><p>reason_candidate_base
+Preserve the Section 9 final decision record.</p>
+</li>
+<li><p>reason_candidates
+Create one row per application_id per candidate simulated reason code.</p>
+<p>Suggested fields:</p>
+<ul>
+<li>application_id</li>
+<li>candidate_reason_code</li>
+<li>candidate_reason_family</li>
+<li>candidate_reason_priority_rank</li>
+<li>candidate_reason_source</li>
+</ul>
+</li>
+<li><p>ranked_reasons
+Use ROW_NUMBER() over each application_id ordered by:</p>
+<ul>
+<li>candidate_reason_priority_rank</li>
+<li>candidate_reason_code</li>
+</ul>
+</li>
+<li><p>reason_pivot
+Pivot the ranked candidate reasons into:</p>
+<ul>
+<li>primary_reason_code</li>
+<li>secondary_reason_code</li>
+<li>tertiary_reason_code</li>
+<li>primary_reason_family</li>
+<li>reason_priority_rank</li>
+<li>triggered_reason_code_list</li>
+<li>reason_code_count</li>
+</ul>
+</li>
+<li><p>final reason-code assignment table
+Join reason_pivot back to tmp_m2_stage_6_final_decision_resolution.</p>
+</li>
+</ol>
+<p>Reason:
+This pattern keeps reason-code assignment transparent, auditable, and extensible.</p>
+<p>Important:
+Reason-code candidates should be filtered by final decision_outcome so the primary reason always belongs to the correct outcome family.</p>
+<p>================================================================================
+8. REASON PRIORITY RANKING CONVENTION
+================================================================================</p>
+<p>Use deterministic priority ranges by outcome family.</p>
+<p>Recommended ranges:</p>
+<p>DECLINE:</p>
+<ul>
+<li>100–199</li>
+</ul>
+<p>MANUAL_REVIEW:</p>
+<ul>
+<li>300–399</li>
+</ul>
+<p>COUNTEROFFER:</p>
+<ul>
+<li>500–599</li>
+</ul>
+<p>APPROVAL:</p>
+<ul>
+<li>900–999</li>
+</ul>
+<p>Reason:
+This makes the ranking structure auditable and prevents mixed interpretation across outcomes.</p>
+<p>The primary reason should be the lowest candidate_reason_priority_rank for the row after outcome-specific filtering.</p>
+<p>reason_priority_rank should equal the primary candidate_reason_priority_rank.</p>
+<p>================================================================================
+9. APPROVE REASON-CODE CONVENTION
+================================================================================</p>
+<p>For final decision_outcome = APPROVE:</p>
+<p>Required primary reason:</p>
+<ul>
+<li>APPROVED_AS_REQUESTED</li>
+</ul>
+<p>Recommended family:</p>
+<ul>
+<li>APPROVAL</li>
+</ul>
+<p>Recommended priority rank:</p>
+<ul>
+<li>900</li>
+</ul>
+<p>Expected behavior:</p>
+<ul>
+<li>primary_reason_code = APPROVED_AS_REQUESTED</li>
+<li>primary_reason_family = APPROVAL</li>
+<li>secondary_reason_code = NULL</li>
+<li>tertiary_reason_code = NULL</li>
+<li>triggered_reason_code_list should include APPROVED_AS_REQUESTED</li>
+<li>reason_code_count should equal 1 unless we explicitly design approval diagnostics later</li>
+</ul>
+<p>APPROVE rows should not receive decline, counteroffer, or manual-review reason codes.</p>
+<p>================================================================================
+10. COUNTEROFFER REASON-CODE CONVENTION
+================================================================================</p>
+<p>For final decision_outcome = COUNTEROFFER:</p>
+<p>Primary reason should explain the main driver of reduced-exposure treatment.</p>
+<p>Recommended candidate reason codes, in priority order:</p>
+<ol>
+<li><p>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+Use when:</p>
+<ul>
+<li>exposure_counteroffer_candidate_flag = TRUE</li>
+<li>requested_exposure_above_product_cap_flag = TRUE</li>
+<li>or exposure_treatment_path indicates product-cap constraint</li>
+</ul>
+</li>
+<li><p>COUNTEROFFER_AFFORDABILITY_ADJUSTMENT
+Use when:</p>
+<ul>
+<li>counteroffer_affordability_candidate_flag = TRUE</li>
+<li>requested_pti_counteroffer_candidate_flag = TRUE</li>
+<li>or approved exposure was reduced to satisfy counteroffer_target_pti</li>
+</ul>
+</li>
+<li><p>COUNTEROFFER_EXPECTED_LOSS_LIMIT
+Use when:</p>
+<ul>
+<li>counteroffer_expected_loss_candidate_flag = TRUE</li>
+<li>or approved exposure was reduced to satisfy product_approved_el_cap</li>
+</ul>
+</li>
+<li><p>COUNTEROFFER_SYNTHETIC_RISK_EXPOSURE_LIMIT
+Use when:</p>
+<ul>
+<li>counteroffer_risk_band_eligible_flag = TRUE</li>
+<li>or the counteroffer route was driven by elevated synthetic estimated-risk but not severe-risk decline</li>
+</ul>
+</li>
+<li><p>COUNTEROFFER_MULTIPLE_CONSTRAINTS
+Use when multiple counteroffer candidate families are active.</p>
+</li>
+</ol>
+<p>Important:
+COUNTEROFFER_MULTIPLE_CONSTRAINTS should generally be secondary or tertiary unless we explicitly decide it should override specific drivers.</p>
+<p>Recommended family:</p>
+<ul>
+<li>COUNTEROFFER</li>
+</ul>
+<p>COUNTEROFFER rows should not receive approval, manual-review, or decline primary reason codes.</p>
+<p>================================================================================
+11. MANUAL REVIEW REASON-CODE CONVENTION
+================================================================================</p>
+<p>For final decision_outcome = MANUAL_REVIEW:</p>
+<p>Primary reason should explain why the record remains unresolved.</p>
+<p>Important refinement:
+Specific failed-counteroffer reasons should rank above the generic failed-counteroffer reason.</p>
+<p>Recommended candidate reason codes, in priority order:</p>
+<ol>
+<li><p>MANUAL_REVIEW_COUNTEROFFER_NOT_ALLOWED_BY_PRODUCT
+Use when:</p>
+<ul>
+<li>counteroffer_feasibility_failure_reason = COUNTEROFFER_NOT_ALLOWED_BY_PRODUCT</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_COUNTEROFFER_PTI_TARGET_NOT_MET
+Use when:</p>
+<ul>
+<li>counteroffer_feasibility_failure_reason = COUNTEROFFER_PTI_STILL_ABOVE_TARGET</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_COUNTEROFFER_APPROVED_EL_ABOVE_CAP
+Use when:</p>
+<ul>
+<li>counteroffer_feasibility_failure_reason = COUNTEROFFER_APPROVED_EL_ABOVE_CAP</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_COUNTEROFFER_BELOW_MINIMUM_OFFER
+Use when counteroffer_feasibility_failure_reason indicates:</p>
+<ul>
+<li>COUNTEROFFER_ROUNDED_AMOUNT_NULL</li>
+<li>COUNTEROFFER_ROUNDED_AMOUNT_NON_POSITIVE</li>
+<li>COUNTEROFFER_BELOW_PRODUCT_MINIMUM</li>
+<li>COUNTEROFFER_BELOW_MINIMUM_REQUESTED_PERCENT</li>
+<li>COUNTEROFFER_EXCEEDS_MAX_REDUCTION</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_COUNTEROFFER_NOT_FEASIBLE
+Use when:</p>
+<ul>
+<li>preliminary_decision_outcome = COUNTEROFFER</li>
+<li>counteroffer_feasibility_pass_flag = FALSE</li>
+<li>failed_counteroffer_resolution = MANUAL_REVIEW</li>
+<li>and no more specific failed-counteroffer reason above applies</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_BORDERLINE_SYNTHETIC_RISK
+Use when:</p>
+<ul>
+<li>manual_review_borderline_trigger_flag = TRUE</li>
+<li>or borderline_profile_flag = TRUE and strategy_risk_tier is elevated / high</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_BORDERLINE_AFFORDABILITY
+Use when:</p>
+<ul>
+<li>borderline_profile_flag = TRUE and requested_pti_bucket is elevated / high</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_MIXED_SIGNAL_PROFILE
+Use when:</p>
+<ul>
+<li>manual_review_mixed_signal_trigger_flag = TRUE</li>
+<li>or mixed_signal_profile_type is not NO_MIXED_SIGNAL_PROFILE</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_REQUESTED_STRUCTURE
+Use when:</p>
+<ul>
+<li>severe_requested_structure_trigger_flag = TRUE</li>
+<li>or requested exposure / requested PTI / requested EL structure is elevated but not a hard stop</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_ELEVATED_SYNTHETIC_RISK
+Use when:</p>
+<ul>
+<li>manual_review_risk_trigger_flag = TRUE</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_ELEVATED_DTI
+Use when:</p>
+<ul>
+<li>manual_review_dti_trigger_flag = TRUE</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_EXPECTED_LOSS
+Use when:</p>
+<ul>
+<li>manual_review_expected_loss_trigger_flag = TRUE</li>
+</ul>
+</li>
+<li><p>MANUAL_REVIEW_RESIDUAL_STRATEGY_REVIEW
+Use for residual manual-review fallback rows.</p>
+</li>
+</ol>
+<p>Recommended family:</p>
+<ul>
+<li>MANUAL_REVIEW</li>
+</ul>
+<p>MANUAL_REVIEW rows should not receive approval, counteroffer, or decline primary reason codes.</p>
+<p>================================================================================
+12. DECLINE REASON-CODE CONVENTION
+================================================================================</p>
+<p>For final decision_outcome = DECLINE:</p>
+<p>Primary reason should explain the simulated policy stop or final no-offer path.</p>
+<p>Recommended candidate reason codes, in priority order:</p>
+<ol>
+<li><p>POLICY_STOP_BANKRUPTCY_FLAG
+Use when:</p>
+<ul>
+<li>bankruptcy_policy_stop_flag = TRUE</li>
+</ul>
+</li>
+<li><p>POLICY_STOP_MAJOR_DEROGATORY
+Use when:</p>
+<ul>
+<li>major_derogatory_policy_stop_flag = TRUE</li>
+</ul>
+</li>
+<li><p>POLICY_STOP_RECENT_DELINQUENCY
+Use when:</p>
+<ul>
+<li>severe_delinquency_policy_stop_flag = TRUE</li>
+</ul>
+</li>
+<li><p>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+Use when:</p>
+<ul>
+<li>synthetic_risk_decline_trigger_flag = TRUE</li>
+<li>or decision_path = SEVERE_SYNTHETIC_RISK</li>
+</ul>
+</li>
+<li><p>POLICY_STOP_HIGH_DTI
+Use when:</p>
+<ul>
+<li>dti_decline_trigger_flag = TRUE</li>
+<li>or decision_path = SEVERE_DTI_CAPACITY</li>
+</ul>
+</li>
+<li><p>POLICY_STOP_COUNTEROFFER_NOT_FEASIBLE
+Use when:</p>
+<ul>
+<li>preliminary_decision_outcome = COUNTEROFFER</li>
+<li>counteroffer_feasibility_pass_flag = FALSE</li>
+<li>failed_counteroffer_resolution = DECLINE</li>
+</ul>
+</li>
+<li><p>POLICY_STOP_EXPECTED_LOSS_UNRESOLVED
+Use when:</p>
+<ul>
+<li>requested_el_decline_trigger_flag = TRUE</li>
+<li>and no higher-priority decline reason applies</li>
+</ul>
+</li>
+<li><p>POLICY_STOP_EXPOSURE_LIMIT_UNRESOLVED
+Use when:</p>
+<ul>
+<li>requested_exposure_extreme_flag = TRUE</li>
+<li>or exposure_policy_stop_candidate_flag = TRUE</li>
+<li>and no higher-priority decline reason applies</li>
+</ul>
+</li>
+<li><p>POLICY_STOP_RESIDUAL_DECLINE
+Use only as a fallback if decision_outcome = DECLINE and no other decline reason applies.</p>
+</li>
+</ol>
+<p>Recommended family:</p>
+<ul>
+<li>POLICY_STOP</li>
+</ul>
+<p>DECLINE rows should not receive approval or counteroffer primary reason codes.</p>
+<p>================================================================================
+13. TRIGGERED REASON LIST CONVENTION
+================================================================================</p>
+<p>triggered_reason_code_list should include all candidate reason codes that apply to the row after filtering to the final decision_outcome family.</p>
+<p>Recommended implementation:</p>
+<ul>
+<li>Use STRING_AGG(candidate_reason_code, &#39; | &#39; ORDER BY candidate_reason_priority_rank, candidate_reason_code)</li>
+</ul>
+<p>Reason:
+The list should be deterministic, readable, and useful for QA.</p>
+<p>================================================================================
+14. SECONDARY AND TERTIARY REASON CONVENTION
+================================================================================</p>
+<p>For each row:</p>
+<ul>
+<li>primary_reason_code = candidate reason rank 1</li>
+<li>secondary_reason_code = candidate reason rank 2</li>
+<li>tertiary_reason_code = candidate reason rank 3</li>
+</ul>
+<p>If fewer than three candidate reasons exist:</p>
+<ul>
+<li>unused fields should be NULL</li>
+</ul>
+<p>Interpretation:
+Secondary and tertiary reasons provide additional diagnostics only.</p>
+<p>They do not change the final decision_outcome.</p>
+<p>================================================================================
+15. SECTION 10 LOCAL GATEKEEPERS
+================================================================================</p>
+<p>At the end of Section 10, include local fail-fast checks.</p>
+<p>Validate:</p>
+<ol>
+<li>Structural preservation</li>
+</ol>
+<ul>
+<li>row count is unchanged from tmp_m2_stage_6_final_decision_resolution</li>
+<li>application_id remains unique</li>
+</ul>
+<ol start="2">
+<li>Required reason-code completeness</li>
+</ol>
+<ul>
+<li>primary_reason_code is non-null for every row</li>
+<li>primary_reason_family is non-null for every row</li>
+<li>reason_priority_rank is non-null for every row</li>
+<li>triggered_reason_code_list is non-null for every row</li>
+<li>reason_code_count is non-null and &gt;= 1 for every row</li>
+</ul>
+<ol start="3">
+<li>Decision-outcome alignment
+For decision_outcome = APPROVE:</li>
+</ol>
+<ul>
+<li>primary_reason_code = APPROVED_AS_REQUESTED</li>
+<li>primary_reason_family = APPROVAL</li>
+<li>reason_code_count = 1 unless approval diagnostics are explicitly added</li>
+</ul>
+<p>For decision_outcome = COUNTEROFFER:</p>
+<ul>
+<li>primary_reason_family = COUNTEROFFER</li>
+<li>primary_reason_code starts with COUNTEROFFER_</li>
+</ul>
+<p>For decision_outcome = MANUAL_REVIEW:</p>
+<ul>
+<li>primary_reason_family = MANUAL_REVIEW</li>
+<li>primary_reason_code starts with MANUAL_REVIEW_</li>
+</ul>
+<p>For decision_outcome = DECLINE:</p>
+<ul>
+<li>primary_reason_family = POLICY_STOP</li>
+<li>primary_reason_code starts with POLICY_STOP_</li>
+</ul>
+<ol start="4">
+<li>Outcome-family leakage prevention</li>
+</ol>
+<ul>
+<li>APPROVE rows should not have primary counteroffer, manual-review, or policy-stop reasons</li>
+<li>COUNTEROFFER rows should not have primary approval, manual-review, or policy-stop reasons</li>
+<li>MANUAL_REVIEW rows should not have primary approval, counteroffer, or policy-stop reasons</li>
+<li>DECLINE rows should not have primary approval, counteroffer, or manual-review reasons</li>
+</ul>
+<ol start="5">
+<li>No final output / archive yet
+Validate or explicitly confirm:</li>
+</ol>
+<ul>
+<li>no final latest-run strategy output table is created yet</li>
+<li>no strategy archive rows are inserted yet</li>
+</ul>
+<p>These are Section 10 local staging gatekeepers only, not full Module 2 QA.</p>
+<p>================================================================================
+16. SECTION 10 LOCAL SANITY CHECKS
+================================================================================</p>
+<p>After local gatekeepers, include lightweight staging diagnostics.</p>
+<p>Suggested checks:</p>
+<ol>
+<li>Count by decision_outcome × primary_reason_code</li>
+<li>Count by decision_outcome × primary_reason_family</li>
+<li>Count by primary_reason_code</li>
+<li>Count by primary_reason_family</li>
+<li>Average reason_code_count by decision_outcome</li>
+<li>Count by secondary_reason_code</li>
+<li>Count by tertiary_reason_code</li>
+<li>Product × primary_reason_code</li>
+<li>Score band × primary_reason_code</li>
+<li>Strategy risk tier × primary_reason_code</li>
+<li>Requested PTI bucket × primary_reason_code</li>
+<li>Decision path × primary_reason_code</li>
+<li>Counteroffer feasibility failure reason × primary_reason_code</li>
+<li>Mixed-signal profile × primary_reason_code</li>
+<li>Borderline profile flag × primary_reason_code</li>
+</ol>
+<p>These are staging diagnostics only.
+They should not be interpreted as full final strategy validation yet.</p>
+<p>================================================================================
+17. SECTION 10 COMMENTARY QUALITY
+================================================================================</p>
+<p>Please maintain the elite commentary standard.</p>
+<p>Section 10 comments should explain:</p>
+<ul>
+<li>why reason-code assignment is separated from final decision resolution</li>
+<li>why reason codes are simulated strategy explanation codes only</li>
+<li>why reason codes are not regulatory adverse-action reasons</li>
+<li>why outcome-specific filtering is required</li>
+<li>why the candidate / ranking / pivot pattern is used instead of one opaque CASE block</li>
+<li>why approvals receive APPROVED_AS_REQUESTED</li>
+<li>why counteroffer reasons explain reduced-exposure treatment</li>
+<li>why manual-review reasons explain unresolved strategy handling</li>
+<li>why decline reasons explain simulated policy stop / no-offer paths</li>
+<li>why triggered_reason_code_list is useful for QA and audit review</li>
+<li>why secondary and tertiary reasons are diagnostic only</li>
+<li>why no latest-run output table or archive insert occurs in Section 10</li>
+</ul>
+<p>No silent assumptions.
+No unexplained magic numbers.
+No production-decision language.
+No booked-account language.
+No adverse-action reason-code language.</p>
+<p>================================================================================
+18. SECTION 10 DELIVERABLE
+================================================================================</p>
+<p>Please now provide:</p>
+<ol>
+<li>Any targeted Section 9 patch required by the pre-flight review, if any.</li>
+<li>Any targeted label-alignment patch required before Section 10, if any.</li>
+<li>Section 10 SQL only:
+SIMULATED REASON-CODE ASSIGNMENT LAYER.</li>
+<li>A short explanation of what Section 10 establishes.</li>
+<li>A short explanation of what Section 10 intentionally does not build.</li>
+<li>The recommended next build step after Section 10.</li>
+</ol>
+<p>Do not write Section 11+ yet.</p>
+</div></article><article id="c038-m00140" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00140 · 2026-05-06T14:12:16.272059-04:00 · active path</p><div class="body"><p>Section 9 pre-flight review passed; no patch required.</p>
+<p>Section 9 includes the required final decision fields, final flags, final exposure fields, final affordability fields, and final approved-exposure economics. It does not create reason-code fields, the final latest-run output table, archive insert logic, or the full QA framework.</p>
+<p>Module 2 continues to preserve Module 1’s documented boundary: <code>estimated_pd</code> remains the finalized SQL field name but is interpreted as the synthetic estimated-PD proxy, and Expected Loss remains a comparative simulation construct rather than a production forecast. fileciteturn4file0 Module 1’s validated deterministic, matched-scenario foundation remains the lineage base for these downstream simulated strategy outcomes. fileciteturn4file1</p>
+<hr>
+<h2>Label-alignment review before Section 10</h2>
+<p>No label mismatch found; no patch required.</p>
+<h3>Section 8 labels currently created</h3>
+<p><code>counteroffer_feasibility_failure_reason</code> values:</p>
+<pre><code class="language-text">COUNTEROFFER_NOT_ALLOWED_BY_PRODUCT
+COUNTEROFFER_RAW_AMOUNT_NULL
+COUNTEROFFER_ROUNDED_AMOUNT_NULL
+COUNTEROFFER_ROUNDED_AMOUNT_NON_POSITIVE
+COUNTEROFFER_NOT_BELOW_REQUESTED_AMOUNT
+COUNTEROFFER_BELOW_PRODUCT_MINIMUM
+COUNTEROFFER_BELOW_MINIMUM_REQUESTED_PERCENT
+COUNTEROFFER_EXCEEDS_MAX_REDUCTION
+COUNTEROFFER_EXCEEDS_PRODUCT_CAP
+COUNTEROFFER_PTI_STILL_ABOVE_TARGET
+COUNTEROFFER_APPROVED_EL_ABOVE_CAP
+COUNTEROFFER_FEASIBILITY_UNKNOWN
+</code></pre>
+<p><code>exposure_treatment_status</code> values:</p>
+<pre><code class="language-text">APPROVED_AS_REQUESTED_PRELIMINARY
+NO_OFFER_PRELIMINARY_DECLINE
+UNRESOLVED_MANUAL_REVIEW
+COUNTEROFFER_FEASIBLE_PRELIMINARY
+COUNTEROFFER_NOT_FEASIBLE_PRELIMINARY
+EXPOSURE_TREATMENT_UNKNOWN
+</code></pre>
+<p><code>exposure_treatment_path</code> values:</p>
+<pre><code class="language-text">APPROVE_AS_REQUESTED
+NO_OFFER
+MANUAL_REVIEW_UNRESOLVED
+COUNTEROFFER_FEASIBLE
+COUNTEROFFER_NOT_FEASIBLE
+EXPOSURE_TREATMENT_UNKNOWN
+</code></pre>
+<h3>Section 9 labels currently created</h3>
+<p><code>decision_outcome</code> values:</p>
+<pre><code class="language-text">APPROVE
+COUNTEROFFER
+MANUAL_REVIEW
+DECLINE
+</code></pre>
+<p><code>decision_path</code> values:</p>
+<pre><code class="language-text">HARD_POLICY_STOP
+SEVERE_SYNTHETIC_RISK
+SEVERE_DTI_CAPACITY
+REQUESTED_STRUCTURE_SEVERE_REVIEW
+MANUAL_REVIEW_CANDIDATE
+RESIDUAL_STRATEGY_REVIEW
+APPROVE_AS_REQUESTED
+COUNTEROFFER_FEASIBLE
+COUNTEROFFER_NOT_FEASIBLE_REVIEW
+COUNTEROFFER_NOT_FEASIBLE_DECLINE
+FINAL_RESIDUAL_STRATEGY_REVIEW
+</code></pre>
+<p><code>decision_resolution_source</code> values:</p>
+<pre><code class="language-text">PRELIMINARY_DECLINE_CONFIRMED
+PRELIMINARY_MANUAL_REVIEW_CONFIRMED
+PRELIMINARY_APPROVE_CONFIRMED
+COUNTEROFFER_FEASIBILITY_CONFIRMED
+COUNTEROFFER_FEASIBILITY_FAILED_TO_REVIEW
+COUNTEROFFER_FEASIBILITY_FAILED_TO_DECLINE
+FINAL_RESIDUAL_FALLBACK
+</code></pre>
+<hr>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 10 — SIMULATED REASON-CODE ASSIGNMENT LAYER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Assign deterministic simulated strategy explanation codes after final decision resolution.
+
+    Section 10 answers:
+
+        &quot;Why did this synthetic applicant receive this simulated strategy outcome?&quot;
+
+    Section 10 does NOT answer:
+
+        &quot;What should be communicated to a real customer?&quot;
+        &quot;What is the regulatory explanation for a real decision?&quot;
+        &quot;What is the compliance-approved reason for an operational credit action?&quot;
+
+SQL PURPOSE:
+    1. Read from tmp_m2_stage_6_final_decision_resolution.
+    2. Preserve all prior source, lineage, strategy metadata, thresholds, segmentation, rule flags,
+       preliminary routing diagnostics, exposure-treatment diagnostics, and final decision fields.
+    3. Create one candidate simulated reason-code row per applicable rule / route / treatment driver.
+    4. Filter reason-code candidates by final decision_outcome family.
+    5. Rank candidate reasons deterministically using governed priority ranges.
+    6. Pivot ranked candidates into:
+            primary_reason_code
+            secondary_reason_code
+            tertiary_reason_code
+            primary_reason_family
+            triggered_reason_code_list
+            reason_priority_rank
+            reason_code_count
+    7. Validate reason-code completeness, outcome-family alignment, and staging integrity.
+    8. Confirm that latest-run output creation and archive persistence remain deferred.
+
+WHY REASON-CODE ASSIGNMENT IS SEPARATED FROM FINAL DECISION RESOLUTION:
+    Section 9 creates final simulated strategy outcomes and final exposure economics.
+    Section 10 explains those outcomes.
+
+    Keeping explanation logic separate allows the reason-code layer to use:
+        final decision_outcome
+        final decision_path
+        decision_resolution_source
+        Section 6 trigger flags
+        Section 7 preliminary routing diagnostics
+        Section 8 counteroffer feasibility diagnostics
+        final exposure-treatment fields
+        mixed-signal diagnostics
+        borderline diagnostics
+
+    This makes reason-code assignment transparent and extensible.
+
+REASON-CODE BOUNDARY:
+    The fields created in Section 10 are simulated strategy explanation codes.
+
+    They are used for:
+        strategy transparency
+        QA review
+        decision-path traceability
+        segmentation diagnostics
+        portfolio interpretation
+
+    They are not:
+        production customer communications
+        compliance-approved customer notices
+        real-world underwriting explanations
+        fair lending conclusions
+        customer-level treatment logic
+
+OUTCOME-SPECIFIC FILTERING:
+    Candidate reasons are filtered by final decision_outcome family so that:
+
+        APPROVE rows receive APPROVAL reasons.
+        COUNTEROFFER rows receive COUNTEROFFER reasons.
+        MANUAL_REVIEW rows receive MANUAL_REVIEW reasons.
+        DECLINE rows receive POLICY_STOP reasons.
+
+    This prevents reason-family leakage and ensures the primary reason aligns with the final simulated
+    strategy outcome.
+
+IMPLEMENTATION PATTERN:
+    Section 10 intentionally avoids one large opaque CASE block.
+
+    Instead, it uses:
+        reason_candidate_base
+        reason_candidates_raw
+        reason_candidates
+        ranked_reasons
+        reason_pivot
+        final_reason_assignment
+
+    This pattern is more auditable because every candidate reason has:
+        a code,
+        a family,
+        a priority rank,
+        and a source explanation.
+
+REASON PRIORITY RANGES:
+    DECLINE / POLICY_STOP reasons:
+        100–199
+
+    MANUAL_REVIEW reasons:
+        300–399
+
+    COUNTEROFFER reasons:
+        500–599
+
+    APPROVAL reasons:
+        900–999
+
+    Lower numeric rank means higher priority.
+
+TRIGGERED REASON LIST:
+    triggered_reason_code_list contains all applicable candidate reason codes after filtering to the
+    final decision_outcome family.
+
+    The list is deterministic:
+
+        STRING_AGG(candidate_reason_code, &#39; | &#39;
+                   ORDER BY candidate_reason_priority_rank, candidate_reason_code)
+
+SECONDARY AND TERTIARY REASONS:
+    secondary_reason_code and tertiary_reason_code are additional diagnostics only.
+    They do not change decision_outcome.
+    They do not change decision_path.
+    They do not change approved exposure.
+
+LATEST-RUN / ARCHIVE BOUNDARY:
+    Section 10 creates only a temporary reason-code staging table.
+
+    It does not create:
+        credit_decisioning_sim.strategy_decisions
+
+    It does not insert rows into:
+        credit_decisioning_sim.strategy_decisions_archive
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 10.1 — CLEAN RESET OF SECTION 10 STAGING OBJECT
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_stage_7_reason_code_assignment;
+
+
+
+/***************************************************************************************************
+SECTION 10.2 — CREATE SIMULATED REASON-CODE ASSIGNMENT TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_m2_stage_7_reason_code_assignment
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+INPUT:
+    tmp_m2_stage_6_final_decision_resolution
+
+OUTPUT:
+    All Section 9 fields plus:
+        primary_reason_code
+        secondary_reason_code
+        tertiary_reason_code
+        primary_reason_family
+        triggered_reason_code_list
+        reason_priority_rank
+        reason_code_count
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_stage_7_reason_code_assignment
+ON COMMIT PRESERVE ROWS
+AS
+WITH reason_candidate_base AS (
+    SELECT
+        f.*
+    FROM tmp_m2_stage_6_final_decision_resolution f
+),
+
+/*-----------------------------------------------------------------------------------------------
+Create candidate simulated reason codes.
+
+Each SELECT block is outcome-family specific.
+
+This prevents rows from receiving a primary reason that belongs to a different final outcome family.
+For example:
+    APPROVE rows cannot receive POLICY_STOP reasons.
+    DECLINE rows cannot receive APPROVAL reasons.
+    COUNTEROFFER rows cannot receive MANUAL_REVIEW reasons.
+    MANUAL_REVIEW rows cannot receive COUNTEROFFER primary reasons.
+
+candidate_reason_source documents why the candidate was created.
+It is a diagnostic source label, not a final reason-code field.
+-----------------------------------------------------------------------------------------------*/
+reason_candidates_raw AS (
+
+    /***********************************************************************************************
+    APPROVAL REASONS — PRIORITY 900–999
+    ***********************************************************************************************/
+
+    SELECT
+        application_id,
+        &#39;APPROVED_AS_REQUESTED&#39;::TEXT AS candidate_reason_code,
+        &#39;APPROVAL&#39;::TEXT AS candidate_reason_family,
+        900::INTEGER AS candidate_reason_priority_rank,
+        &#39;decision_outcome_APPROVE&#39;::TEXT AS candidate_reason_source
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;APPROVE&#39;
+
+
+
+    /***********************************************************************************************
+    COUNTEROFFER REASONS — PRIORITY 500–599
+
+    These reasons explain why final COUNTEROFFER rows received reduced-exposure treatment.
+
+    COUNTEROFFER_MULTIPLE_CONSTRAINTS is intentionally lower priority than specific counteroffer
+    drivers so it generally appears as a secondary or tertiary diagnostic when multiple driver
+    families are active.
+    ***********************************************************************************************/
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT&#39;,
+        &#39;COUNTEROFFER&#39;,
+        500,
+        &#39;exposure_counteroffer_candidate_or_product_cap_binding&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+      AND (
+            exposure_counteroffer_candidate_flag IS TRUE
+         OR requested_exposure_above_product_cap_flag IS TRUE
+         OR (
+                counteroffer_product_cap_amount IS NOT NULL
+            AND counteroffer_raw_max_feasible_amount IS NOT NULL
+            AND counteroffer_product_cap_amount = counteroffer_raw_max_feasible_amount
+            AND requested_amount &gt; product_max_approved_amount
+         )
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;COUNTEROFFER_AFFORDABILITY_ADJUSTMENT&#39;,
+        &#39;COUNTEROFFER&#39;,
+        510,
+        &#39;requested_pti_counteroffer_candidate_or_pti_target_binding&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+      AND (
+            counteroffer_affordability_candidate_flag IS TRUE
+         OR requested_pti_counteroffer_candidate_flag IS TRUE
+         OR (
+                counteroffer_pti_target_amount IS NOT NULL
+            AND counteroffer_raw_max_feasible_amount IS NOT NULL
+            AND counteroffer_pti_target_amount = counteroffer_raw_max_feasible_amount
+         )
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;COUNTEROFFER_EXPECTED_LOSS_LIMIT&#39;,
+        &#39;COUNTEROFFER&#39;,
+        520,
+        &#39;requested_el_counteroffer_candidate_or_approved_el_cap_binding&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+      AND (
+            counteroffer_expected_loss_candidate_flag IS TRUE
+         OR (
+                counteroffer_el_cap_amount IS NOT NULL
+            AND counteroffer_raw_max_feasible_amount IS NOT NULL
+            AND counteroffer_el_cap_amount = counteroffer_raw_max_feasible_amount
+         )
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;COUNTEROFFER_SYNTHETIC_RISK_EXPOSURE_LIMIT&#39;,
+        &#39;COUNTEROFFER&#39;,
+        530,
+        &#39;counteroffer_risk_band_eligible&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+      AND counteroffer_risk_band_eligible_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;COUNTEROFFER_MULTIPLE_CONSTRAINTS&#39;,
+        &#39;COUNTEROFFER&#39;,
+        580,
+        &#39;multiple_counteroffer_candidate_families&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+      AND counteroffer_candidate_trigger_count &gt; 1
+
+
+
+    /***********************************************************************************************
+    MANUAL REVIEW REASONS — PRIORITY 300–399
+
+    These reasons explain why the final row remains unresolved under simulated strategy handling.
+
+    Specific failed-counteroffer feasibility diagnostics rank above generic failed-counteroffer
+    review routing. This preserves useful counteroffer feasibility traceability.
+    ***********************************************************************************************/
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_COUNTEROFFER_NOT_ALLOWED_BY_PRODUCT&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        300,
+        &#39;COUNTEROFFER_NOT_ALLOWED_BY_PRODUCT&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND counteroffer_feasibility_failure_reason = &#39;COUNTEROFFER_NOT_ALLOWED_BY_PRODUCT&#39;
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_COUNTEROFFER_PTI_TARGET_NOT_MET&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        305,
+        &#39;COUNTEROFFER_PTI_STILL_ABOVE_TARGET&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND counteroffer_feasibility_failure_reason = &#39;COUNTEROFFER_PTI_STILL_ABOVE_TARGET&#39;
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_COUNTEROFFER_APPROVED_EL_ABOVE_CAP&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        310,
+        &#39;COUNTEROFFER_APPROVED_EL_ABOVE_CAP&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND counteroffer_feasibility_failure_reason = &#39;COUNTEROFFER_APPROVED_EL_ABOVE_CAP&#39;
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_COUNTEROFFER_BELOW_MINIMUM_OFFER&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        315,
+        &#39;counteroffer_amount_below_minimum_or_reduction_floor&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND counteroffer_feasibility_failure_reason IN (
+            &#39;COUNTEROFFER_ROUNDED_AMOUNT_NULL&#39;,
+            &#39;COUNTEROFFER_ROUNDED_AMOUNT_NON_POSITIVE&#39;,
+            &#39;COUNTEROFFER_BELOW_PRODUCT_MINIMUM&#39;,
+            &#39;COUNTEROFFER_BELOW_MINIMUM_REQUESTED_PERCENT&#39;,
+            &#39;COUNTEROFFER_EXCEEDS_MAX_REDUCTION&#39;
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_COUNTEROFFER_NOT_FEASIBLE&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        320,
+        &#39;generic_failed_counteroffer_to_review&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+      AND counteroffer_feasibility_pass_flag IS FALSE
+      AND failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_BORDERLINE_SYNTHETIC_RISK&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        330,
+        &#39;borderline_synthetic_estimated_risk&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND (
+            manual_review_borderline_trigger_flag IS TRUE
+         OR (
+                borderline_profile_flag IS TRUE
+            AND strategy_risk_tier IN (
+                    &#39;ELEVATED_SYNTHETIC_RISK&#39;,
+                    &#39;HIGH_SYNTHETIC_RISK&#39;
+                )
+         )
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_BORDERLINE_AFFORDABILITY&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        340,
+        &#39;borderline_requested_affordability&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND borderline_profile_flag IS TRUE
+      AND requested_pti_bucket IN (
+            &#39;ELEVATED_REQUESTED_PTI&#39;,
+            &#39;HIGH_REQUESTED_PTI&#39;,
+            &#39;SEVERE_REQUESTED_PTI&#39;
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_MIXED_SIGNAL_PROFILE&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        350,
+        &#39;mixed_signal_profile&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND (
+            manual_review_mixed_signal_trigger_flag IS TRUE
+         OR mixed_signal_profile_type &lt;&gt; &#39;NO_MIXED_SIGNAL_PROFILE&#39;
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_REQUESTED_STRUCTURE&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        360,
+        &#39;requested_structure_stress&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND (
+            severe_requested_structure_trigger_flag IS TRUE
+         OR requested_pti_decline_trigger_flag IS TRUE
+         OR requested_el_decline_trigger_flag IS TRUE
+         OR requested_exposure_extreme_flag IS TRUE
+         OR exposure_policy_stop_candidate_flag IS TRUE
+         OR requested_exposure_tier IN (
+                &#39;ABOVE_PRODUCT_APPROVAL_CAP&#39;,
+                &#39;EXTREME_REQUESTED_EXPOSURE&#39;
+            )
+         OR requested_pti_bucket IN (
+                &#39;HIGH_REQUESTED_PTI&#39;,
+                &#39;SEVERE_REQUESTED_PTI&#39;
+            )
+         OR requested_expected_loss_tier IN (
+                &#39;HIGH_REQUESTED_EL&#39;,
+                &#39;SEVERE_REQUESTED_EL&#39;
+            )
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_ELEVATED_SYNTHETIC_RISK&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        370,
+        &#39;manual_review_risk_trigger&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND manual_review_risk_trigger_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_ELEVATED_DTI&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        380,
+        &#39;manual_review_dti_trigger&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND manual_review_dti_trigger_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_EXPECTED_LOSS&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        385,
+        &#39;manual_review_expected_loss_trigger&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND manual_review_expected_loss_trigger_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_SUPPLEMENTAL_BEHAVIORAL_SIGNAL&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        390,
+        &#39;supplemental_behavioral_review_trigger&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND supplemental_behavioral_review_trigger_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;MANUAL_REVIEW_RESIDUAL_STRATEGY_REVIEW&#39;,
+        &#39;MANUAL_REVIEW&#39;,
+        399,
+        &#39;residual_manual_review_fallback&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND (
+            decision_path IN (
+                &#39;RESIDUAL_STRATEGY_REVIEW&#39;,
+                &#39;FINAL_RESIDUAL_STRATEGY_REVIEW&#39;
+            )
+         OR decision_resolution_source = &#39;FINAL_RESIDUAL_FALLBACK&#39;
+      )
+
+
+
+    /***********************************************************************************************
+    DECLINE / POLICY STOP REASONS — PRIORITY 100–199
+
+    These reasons explain final no-offer simulated policy stop paths.
+
+    These are simulated policy stop reasons for synthetic applicants.
+    They are not production customer notices or regulatory customer communication codes.
+    ***********************************************************************************************/
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_BANKRUPTCY_FLAG&#39;,
+        &#39;POLICY_STOP&#39;,
+        100,
+        &#39;bankruptcy_policy_stop_flag&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND bankruptcy_policy_stop_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_MAJOR_DEROGATORY&#39;,
+        &#39;POLICY_STOP&#39;,
+        110,
+        &#39;major_derogatory_policy_stop_flag&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND major_derogatory_policy_stop_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_RECENT_DELINQUENCY&#39;,
+        &#39;POLICY_STOP&#39;,
+        120,
+        &#39;severe_delinquency_policy_stop_flag&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND severe_delinquency_policy_stop_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY&#39;,
+        &#39;POLICY_STOP&#39;,
+        130,
+        &#39;synthetic_risk_decline_trigger&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND (
+            synthetic_risk_decline_trigger_flag IS TRUE
+         OR decision_path = &#39;SEVERE_SYNTHETIC_RISK&#39;
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_HIGH_DTI&#39;,
+        &#39;POLICY_STOP&#39;,
+        140,
+        &#39;dti_decline_trigger&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND (
+            dti_decline_trigger_flag IS TRUE
+         OR decision_path = &#39;SEVERE_DTI_CAPACITY&#39;
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_COUNTEROFFER_NOT_FEASIBLE&#39;,
+        &#39;POLICY_STOP&#39;,
+        150,
+        &#39;failed_counteroffer_resolution_to_decline&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+      AND counteroffer_feasibility_pass_flag IS FALSE
+      AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_EXPECTED_LOSS_UNRESOLVED&#39;,
+        &#39;POLICY_STOP&#39;,
+        160,
+        &#39;requested_el_decline_trigger&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND requested_el_decline_trigger_flag IS TRUE
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_EXPOSURE_LIMIT_UNRESOLVED&#39;,
+        &#39;POLICY_STOP&#39;,
+        170,
+        &#39;requested_exposure_policy_stop_candidate&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND (
+            requested_exposure_extreme_flag IS TRUE
+         OR exposure_policy_stop_candidate_flag IS TRUE
+      )
+
+    UNION ALL
+
+    SELECT
+        application_id,
+        &#39;POLICY_STOP_RESIDUAL_DECLINE&#39;,
+        &#39;POLICY_STOP&#39;,
+        199,
+        &#39;residual_decline_fallback&#39;
+    FROM reason_candidate_base
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND NOT (
+            bankruptcy_policy_stop_flag IS TRUE
+         OR major_derogatory_policy_stop_flag IS TRUE
+         OR severe_delinquency_policy_stop_flag IS TRUE
+         OR synthetic_risk_decline_trigger_flag IS TRUE
+         OR decision_path = &#39;SEVERE_SYNTHETIC_RISK&#39;
+         OR dti_decline_trigger_flag IS TRUE
+         OR decision_path = &#39;SEVERE_DTI_CAPACITY&#39;
+         OR (
+                preliminary_decision_outcome = &#39;COUNTEROFFER&#39;
+            AND counteroffer_feasibility_pass_flag IS FALSE
+            AND failed_counteroffer_resolution = &#39;DECLINE&#39;
+            )
+         OR requested_el_decline_trigger_flag IS TRUE
+         OR requested_exposure_extreme_flag IS TRUE
+         OR exposure_policy_stop_candidate_flag IS TRUE
+      )
+),
+
+/*-----------------------------------------------------------------------------------------------
+Deduplicate reason candidates.
+
+A row can satisfy the same candidate reason through multiple related diagnostics. Deduplication keeps
+the triggered reason list readable while preserving deterministic ranking.
+-----------------------------------------------------------------------------------------------*/
+reason_candidates AS (
+    SELECT DISTINCT
+        application_id,
+        candidate_reason_code,
+        candidate_reason_family,
+        candidate_reason_priority_rank,
+        candidate_reason_source
+    FROM reason_candidates_raw
+),
+
+/*-----------------------------------------------------------------------------------------------
+Rank candidate reasons.
+
+The primary reason is the lowest-ranked candidate reason within the final decision_outcome family.
+Ties are resolved alphabetically by candidate_reason_code for deterministic output.
+-----------------------------------------------------------------------------------------------*/
+ranked_reasons AS (
+    SELECT
+        rc.*,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY rc.application_id
+            ORDER BY
+                rc.candidate_reason_priority_rank,
+                rc.candidate_reason_code
+        ) AS reason_row_number
+
+    FROM reason_candidates rc
+),
+
+/*-----------------------------------------------------------------------------------------------
+Pivot ranked reason candidates back to one row per application_id.
+
+triggered_reason_code_list contains all candidate codes after final-outcome family filtering.
+secondary_reason_code and tertiary_reason_code are diagnostic only.
+-----------------------------------------------------------------------------------------------*/
+reason_pivot AS (
+    SELECT
+        application_id,
+
+        MAX(candidate_reason_code) FILTER (WHERE reason_row_number = 1)
+            AS primary_reason_code,
+
+        MAX(candidate_reason_code) FILTER (WHERE reason_row_number = 2)
+            AS secondary_reason_code,
+
+        MAX(candidate_reason_code) FILTER (WHERE reason_row_number = 3)
+            AS tertiary_reason_code,
+
+        MAX(candidate_reason_family) FILTER (WHERE reason_row_number = 1)
+            AS primary_reason_family,
+
+        MAX(candidate_reason_priority_rank) FILTER (WHERE reason_row_number = 1)
+            AS reason_priority_rank,
+
+        STRING_AGG(
+            candidate_reason_code,
+            &#39; | &#39;
+            ORDER BY candidate_reason_priority_rank, candidate_reason_code
+        ) AS triggered_reason_code_list,
+
+        COUNT(*)::INTEGER AS reason_code_count
+
+    FROM ranked_reasons
+    GROUP BY application_id
+),
+
+/*-----------------------------------------------------------------------------------------------
+Final Section 10 staging table.
+
+This preserves all final decision-resolution fields and adds simulated reason-code assignment fields.
+-----------------------------------------------------------------------------------------------*/
+final_reason_assignment AS (
+    SELECT
+        b.*,
+
+        rp.primary_reason_code,
+        rp.secondary_reason_code,
+        rp.tertiary_reason_code,
+        rp.primary_reason_family,
+        rp.triggered_reason_code_list,
+        rp.reason_priority_rank,
+        rp.reason_code_count
+
+    FROM reason_candidate_base b
+    LEFT JOIN reason_pivot rp
+        ON rp.application_id = b.application_id
+)
+
+SELECT *
+FROM final_reason_assignment;
+
+
+
+/***************************************************************************************************
+SECTION 10.3 — LOCAL FAIL-FAST CHECKS FOR SIMULATED REASON-CODE ASSIGNMENT
+****************************************************************************************************
+
+PURPOSE:
+    Validate the Section 10 reason-code staging layer before latest-run output creation, archive
+    persistence, full QA, or matched strategy comparison are built.
+
+IMPORTANT:
+    These are local staging gatekeepers only.
+
+    They are not:
+        full Module 2 QA
+        archive validation
+        matched strategy comparison
+        final documentation evidence
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage6_count BIGINT;
+    v_stage7_count BIGINT;
+    v_stage7_distinct_app_count BIGINT;
+
+    v_duplicate_application_count BIGINT;
+    v_required_reason_failure_count BIGINT;
+    v_approval_reason_failure_count BIGINT;
+    v_counteroffer_reason_failure_count BIGINT;
+    v_manual_review_reason_failure_count BIGINT;
+    v_decline_reason_failure_count BIGINT;
+    v_family_leakage_failure_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: row count must be unchanged from Section 9 to Section 10.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage6_count
+    FROM tmp_m2_stage_6_final_decision_resolution;
+
+    SELECT COUNT(*)
+    INTO v_stage7_count
+    FROM tmp_m2_stage_7_reason_code_assignment;
+
+    IF v_stage7_count &lt;&gt; v_stage6_count THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: row count changed from Section 9 to Section 10. Stage 6 rows: %, Stage 7 rows: %.&#39;,
+            v_stage6_count,
+            v_stage7_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id remains unique.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage7_distinct_app_count
+    FROM tmp_m2_stage_7_reason_code_assignment;
+
+    IF v_stage7_distinct_app_count &lt;&gt; v_stage7_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_count
+        FROM (
+            SELECT application_id
+            FROM tmp_m2_stage_7_reason_code_assignment
+            GROUP BY application_id
+            HAVING COUNT(*) &gt; 1
+        ) d;
+
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: application_id uniqueness was not preserved. Stage 7 rows: %, distinct application_id count: %, duplicate application_id group count: %.&#39;,
+            v_stage7_count,
+            v_stage7_distinct_app_count,
+            v_duplicate_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required reason-code fields must be complete.
+
+    Every row must be explainable.
+    APPROVE rows receive APPROVED_AS_REQUESTED.
+    Non-approval rows receive an outcome-family-aligned strategy explanation code.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_required_reason_failure_count
+    FROM tmp_m2_stage_7_reason_code_assignment
+    WHERE primary_reason_code IS NULL
+       OR NULLIF(BTRIM(primary_reason_code), &#39;&#39;) IS NULL
+       OR primary_reason_family IS NULL
+       OR NULLIF(BTRIM(primary_reason_family), &#39;&#39;) IS NULL
+       OR reason_priority_rank IS NULL
+       OR reason_priority_rank &lt;= 0
+       OR triggered_reason_code_list IS NULL
+       OR NULLIF(BTRIM(triggered_reason_code_list), &#39;&#39;) IS NULL
+       OR reason_code_count IS NULL
+       OR reason_code_count &lt; 1;
+
+    IF v_required_reason_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: % row(s) have missing or invalid required simulated reason-code fields.&#39;,
+            v_required_reason_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: APPROVE reason convention.
+
+    APPROVE rows should receive exactly one approval explanation code unless approval diagnostics are
+    explicitly expanded in a future design.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_approval_reason_failure_count
+    FROM tmp_m2_stage_7_reason_code_assignment
+    WHERE decision_outcome = &#39;APPROVE&#39;
+      AND (
+            primary_reason_code &lt;&gt; &#39;APPROVED_AS_REQUESTED&#39;
+         OR primary_reason_family &lt;&gt; &#39;APPROVAL&#39;
+         OR reason_priority_rank &lt;&gt; 900
+         OR secondary_reason_code IS NOT NULL
+         OR tertiary_reason_code IS NOT NULL
+         OR triggered_reason_code_list &lt;&gt; &#39;APPROVED_AS_REQUESTED&#39;
+         OR reason_code_count &lt;&gt; 1
+      );
+
+    IF v_approval_reason_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: % APPROVE row(s) violate approval reason-code conventions.&#39;,
+            v_approval_reason_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: COUNTEROFFER reason convention.
+
+    Final COUNTEROFFER rows must receive a COUNTEROFFER-family primary reason.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_counteroffer_reason_failure_count
+    FROM tmp_m2_stage_7_reason_code_assignment
+    WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+      AND (
+            primary_reason_family &lt;&gt; &#39;COUNTEROFFER&#39;
+         OR primary_reason_code NOT LIKE &#39;COUNTEROFFER_%&#39;
+      );
+
+    IF v_counteroffer_reason_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: % COUNTEROFFER row(s) violate counteroffer reason-code conventions.&#39;,
+            v_counteroffer_reason_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: MANUAL_REVIEW reason convention.
+
+    Final MANUAL_REVIEW rows must receive a MANUAL_REVIEW-family primary reason.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_manual_review_reason_failure_count
+    FROM tmp_m2_stage_7_reason_code_assignment
+    WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+      AND (
+            primary_reason_family &lt;&gt; &#39;MANUAL_REVIEW&#39;
+         OR primary_reason_code NOT LIKE &#39;MANUAL_REVIEW_%&#39;
+      );
+
+    IF v_manual_review_reason_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: % MANUAL_REVIEW row(s) violate manual-review reason-code conventions.&#39;,
+            v_manual_review_reason_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: DECLINE reason convention.
+
+    Final DECLINE rows must receive a POLICY_STOP-family primary reason.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_decline_reason_failure_count
+    FROM tmp_m2_stage_7_reason_code_assignment
+    WHERE decision_outcome = &#39;DECLINE&#39;
+      AND (
+            primary_reason_family &lt;&gt; &#39;POLICY_STOP&#39;
+         OR primary_reason_code NOT LIKE &#39;POLICY_STOP_%&#39;
+      );
+
+    IF v_decline_reason_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: % DECLINE row(s) violate policy-stop reason-code conventions.&#39;,
+            v_decline_reason_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: primary reason-family leakage prevention.
+
+    This validates the primary reason-code family against the final decision_outcome.
+    Secondary and tertiary reason codes are also generated only after final-outcome family filtering.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_family_leakage_failure_count
+    FROM tmp_m2_stage_7_reason_code_assignment
+    WHERE (
+            decision_outcome = &#39;APPROVE&#39;
+            AND (
+                primary_reason_code LIKE &#39;COUNTEROFFER_%&#39;
+                OR primary_reason_code LIKE &#39;MANUAL_REVIEW_%&#39;
+                OR primary_reason_code LIKE &#39;POLICY_STOP_%&#39;
+            )
+    )
+    OR (
+            decision_outcome = &#39;COUNTEROFFER&#39;
+            AND (
+                primary_reason_code = &#39;APPROVED_AS_REQUESTED&#39;
+                OR primary_reason_code LIKE &#39;MANUAL_REVIEW_%&#39;
+                OR primary_reason_code LIKE &#39;POLICY_STOP_%&#39;
+            )
+    )
+    OR (
+            decision_outcome = &#39;MANUAL_REVIEW&#39;
+            AND (
+                primary_reason_code = &#39;APPROVED_AS_REQUESTED&#39;
+                OR primary_reason_code LIKE &#39;COUNTEROFFER_%&#39;
+                OR primary_reason_code LIKE &#39;POLICY_STOP_%&#39;
+            )
+    )
+    OR (
+            decision_outcome = &#39;DECLINE&#39;
+            AND (
+                primary_reason_code = &#39;APPROVED_AS_REQUESTED&#39;
+                OR primary_reason_code LIKE &#39;COUNTEROFFER_%&#39;
+                OR primary_reason_code LIKE &#39;MANUAL_REVIEW_%&#39;
+            )
+    );
+
+    IF v_family_leakage_failure_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: % row(s) have primary reason-code family leakage across final decision outcomes.&#39;,
+            v_family_leakage_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: final latest-run output table must not exist yet.
+
+    Section 10 creates a temporary reason-code staging table only.
+    The permanent latest-run strategy output is created in a later section.
+    -------------------------------------------------------------------------------------------*/
+    IF TO_REGCLASS(&#39;credit_decisioning_sim.strategy_decisions&#39;) IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 10 failure: final latest-run strategy_decisions table exists before the final output section.&#39;;
+    END IF;
+
+    /*
+    Archive note:
+        Section 10 contains no INSERT, DELETE, TRUNCATE, or CREATE logic for
+        credit_decisioning_sim.strategy_decisions_archive.
+
+        Archive persistence remains deferred to a later section.
+    */
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 10.4 — LOCAL STAGING SANITY CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight diagnostics for the Section 10 reason-code assignment layer.
+
+IMPORTANT:
+    These are not full Module 2 QA outputs.
+    They should not be treated as the final Validation Summary evidence set.
+
+    Full decision distribution, reason-code coverage, approved-book analysis, archive validation,
+    and matched strategy comparison QA will be built later.
+
+***************************************************************************************************/
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.1 Count by decision_outcome × primary_reason_code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 2) AS pct_of_stage
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    decision_outcome,
+    primary_reason_code
+ORDER BY
+    decision_outcome,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.2 Count by decision_outcome × primary_reason_family.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    primary_reason_family,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    decision_outcome,
+    primary_reason_family
+ORDER BY
+    decision_outcome,
+    primary_reason_family;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.3 Count by primary_reason_code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    primary_reason_code,
+    primary_reason_family,
+    COUNT(*) AS row_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 2) AS pct_of_stage
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    primary_reason_code,
+    primary_reason_family
+ORDER BY
+    primary_reason_family,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.4 Count by primary_reason_family.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    primary_reason_family,
+    COUNT(*) AS row_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 2) AS pct_of_stage
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY primary_reason_family
+ORDER BY primary_reason_family;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.5 Average reason_code_count by decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_outcome,
+    COUNT(*) AS row_count,
+    AVG(reason_code_count) AS avg_reason_code_count,
+    MIN(reason_code_count) AS min_reason_code_count,
+    MAX(reason_code_count) AS max_reason_code_count
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY decision_outcome
+ORDER BY decision_outcome;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.6 Count by secondary_reason_code.
+
+NULL means fewer than two applicable simulated reason-code candidates.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    secondary_reason_code,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY secondary_reason_code
+ORDER BY secondary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.7 Count by tertiary_reason_code.
+
+NULL means fewer than three applicable simulated reason-code candidates.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    tertiary_reason_code,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY tertiary_reason_code
+ORDER BY tertiary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.8 Product × primary_reason_code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    product_type_policy_key,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) AS avg_approved_payment_to_income_ratio,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount) AS avg_approved_expected_loss_amount
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    product_type_policy_key,
+    primary_reason_code
+ORDER BY
+    product_type_policy_key,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.9 Score band × primary_reason_code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    score_band_policy_key,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    score_band_policy_key,
+    primary_reason_code
+ORDER BY
+    CASE score_band_policy_key
+        WHEN &#39;SUPER_PRIME&#39; THEN 1
+        WHEN &#39;PRIME&#39; THEN 2
+        WHEN &#39;NEAR_PRIME&#39; THEN 3
+        WHEN &#39;SUBPRIME&#39; THEN 4
+        WHEN &#39;DEEP_SUBPRIME&#39; THEN 5
+        ELSE 99
+    END,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.10 Strategy risk tier × primary_reason_code.
+
+estimated_pd remains the Module 1 SQL field and is interpreted as the synthetic estimated-PD proxy.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    strategy_risk_tier,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    strategy_risk_tier,
+    primary_reason_code
+ORDER BY
+    CASE strategy_risk_tier
+        WHEN &#39;LOW_SYNTHETIC_RISK&#39; THEN 1
+        WHEN &#39;MODERATE_SYNTHETIC_RISK&#39; THEN 2
+        WHEN &#39;ELEVATED_SYNTHETIC_RISK&#39; THEN 3
+        WHEN &#39;HIGH_SYNTHETIC_RISK&#39; THEN 4
+        WHEN &#39;SEVERE_SYNTHETIC_RISK&#39; THEN 5
+        ELSE 99
+    END,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.11 Requested PTI bucket × primary_reason_code.
+
+requested_payment_to_income_ratio is the original requested-structure PTI from Module 1.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    requested_pti_bucket,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) AS avg_approved_payment_to_income_ratio
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    requested_pti_bucket,
+    primary_reason_code
+ORDER BY
+    CASE requested_pti_bucket
+        WHEN &#39;LOW_REQUESTED_PTI&#39; THEN 1
+        WHEN &#39;MODERATE_REQUESTED_PTI&#39; THEN 2
+        WHEN &#39;ELEVATED_REQUESTED_PTI&#39; THEN 3
+        WHEN &#39;HIGH_REQUESTED_PTI&#39; THEN 4
+        WHEN &#39;SEVERE_REQUESTED_PTI&#39; THEN 5
+        ELSE 99
+    END,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.12 Decision path × primary_reason_code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    decision_path,
+    primary_reason_code,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    decision_path,
+    primary_reason_code
+ORDER BY
+    decision_path,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.13 Counteroffer feasibility failure reason × primary_reason_code.
+
+counteroffer_feasibility_failure_reason is a feasibility diagnostic, not a final reason code.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    counteroffer_feasibility_failure_reason,
+    primary_reason_code,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    counteroffer_feasibility_failure_reason,
+    primary_reason_code
+ORDER BY
+    counteroffer_feasibility_failure_reason,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.14 Mixed-signal profile × primary_reason_code.
+
+mixed_signal_profile_type remains diagnostic.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    mixed_signal_profile_type,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    AVG(reason_code_count) AS avg_reason_code_count
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    mixed_signal_profile_type,
+    primary_reason_code
+ORDER BY
+    CASE mixed_signal_profile_type
+        WHEN &#39;NO_MIXED_SIGNAL_PROFILE&#39; THEN 1
+        WHEN &#39;STRONG_CREDIT_HIGH_PTI&#39; THEN 2
+        WHEN &#39;WEAK_CREDIT_LOW_PTI&#39; THEN 3
+        WHEN &#39;LARGE_EXPOSURE_LOW_RISK&#39; THEN 4
+        WHEN &#39;HIGH_RISK_LOW_EXPOSURE&#39; THEN 5
+        WHEN &#39;HIGH_DTI_LOW_REQUESTED_PTI&#39; THEN 6
+        WHEN &#39;MULTIPLE_MIXED_SIGNALS&#39; THEN 7
+        ELSE 99
+    END,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.15 Borderline profile flag × primary_reason_code.
+
+borderline_profile_flag uses governed threshold proximity logic and remains diagnostic.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    borderline_profile_flag,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    AVG(reason_code_count) AS avg_reason_code_count
+FROM tmp_m2_stage_7_reason_code_assignment
+GROUP BY
+    borderline_profile_flag,
+    primary_reason_code
+ORDER BY
+    borderline_profile_flag,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+10.4.16 Sample reason-code trace.
+
+Purpose:
+    Provides a small row-level trace to confirm that reason-code assignment is readable and aligned
+    to final decision outcome.
+
+This is a staging diagnostic only.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    application_id,
+    product_type_policy_key,
+    score_band_policy_key,
+    decision_outcome,
+    decision_path,
+    decision_resolution_source,
+    primary_reason_code,
+    secondary_reason_code,
+    tertiary_reason_code,
+    primary_reason_family,
+    reason_priority_rank,
+    reason_code_count,
+    triggered_reason_code_list
+FROM tmp_m2_stage_7_reason_code_assignment
+ORDER BY
+    decision_outcome,
+    primary_reason_code,
+    application_id
+LIMIT 50;
+
+
+/***************************************************************************************************
+END OF SECTION 10 — SIMULATED REASON-CODE ASSIGNMENT LAYER
+
+If execution reaches this point:
+    1. tmp_m2_stage_7_reason_code_assignment exists.
+    2. All Section 9 fields have been preserved.
+    3. Module 1 lineage remains attached.
+    4. Module 2 strategy metadata remains attached.
+    5. Final decision outcomes remain attached.
+    6. Final exposure economics remain attached.
+    7. primary_reason_code is populated for every row.
+    8. secondary_reason_code and tertiary_reason_code are populated when additional diagnostics exist.
+    9. primary_reason_family aligns to final decision_outcome.
+    10. triggered_reason_code_list is deterministic and outcome-family filtered.
+    11. reason_priority_rank equals the primary candidate reason priority rank.
+    12. reason_code_count is populated and positive for every row.
+
+No final latest-run strategy output table has been created.
+No strategy archive rows have been inserted.
+No full Module 2 QA framework has been created.
+No matched strategy comparison queries have been created.
+No BRD or Validation Summary documentation has been drafted.
+
+***************************************************************************************************/
+</code></pre>
+<hr>
+<h2>What Section 10 establishes</h2>
+<p>Section 10 creates:</p>
+<pre><code class="language-text">tmp_m2_stage_7_reason_code_assignment
+</code></pre>
+<p>It assigns deterministic simulated strategy explanation codes using a candidate → ranking → pivot pattern. Every row receives a <code>primary_reason_code</code>, <code>primary_reason_family</code>, <code>triggered_reason_code_list</code>, <code>reason_priority_rank</code>, and <code>reason_code_count</code>.</p>
+<p>It also adds secondary and tertiary diagnostic reason codes where multiple outcome-aligned reason candidates apply.</p>
+<h2>What Section 10 intentionally does not build</h2>
+<p>Section 10 does not create the final latest-run <code>strategy_decisions</code> table, insert archive rows, build matched strategy comparison queries, or create the full QA framework.</p>
+<p>It also does not draft the Module 2 BRD or Validation Summary.</p>
+<h2>Recommended next build step</h2>
+<p>Next should be:</p>
+<pre><code class="language-text">Section 11 — Latest-Run Strategy Decision Output Table
+</code></pre>
+<p>That section should create:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions
+</code></pre>
+<p>using the fully staged Section 10 output, with one row per application for the current strategy run and the locked final fields needed for downstream QA and archive persistence.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

@@ -1,0 +1,2709 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 41</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 41 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_40.html">Previous</a><a href="Part_42.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00903" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00903 · 2026-05-09T23:17:05.439566-04:00 · active path</p><div class="body"><p>I recommend replacing Section 3 with the version below. It preserves the functional intent of your current Section 3, while strengthening the instructional commentary around <strong>how to run it, how to interpret it, credit risk concepts, and how the SQL mechanics work</strong>. I also added an upfront clean reset for <code>tmp_m2_source_selection_scope</code> so a failed source validation cannot leave a stale source-scope helper behind. fileciteturn82file0</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 3 — FAIL-FAST STRATEGY PARAMETER, SOURCE, PRODUCT POLICY, AND REGISTRY GATEKEEPER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Prevent invalid Module 2 strategy configuration, malformed product policy configuration,
+    ambiguous Module 1 source input, or missing campaign-registry linkage from reaching downstream
+    decision logic, archive persistence, comparison, QA, or evidence capture.
+
+    Section 3 answers:
+
+        &quot;Is the current Module 2 run configured well enough to proceed into source staging,
+         segmentation, rule construction, decisioning, exposure treatment, archive persistence,
+         comparison, validation, frontier review, and executive evidence capture?&quot;
+
+WHY THIS SECTION EXISTS:
+    Section 2 defines the active strategy card, product policy card, campaign registry, and
+    comparison registry.
+
+    Section 3 tests whether those settings are coherent before any applicant-level Module 2 logic is
+    built.
+
+    This is a fail-fast control layer.
+
+    A failed gatekeeper is preferable to a completed strategy run created under:
+        the wrong Module 1 source,
+        an unsupported product configuration,
+        contradictory thresholds,
+        missing registry IDs,
+        invalid archive controls,
+        or ambiguous active strategy settings.
+
+WHO SHOULD REVIEW THIS SECTION:
+    Credit strategy reviewers:
+        Confirm that risk appetite, affordability posture, DTI capacity, counteroffer behavior, and
+        product guardrails are coherent before strategy logic runs.
+
+    Model governance / validation reviewers:
+        Confirm that assumptions are bounded, source lineage is controlled, and evidence linkage is
+        available for formal validation documentation.
+
+    SQL reviewers:
+        Confirm that parameter validation uses explicit checks, `RAISE EXCEPTION`, dynamic source
+        validation, information_schema checks, and temporary helper tables correctly.
+
+    Portfolio / executive reviewers:
+        Confirm that formal campaign runs tie to stable IDs such as module2_run_id and
+        validation_evidence_group_id before outputs are used in documentation.
+
+WHEN TO RUN THIS SECTION:
+    Run Section 3 immediately after Section 2 during a full Module 2 execution.
+
+    Section 3 should be run before:
+        Section 4 source staging,
+        Section 5 segmentation,
+        Section 6 rule flags,
+        Section 7 preliminary routing,
+        Section 8 exposure treatment,
+        Section 9 final decision resolution,
+        Section 10 reason-code assignment,
+        Section 11 latest-run output,
+        Section 12 archive persistence,
+        Section 13 comparison,
+        Section 14 QA,
+        Section 15 frontier review,
+        and Section 16 evidence capture.
+
+HOW TO INTERPRET THIS SECTION:
+    Passing Section 3 means:
+        the run is configured well enough to execute.
+
+    Passing Section 3 does not mean:
+        the final strategy outcomes are reasonable,
+        archive persistence worked,
+        matched comparison is ready,
+        validation has passed,
+        or the strategy should be documented as successful.
+
+    Those conclusions require later evidence:
+        Section 11 latest-run output,
+        Section 12 archive persistence,
+        Section 13 matched comparison,
+        Section 14 QA,
+        Section 15 frontier summary,
+        and Section 16 evidence capture.
+
+SQL PURPOSE:
+    1. Validate active strategy-parameter cardinality.
+    2. Validate strategy identity and archive controls.
+    3. Validate campaign registry requirement settings.
+    4. Validate threshold ranges and threshold ordering.
+    5. Validate decision conventions.
+    6. Validate Section 6 rule-control parameters.
+    7. Validate failed-counteroffer resolution settings.
+    8. Validate product policy completeness, supported products, and product threshold ordering.
+    9. Validate Module 1 input source table existence, required fields, row count, scenario selection,
+       and application_id uniqueness.
+    10. Materialize a temporary source-selection scope helper table.
+    11. Match the current technical run key to the persistent Module 2 campaign registry.
+    12. Fail formal campaign runs when the current technical key does not map to exactly one active
+        registry row.
+    13. Produce lightweight setup diagnostics before downstream stages execute.
+
+CREDIT RISK CONCEPTS TAUGHT BY THIS SECTION:
+    Synthetic estimated-risk threshold ordering:
+        The Module 1 estimated_pd field is interpreted as a synthetic estimated-PD proxy.
+        Thresholds must be ordered so risk bands do not overlap or leave unintended gaps.
+
+    PTI threshold ordering:
+        Payment-to-income ratio is the affordability bridge between requested structure and
+        repayment stress. Product-level PTI thresholds later determine affordability rule flags.
+
+    DTI threshold ordering:
+        Debt-to-income ratio is an existing-obligation capacity measure. In Module 2 V1.0, DTI is
+        not directly solved by counteroffer exposure reduction.
+
+    Requested Expected Loss:
+        Requested Expected Loss is based on original requested exposure from Module 1. It is not the
+        same as approved Expected Loss, which is calculated later after Module 2 exposure treatment.
+
+    Product policy governance:
+        Product type changes risk and affordability behavior. Mortgage, HELOC, Auto Loan, Unsecured
+        Personal Loan, and Revolving Line require distinct policy rows.
+
+    Campaign registry linkage:
+        Formal evidence should connect technical SQL output to stable run IDs, comparison groups, and
+        validation evidence groups.
+
+SQL MECHANICS TAUGHT BY THIS SECTION:
+    `DO $$ ... END $$`:
+        Runs procedural PL/pgSQL logic for validations that require variables, IF statements, dynamic
+        SQL, and explicit exceptions.
+
+    `SELECT ... INTO`:
+        Stores query results into PL/pgSQL variables.
+
+    `RAISE EXCEPTION`:
+        Stops execution with a clear diagnostic message when a gatekeeper fails.
+
+    `COUNT(*) FILTER (WHERE ...)`:
+        Compactly counts violations or conditions without separate subqueries.
+
+    `NULLIF(BTRIM(field), &#39;&#39;)`:
+        Treats blank strings as missing values.
+
+    `TO_REGCLASS(...)`:
+        Checks whether a table exists without failing when the table is absent.
+
+    `information_schema.columns`:
+        Inspects source-table schema to validate required columns.
+
+    `EXECUTE FORMAT(...)`:
+        Builds and runs dynamic SQL when the selected Module 1 source table or scenario column names
+        are not known until runtime.
+
+    `IS DISTINCT FROM`:
+        Provides NULL-safe comparison in later diagnostics.
+
+    `CREATE TEMP TABLE ... ON COMMIT PRESERVE ROWS`:
+        Creates session-scoped helper tables that remain available across transaction boundaries in
+        the active session.
+
+WHY FAIL FAST:
+    A completed strategy run under invalid configuration is more dangerous than a failed run.
+
+    Gatekeepers prevent silent strategy distortion, ambiguous source selection, stale parameter use,
+    unsupported product-policy configuration, invalid archive controls, and weak evidence linkage.
+
+WHY REGISTRY MATCHING BELONGS HERE:
+    The campaign registry does not define Module 1 lineage or Module 2 strategy behavior.
+
+    It maps technical scenario / strategy identifiers to stable run IDs used for:
+        validation-summary traceability,
+        executive evidence capture,
+        README storytelling,
+        LinkedIn storyline sequencing,
+        comparison grouping,
+        and future campaign documentation.
+
+    Matching the current run key early lets Section 16 capture evidence with clean IDs instead of
+    relying only on long technical names.
+
+REGISTRY INTERPRETATION:
+    RUN_REGISTRY_MATCHED:
+        The current technical run key matched exactly one active campaign registry row.
+
+    RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW:
+        The run requires registry linkage but no active registry row matched.
+
+    RUN_REGISTRY_NOT_FOUND_FALLBACK_ALLOWED:
+        The run did not match a registry row, but campaign_registry_required_flag = FALSE.
+
+    RUN_REGISTRY_DUPLICATE_MATCH_REVIEW_REQUIRED:
+        More than one active registry row matched the same technical key. This is not acceptable for
+        formal campaign evidence because IDs would be ambiguous.
+
+BOUNDARY:
+    Section 3 validates configuration, source readiness, and registry linkage.
+
+    Section 3 does not:
+        consume rows into the main Module 2 staging table,
+        assign strategy segments,
+        assign rule flags,
+        assign preliminary routing,
+        calculate approved exposure,
+        assign final decision_outcome,
+        assign simulated reason codes,
+        create latest-run output,
+        insert archive rows,
+        perform matched comparison,
+        perform full validation QA,
+        calculate frontier summaries,
+        or capture executive evidence.
+
+COMMON MISUSE TO AVOID:
+    Do not treat Section 3 PASS behavior as strategy validation.
+
+    Do not treat strategy_run_id as the technical comparison key.
+
+    Do not use a formal campaign run without a registry match when campaign_registry_required_flag is
+    TRUE.
+
+    Do not compare Module 2 strategies across different Module 1 scenarios and call the result a pure
+    Module 2 strategy effect.
+
+    Do not interpret synthetic estimated-risk thresholds as calibrated production PD cutoffs.
+
+    Do not interpret product policy thresholds as production underwriting rules.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 3.1 — STRATEGY PARAMETER CARDINALITY, THRESHOLD, CONVENTION, AND PRODUCT-POLICY VALIDATION
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that the active strategy parameter card and product policy parameter card are internally
+    coherent before any applicant-level logic is built.
+
+    Section 3.1 answers:
+
+        &quot;Are the active Module 2 strategy controls and product policy controls logically valid?&quot;
+
+SQL PURPOSE:
+    Validate:
+        active strategy cardinality,
+        strategy identity,
+        Module 1 input controls,
+        archive controls,
+        campaign registry requirement flag,
+        synthetic estimated-risk thresholds,
+        PTI thresholds,
+        DTI thresholds,
+        borderline diagnostic buffer,
+        Section 6 rule-control parameters,
+        decision convention controls,
+        failed counteroffer resolution,
+        product policy cardinality,
+        product threshold ordering,
+        counteroffer controls,
+        approved amount controls,
+        and rounding controls.
+
+WHY THIS COMES BEFORE SOURCE VALIDATION:
+    There is no value in inspecting Module 1 source data if the active strategy card itself is
+    malformed.
+
+    Section 3.1 first validates the configuration layer.
+    Section 3.2 then validates the selected Module 1 source layer.
+
+INTERPRETATION:
+    These checks validate the strategy configuration, not the strategy result.
+
+    Passing Section 3.1 means:
+        the parameter cards are coherent enough to execute.
+
+    It does not mean:
+        final outcomes are reasonable,
+        reason codes are complete,
+        archive persistence worked,
+        matched comparison is ready,
+        or the strategy is validated.
+
+SQL MECHANICS:
+    This block uses PL/pgSQL because it needs variables, row records, conditional tests, and explicit
+    exceptions.
+
+    `p RECORD` stores the single active strategy parameter row.
+
+    The count variables store validation diagnostics used in exception messages.
+
+****************************************************************************************************/
+
+DO $$
+DECLARE
+    /***********************************************************************************************
+    Active strategy parameter record.
+
+    After the cardinality check confirms exactly one active strategy row, this record stores that row
+    so the rest of the gatekeeper can reference parameters as p.field_name.
+    ***********************************************************************************************/
+    p RECORD;
+
+    /***********************************************************************************************
+    Count variables used for strategy and product-policy gatekeepers.
+
+    These are deliberately separate so exception messages can explain which type of validation failed.
+    ***********************************************************************************************/
+    v_active_strategy_count BIGINT;
+    v_product_policy_count BIGINT;
+    v_supported_product_count BIGINT;
+    v_duplicate_product_count BIGINT;
+    v_unsupported_product_count BIGINT;
+    v_missing_supported_product_count BIGINT;
+    v_bad_product_policy_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exactly one active strategy parameter row.
+
+    Business purpose:
+        Single-strategy execution requires one and only one active strategy configuration.
+
+    SQL mechanics:
+        COUNT(*) counts active rows in tmp_module2_strategy_params.
+
+        If the count is not exactly one, RAISE EXCEPTION stops execution before downstream stages
+        can accidentally mix strategy thresholds or metadata.
+
+    Why this matters:
+        More than one active row could mix strategy identities, thresholds, archive controls, and
+        evidence metadata.
+
+        Zero active rows would leave downstream logic without a governed strategy card.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_active_strategy_count
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE;
+
+    IF v_active_strategy_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: expected exactly one active strategy parameter row, found %.&#39;,
+            v_active_strategy_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Load the one active strategy row.
+
+    SQL mechanics:
+        SELECT * INTO p stores the active row in a PL/pgSQL record variable.
+
+    Why LIMIT 1 is safe:
+        The count check above already proved there is exactly one active row.
+    -------------------------------------------------------------------------------------------*/
+    SELECT *
+    INTO p
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required strategy identity fields.
+
+    Business purpose:
+        Confirm that the downstream Module 2 strategy can be identified in outputs, archive rows,
+        comparison views, QA outputs, and evidence tables.
+
+    Credit risk interpretation:
+        These fields identify the strategy posture being applied, such as baseline, tighter risk,
+        growth-oriented, affordability-tightening, counteroffer-first, product guardrail, or manual-
+        review reduction.
+
+    SQL mechanics:
+        `IS NULL` catches missing values.
+        `NULLIF(BTRIM(field), &#39;&#39;) IS NULL` catches blank or whitespace-only text.
+
+    Boundary:
+        These fields identify the downstream Module 2 strategy.
+        They are not the upstream Module 1 scenario fields.
+    -------------------------------------------------------------------------------------------*/
+    IF p.module2_model_version IS NULL OR NULLIF(BTRIM(p.module2_model_version), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: module2_model_version must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_set_name IS NULL OR NULLIF(BTRIM(p.strategy_set_name), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_set_name must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_name IS NULL OR NULLIF(BTRIM(p.strategy_name), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_name must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_version IS NULL OR NULLIF(BTRIM(p.strategy_version), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_version must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_run_id IS NULL OR NULLIF(BTRIM(p.strategy_run_id), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_run_id must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_run_ts IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_run_ts must be non-null.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: campaign registry requirement flag.
+
+    Business purpose:
+        Confirm whether the current run requires formal campaign registry linkage.
+
+    Credit risk / governance interpretation:
+        Formal validation evidence should be traceable to stable run IDs.
+
+        campaign_registry_required_flag = TRUE means the current technical run key must map to
+        exactly one active row in credit_decisioning_sim.strategy_run_campaign_registry.
+
+        campaign_registry_required_flag = FALSE allows ad hoc development runs to proceed with
+        fallback evidence metadata.
+
+    SQL mechanics:
+        Boolean controls should be explicit. NULL is not allowed because NULL would make downstream
+        registry behavior ambiguous.
+
+    Boundary:
+        This flag does not change decision logic.
+        It changes evidence-traceability expectations.
+    -------------------------------------------------------------------------------------------*/
+    IF p.campaign_registry_required_flag IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: campaign_registry_required_flag must not be null.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Module 1 input source.
+
+    Business purpose:
+        Confirm whether Module 2 will consume:
+            LATEST Module 1 output,
+            or a selected ARCHIVE scenario slice.
+
+    Credit risk interpretation:
+        Source selection determines the upstream synthetic population, rate environment, product mix,
+        score mix, severity mix, and requested-exposure risk environment.
+
+        If source selection is wrong, downstream strategy behavior may be misinterpreted.
+
+    SQL mechanics:
+        The source mode must be exactly LATEST or ARCHIVE.
+
+        For ARCHIVE mode, the selected scenario set, scenario name, and population_id must be
+        populated because Section 3.2 and Section 4 need those values to filter the archive slice.
+
+    Boundary:
+        Multi-scenario processing is not designed in Module 2 V1.0.
+    -------------------------------------------------------------------------------------------*/
+    IF p.module1_input_source IS NULL
+       OR p.module1_input_source NOT IN (&#39;LATEST&#39;, &#39;ARCHIVE&#39;) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: module1_input_source must be LATEST or ARCHIVE. Found: %.&#39;,
+            COALESCE(p.module1_input_source, &#39;&lt;NULL&gt;&#39;);
+    END IF;
+
+    IF p.module1_input_source = &#39;ARCHIVE&#39; THEN
+        IF p.source_module1_scenario_set_name IS NULL
+           OR NULLIF(BTRIM(p.source_module1_scenario_set_name), &#39;&#39;) IS NULL
+           OR p.source_module1_scenario_name IS NULL
+           OR NULLIF(BTRIM(p.source_module1_scenario_name), &#39;&#39;) IS NULL
+           OR p.source_population_id IS NULL
+           OR NULLIF(BTRIM(p.source_population_id), &#39;&#39;) IS NULL THEN
+            RAISE EXCEPTION
+                &#39;Module 2 gatekeeper failure: ARCHIVE source requires source_module1_scenario_set_name, source_module1_scenario_name, and source_population_id.&#39;;
+        END IF;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive controls.
+
+    Business purpose:
+        Confirm that archive persistence controls are explicit and valid before Section 12 uses them.
+
+    Credit risk / governance interpretation:
+        Archive controls determine whether completed latest-run output becomes historical evidence
+        and how an existing archived slice is replaced on rerun.
+
+    SQL mechanics:
+        archive_run_flag must be TRUE or FALSE, never NULL.
+
+        strategy_archive_reset_mode must be one of the governed mode values:
+            NONE,
+            STRATEGY_SCENARIO_ONLY,
+            STRATEGY_SET_ONLY,
+            ALL.
+
+    Boundary:
+        Section 3 validates the controls only.
+        Section 12 performs archive persistence.
+    -------------------------------------------------------------------------------------------*/
+    IF p.archive_run_flag IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: archive_run_flag must not be null.&#39;;
+    END IF;
+
+    IF p.strategy_archive_reset_mode IS NULL
+       OR p.strategy_archive_reset_mode NOT IN (
+            &#39;NONE&#39;,
+            &#39;STRATEGY_SCENARIO_ONLY&#39;,
+            &#39;STRATEGY_SET_ONLY&#39;,
+            &#39;ALL&#39;
+       ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: strategy_archive_reset_mode must be NONE, STRATEGY_SCENARIO_ONLY, STRATEGY_SET_ONLY, or ALL. Found: %.&#39;,
+            COALESCE(p.strategy_archive_reset_mode, &#39;&lt;NULL&gt;&#39;);
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: synthetic estimated-PD proxy threshold bounds and ordering.
+
+    Business purpose:
+        Confirm that the synthetic estimated-risk thresholds form coherent strategy bands.
+
+    Credit risk interpretation:
+        estimated_pd remains the SQL field name from Module 1.
+
+        In Module 2, estimated_pd is interpreted as the synthetic estimated-PD proxy.
+
+        The active strategy uses these thresholds to define:
+            clean approval risk band,
+            counteroffer risk band,
+            manual-review risk band,
+            severe synthetic-risk decline trigger.
+
+    SQL mechanics:
+        First IF block:
+            checks non-null and [0, 1] range.
+
+        Second IF block:
+            checks ordering:
+                approve_max &lt; counteroffer_max &lt;= review_max &lt;= decline_min
+
+        The ordering rule prevents overlapping or inverted risk bands.
+
+    Boundary:
+        These are synthetic strategy simulation thresholds.
+        They are not calibrated production PD cutoffs.
+    -------------------------------------------------------------------------------------------*/
+    IF p.approve_max_estimated_pd_proxy IS NULL
+       OR p.counteroffer_max_estimated_pd_proxy IS NULL
+       OR p.review_max_estimated_pd_proxy IS NULL
+       OR p.decline_min_estimated_pd_proxy IS NULL
+       OR p.approve_max_estimated_pd_proxy &lt; 0
+       OR p.approve_max_estimated_pd_proxy &gt; 1
+       OR p.counteroffer_max_estimated_pd_proxy &lt; 0
+       OR p.counteroffer_max_estimated_pd_proxy &gt; 1
+       OR p.review_max_estimated_pd_proxy &lt; 0
+       OR p.review_max_estimated_pd_proxy &gt; 1
+       OR p.decline_min_estimated_pd_proxy &lt; 0
+       OR p.decline_min_estimated_pd_proxy &gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: synthetic estimated-PD proxy thresholds must be non-null and between 0 and 1.&#39;;
+    END IF;
+
+    IF NOT (
+        p.approve_max_estimated_pd_proxy &lt; p.counteroffer_max_estimated_pd_proxy
+        AND p.counteroffer_max_estimated_pd_proxy &lt;= p.review_max_estimated_pd_proxy
+        AND p.review_max_estimated_pd_proxy &lt;= p.decline_min_estimated_pd_proxy
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: synthetic estimated-PD proxy threshold ordering is invalid.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: global PTI threshold bounds and ordering.
+
+    Business purpose:
+        Confirm that global affordability thresholds are bounded and ordered.
+
+    Credit risk interpretation:
+        PTI means payment-to-income ratio.
+
+        PTI is the affordability bridge between requested loan structure and repayment burden.
+
+        Product-specific PTI thresholds govern product-aware affordability flags later. These global
+        thresholds provide cross-product governance context and range discipline.
+
+    SQL mechanics:
+        Values are allowed between 0 and 1.5 because synthetic PTI can exceed 100% in stress cases,
+        but values above 150% would likely indicate malformed configuration.
+
+        Ordering must satisfy:
+            approve_max &lt; review_max &lt;= decline_min
+
+    Boundary:
+        These thresholds are strategy simulation controls, not production underwriting cutoffs.
+    -------------------------------------------------------------------------------------------*/
+    IF p.global_approve_max_pti IS NULL
+       OR p.global_review_max_pti IS NULL
+       OR p.global_decline_min_pti IS NULL
+       OR p.global_approve_max_pti &lt; 0
+       OR p.global_approve_max_pti &gt; 1.5
+       OR p.global_review_max_pti &lt; 0
+       OR p.global_review_max_pti &gt; 1.5
+       OR p.global_decline_min_pti &lt; 0
+       OR p.global_decline_min_pti &gt; 1.5 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: global PTI thresholds must be non-null and between 0 and 1.5.&#39;;
+    END IF;
+
+    IF NOT (
+        p.global_approve_max_pti &lt; p.global_review_max_pti
+        AND p.global_review_max_pti &lt;= p.global_decline_min_pti
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: global PTI threshold ordering is invalid.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: DTI threshold bounds and ordering.
+
+    Business purpose:
+        Confirm that existing-obligation capacity thresholds are bounded and ordered.
+
+    Credit risk interpretation:
+        DTI means debt-to-income ratio.
+
+        DTI captures existing borrower obligations, not just the requested loan payment.
+
+        Module 2 V1.0 does not directly solve high DTI through exposure reduction because
+        counteroffer changes requested exposure treatment, not the applicant&#39;s existing obligations.
+
+    SQL mechanics:
+        Values must be between 0 and 1.
+
+        Ordering must satisfy:
+            approve_max &lt; review_max &lt;= decline_min
+
+    Boundary:
+        These thresholds are strategy simulation controls, not production underwriting cutoffs.
+    -------------------------------------------------------------------------------------------*/
+    IF p.approve_max_dti IS NULL
+       OR p.review_max_dti IS NULL
+       OR p.decline_min_dti IS NULL
+       OR p.approve_max_dti &lt; 0
+       OR p.approve_max_dti &gt; 1
+       OR p.review_max_dti &lt; 0
+       OR p.review_max_dti &gt; 1
+       OR p.decline_min_dti &lt; 0
+       OR p.decline_min_dti &gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: DTI thresholds must be non-null and between 0 and 1.&#39;;
+    END IF;
+
+    IF NOT (
+        p.approve_max_dti &lt; p.review_max_dti
+        AND p.review_max_dti &lt;= p.decline_min_dti
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: DTI threshold ordering is invalid.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: borderline diagnostic buffer.
+
+    Business purpose:
+        Confirm that threshold-adjacent segmentation uses a governed diagnostic buffer.
+
+    Credit risk interpretation:
+        Borderline profiles are useful for validation and strategy review because applicants close to
+        thresholds often explain movement between approve, counteroffer, manual review, and decline.
+
+    SQL mechanics:
+        The buffer must be between 0 and 0.25.
+
+        0 disables threshold-adjacent tagging.
+        Values above 0.25 are not allowed because too much of the population would be labeled
+        borderline, reducing diagnostic usefulness.
+
+    Boundary:
+        This is a non-decisioning diagnostic segmentation parameter.
+        It is not a production policy tolerance.
+    -------------------------------------------------------------------------------------------*/
+    IF p.borderline_threshold_buffer_pct IS NULL
+       OR p.borderline_threshold_buffer_pct &lt; 0
+       OR p.borderline_threshold_buffer_pct &gt; 0.250000 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: borderline_threshold_buffer_pct must be between 0 and 0.25.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 6 rule-control parameters.
+
+    Business purpose:
+        Confirm that simulated policy-stop and review-signal controls are explicit and bounded.
+
+    Credit risk interpretation:
+        These controls enable or disable simulated trigger families such as bankruptcy stop, major
+        derogatory stop, severe delinquency stop, high utilization review, and low score review.
+
+    SQL mechanics:
+        Boolean controls must be TRUE or FALSE, never NULL.
+
+        Numeric controls are range checked:
+            severe_delinquency_count_threshold &gt;= 0
+            high_utilization_review_threshold between 0 and 1
+            low_score_review_threshold between 300 and 850
+
+    Boundary:
+        These parameters govern simulated rule-trigger flags only.
+
+        They do not create:
+            final strategy outcomes,
+            reason codes,
+            approved amounts,
+            approved PTI,
+            or approved Expected Loss.
+    -------------------------------------------------------------------------------------------*/
+    IF p.bankruptcy_policy_stop_enabled IS NULL
+       OR p.major_derogatory_policy_stop_enabled IS NULL
+       OR p.severe_delinquency_policy_stop_enabled IS NULL
+       OR p.high_utilization_review_enabled IS NULL
+       OR p.low_score_review_enabled IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: Section 6 boolean rule-control parameters must not be null.&#39;;
+    END IF;
+
+    IF p.severe_delinquency_count_threshold IS NULL
+       OR p.severe_delinquency_count_threshold &lt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: severe_delinquency_count_threshold must be a non-negative integer.&#39;;
+    END IF;
+
+    IF p.high_utilization_review_threshold IS NULL
+       OR p.high_utilization_review_threshold &lt; 0
+       OR p.high_utilization_review_threshold &gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: high_utilization_review_threshold must be between 0 and 1.&#39;;
+    END IF;
+
+    IF p.low_score_review_threshold IS NULL
+       OR p.low_score_review_threshold &lt; 300
+       OR p.low_score_review_threshold &gt; 850 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: low_score_review_threshold must be between 300 and 850.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: decision convention controls.
+
+    Business purpose:
+        Confirm that the final-output conventions match the accepted Module 2 V1.0 taxonomy.
+
+    Credit risk interpretation:
+        Module 2 uses four final simulated outcomes:
+            APPROVE,
+            COUNTEROFFER,
+            MANUAL_REVIEW,
+            DECLINE.
+
+        Those outcomes have distinct exposure conventions:
+            APPROVE uses requested exposure.
+            COUNTEROFFER uses reduced approved exposure.
+            MANUAL_REVIEW remains unresolved.
+            DECLINE uses zero-exposure convention.
+
+    SQL mechanics:
+        `IS DISTINCT FROM` is used for Boolean convention checks because it is NULL-safe.
+
+        Text conventions are compared to the accepted values.
+
+    Boundary:
+        These conventions preserve output integrity.
+        They are not production underwriting decisions.
+    -------------------------------------------------------------------------------------------*/
+    IF p.allow_approved_amount_above_requested_flag IS DISTINCT FROM FALSE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: allow_approved_amount_above_requested_flag must be FALSE for Module 2 V1.0.&#39;;
+    END IF;
+
+    IF p.decline_approved_amount_convention &lt;&gt; &#39;ZERO&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: decline_approved_amount_convention must equal ZERO.&#39;;
+    END IF;
+
+    IF p.manual_review_approved_amount_convention &lt;&gt; &#39;NULL_UNRESOLVED&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: manual_review_approved_amount_convention must equal NULL_UNRESOLVED.&#39;;
+    END IF;
+
+    IF p.approved_el_decline_convention &lt;&gt; &#39;ZERO&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approved_el_decline_convention must equal ZERO.&#39;;
+    END IF;
+
+    IF p.approved_el_manual_review_convention &lt;&gt; &#39;NULL_UNRESOLVED&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approved_el_manual_review_convention must equal NULL_UNRESOLVED.&#39;;
+    END IF;
+
+    IF p.reason_code_required_flag IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: reason_code_required_flag must be TRUE.&#39;;
+    END IF;
+
+    IF p.simulated_offer_exposure_flag_enabled IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: simulated_offer_exposure_flag_enabled must be TRUE.&#39;;
+    END IF;
+
+    IF p.approve_reason_code IS NULL
+       OR NULLIF(BTRIM(p.approve_reason_code), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approve_reason_code must be non-null and nonblank.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: failed counteroffer resolution.
+
+    Business purpose:
+        Confirm how infeasible preliminary counteroffers should resolve in final decision logic.
+
+    Credit risk interpretation:
+        A preliminary COUNTEROFFER route does not guarantee a viable final counteroffer.
+
+        Section 8 tests feasibility.
+        Section 9 resolves failed counteroffers using this parameter.
+
+    Allowed values:
+        MANUAL_REVIEW
+        DECLINE
+
+    Default interpretation:
+        MANUAL_REVIEW is conservative and audit-readable because hard simulated policy stops,
+        severe synthetic estimated-risk triggers, and severe DTI triggers have already routed to
+        preliminary DECLINE before counteroffer feasibility is evaluated.
+
+    Boundary:
+        This is a simulated strategy-control parameter.
+        It is not production underwriting policy.
+    -------------------------------------------------------------------------------------------*/
+    IF p.failed_counteroffer_resolution IS NULL
+       OR p.failed_counteroffer_resolution NOT IN (&#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: failed_counteroffer_resolution must be MANUAL_REVIEW or DECLINE. Found: %.&#39;,
+            COALESCE(p.failed_counteroffer_resolution, &#39;&lt;NULL&gt;&#39;);
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product policy table contains exactly one row per supported product type.
+
+    Business purpose:
+        Confirm every supported product has exactly one product-policy configuration.
+
+    Credit risk interpretation:
+        Product type changes affordability, exposure, LGD, approved Expected Loss, and counteroffer
+        feasibility.
+
+        Missing or duplicate product-policy rows would make product-aware strategy behavior
+        ambiguous.
+
+    SQL mechanics:
+        v_product_policy_count:
+            total rows in the product policy table.
+
+        v_supported_product_count:
+            distinct supported product types present.
+
+        v_duplicate_product_count:
+            product types with more than one row.
+
+        v_unsupported_product_count:
+            rows with unsupported product types.
+
+        v_missing_supported_product_count:
+            supported products missing from the table.
+
+        The VALUES ... EXCEPT pattern creates the required product list and subtracts the configured
+        product list to identify missing rows.
+
+    Supported product set:
+        MORTGAGE,
+        HELOC,
+        AUTO_LOAN,
+        UNSECURED_PERSONAL_LOAN,
+        REVOLVING_LINE.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_product_policy_count
+    FROM tmp_module2_product_policy_params;
+
+    SELECT COUNT(DISTINCT product_type)
+    INTO v_supported_product_count
+    FROM tmp_module2_product_policy_params
+    WHERE product_type IN (
+        &#39;MORTGAGE&#39;,
+        &#39;HELOC&#39;,
+        &#39;AUTO_LOAN&#39;,
+        &#39;UNSECURED_PERSONAL_LOAN&#39;,
+        &#39;REVOLVING_LINE&#39;
+    );
+
+    SELECT COUNT(*)
+    INTO v_duplicate_product_count
+    FROM (
+        SELECT product_type
+        FROM tmp_module2_product_policy_params
+        GROUP BY product_type
+        HAVING COUNT(*) &gt; 1
+    ) d;
+
+    SELECT COUNT(*)
+    INTO v_unsupported_product_count
+    FROM tmp_module2_product_policy_params
+    WHERE product_type NOT IN (
+        &#39;MORTGAGE&#39;,
+        &#39;HELOC&#39;,
+        &#39;AUTO_LOAN&#39;,
+        &#39;UNSECURED_PERSONAL_LOAN&#39;,
+        &#39;REVOLVING_LINE&#39;
+    );
+
+    SELECT COUNT(*)
+    INTO v_missing_supported_product_count
+    FROM (
+        SELECT product_type
+        FROM (
+            VALUES
+                (&#39;MORTGAGE&#39;),
+                (&#39;HELOC&#39;),
+                (&#39;AUTO_LOAN&#39;),
+                (&#39;UNSECURED_PERSONAL_LOAN&#39;),
+                (&#39;REVOLVING_LINE&#39;)
+        ) s(product_type)
+        EXCEPT
+        SELECT product_type
+        FROM tmp_module2_product_policy_params
+    ) m;
+
+    IF v_product_policy_count &lt;&gt; 5
+       OR v_supported_product_count &lt;&gt; 5
+       OR v_duplicate_product_count &gt; 0
+       OR v_unsupported_product_count &gt; 0
+       OR v_missing_supported_product_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: product policy table must contain exactly one row for each supported product type. Rows=%, supported distinct=%, duplicate groups=%, unsupported rows=%, missing supported products=%.&#39;,
+            v_product_policy_count,
+            v_supported_product_count,
+            v_duplicate_product_count,
+            v_unsupported_product_count,
+            v_missing_supported_product_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product policy threshold and exposure validation.
+
+    Business purpose:
+        Confirm product policy rows are coherent enough for product-aware rule flags and exposure
+        treatment.
+
+    Credit risk interpretation:
+        Each product row must define:
+            requested PTI thresholds,
+            requested Expected Loss thresholds,
+            approved Expected Loss cap,
+            approved exposure range,
+            counteroffer controls,
+            exposure assignment method,
+            rounding increment.
+
+    SQL mechanics:
+        This query counts product rows where any required value is missing, out of range, or
+        logically ordered incorrectly.
+
+        A single COUNT(*) diagnostic is used instead of separate exceptions for every field because
+        the product policy table is small and the failure message points reviewers to the product
+        policy setup.
+
+    Product threshold logic:
+        product_approve_max_pti &lt; product_review_max_pti &lt;= product_decline_min_pti
+
+        product_approve_max_requested_el &lt;= product_review_max_requested_el
+        product_review_max_requested_el &lt;= product_decline_min_requested_el
+
+        product_max_approved_amount &gt; product_min_approved_amount
+
+        product_min_counteroffer_pct and product_max_exposure_reduction_pct are bounded between
+        0 and 1.
+
+    Boundary:
+        These are synthetic strategy policy settings, not production underwriting rules.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_bad_product_policy_count
+    FROM tmp_module2_product_policy_params
+    WHERE product_type IS NULL
+       OR NULLIF(BTRIM(product_type), &#39;&#39;) IS NULL
+
+       OR product_approve_max_pti IS NULL
+       OR product_review_max_pti IS NULL
+       OR product_decline_min_pti IS NULL
+       OR counteroffer_target_pti IS NULL
+       OR product_approve_max_pti &lt; 0
+       OR product_approve_max_pti &gt; 1.5
+       OR product_review_max_pti &lt; 0
+       OR product_review_max_pti &gt; 1.5
+       OR product_decline_min_pti &lt; 0
+       OR product_decline_min_pti &gt; 1.5
+       OR counteroffer_target_pti &lt; 0
+       OR counteroffer_target_pti &gt; 1.5
+       OR product_approve_max_pti &gt;= product_review_max_pti
+       OR product_review_max_pti &gt; product_decline_min_pti
+
+       OR product_approve_max_requested_el IS NULL
+       OR product_review_max_requested_el IS NULL
+       OR product_decline_min_requested_el IS NULL
+       OR product_approved_el_cap IS NULL
+       OR product_approve_max_requested_el &lt; 0
+       OR product_review_max_requested_el &lt; 0
+       OR product_decline_min_requested_el &lt; 0
+       OR product_approved_el_cap &lt; 0
+       OR product_approve_max_requested_el &gt; product_review_max_requested_el
+       OR product_review_max_requested_el &gt; product_decline_min_requested_el
+
+       OR product_min_approved_amount IS NULL
+       OR product_max_approved_amount IS NULL
+       OR product_min_approved_amount &lt;= 0
+       OR product_max_approved_amount &lt;= product_min_approved_amount
+
+       OR counteroffer_allowed_flag IS NULL
+       OR manual_review_allowed_flag IS NULL
+       OR product_min_counteroffer_pct IS NULL
+       OR product_max_exposure_reduction_pct IS NULL
+       OR product_min_counteroffer_pct &lt; 0
+       OR product_min_counteroffer_pct &gt; 1
+       OR product_max_exposure_reduction_pct &lt; 0
+       OR product_max_exposure_reduction_pct &gt; 1
+       OR exposure_assignment_method IS NULL
+       OR exposure_assignment_method NOT IN (&#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;)
+       OR approved_amount_rounding_increment IS NULL
+       OR approved_amount_rounding_increment &lt;= 0;
+
+    IF v_bad_product_policy_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: % product policy row(s) failed threshold, exposure, counteroffer, or rounding validation.&#39;,
+            v_bad_product_policy_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 3.2 — MODULE 1 SOURCE-INPUT VALIDATION AND SOURCE-SCOPE MATERIALIZATION
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that the selected Module 1 source exists, contains rows, has required fields, is scoped
+    to exactly one scenario / population slice, and has no duplicate application_id values.
+
+    Section 3.2 answers:
+
+        &quot;Is the selected Module 1 source slice valid and unambiguous for this Module 2 run?&quot;
+
+SQL PURPOSE:
+    1. Determine whether Module 2 is consuming Module 1 LATEST output or ARCHIVE output.
+    2. Validate required Module 1 source fields.
+    3. Validate scenario lineage fields.
+    4. Validate source row count.
+    5. Validate one Module 1 scenario / population slice.
+    6. Validate application_id uniqueness.
+    7. Validate required-field completeness.
+    8. Materialize tmp_m2_source_selection_scope for later registry matching and review.
+
+WHY THIS MATTERS:
+    Module 2 strategy comparison depends on exact source lineage.
+
+    If source selection is ambiguous, downstream strategy outcomes may be attributed to strategy
+    changes when they actually reflect population drift, scenario mismatch, or source-table errors.
+
+CREDIT RISK INTERPRETATION:
+    The Module 1 source determines the applicant population, product mix, score mix, rate
+    environment, requested affordability, synthetic estimated-risk proxy, LGD, and requested Expected
+    Loss profile.
+
+    Module 2 can only isolate downstream strategy effects when the Module 1 source is controlled.
+
+SOURCE-SCOPE HELPER:
+    tmp_m2_source_selection_scope records the effective Module 1 scenario set, scenario name,
+    population_id, source table, selected row count, selected distinct application count, duplicate
+    application groups, and null required-field count.
+
+    Section 3.3 uses this table to match the current run to the campaign registry.
+
+WHY DYNAMIC SQL IS USED:
+    Module 1 latest-run and archive outputs may use either:
+        scenario_set_name / scenario_name
+
+    or already-normalized:
+        module1_scenario_set_name / module1_scenario_name.
+
+    Section 3.2 detects the available column names and builds source validation SQL dynamically.
+
+SQL MECHANICS:
+    `information_schema.columns` checks which columns exist.
+
+    `EXECUTE FORMAT(...)` builds SQL using the selected source table and detected scenario column
+    names.
+
+    `USING` parameters safely inject filter values into dynamic SQL.
+
+    `COUNT(DISTINCT application_id)` checks applicant-level uniqueness in the selected source slice.
+
+BOUNDARY:
+    This section validates source readiness only.
+
+    Section 4 later creates the normalized source staging table.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.2A Reset source-scope helper before source validation.
+
+Business purpose:
+    Prevent a stale tmp_m2_source_selection_scope from surviving if Section 3.2 fails before a new
+    source-scope helper can be materialized.
+
+SQL purpose:
+    Drop only the temporary source-scope helper.
+
+Boundary:
+    This does not drop Module 1 source data.
+    This does not drop Module 2 latest-run output.
+    This does not drop archive rows.
+-----------------------------------------------------------------------------------------------*/
+
+DROP TABLE IF EXISTS tmp_m2_source_selection_scope;
+
+
+
+DO $$
+DECLARE
+    /***********************************************************************************************
+    Active strategy and source-selection metadata.
+    ***********************************************************************************************/
+    p RECORD;
+
+    /***********************************************************************************************
+    Runtime source-table metadata.
+
+    These variables let the same validation logic support LATEST and ARCHIVE source modes.
+    ***********************************************************************************************/
+    v_source_table_schema TEXT;
+    v_source_table_name TEXT;
+    v_source_regclass REGCLASS;
+
+    /***********************************************************************************************
+    Runtime scenario column names.
+
+    Module 1 source tables may use raw scenario column names or normalized Module 1 lineage names.
+    ***********************************************************************************************/
+    v_scenario_set_col TEXT;
+    v_scenario_name_col TEXT;
+
+    /***********************************************************************************************
+    Effective selected source identity.
+
+    These values are stored in tmp_m2_source_selection_scope after validation.
+    ***********************************************************************************************/
+    v_effective_module1_scenario_set_name TEXT;
+    v_effective_module1_scenario_name TEXT;
+    v_effective_population_id TEXT;
+
+    /***********************************************************************************************
+    Validation diagnostics for source existence, row count, uniqueness, and completeness.
+    ***********************************************************************************************/
+    v_required_missing_columns TEXT;
+    v_source_row_count BIGINT;
+    v_selected_row_count BIGINT;
+    v_selected_distinct_application_count BIGINT;
+    v_duplicate_application_group_count BIGINT;
+    v_scenario_population_count BIGINT;
+    v_null_required_field_count BIGINT;
+
+    /***********************************************************************************************
+    Required Module 1 input fields.
+
+    These are the fields Module 2 V1.0 needs before source staging can proceed.
+
+    Scenario columns are validated separately because Module 1 tables may use either raw or normalized
+    names.
+    ***********************************************************************************************/
+    v_required_column_list TEXT[] := ARRAY[
+        &#39;application_id&#39;,
+        &#39;applicant_id&#39;,
+        &#39;product_type&#39;,
+        &#39;score_band&#39;,
+        &#39;credit_score&#39;,
+        &#39;requested_amount&#39;,
+        &#39;annual_income&#39;,
+        &#39;monthly_payment_proxy&#39;,
+        &#39;payment_to_income_ratio&#39;,
+        &#39;amount_to_income_ratio&#39;,
+        &#39;debt_to_income_ratio&#39;,
+        &#39;utilization_rate&#39;,
+        &#39;tradeline_count&#39;,
+        &#39;months_since_oldest_trade&#39;,
+        &#39;recent_inquiry_count&#39;,
+        &#39;delinquency_count_12m&#39;,
+        &#39;major_derogatory_flag&#39;,
+        &#39;bankruptcy_flag&#39;,
+        &#39;estimated_pd&#39;,
+        &#39;estimated_lgd&#39;,
+        &#39;expected_loss_amount&#39;,
+        &#39;population_id&#39;
+    ];
+
+    /***********************************************************************************************
+    Dynamic null-check expression.
+
+    This string is assembled after the scenario column names are detected.
+    ***********************************************************************************************/
+    v_null_check_expression TEXT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Load the active strategy parameter row.
+
+    Section 3.1 already validated that exactly one active strategy row exists.
+    -------------------------------------------------------------------------------------------*/
+    SELECT *
+    INTO p
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Resolve selected source table based on module1_input_source.
+
+    LATEST:
+        credit_decisioning_sim.synthetic_applications
+
+    ARCHIVE:
+        credit_decisioning_sim.synthetic_applications_scenario_archive
+
+    SQL mechanics:
+        Later checks use these schema / table variables in dynamic SQL.
+    -------------------------------------------------------------------------------------------*/
+    IF p.module1_input_source = &#39;LATEST&#39; THEN
+        v_source_table_schema := &#39;credit_decisioning_sim&#39;;
+        v_source_table_name := &#39;synthetic_applications&#39;;
+    ELSE
+        v_source_table_schema := &#39;credit_decisioning_sim&#39;;
+        v_source_table_name := &#39;synthetic_applications_scenario_archive&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: selected Module 1 source table must exist.
+
+    SQL mechanics:
+        TO_REGCLASS returns NULL if the table does not exist.
+
+        This avoids throwing a low-level SQL error and allows a clear Module 2 gatekeeper message.
+    -------------------------------------------------------------------------------------------*/
+    v_source_regclass := TO_REGCLASS(v_source_table_schema || &#39;.&#39; || v_source_table_name);
+
+    IF v_source_regclass IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source table %.% does not exist.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required Module 1 source fields must be present.
+
+    Business purpose:
+        Confirm the source table has the fields needed to stage Module 2 applicants.
+
+    SQL mechanics:
+        The EXCEPT query compares the required field list to information_schema.columns.
+
+        STRING_AGG turns missing field names into one readable error message.
+
+    Scenario fields are validated separately because they may appear as:
+        scenario_set_name / scenario_name
+        or module1_scenario_set_name / module1_scenario_name.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(missing_col, &#39;, &#39; ORDER BY missing_col)
+    INTO v_required_missing_columns
+    FROM (
+        SELECT unnest(v_required_column_list) AS missing_col
+        EXCEPT
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+    ) m;
+
+    IF v_required_missing_columns IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source %.% is missing required field(s): %.&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_required_missing_columns;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Detect scenario-set column name.
+
+    SQL mechanics:
+        information_schema.columns is used to detect whether the table uses normalized Module 1
+        lineage names or raw Module 1 scenario names.
+
+    Output:
+        v_scenario_set_col stores the detected column name for dynamic SQL.
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;module1_scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;module1_scenario_set_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;scenario_set_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source %.% must contain scenario_set_name or module1_scenario_set_name.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Detect scenario-name column name.
+
+    SQL mechanics:
+        Same pattern as scenario-set detection.
+
+    Output:
+        v_scenario_name_col stores the detected column name for dynamic SQL.
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;module1_scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;module1_scenario_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;scenario_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source %.% must contain scenario_name or module1_scenario_name.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: selected source table must contain rows.
+
+    SQL mechanics:
+        Dynamic SQL is required because the source table name is selected at runtime.
+
+        FORMAT(&#39;%I.%I&#39;, schema, table) safely quotes identifiers.
+    -------------------------------------------------------------------------------------------*/
+    EXECUTE FORMAT(
+        &#39;SELECT COUNT(*) FROM %I.%I&#39;,
+        v_source_table_schema,
+        v_source_table_name
+    )
+    INTO v_source_row_count;
+
+    IF v_source_row_count = 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source %.% contains zero rows.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: selected latest-run or archive slice must contain exactly one scenario / population.
+
+    Business purpose:
+        Module 2 V1.0 expects one Module 1 scenario / population slice per execution.
+
+    LATEST logic:
+        The latest-run Module 1 source should already be one scenario / population.
+
+    ARCHIVE logic:
+        The archive source is filtered using the active strategy&#39;s selected source scenario set,
+        scenario name, and population_id.
+
+    Credit risk interpretation:
+        This protects against mixing two different upstream scenario environments inside one Module 2
+        strategy run.
+    -------------------------------------------------------------------------------------------*/
+    IF p.module1_input_source = &#39;LATEST&#39; THEN
+        /*******************************************************************************************
+        LATEST mode: count distinct scenario / population combinations in the entire latest-run table.
+        *******************************************************************************************/
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM (
+                 SELECT DISTINCT %I, %I, population_id
+                 FROM %I.%I
+             ) s&#39;,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_source_table_schema,
+            v_source_table_name
+        )
+        INTO v_scenario_population_count;
+
+        IF v_scenario_population_count &lt;&gt; 1 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: latest-run Module 1 source contains % scenario / population combinations. Module 2 V1.0 expects exactly one.&#39;,
+                v_scenario_population_count;
+        END IF;
+
+        /*******************************************************************************************
+        LATEST mode: capture the effective scenario / population identity.
+
+        LIMIT 1 is safe because the prior check confirmed exactly one scenario / population
+        combination.
+        *******************************************************************************************/
+        EXECUTE FORMAT(
+            &#39;SELECT %I::TEXT, %I::TEXT, population_id::TEXT
+             FROM %I.%I
+             LIMIT 1&#39;,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_source_table_schema,
+            v_source_table_name
+        )
+        INTO
+            v_effective_module1_scenario_set_name,
+            v_effective_module1_scenario_name,
+            v_effective_population_id;
+
+        /*******************************************************************************************
+        LATEST mode: count selected rows and distinct application IDs.
+        *******************************************************************************************/
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*), COUNT(DISTINCT application_id)
+             FROM %I.%I&#39;,
+            v_source_table_schema,
+            v_source_table_name
+        )
+        INTO v_selected_row_count, v_selected_distinct_application_count;
+
+        /*******************************************************************************************
+        LATEST mode: count duplicate application_id groups.
+
+        The selected source should be one row per application_id.
+        *******************************************************************************************/
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM (
+                 SELECT application_id
+                 FROM %I.%I
+                 GROUP BY application_id
+                 HAVING COUNT(*) &gt; 1
+             ) d&#39;,
+            v_source_table_schema,
+            v_source_table_name
+        )
+        INTO v_duplicate_application_group_count;
+
+        /*******************************************************************************************
+        LATEST mode: build required-field null check expression.
+
+        Scenario column names are injected through FORMAT(&#39;%I IS NULL&#39;, column_name) so the dynamic
+        SQL checks whichever scenario column convention the source table uses.
+        *******************************************************************************************/
+        v_null_check_expression :=
+            &#39;application_id IS NULL
+             OR applicant_id IS NULL
+             OR product_type IS NULL
+             OR score_band IS NULL
+             OR credit_score IS NULL
+             OR requested_amount IS NULL
+             OR annual_income IS NULL
+             OR monthly_payment_proxy IS NULL
+             OR payment_to_income_ratio IS NULL
+             OR amount_to_income_ratio IS NULL
+             OR debt_to_income_ratio IS NULL
+             OR utilization_rate IS NULL
+             OR tradeline_count IS NULL
+             OR months_since_oldest_trade IS NULL
+             OR recent_inquiry_count IS NULL
+             OR delinquency_count_12m IS NULL
+             OR major_derogatory_flag IS NULL
+             OR bankruptcy_flag IS NULL
+             OR estimated_pd IS NULL
+             OR estimated_lgd IS NULL
+             OR expected_loss_amount IS NULL
+             OR population_id IS NULL
+             OR &#39; || FORMAT(&#39;%I IS NULL&#39;, v_scenario_set_col) || &#39;
+             OR &#39; || FORMAT(&#39;%I IS NULL&#39;, v_scenario_name_col);
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM %I.%I
+             WHERE %s&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_null_check_expression
+        )
+        INTO v_null_required_field_count;
+
+    ELSE
+        /*******************************************************************************************
+        ARCHIVE mode: effective scenario / population identity comes from the active strategy source
+        selection settings.
+        *******************************************************************************************/
+        v_effective_module1_scenario_set_name := p.source_module1_scenario_set_name;
+        v_effective_module1_scenario_name := p.source_module1_scenario_name;
+        v_effective_population_id := p.source_population_id;
+
+        /*******************************************************************************************
+        ARCHIVE mode: count rows in the selected archive slice.
+
+        SQL mechanics:
+            $1, $2, $3 placeholders are populated by USING below.
+            This keeps data values separate from dynamically quoted identifiers.
+        *******************************************************************************************/
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM %I.%I
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_selected_row_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+
+        IF v_selected_row_count = 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected Module 1 archive slice contains zero rows. scenario_set=%, scenario_name=%, population_id=%.&#39;,
+                p.source_module1_scenario_set_name,
+                p.source_module1_scenario_name,
+                p.source_population_id;
+        END IF;
+
+        /*******************************************************************************************
+        ARCHIVE mode: confirm the filtered archive slice resolves to exactly one scenario /
+        population combination.
+        *******************************************************************************************/
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM (
+                 SELECT DISTINCT %I, %I, population_id
+                 FROM %I.%I
+                 WHERE %I = $1
+                   AND %I = $2
+                   AND population_id = $3
+             ) s&#39;,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_scenario_population_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+
+        IF v_scenario_population_count &lt;&gt; 1 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected Module 1 archive slice contains % scenario / population combinations. Expected exactly one.&#39;,
+                v_scenario_population_count;
+        END IF;
+
+        /*******************************************************************************************
+        ARCHIVE mode: count distinct application IDs inside the selected archive slice.
+        *******************************************************************************************/
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(DISTINCT application_id)
+             FROM %I.%I
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_selected_distinct_application_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+
+        /*******************************************************************************************
+        ARCHIVE mode: count duplicate application_id groups in the selected archive slice.
+        *******************************************************************************************/
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM (
+                 SELECT application_id
+                 FROM %I.%I
+                 WHERE %I = $1
+                   AND %I = $2
+                   AND population_id = $3
+                 GROUP BY application_id
+                 HAVING COUNT(*) &gt; 1
+             ) d&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_duplicate_application_group_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+
+        /*******************************************************************************************
+        ARCHIVE mode: build required-field null check expression.
+
+        The expression is applied only to the selected archive slice.
+        *******************************************************************************************/
+        v_null_check_expression :=
+            &#39;application_id IS NULL
+             OR applicant_id IS NULL
+             OR product_type IS NULL
+             OR score_band IS NULL
+             OR credit_score IS NULL
+             OR requested_amount IS NULL
+             OR annual_income IS NULL
+             OR monthly_payment_proxy IS NULL
+             OR payment_to_income_ratio IS NULL
+             OR amount_to_income_ratio IS NULL
+             OR debt_to_income_ratio IS NULL
+             OR utilization_rate IS NULL
+             OR tradeline_count IS NULL
+             OR months_since_oldest_trade IS NULL
+             OR recent_inquiry_count IS NULL
+             OR delinquency_count_12m IS NULL
+             OR major_derogatory_flag IS NULL
+             OR bankruptcy_flag IS NULL
+             OR estimated_pd IS NULL
+             OR estimated_lgd IS NULL
+             OR expected_loss_amount IS NULL
+             OR population_id IS NULL
+             OR &#39; || FORMAT(&#39;%I IS NULL&#39;, v_scenario_set_col) || &#39;
+             OR &#39; || FORMAT(&#39;%I IS NULL&#39;, v_scenario_name_col);
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM %I.%I
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3
+               AND (%s)&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_null_check_expression
+        )
+        INTO v_null_required_field_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Final selected-source row-count gatekeeper.
+
+    This guard is repeated after the LATEST / ARCHIVE branch so both source modes share the same
+    final validation behavior.
+    -------------------------------------------------------------------------------------------*/
+    IF v_selected_row_count = 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source slice contains zero rows.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Final selected-source application_id uniqueness gatekeeper.
+
+    Business purpose:
+        Module 2 V1.0 expects one source row per application_id.
+
+    Credit risk interpretation:
+        Duplicate application_id rows would create duplicate simulated decisions for the same
+        synthetic application, corrupting downstream rates, exposure totals, and Expected Loss totals.
+
+    SQL mechanics:
+        selected row count must equal selected distinct application_id count.
+    -------------------------------------------------------------------------------------------*/
+    IF v_selected_distinct_application_count &lt;&gt; v_selected_row_count THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source slice has duplicate application_id values. Rows=%, distinct application_id=%, duplicate groups=%.&#39;,
+            v_selected_row_count,
+            v_selected_distinct_application_count,
+            v_duplicate_application_group_count;
+    END IF;
+
+    IF v_duplicate_application_group_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source slice contains % duplicate application_id group(s).&#39;,
+            v_duplicate_application_group_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Final selected-source required-field completeness gatekeeper.
+
+    Business purpose:
+        Module 2 cannot safely apply strategy rules if required borrower, product, affordability,
+        risk, or lineage fields are missing.
+
+    SQL mechanics:
+        v_null_required_field_count was calculated dynamically based on the selected source table and
+        detected scenario column names.
+    -------------------------------------------------------------------------------------------*/
+    IF v_null_required_field_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source slice contains % row(s) with null required fields.&#39;,
+            v_null_required_field_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Source-scope materialization for registry matching and review.
+
+    Business purpose:
+        Preserve the effective selected source identity after source validation has resolved LATEST
+        versus ARCHIVE mode.
+
+    SQL purpose:
+        Create tmp_m2_source_selection_scope as a one-row helper used by:
+            Section 3.3 registry matching,
+            Section 3.5 source diagnostics,
+            later reviewer interpretation.
+
+    Important:
+        This table is not the main source staging table.
+
+        Section 4 creates tmp_m2_stage_1_source_applications, which contains applicant-level rows.
+        This helper contains run-level source-scope metadata only.
+    -------------------------------------------------------------------------------------------*/
+    CREATE TEMP TABLE tmp_m2_source_selection_scope (
+        module1_input_source                         TEXT,
+        source_table_schema                          TEXT,
+        source_table_name                            TEXT,
+        source_scenario_set_column_name              TEXT,
+        source_scenario_name_column_name             TEXT,
+
+        effective_module1_scenario_set_name          TEXT,
+        effective_module1_scenario_name              TEXT,
+        effective_population_id                      TEXT,
+
+        selected_row_count                           BIGINT,
+        selected_distinct_application_id_count       BIGINT,
+        duplicate_application_group_count            BIGINT,
+        null_required_field_row_count                BIGINT
+    ) ON COMMIT PRESERVE ROWS;
+
+    INSERT INTO tmp_m2_source_selection_scope (
+        module1_input_source,
+        source_table_schema,
+        source_table_name,
+        source_scenario_set_column_name,
+        source_scenario_name_column_name,
+
+        effective_module1_scenario_set_name,
+        effective_module1_scenario_name,
+        effective_population_id,
+
+        selected_row_count,
+        selected_distinct_application_id_count,
+        duplicate_application_group_count,
+        null_required_field_row_count
+    )
+    VALUES (
+        p.module1_input_source,
+        v_source_table_schema,
+        v_source_table_name,
+        v_scenario_set_col,
+        v_scenario_name_col,
+
+        v_effective_module1_scenario_set_name,
+        v_effective_module1_scenario_name,
+        v_effective_population_id,
+
+        v_selected_row_count,
+        v_selected_distinct_application_count,
+        v_duplicate_application_group_count,
+        v_null_required_field_count
+    );
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 3.3 — CAMPAIGN REGISTRY MATCH GATEKEEPER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Connect the current technical Module 1 scenario × Module 2 strategy run to a stable campaign
+    run ID before downstream outputs and evidence are produced.
+
+    Section 3.3 answers:
+
+        &quot;Does this technical run key map to the formal campaign registry row that will identify the
+         run in validation evidence, executive summaries, README output, and LinkedIn storytelling?&quot;
+
+SQL PURPOSE:
+    1. Confirm the persistent strategy run campaign registry exists.
+    2. Match the current technical run key to active registry rows.
+    3. Materialize tmp_m2_campaign_registry_current_run_match.
+    4. Fail when a formal campaign run requires registry linkage but no match exists.
+    5. Fail when more than one active registry row matches the same technical run key.
+    6. Fail when required registry IDs are missing on a matched formal campaign row.
+
+WHY THIS MATTERS:
+    The Module 2 archive can identify a run through long technical names.
+
+    The Validation Summary and executive evidence need compact stable IDs such as:
+        module1_run_id
+        module2_run_id
+        showcase_id
+        comparison_group_id
+        validation_evidence_group_id
+
+    This registry match creates the traceable bridge from code output to documentation evidence.
+
+CREDIT RISK GOVERNANCE INTERPRETATION:
+    Strategy results become more credible when every claim can be traced to:
+        a technical run key,
+        a campaign run ID,
+        a validation evidence group,
+        and a parameter snapshot.
+
+    This prevents a common documentation problem:
+        the story says &quot;M2-02 tighter risk strategy,&quot;
+        but the SQL output only shows long scenario and strategy names.
+
+SQL MECHANICS:
+    tmp_m2_campaign_registry_current_run_match is created with a CTE chain:
+        p:
+            active strategy parameter row.
+
+        s:
+            effective Module 1 source-selection scope.
+
+        registry_matches:
+            active registry rows matching the technical run key.
+
+        match_summary:
+            count of matched registry rows.
+
+        final SELECT:
+            one row describing match status and registry metadata.
+
+    The final LEFT JOIN to registry_matches only attaches registry fields when exactly one match is
+    found.
+
+BOUNDARY:
+    This gatekeeper does not change decisions.
+    This gatekeeper does not create archive rows.
+    This gatekeeper does not perform comparison.
+    This gatekeeper does not validate final strategy behavior.
+
+    It validates evidence-linkage readiness only.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.3A Registry table existence check.
+
+Business purpose:
+    Formal campaign matching requires the persistent strategy run campaign registry created in
+    Section 2.
+
+SQL purpose:
+    Use TO_REGCLASS to check table existence without producing a lower-level SQL error.
+
+Boundary:
+    This check does not inspect registry content yet.
+    It only confirms the registry table exists.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+DECLARE
+    v_registry_table_exists BOOLEAN;
+BEGIN
+    SELECT TO_REGCLASS(&#39;credit_decisioning_sim.strategy_run_campaign_registry&#39;) IS NOT NULL
+    INTO v_registry_table_exists;
+
+    IF v_registry_table_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 3 failure: strategy_run_campaign_registry does not exist. Run Section 2 campaign registry setup before Section 3.&#39;;
+    END IF;
+END $$;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.3B Current run registry match materialization.
+
+Business purpose:
+    Create the one-row registry-linkage helper for the current run.
+
+SQL purpose:
+    Compare the current technical run key against active campaign registry rows.
+
+Current technical run key:
+    strategy_set_name
+    strategy_name
+    strategy_version
+    effective_module1_scenario_set_name
+    effective_module1_scenario_name
+    effective_population_id
+
+Why this table is temporary:
+    It is specific to the current execution session and current active strategy card.
+
+Downstream use:
+    Section 16 consumes this helper to persist registry IDs into evidence tables.
+-----------------------------------------------------------------------------------------------*/
+
+DROP TABLE IF EXISTS tmp_m2_campaign_registry_current_run_match;
+
+CREATE TEMP TABLE tmp_m2_campaign_registry_current_run_match
+ON COMMIT PRESERVE ROWS
+AS
+WITH p AS (
+    /***********************************************************************************************
+    CTE: p
+
+    Purpose:
+        Select the active strategy parameter row.
+
+    Section 3.1 already verified exactly one active strategy row exists.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1
+),
+
+s AS (
+    /***********************************************************************************************
+    CTE: s
+
+    Purpose:
+        Select the effective Module 1 source-selection scope created in Section 3.2.
+
+    This provides the resolved Module 1 scenario / population identity after LATEST versus ARCHIVE
+    source-mode handling.
+    ***********************************************************************************************/
+    SELECT *
+    FROM tmp_m2_source_selection_scope
+    LIMIT 1
+),
+
+registry_matches AS (
+    /***********************************************************************************************
+    CTE: registry_matches
+
+    Purpose:
+        Find active registry rows matching the current technical run key.
+
+    SQL mechanics:
+        The join to p matches Module 2 strategy identity.
+        The join to s matches Module 1 scenario / population identity.
+        registry_active_flag filters to active campaign registry rows.
+
+    Interpretation:
+        Exactly one row should match for formal campaign runs.
+    ***********************************************************************************************/
+    SELECT
+        r.*
+    FROM credit_decisioning_sim.strategy_run_campaign_registry r
+    JOIN p
+        ON r.strategy_set_name = p.strategy_set_name
+       AND r.strategy_name = p.strategy_name
+       AND r.strategy_version = p.strategy_version
+    JOIN s
+        ON r.module1_scenario_set_name = s.effective_module1_scenario_set_name
+       AND r.module1_scenario_name = s.effective_module1_scenario_name
+       AND r.population_id = s.effective_population_id
+    WHERE r.registry_active_flag IS TRUE
+),
+
+match_summary AS (
+    /***********************************************************************************************
+    CTE: match_summary
+
+    Purpose:
+        Count how many active registry rows matched the current technical run key.
+
+    This count drives run_registry_match_status and fail-fast behavior.
+    ***********************************************************************************************/
+    SELECT
+        COUNT(*) AS registry_match_count
+    FROM registry_matches
+)
+
+SELECT
+    /***********************************************************************************************
+    Registry requirement and current Module 2 strategy identity.
+    ***********************************************************************************************/
+    p.campaign_registry_required_flag,
+
+    p.module2_model_version,
+    p.strategy_set_name,
+    p.strategy_name,
+    p.strategy_version,
+    p.strategy_run_id,
+    p.strategy_run_ts,
+
+    /***********************************************************************************************
+    Effective Module 1 source identity.
+    ***********************************************************************************************/
+    s.module1_input_source,
+    s.source_table_schema,
+    s.source_table_name,
+    s.effective_module1_scenario_set_name AS module1_scenario_set_name,
+    s.effective_module1_scenario_name AS module1_scenario_name,
+    s.effective_population_id AS population_id,
+
+    /***********************************************************************************************
+    Registry match count and status.
+
+    These fields explain whether evidence can be tied to a formal campaign ID.
+    ***********************************************************************************************/
+    ms.registry_match_count,
+
+    CASE
+        WHEN ms.registry_match_count = 1
+            THEN &#39;RUN_REGISTRY_MATCHED&#39;
+
+        WHEN ms.registry_match_count = 0
+         AND p.campaign_registry_required_flag IS TRUE
+            THEN &#39;RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW&#39;
+
+        WHEN ms.registry_match_count = 0
+         AND p.campaign_registry_required_flag IS FALSE
+            THEN &#39;RUN_REGISTRY_NOT_FOUND_FALLBACK_ALLOWED&#39;
+
+        WHEN ms.registry_match_count &gt; 1
+            THEN &#39;RUN_REGISTRY_DUPLICATE_MATCH_REVIEW_REQUIRED&#39;
+
+        ELSE &#39;RUN_REGISTRY_MATCH_STATUS_UNKNOWN&#39;
+    END AS run_registry_match_status,
+
+    /***********************************************************************************************
+    Campaign registry metadata.
+
+    These fields populate when exactly one active registry row matched.
+    ***********************************************************************************************/
+    r.module1_run_id,
+    r.module2_run_id,
+    r.run_sequence_number,
+
+    r.showcase_id,
+    r.showcase_name,
+    r.comparison_group_id,
+    r.validation_evidence_group_id,
+
+    r.module1_parameter_family_changed,
+    r.module1_parameter_change_summary,
+    r.module2_strategy_family_changed,
+    r.module2_parameter_change_summary,
+
+    r.expected_storyline,
+    r.validation_summary_section_hint,
+    r.readme_storyline_label,
+    r.linkedin_post_sequence,
+
+    r.registry_active_flag,
+    r.registry_created_ts,
+    r.registry_updated_ts
+
+FROM p
+CROSS JOIN s
+CROSS JOIN match_summary ms
+
+/***************************************************************************************************
+Registry fields are joined only when the match count is exactly one.
+
+If the match count is zero or greater than one, registry metadata remains NULL and the status field
+explains why.
+***************************************************************************************************/
+LEFT JOIN registry_matches r
+    ON ms.registry_match_count = 1;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.3C Registry match fail-fast checks.
+
+Business purpose:
+    Stop formal campaign runs if registry linkage is missing or ambiguous.
+
+SQL purpose:
+    Read the single current-run registry match helper row and enforce formal evidence-linkage rules.
+
+Formal campaign rule:
+    If campaign_registry_required_flag = TRUE:
+        registry_match_count must equal 1,
+        module1_run_id must be populated,
+        module2_run_id must be populated,
+        validation_evidence_group_id must be populated.
+
+Boundary:
+    This does not modify the registry.
+    It only validates current-run registry readiness.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+DECLARE
+    m RECORD;
+BEGIN
+    /***********************************************************************************************
+    Load the current-run registry match helper row.
+    ***********************************************************************************************/
+    SELECT *
+    INTO m
+    FROM tmp_m2_campaign_registry_current_run_match
+    LIMIT 1;
+
+
+    /***********************************************************************************************
+    Duplicate registry match gatekeeper.
+
+    More than one active registry row matching the same technical key makes campaign IDs ambiguous.
+    ***********************************************************************************************/
+    IF m.registry_match_count &gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 3 failure: current run key matched % active campaign registry rows. Expected at most one.&#39;,
+            m.registry_match_count;
+    END IF;
+
+
+    /***********************************************************************************************
+    Required registry match gatekeeper.
+
+    Formal campaign evidence should not silently fall back to generated labels.
+    ***********************************************************************************************/
+    IF m.campaign_registry_required_flag IS TRUE
+       AND m.registry_match_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 3 failure: campaign_registry_required_flag = TRUE but current run key did not match exactly one active campaign registry row. Match status: %.&#39;,
+            m.run_registry_match_status;
+    END IF;
+
+
+    /***********************************************************************************************
+    Required registry ID completeness gatekeeper.
+
+    A matched formal campaign row must include the core evidence-linkage IDs used by Section 16 and
+    future validation documentation.
+    ***********************************************************************************************/
+    IF m.campaign_registry_required_flag IS TRUE
+       AND (
+              m.module1_run_id IS NULL
+           OR m.module2_run_id IS NULL
+           OR m.validation_evidence_group_id IS NULL
+       ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 3 failure: matched campaign registry row is missing module1_run_id, module2_run_id, or validation_evidence_group_id.&#39;;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 3.4 — THRESHOLD EQUALITY CONVENTION DOCUMENTATION
+****************************************************************************************************
+
+PURPOSE:
+    Document the equality conventions that downstream Section 5, Section 6, Section 7, Section 8,
+    and Section 9 depend on.
+
+BUSINESS PURPOSE:
+    Make boundary-condition behavior explicit before decision logic runs.
+
+    Section 3.4 answers:
+
+        &quot;How should exact threshold-equality cases be interpreted?&quot;
+
+WHY THIS MATTERS:
+    Boundary conditions can materially change strategy outcomes.
+
+    For example:
+        estimated_pd = decline_min_estimated_pd_proxy
+
+    should route consistently as a severe synthetic estimated-risk decline trigger.
+
+    Documenting equality conventions prevents later strategy tuning from accidentally changing band
+    coverage and route assignment.
+
+CREDIT RISK TEACHING POINT:
+    Threshold equality is not a minor implementation detail.
+
+    In credit policy, applicants often cluster near cutoffs.
+
+    Whether equality belongs to the lower-risk or higher-risk band can affect approval rate,
+    counteroffer rate, decline rate, approved exposure, and approved Expected Loss.
+
+SQL TEACHING POINT:
+    Section 3.4 does not execute SQL logic.
+
+    It documents the interpretation that downstream CASE expressions implement.
+
+    This makes the code easier to audit because reviewers can compare later CASE logic against this
+    documented convention.
+
+SYNTHETIC ESTIMATED-PD PROXY:
+    APPROVE eligibility:
+        estimated_pd &lt;= approve_max_estimated_pd_proxy
+
+    COUNTEROFFER eligibility:
+        estimated_pd &gt; approve_max_estimated_pd_proxy
+        AND estimated_pd &lt;= counteroffer_max_estimated_pd_proxy
+
+    MANUAL_REVIEW synthetic risk band:
+        estimated_pd &gt; counteroffer_max_estimated_pd_proxy
+        AND estimated_pd &lt; decline_min_estimated_pd_proxy
+
+    DECLINE trigger:
+        estimated_pd &gt;= decline_min_estimated_pd_proxy
+
+REQUESTED PTI:
+    APPROVE:
+        requested_payment_to_income_ratio &lt;= product_approve_max_pti
+
+    COUNTEROFFER candidate:
+        requested_payment_to_income_ratio &gt; product_approve_max_pti
+        and counteroffer can potentially reduce approved PTI to target
+
+    MANUAL_REVIEW:
+        requested_payment_to_income_ratio &gt; product_approve_max_pti
+        and requested_payment_to_income_ratio &lt; product_decline_min_pti
+        where counteroffer is not cleanly viable or review triggers apply
+
+    DECLINE trigger:
+        requested_payment_to_income_ratio &gt;= product_decline_min_pti
+        when no viable counteroffer or review path is intended
+
+DTI:
+    APPROVE:
+        debt_to_income_ratio &lt;= approve_max_dti
+
+    MANUAL_REVIEW:
+        debt_to_income_ratio &gt; approve_max_dti
+        AND debt_to_income_ratio &lt; decline_min_dti
+
+    DECLINE:
+        debt_to_income_ratio &gt;= decline_min_dti
+
+REQUESTED EXPECTED LOSS:
+    Clean approval must satisfy:
+        requested_expected_loss_amount &lt;= product_approve_max_requested_el
+
+    Counteroffer may be considered when requested Expected Loss exceeds clean approval tolerance
+    but approved-exposure Expected Loss can satisfy product_approved_el_cap.
+
+    Decline / review boundary uses:
+        product_review_max_requested_el
+        product_decline_min_requested_el
+        final strategy hierarchy
+
+COUNTEROFFER:
+    A preliminary counteroffer route is not final.
+
+    Feasibility requires later approved-exposure calculation.
+
+MANUAL REVIEW:
+    Manual review remains unresolved by design.
+
+BOUNDARY:
+    This section is documentation only.
+    It does not execute logic.
+    It does not change thresholds.
+    It does not change final outcomes.
+    It does not change reason codes.
+    It does not create source staging rows.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 3.5 — LOCAL PARAMETER, SOURCE, PRODUCT POLICY, AND REGISTRY SANITY CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight setup diagnostics after the fail-fast checks have passed.
+
+BUSINESS PURPOSE:
+    Give the user a visible checkpoint before downstream Module 2 logic begins.
+
+    Section 3.5 answers:
+
+        &quot;What exactly did Section 3 validate, and what current setup will the downstream strategy
+         stages use?&quot;
+
+SQL PURPOSE:
+    Display:
+        the active strategy card,
+        the effective Module 1 source scope,
+        the campaign registry match,
+        the threshold setup,
+        the Section 6 rule-control setup,
+        and the product policy setup.
+
+INTERPRETATION:
+    These queries are setup visibility checks only.
+
+    They are not:
+        full Module 2 QA,
+        final strategy validation,
+        archive validation,
+        matched comparison,
+        strategy frontier review,
+        or evidence capture.
+
+WHY THESE OUTPUTS MATTER:
+    Before downstream stages run, users should be able to see:
+        the active strategy card,
+        the effective Module 1 source scope,
+        the campaign registry match,
+        the threshold setup,
+        and the product policy setup.
+
+SQL TEACHING POINT:
+    These SELECT statements do not mutate data.
+
+    They are read-only review outputs that expose the configuration and source-scope state after
+    fail-fast validation has completed.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5A Active strategy parameter row.
+
+Purpose:
+    Show the one active strategy card that downstream sections will use.
+
+Expected:
+    exactly one row.
+
+How to interpret:
+    Confirm strategy_name, strategy_run_id, Module 1 source selection, archive controls, registry
+    requirement flag, and failed_counteroffer_resolution before continuing.
+
+SQL mechanics:
+    The WHERE clause filters to active_strategy_flag IS TRUE.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    active_strategy_flag,
+
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    campaign_registry_required_flag,
+
+    module1_input_source,
+    source_module1_scenario_set_name,
+    source_module1_scenario_name,
+    source_population_id,
+
+    archive_run_flag,
+    strategy_archive_reset_mode,
+    failed_counteroffer_resolution
+FROM tmp_module2_strategy_params
+WHERE active_strategy_flag IS TRUE;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5B Effective Module 1 source-selection scope.
+
+Purpose:
+    Show the exact Module 1 scenario / population slice Section 3 validated.
+
+Expected:
+    exactly one row.
+
+How to interpret:
+    selected_row_count and selected_distinct_application_id_count should match.
+
+    duplicate_application_group_count should be zero.
+
+    null_required_field_row_count should be zero.
+
+SQL mechanics:
+    This reads the temporary one-row helper materialized in Section 3.2.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    module1_input_source,
+    source_table_schema,
+    source_table_name,
+    source_scenario_set_column_name,
+    source_scenario_name_column_name,
+
+    effective_module1_scenario_set_name,
+    effective_module1_scenario_name,
+    effective_population_id,
+
+    selected_row_count,
+    selected_distinct_application_id_count,
+    duplicate_application_group_count,
+    null_required_field_row_count
+FROM tmp_m2_source_selection_scope;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5C Current run campaign registry match.
+
+Purpose:
+    Show whether the current technical run key matched the campaign registry.
+
+Expected for formal campaign runs:
+    run_registry_match_status = RUN_REGISTRY_MATCHED
+    registry_match_count = 1
+
+Ad hoc development interpretation:
+    RUN_REGISTRY_NOT_FOUND_FALLBACK_ALLOWED may be acceptable only when:
+        campaign_registry_required_flag = FALSE.
+
+How to interpret:
+    module1_run_id and module2_run_id are the compact run IDs used later for validation-summary and
+    executive evidence traceability.
+
+    validation_evidence_group_id identifies the evidence group that later documentation can cite.
+
+SQL mechanics:
+    This reads the temporary one-row helper materialized in Section 3.3.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    campaign_registry_required_flag,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    registry_match_count,
+    run_registry_match_status,
+
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_parameter_family_changed,
+    module2_strategy_family_changed,
+
+    expected_storyline,
+    readme_storyline_label,
+    linkedin_post_sequence
+FROM tmp_m2_campaign_registry_current_run_match;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5D Global threshold setup.
+
+Purpose:
+    Display the core cross-product strategy thresholds.
+
+How to interpret:
+    Synthetic estimated-risk thresholds define global risk bands.
+
+    PTI thresholds provide affordability-governance context.
+
+    DTI thresholds define existing-obligation capacity behavior.
+
+    borderline_threshold_buffer_pct defines threshold-adjacent diagnostic segmentation.
+
+Boundary:
+    These are strategy controls only.
+    They are not final strategy outcomes.
+    They are not calibrated production cutoffs.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    approve_max_estimated_pd_proxy,
+    counteroffer_max_estimated_pd_proxy,
+    review_max_estimated_pd_proxy,
+    decline_min_estimated_pd_proxy,
+
+    global_approve_max_pti,
+    global_review_max_pti,
+    global_decline_min_pti,
+
+    approve_max_dti,
+    review_max_dti,
+    decline_min_dti,
+
+    borderline_threshold_buffer_pct
+FROM tmp_module2_strategy_params
+WHERE active_strategy_flag IS TRUE;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5E Section 6 rule-control setup.
+
+Purpose:
+    Display Boolean and numeric controls that Section 6 will use to construct rule-trigger flags.
+
+How to interpret:
+    These settings control whether specific simulated policy-stop or review-signal families are
+    active.
+
+Boundary:
+    These controls construct rule-trigger flags later.
+    They do not assign final decisions.
+    They do not assign reason codes.
+    They do not calculate approved exposure.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    bankruptcy_policy_stop_enabled,
+    major_derogatory_policy_stop_enabled,
+    severe_delinquency_policy_stop_enabled,
+    severe_delinquency_count_threshold,
+
+    high_utilization_review_enabled,
+    high_utilization_review_threshold,
+
+    low_score_review_enabled,
+    low_score_review_threshold
+FROM tmp_module2_strategy_params
+WHERE active_strategy_flag IS TRUE;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5F Product policy setup.
+
+Purpose:
+    Display the product-level policy card that downstream sections will use.
+
+Expected:
+    five rows, one per supported product.
+
+How to interpret:
+    Review this output when changing:
+        affordability thresholds,
+        requested Expected Loss thresholds,
+        approved Expected Loss caps,
+        approved exposure limits,
+        counteroffer controls,
+        manual-review permissions,
+        or rounding increments.
+
+Credit risk interpretation:
+    Product-specific policy matters because product structure affects requested exposure, payment
+    burden, LGD, counteroffer feasibility, and approved Expected Loss.
+
+SQL mechanics:
+    ORDER BY product_type makes the product-policy card stable and easy to review.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type,
+
+    product_approve_max_pti,
+    product_review_max_pti,
+    product_decline_min_pti,
+    counteroffer_target_pti,
+
+    product_approve_max_requested_el,
+    product_review_max_requested_el,
+    product_decline_min_requested_el,
+    product_approved_el_cap,
+
+    product_min_approved_amount,
+    product_max_approved_amount,
+
+    counteroffer_allowed_flag,
+    manual_review_allowed_flag,
+    product_min_counteroffer_pct,
+    product_max_exposure_reduction_pct,
+    exposure_assignment_method,
+    approved_amount_rounding_increment
+FROM tmp_module2_product_policy_params
+ORDER BY product_type;
+
+
+
+/***************************************************************************************************
+END OF SECTION 3 — FAIL-FAST STRATEGY PARAMETER, SOURCE, PRODUCT POLICY, AND REGISTRY GATEKEEPER
+
+If execution reaches this point:
+    1. Exactly one active strategy parameter row exists.
+    2. Strategy identity fields are populated.
+    3. campaign_registry_required_flag is explicit.
+    4. Module 1 input mode is valid.
+    5. ARCHIVE source-selection fields are populated when ARCHIVE mode is selected.
+    6. Archive-control settings are valid.
+    7. Synthetic estimated-risk thresholds are bounded and ordered.
+    8. Global PTI thresholds are bounded and ordered.
+    9. DTI thresholds are bounded and ordered.
+    10. Borderline diagnostic buffer is bounded.
+    11. Section 6 rule-control parameters are valid.
+    12. Final output convention controls are valid.
+    13. Failed-counteroffer resolution is valid.
+    14. Product policy cardinality is valid.
+    15. Product policy threshold, exposure, counteroffer, and rounding settings are valid.
+    16. The selected Module 1 source table exists.
+    17. Required Module 1 source fields exist.
+    18. The selected Module 1 source scope contains rows.
+    19. The selected Module 1 source scope is one scenario / population slice.
+    20. The selected source slice is unique at application_id.
+    21. Required source fields are populated.
+    22. tmp_m2_source_selection_scope exists for effective source-scope review.
+    23. credit_decisioning_sim.strategy_run_campaign_registry exists.
+    24. tmp_m2_campaign_registry_current_run_match exists for evidence-ID linkage.
+    25. Formal campaign runs are registry-matched when required.
+    26. Local setup diagnostics are available for strategy, source, registry, thresholds, rule
+        controls, and product policy.
+
+No Module 1 rows have been staged into the main Module 2 pipeline.
+No strategy segmentation has been created.
+No rule flags have been assigned.
+No preliminary routing has been assigned.
+No approved exposure has been calculated.
+No approved Expected Loss has been calculated.
+No final decision_outcome has been assigned.
+No simulated reason codes have been assigned.
+No latest-run output has been created.
+No archive rows have been inserted.
+No matched comparison has been performed.
+No full QA validation has been performed.
+No strategy frontier has been calculated.
+No executive evidence has been captured.
+
+Next section:
+    Section 4 should consume the validated Module 1 source selection and create
+    tmp_m2_stage_1_source_applications.
+
+***************************************************************************************************/
+</code></pre>
+</div></article><article id="c038-m00904" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00904 · 2026-05-09T23:18:27.080000-04:00 · active path</p><div class="body"><p>let&#39;s do one more pass for commentary. Please note that besides the headers we want instructional commentary that details how the sql logic is working. the commentary/headers are supposed to do 3 main things: 1) Advise on the who/what/why/how to run and interpret the code and parameters; 2) teach the credit risk concepts and nuts and bolts; 3) teach how the sql logic is working. folks going through this code should not only understand how to use/interpret but also should learn about credit risk analytics and SQL. this is the elite level we are striving for. besides header comments, we expect in line comments explaining the sql logic and line by line process. here is the section 4 again. if suggested changes, return the full copy paste of those sections in one copy paste block.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(142).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

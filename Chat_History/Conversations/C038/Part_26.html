@@ -1,0 +1,4507 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 26</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 26 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_25.html">Previous</a><a href="Part_27.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00656" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00656 · 2026-05-09T16:02:13.846981-04:00 · active path</p><div class="body"><p>Section 3 baseline reviewed from your uploaded Section 3 gatekeeper. This replacement preserves the accepted threshold/source/product-policy gatekeeper logic and adds the campaign-registry match layer needed for Section 16 evidence IDs. fileciteturn10file0</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 3 — FAIL-FAST STRATEGY PARAMETER, SOURCE, PRODUCT POLICY, AND REGISTRY GATEKEEPER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Prevent invalid Module 2 strategy configuration, malformed product policy configuration,
+    ambiguous Module 1 source input, or missing campaign-registry linkage from reaching downstream
+    decision logic, archive persistence, comparison, QA, or evidence capture.
+
+    Section 3 answers:
+
+        &quot;Is the current Module 2 run configured well enough to proceed into source staging,
+         segmentation, rule construction, decisioning, exposure treatment, archive persistence,
+         comparison, validation, and executive evidence capture?&quot;
+
+SQL PURPOSE:
+    1. Validate active strategy-parameter cardinality.
+    2. Validate strategy identity and archive controls.
+    3. Validate campaign registry requirement settings.
+    4. Validate threshold ranges and threshold ordering.
+    5. Validate decision conventions.
+    6. Validate Section 6 rule-control parameters.
+    7. Validate failed-counteroffer resolution settings.
+    8. Validate product policy completeness, supported products, and product threshold ordering.
+    9. Validate Module 1 input source table existence, required fields, row count, scenario selection,
+       and application_id uniqueness.
+    10. Materialize a temporary source-selection scope helper table.
+    11. Match the current technical run key to the persistent Module 2 campaign registry.
+    12. Produce lightweight setup diagnostics before downstream stages execute.
+
+WHY FAIL FAST:
+    A completed strategy run under invalid configuration is more dangerous than a failed run.
+
+    Gatekeepers prevent silent strategy distortion, ambiguous source selection, stale parameter use,
+    unsupported product-policy configuration, invalid archive controls, and weak evidence linkage.
+
+WHY REGISTRY MATCHING BELONGS HERE:
+    The campaign registry does not define Module 1 lineage or Module 2 strategy behavior.
+
+    It maps technical scenario / strategy identifiers to stable run IDs used for:
+        validation-summary traceability,
+        executive evidence capture,
+        README storytelling,
+        comparison grouping,
+        and future campaign documentation.
+
+    Matching the current run key early lets Section 16 capture evidence with clean IDs instead of
+    relying only on long technical names.
+
+BOUNDARY:
+    Section 3 validates configuration and source readiness.
+
+    Section 3 does not:
+        consume rows into the main Module 2 staging table,
+        assign strategy segments,
+        assign rule flags,
+        assign preliminary routing,
+        calculate approved exposure,
+        assign final decision_outcome,
+        assign simulated reason codes,
+        create latest-run output,
+        insert archive rows,
+        perform matched comparison,
+        or perform full validation QA.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 3.1 — STRATEGY PARAMETER CARDINALITY, THRESHOLD, CONVENTION, AND PRODUCT-POLICY VALIDATION
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that the active strategy parameter card and product policy parameter card are internally
+    coherent before any applicant-level logic is built.
+
+SQL PURPOSE:
+    Validate:
+        active strategy cardinality,
+        strategy identity,
+        Module 1 input controls,
+        archive controls,
+        campaign registry requirement flag,
+        synthetic estimated-risk thresholds,
+        PTI thresholds,
+        DTI thresholds,
+        borderline diagnostic buffer,
+        Section 6 rule-control parameters,
+        decision convention controls,
+        failed counteroffer resolution,
+        product policy cardinality,
+        product threshold ordering,
+        counteroffer controls,
+        approved amount controls,
+        and rounding controls.
+
+INTERPRETATION:
+    These checks validate the strategy configuration, not the strategy result.
+
+    Passing Section 3.1 means:
+        the parameter cards are coherent enough to execute.
+
+    It does not mean:
+        final outcomes are reasonable,
+        reason codes are complete,
+        archive persistence worked,
+        or the strategy is validated.
+
+****************************************************************************************************/
+
+DO $$
+DECLARE
+    p RECORD;
+
+    v_active_strategy_count BIGINT;
+    v_product_policy_count BIGINT;
+    v_supported_product_count BIGINT;
+    v_duplicate_product_count BIGINT;
+    v_unsupported_product_count BIGINT;
+    v_missing_supported_product_count BIGINT;
+    v_bad_product_policy_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exactly one active strategy parameter row.
+
+    Single-strategy execution requires one and only one active strategy configuration.
+
+    If more than one strategy row is active, downstream logic could mix strategy identities,
+    thresholds, archive controls, and evidence metadata.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_active_strategy_count
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE;
+
+    IF v_active_strategy_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: expected exactly one active strategy parameter row, found %.&#39;,
+            v_active_strategy_count;
+    END IF;
+
+    SELECT *
+    INTO p
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required strategy identity fields.
+
+    These fields identify the downstream simulated Module 2 strategy, not the upstream Module 1
+    scenario.
+
+    Module 1 lineage is validated separately through source selection and source scope.
+    -------------------------------------------------------------------------------------------*/
+    IF p.module2_model_version IS NULL OR NULLIF(BTRIM(p.module2_model_version), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: module2_model_version must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_set_name IS NULL OR NULLIF(BTRIM(p.strategy_set_name), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_set_name must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_name IS NULL OR NULLIF(BTRIM(p.strategy_name), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_name must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_version IS NULL OR NULLIF(BTRIM(p.strategy_version), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_version must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_run_id IS NULL OR NULLIF(BTRIM(p.strategy_run_id), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_run_id must be non-null and nonblank.&#39;;
+    END IF;
+
+    IF p.strategy_run_ts IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: strategy_run_ts must be non-null.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: campaign registry requirement flag.
+
+    campaign_registry_required_flag controls evidence-traceability expectations.
+
+    TRUE:
+        the current technical run key should match exactly one active row in
+        credit_decisioning_sim.strategy_run_campaign_registry.
+
+    FALSE:
+        ad hoc development runs may proceed with fallback story metadata, but formal campaign
+        evidence should still be registry matched.
+
+    This flag does not change decision logic.
+    -------------------------------------------------------------------------------------------*/
+    IF p.campaign_registry_required_flag IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: campaign_registry_required_flag must not be null.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Module 1 input source.
+
+    LATEST:
+        credit_decisioning_sim.synthetic_applications
+
+    ARCHIVE:
+        credit_decisioning_sim.synthetic_applications_scenario_archive
+
+    Multi-scenario processing is not designed in Module 2 V1.0.
+    -------------------------------------------------------------------------------------------*/
+    IF p.module1_input_source IS NULL
+       OR p.module1_input_source NOT IN (&#39;LATEST&#39;, &#39;ARCHIVE&#39;) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: module1_input_source must be LATEST or ARCHIVE. Found: %.&#39;,
+            COALESCE(p.module1_input_source, &#39;&lt;NULL&gt;&#39;);
+    END IF;
+
+    IF p.module1_input_source = &#39;ARCHIVE&#39; THEN
+        IF p.source_module1_scenario_set_name IS NULL
+           OR NULLIF(BTRIM(p.source_module1_scenario_set_name), &#39;&#39;) IS NULL
+           OR p.source_module1_scenario_name IS NULL
+           OR NULLIF(BTRIM(p.source_module1_scenario_name), &#39;&#39;) IS NULL
+           OR p.source_population_id IS NULL
+           OR NULLIF(BTRIM(p.source_population_id), &#39;&#39;) IS NULL THEN
+            RAISE EXCEPTION
+                &#39;Module 2 gatekeeper failure: ARCHIVE source requires source_module1_scenario_set_name, source_module1_scenario_name, and source_population_id.&#39;;
+        END IF;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive controls.
+
+    Archive behavior is not handled here. Section 12 performs archive persistence.
+
+    Section 3 only validates that the active strategy has a coherent archive-control configuration.
+    -------------------------------------------------------------------------------------------*/
+    IF p.archive_run_flag IS NULL THEN
+        RAISE EXCEPTION &#39;Module 2 gatekeeper failure: archive_run_flag must not be null.&#39;;
+    END IF;
+
+    IF p.strategy_archive_reset_mode IS NULL
+       OR p.strategy_archive_reset_mode NOT IN (
+            &#39;NONE&#39;,
+            &#39;STRATEGY_SCENARIO_ONLY&#39;,
+            &#39;STRATEGY_SET_ONLY&#39;,
+            &#39;ALL&#39;
+       ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: strategy_archive_reset_mode must be NONE, STRATEGY_SCENARIO_ONLY, STRATEGY_SET_ONLY, or ALL. Found: %.&#39;,
+            COALESCE(p.strategy_archive_reset_mode, &#39;&lt;NULL&gt;&#39;);
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: synthetic estimated-PD proxy threshold bounds and ordering.
+
+    estimated_pd remains the SQL field name from Module 1.
+
+    In Module 2, these thresholds interpret estimated_pd as the synthetic estimated-PD proxy.
+
+    The gatekeeper validates ordering so that true risk bands remain coherent:
+        clean approval band,
+        counteroffer band,
+        review band,
+        decline band.
+    -------------------------------------------------------------------------------------------*/
+    IF p.approve_max_estimated_pd_proxy IS NULL
+       OR p.counteroffer_max_estimated_pd_proxy IS NULL
+       OR p.review_max_estimated_pd_proxy IS NULL
+       OR p.decline_min_estimated_pd_proxy IS NULL
+       OR p.approve_max_estimated_pd_proxy &lt; 0
+       OR p.approve_max_estimated_pd_proxy &gt; 1
+       OR p.counteroffer_max_estimated_pd_proxy &lt; 0
+       OR p.counteroffer_max_estimated_pd_proxy &gt; 1
+       OR p.review_max_estimated_pd_proxy &lt; 0
+       OR p.review_max_estimated_pd_proxy &gt; 1
+       OR p.decline_min_estimated_pd_proxy &lt; 0
+       OR p.decline_min_estimated_pd_proxy &gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: synthetic estimated-PD proxy thresholds must be non-null and between 0 and 1.&#39;;
+    END IF;
+
+    IF NOT (
+        p.approve_max_estimated_pd_proxy &lt; p.counteroffer_max_estimated_pd_proxy
+        AND p.counteroffer_max_estimated_pd_proxy &lt;= p.review_max_estimated_pd_proxy
+        AND p.review_max_estimated_pd_proxy &lt;= p.decline_min_estimated_pd_proxy
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: synthetic estimated-PD proxy threshold ordering is invalid.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: global PTI threshold bounds and ordering.
+
+    PTI thresholds are strategy simulation controls, not production underwriting cutoffs.
+
+    Product-level PTI thresholds govern product-aware affordability flags. Global thresholds provide
+    cross-product governance context and range discipline.
+    -------------------------------------------------------------------------------------------*/
+    IF p.global_approve_max_pti IS NULL
+       OR p.global_review_max_pti IS NULL
+       OR p.global_decline_min_pti IS NULL
+       OR p.global_approve_max_pti &lt; 0
+       OR p.global_approve_max_pti &gt; 1.5
+       OR p.global_review_max_pti &lt; 0
+       OR p.global_review_max_pti &gt; 1.5
+       OR p.global_decline_min_pti &lt; 0
+       OR p.global_decline_min_pti &gt; 1.5 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: global PTI thresholds must be non-null and between 0 and 1.5.&#39;;
+    END IF;
+
+    IF NOT (
+        p.global_approve_max_pti &lt; p.global_review_max_pti
+        AND p.global_review_max_pti &lt;= p.global_decline_min_pti
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: global PTI threshold ordering is invalid.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: DTI threshold bounds and ordering.
+
+    DTI is an existing-obligation capacity signal.
+
+    Module 2 V1.0 does not directly solve high DTI through exposure reduction because counteroffer
+    changes the requested exposure treatment, not the applicant&#39;s existing obligations.
+    -------------------------------------------------------------------------------------------*/
+    IF p.approve_max_dti IS NULL
+       OR p.review_max_dti IS NULL
+       OR p.decline_min_dti IS NULL
+       OR p.approve_max_dti &lt; 0
+       OR p.approve_max_dti &gt; 1
+       OR p.review_max_dti &lt; 0
+       OR p.review_max_dti &gt; 1
+       OR p.decline_min_dti &lt; 0
+       OR p.decline_min_dti &gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: DTI thresholds must be non-null and between 0 and 1.&#39;;
+    END IF;
+
+    IF NOT (
+        p.approve_max_dti &lt; p.review_max_dti
+        AND p.review_max_dti &lt;= p.decline_min_dti
+    ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: DTI threshold ordering is invalid.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: borderline diagnostic buffer.
+
+    This parameter exists only to support non-decisioning segmentation.
+
+    It prevents hidden hardcoded &quot;near threshold&quot; logic from appearing inside downstream CASE blocks.
+
+    Allowed range:
+        0.000000 to 0.250000
+
+    Interpretation:
+        0.000000 disables threshold-adjacent borderline tagging.
+        Values above 0.250000 are not allowed because they would make too much of the population
+        appear borderline and reduce diagnostic usefulness.
+
+    Boundary:
+        This is not a production policy tolerance.
+    -------------------------------------------------------------------------------------------*/
+    IF p.borderline_threshold_buffer_pct IS NULL
+       OR p.borderline_threshold_buffer_pct &lt; 0
+       OR p.borderline_threshold_buffer_pct &gt; 0.250000 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: borderline_threshold_buffer_pct must be between 0 and 0.25.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 6 rule-control parameters.
+
+    These parameters govern simulated rule trigger flags only.
+
+    They do not create:
+        final strategy outcomes,
+        reason codes,
+        approved amounts,
+        approved PTI,
+        or approved Expected Loss.
+    -------------------------------------------------------------------------------------------*/
+    IF p.bankruptcy_policy_stop_enabled IS NULL
+       OR p.major_derogatory_policy_stop_enabled IS NULL
+       OR p.severe_delinquency_policy_stop_enabled IS NULL
+       OR p.high_utilization_review_enabled IS NULL
+       OR p.low_score_review_enabled IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: Section 6 boolean rule-control parameters must not be null.&#39;;
+    END IF;
+
+    IF p.severe_delinquency_count_threshold IS NULL
+       OR p.severe_delinquency_count_threshold &lt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: severe_delinquency_count_threshold must be a non-negative integer.&#39;;
+    END IF;
+
+    IF p.high_utilization_review_threshold IS NULL
+       OR p.high_utilization_review_threshold &lt; 0
+       OR p.high_utilization_review_threshold &gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: high_utilization_review_threshold must be between 0 and 1.&#39;;
+    END IF;
+
+    IF p.low_score_review_threshold IS NULL
+       OR p.low_score_review_threshold &lt; 300
+       OR p.low_score_review_threshold &gt; 850 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: low_score_review_threshold must be between 300 and 850.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: decision convention controls.
+
+    These conventions preserve the accepted Module 2 V1.0 final-output taxonomy:
+        APPROVE uses requested exposure,
+        COUNTEROFFER uses reduced approved exposure,
+        MANUAL_REVIEW remains unresolved,
+        DECLINE uses zero-exposure convention.
+    -------------------------------------------------------------------------------------------*/
+    IF p.allow_approved_amount_above_requested_flag IS DISTINCT FROM FALSE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: allow_approved_amount_above_requested_flag must be FALSE for Module 2 V1.0.&#39;;
+    END IF;
+
+    IF p.decline_approved_amount_convention &lt;&gt; &#39;ZERO&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: decline_approved_amount_convention must equal ZERO.&#39;;
+    END IF;
+
+    IF p.manual_review_approved_amount_convention &lt;&gt; &#39;NULL_UNRESOLVED&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: manual_review_approved_amount_convention must equal NULL_UNRESOLVED.&#39;;
+    END IF;
+
+    IF p.approved_el_decline_convention &lt;&gt; &#39;ZERO&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approved_el_decline_convention must equal ZERO.&#39;;
+    END IF;
+
+    IF p.approved_el_manual_review_convention &lt;&gt; &#39;NULL_UNRESOLVED&#39; THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approved_el_manual_review_convention must equal NULL_UNRESOLVED.&#39;;
+    END IF;
+
+    IF p.reason_code_required_flag IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: reason_code_required_flag must be TRUE.&#39;;
+    END IF;
+
+    IF p.simulated_offer_exposure_flag_enabled IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: simulated_offer_exposure_flag_enabled must be TRUE.&#39;;
+    END IF;
+
+    IF p.approve_reason_code IS NULL
+       OR NULLIF(BTRIM(p.approve_reason_code), &#39;&#39;) IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: approve_reason_code must be non-null and nonblank.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: failed counteroffer resolution.
+
+    This parameter governs final decision resolution for preliminary COUNTEROFFER rows where
+    Section 8 determines that no viable reduced-exposure treatment exists.
+
+    Allowed values:
+        MANUAL_REVIEW
+        DECLINE
+
+    Default:
+        MANUAL_REVIEW
+
+    Boundary:
+        This is a simulated strategy-control parameter. It is not production underwriting policy.
+    -------------------------------------------------------------------------------------------*/
+    IF p.failed_counteroffer_resolution IS NULL
+       OR p.failed_counteroffer_resolution NOT IN (&#39;MANUAL_REVIEW&#39;, &#39;DECLINE&#39;) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: failed_counteroffer_resolution must be MANUAL_REVIEW or DECLINE. Found: %.&#39;,
+            COALESCE(p.failed_counteroffer_resolution, &#39;&lt;NULL&gt;&#39;);
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product policy table contains exactly one row per supported product type.
+
+    Product policy rows are required before product-specific affordability, exposure, Expected Loss,
+    counteroffer, and rounding rules can be applied.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_product_policy_count
+    FROM tmp_module2_product_policy_params;
+
+    SELECT COUNT(DISTINCT product_type)
+    INTO v_supported_product_count
+    FROM tmp_module2_product_policy_params
+    WHERE product_type IN (
+        &#39;MORTGAGE&#39;,
+        &#39;HELOC&#39;,
+        &#39;AUTO_LOAN&#39;,
+        &#39;UNSECURED_PERSONAL_LOAN&#39;,
+        &#39;REVOLVING_LINE&#39;
+    );
+
+    SELECT COUNT(*)
+    INTO v_duplicate_product_count
+    FROM (
+        SELECT product_type
+        FROM tmp_module2_product_policy_params
+        GROUP BY product_type
+        HAVING COUNT(*) &gt; 1
+    ) d;
+
+    SELECT COUNT(*)
+    INTO v_unsupported_product_count
+    FROM tmp_module2_product_policy_params
+    WHERE product_type NOT IN (
+        &#39;MORTGAGE&#39;,
+        &#39;HELOC&#39;,
+        &#39;AUTO_LOAN&#39;,
+        &#39;UNSECURED_PERSONAL_LOAN&#39;,
+        &#39;REVOLVING_LINE&#39;
+    );
+
+    SELECT COUNT(*)
+    INTO v_missing_supported_product_count
+    FROM (
+        SELECT product_type
+        FROM (
+            VALUES
+                (&#39;MORTGAGE&#39;),
+                (&#39;HELOC&#39;),
+                (&#39;AUTO_LOAN&#39;),
+                (&#39;UNSECURED_PERSONAL_LOAN&#39;),
+                (&#39;REVOLVING_LINE&#39;)
+        ) s(product_type)
+        EXCEPT
+        SELECT product_type
+        FROM tmp_module2_product_policy_params
+    ) m;
+
+    IF v_product_policy_count &lt;&gt; 5
+       OR v_supported_product_count &lt;&gt; 5
+       OR v_duplicate_product_count &gt; 0
+       OR v_unsupported_product_count &gt; 0
+       OR v_missing_supported_product_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: product policy table must contain exactly one row for each supported product type. Rows=%, supported distinct=%, duplicate groups=%, unsupported rows=%, missing supported products=%.&#39;,
+            v_product_policy_count,
+            v_supported_product_count,
+            v_duplicate_product_count,
+            v_unsupported_product_count,
+            v_missing_supported_product_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product policy threshold and exposure validation.
+
+    This validates that every product row has coherent:
+        requested PTI thresholds,
+        requested Expected Loss thresholds,
+        approved Expected Loss cap,
+        approved exposure range,
+        counteroffer controls,
+        exposure assignment method,
+        and rounding increment.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_bad_product_policy_count
+    FROM tmp_module2_product_policy_params
+    WHERE product_type IS NULL
+       OR NULLIF(BTRIM(product_type), &#39;&#39;) IS NULL
+
+       OR product_approve_max_pti IS NULL
+       OR product_review_max_pti IS NULL
+       OR product_decline_min_pti IS NULL
+       OR counteroffer_target_pti IS NULL
+       OR product_approve_max_pti &lt; 0
+       OR product_approve_max_pti &gt; 1.5
+       OR product_review_max_pti &lt; 0
+       OR product_review_max_pti &gt; 1.5
+       OR product_decline_min_pti &lt; 0
+       OR product_decline_min_pti &gt; 1.5
+       OR counteroffer_target_pti &lt; 0
+       OR counteroffer_target_pti &gt; 1.5
+       OR product_approve_max_pti &gt;= product_review_max_pti
+       OR product_review_max_pti &gt; product_decline_min_pti
+
+       OR product_approve_max_requested_el IS NULL
+       OR product_review_max_requested_el IS NULL
+       OR product_decline_min_requested_el IS NULL
+       OR product_approved_el_cap IS NULL
+       OR product_approve_max_requested_el &lt; 0
+       OR product_review_max_requested_el &lt; 0
+       OR product_decline_min_requested_el &lt; 0
+       OR product_approved_el_cap &lt; 0
+       OR product_approve_max_requested_el &gt; product_review_max_requested_el
+       OR product_review_max_requested_el &gt; product_decline_min_requested_el
+
+       OR product_min_approved_amount IS NULL
+       OR product_max_approved_amount IS NULL
+       OR product_min_approved_amount &lt;= 0
+       OR product_max_approved_amount &lt;= product_min_approved_amount
+
+       OR counteroffer_allowed_flag IS NULL
+       OR manual_review_allowed_flag IS NULL
+       OR product_min_counteroffer_pct IS NULL
+       OR product_max_exposure_reduction_pct IS NULL
+       OR product_min_counteroffer_pct &lt; 0
+       OR product_min_counteroffer_pct &gt; 1
+       OR product_max_exposure_reduction_pct &lt; 0
+       OR product_max_exposure_reduction_pct &gt; 1
+       OR exposure_assignment_method IS NULL
+       OR exposure_assignment_method NOT IN (&#39;MOST_CONSERVATIVE_FEASIBLE_AMOUNT&#39;)
+       OR approved_amount_rounding_increment IS NULL
+       OR approved_amount_rounding_increment &lt;= 0;
+
+    IF v_bad_product_policy_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 gatekeeper failure: % product policy row(s) failed threshold, exposure, counteroffer, or rounding validation.&#39;,
+            v_bad_product_policy_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 3.2 — MODULE 1 SOURCE-INPUT VALIDATION AND SOURCE-SCOPE MATERIALIZATION
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Validate that the selected Module 1 source exists, contains rows, has required fields, is scoped
+    to exactly one scenario / population slice, and has no duplicate application_id values.
+
+SQL PURPOSE:
+    1. Determine whether Module 2 is consuming Module 1 LATEST output or ARCHIVE output.
+    2. Validate required Module 1 source fields.
+    3. Validate scenario lineage fields.
+    4. Validate source row count.
+    5. Validate one Module 1 scenario / population slice.
+    6. Validate application_id uniqueness.
+    7. Validate required-field completeness.
+    8. Materialize tmp_m2_source_selection_scope for later registry matching and review.
+
+WHY THIS MATTERS:
+    Module 2 strategy comparison depends on exact source lineage.
+
+    If source selection is ambiguous, downstream strategy outcomes may be attributed to strategy
+    changes when they actually reflect population drift or source-table errors.
+
+SOURCE-SCOPE HELPER:
+    tmp_m2_source_selection_scope records the effective Module 1 scenario set, scenario name,
+    population_id, source table, selected row count, and selected distinct application count.
+
+    Section 3.3 uses it to match the current run to the campaign registry.
+
+BOUNDARY:
+    This section validates source readiness only.
+    Section 4 will later create the normalized source staging table.
+
+****************************************************************************************************/
+
+DO $$
+DECLARE
+    p RECORD;
+
+    v_source_table_schema TEXT;
+    v_source_table_name TEXT;
+    v_source_regclass REGCLASS;
+
+    v_scenario_set_col TEXT;
+    v_scenario_name_col TEXT;
+
+    v_effective_module1_scenario_set_name TEXT;
+    v_effective_module1_scenario_name TEXT;
+    v_effective_population_id TEXT;
+
+    v_required_missing_columns TEXT;
+    v_source_row_count BIGINT;
+    v_selected_row_count BIGINT;
+    v_selected_distinct_application_count BIGINT;
+    v_duplicate_application_group_count BIGINT;
+    v_scenario_population_count BIGINT;
+    v_null_required_field_count BIGINT;
+
+    v_required_column_list TEXT[] := ARRAY[
+        &#39;application_id&#39;,
+        &#39;applicant_id&#39;,
+        &#39;product_type&#39;,
+        &#39;score_band&#39;,
+        &#39;credit_score&#39;,
+        &#39;requested_amount&#39;,
+        &#39;annual_income&#39;,
+        &#39;monthly_payment_proxy&#39;,
+        &#39;payment_to_income_ratio&#39;,
+        &#39;amount_to_income_ratio&#39;,
+        &#39;debt_to_income_ratio&#39;,
+        &#39;utilization_rate&#39;,
+        &#39;tradeline_count&#39;,
+        &#39;months_since_oldest_trade&#39;,
+        &#39;recent_inquiry_count&#39;,
+        &#39;delinquency_count_12m&#39;,
+        &#39;major_derogatory_flag&#39;,
+        &#39;bankruptcy_flag&#39;,
+        &#39;estimated_pd&#39;,
+        &#39;estimated_lgd&#39;,
+        &#39;expected_loss_amount&#39;,
+        &#39;population_id&#39;
+    ];
+
+    v_null_check_expression TEXT;
+BEGIN
+    SELECT *
+    INTO p
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1;
+
+    IF p.module1_input_source = &#39;LATEST&#39; THEN
+        v_source_table_schema := &#39;credit_decisioning_sim&#39;;
+        v_source_table_name := &#39;synthetic_applications&#39;;
+    ELSE
+        v_source_table_schema := &#39;credit_decisioning_sim&#39;;
+        v_source_table_name := &#39;synthetic_applications_scenario_archive&#39;;
+    END IF;
+
+    v_source_regclass := TO_REGCLASS(v_source_table_schema || &#39;.&#39; || v_source_table_name);
+
+    IF v_source_regclass IS NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source table %.% does not exist.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required Module 1 source fields must be present.
+
+    scenario_set_name / scenario_name may appear either as Module 1 raw names or already-normalized
+    Module 2 lineage names. Section 4 aliases them to:
+        module1_scenario_set_name
+        module1_scenario_name
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(missing_col, &#39;, &#39; ORDER BY missing_col)
+    INTO v_required_missing_columns
+    FROM (
+        SELECT unnest(v_required_column_list) AS missing_col
+        EXCEPT
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+    ) m;
+
+    IF v_required_missing_columns IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source %.% is missing required field(s): %.&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_required_missing_columns;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;module1_scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;module1_scenario_set_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;scenario_set_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source %.% must contain scenario_set_name or module1_scenario_set_name.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;module1_scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;module1_scenario_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;scenario_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source %.% must contain scenario_name or module1_scenario_name.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: selected source table must contain rows.
+    -------------------------------------------------------------------------------------------*/
+    EXECUTE FORMAT(
+        &#39;SELECT COUNT(*) FROM %I.%I&#39;,
+        v_source_table_schema,
+        v_source_table_name
+    )
+    INTO v_source_row_count;
+
+    IF v_source_row_count = 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source %.% contains zero rows.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: selected latest-run or archive slice must contain exactly one scenario / population.
+
+    LATEST:
+        latest-run table must already represent exactly one Module 1 scenario / population.
+
+    ARCHIVE:
+        Section 3 filters using the selected source scenario fields and population_id.
+    -------------------------------------------------------------------------------------------*/
+    IF p.module1_input_source = &#39;LATEST&#39; THEN
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM (
+                 SELECT DISTINCT %I, %I, population_id
+                 FROM %I.%I
+             ) s&#39;,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_source_table_schema,
+            v_source_table_name
+        )
+        INTO v_scenario_population_count;
+
+        IF v_scenario_population_count &lt;&gt; 1 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: latest-run Module 1 source contains % scenario / population combinations. Module 2 V1.0 expects exactly one.&#39;,
+                v_scenario_population_count;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT %I::TEXT, %I::TEXT, population_id::TEXT
+             FROM %I.%I
+             LIMIT 1&#39;,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_source_table_schema,
+            v_source_table_name
+        )
+        INTO
+            v_effective_module1_scenario_set_name,
+            v_effective_module1_scenario_name,
+            v_effective_population_id;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*), COUNT(DISTINCT application_id)
+             FROM %I.%I&#39;,
+            v_source_table_schema,
+            v_source_table_name
+        )
+        INTO v_selected_row_count, v_selected_distinct_application_count;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM (
+                 SELECT application_id
+                 FROM %I.%I
+                 GROUP BY application_id
+                 HAVING COUNT(*) &gt; 1
+             ) d&#39;,
+            v_source_table_schema,
+            v_source_table_name
+        )
+        INTO v_duplicate_application_group_count;
+
+        v_null_check_expression :=
+            &#39;application_id IS NULL
+             OR applicant_id IS NULL
+             OR product_type IS NULL
+             OR score_band IS NULL
+             OR credit_score IS NULL
+             OR requested_amount IS NULL
+             OR annual_income IS NULL
+             OR monthly_payment_proxy IS NULL
+             OR payment_to_income_ratio IS NULL
+             OR amount_to_income_ratio IS NULL
+             OR debt_to_income_ratio IS NULL
+             OR utilization_rate IS NULL
+             OR tradeline_count IS NULL
+             OR months_since_oldest_trade IS NULL
+             OR recent_inquiry_count IS NULL
+             OR delinquency_count_12m IS NULL
+             OR major_derogatory_flag IS NULL
+             OR bankruptcy_flag IS NULL
+             OR estimated_pd IS NULL
+             OR estimated_lgd IS NULL
+             OR expected_loss_amount IS NULL
+             OR population_id IS NULL
+             OR &#39; || FORMAT(&#39;%I IS NULL&#39;, v_scenario_set_col) || &#39;
+             OR &#39; || FORMAT(&#39;%I IS NULL&#39;, v_scenario_name_col);
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM %I.%I
+             WHERE %s&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_null_check_expression
+        )
+        INTO v_null_required_field_count;
+
+    ELSE
+        v_effective_module1_scenario_set_name := p.source_module1_scenario_set_name;
+        v_effective_module1_scenario_name := p.source_module1_scenario_name;
+        v_effective_population_id := p.source_population_id;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM %I.%I
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_selected_row_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+
+        IF v_selected_row_count = 0 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected Module 1 archive slice contains zero rows. scenario_set=%, scenario_name=%, population_id=%.&#39;,
+                p.source_module1_scenario_set_name,
+                p.source_module1_scenario_name,
+                p.source_population_id;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM (
+                 SELECT DISTINCT %I, %I, population_id
+                 FROM %I.%I
+                 WHERE %I = $1
+                   AND %I = $2
+                   AND population_id = $3
+             ) s&#39;,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_scenario_population_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+
+        IF v_scenario_population_count &lt;&gt; 1 THEN
+            RAISE EXCEPTION
+                &#39;Module 2 source-input gatekeeper failure: selected Module 1 archive slice contains % scenario / population combinations. Expected exactly one.&#39;,
+                v_scenario_population_count;
+        END IF;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(DISTINCT application_id)
+             FROM %I.%I
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_selected_distinct_application_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*) FROM (
+                 SELECT application_id
+                 FROM %I.%I
+                 WHERE %I = $1
+                   AND %I = $2
+                   AND population_id = $3
+                 GROUP BY application_id
+                 HAVING COUNT(*) &gt; 1
+             ) d&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col
+        )
+        INTO v_duplicate_application_group_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+
+        v_null_check_expression :=
+            &#39;application_id IS NULL
+             OR applicant_id IS NULL
+             OR product_type IS NULL
+             OR score_band IS NULL
+             OR credit_score IS NULL
+             OR requested_amount IS NULL
+             OR annual_income IS NULL
+             OR monthly_payment_proxy IS NULL
+             OR payment_to_income_ratio IS NULL
+             OR amount_to_income_ratio IS NULL
+             OR debt_to_income_ratio IS NULL
+             OR utilization_rate IS NULL
+             OR tradeline_count IS NULL
+             OR months_since_oldest_trade IS NULL
+             OR recent_inquiry_count IS NULL
+             OR delinquency_count_12m IS NULL
+             OR major_derogatory_flag IS NULL
+             OR bankruptcy_flag IS NULL
+             OR estimated_pd IS NULL
+             OR estimated_lgd IS NULL
+             OR expected_loss_amount IS NULL
+             OR population_id IS NULL
+             OR &#39; || FORMAT(&#39;%I IS NULL&#39;, v_scenario_set_col) || &#39;
+             OR &#39; || FORMAT(&#39;%I IS NULL&#39;, v_scenario_name_col);
+
+        EXECUTE FORMAT(
+            &#39;SELECT COUNT(*)
+             FROM %I.%I
+             WHERE %I = $1
+               AND %I = $2
+               AND population_id = $3
+               AND (%s)&#39;,
+            v_source_table_schema,
+            v_source_table_name,
+            v_scenario_set_col,
+            v_scenario_name_col,
+            v_null_check_expression
+        )
+        INTO v_null_required_field_count
+        USING
+            p.source_module1_scenario_set_name,
+            p.source_module1_scenario_name,
+            p.source_population_id;
+    END IF;
+
+
+    IF v_selected_row_count = 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source slice contains zero rows.&#39;;
+    END IF;
+
+    IF v_selected_distinct_application_count &lt;&gt; v_selected_row_count THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source slice has duplicate application_id values. Rows=%, distinct application_id=%, duplicate groups=%.&#39;,
+            v_selected_row_count,
+            v_selected_distinct_application_count,
+            v_duplicate_application_group_count;
+    END IF;
+
+    IF v_duplicate_application_group_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source slice contains % duplicate application_id group(s).&#39;,
+            v_duplicate_application_group_count;
+    END IF;
+
+    IF v_null_required_field_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 source-input gatekeeper failure: selected Module 1 source slice contains % row(s) with null required fields.&#39;,
+            v_null_required_field_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Source-scope materialization for registry matching and review.
+
+    This table is not the main source staging table. Section 4 creates that.
+
+    This helper table captures the effective selected source identity after Section 3 source
+    validation has resolved LATEST versus ARCHIVE mode.
+    -------------------------------------------------------------------------------------------*/
+    DROP TABLE IF EXISTS tmp_m2_source_selection_scope;
+
+    CREATE TEMP TABLE tmp_m2_source_selection_scope (
+        module1_input_source                         TEXT,
+        source_table_schema                          TEXT,
+        source_table_name                            TEXT,
+        source_scenario_set_column_name              TEXT,
+        source_scenario_name_column_name             TEXT,
+
+        effective_module1_scenario_set_name          TEXT,
+        effective_module1_scenario_name              TEXT,
+        effective_population_id                      TEXT,
+
+        selected_row_count                           BIGINT,
+        selected_distinct_application_id_count       BIGINT,
+        duplicate_application_group_count            BIGINT,
+        null_required_field_row_count                BIGINT
+    ) ON COMMIT PRESERVE ROWS;
+
+    INSERT INTO tmp_m2_source_selection_scope (
+        module1_input_source,
+        source_table_schema,
+        source_table_name,
+        source_scenario_set_column_name,
+        source_scenario_name_column_name,
+
+        effective_module1_scenario_set_name,
+        effective_module1_scenario_name,
+        effective_population_id,
+
+        selected_row_count,
+        selected_distinct_application_id_count,
+        duplicate_application_group_count,
+        null_required_field_row_count
+    )
+    VALUES (
+        p.module1_input_source,
+        v_source_table_schema,
+        v_source_table_name,
+        v_scenario_set_col,
+        v_scenario_name_col,
+
+        v_effective_module1_scenario_set_name,
+        v_effective_module1_scenario_name,
+        v_effective_population_id,
+
+        v_selected_row_count,
+        v_selected_distinct_application_count,
+        v_duplicate_application_group_count,
+        v_null_required_field_count
+    );
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 3.3 — CAMPAIGN REGISTRY MATCH GATEKEEPER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Connect the current technical Module 1 scenario × Module 2 strategy run to a stable campaign
+    run ID before downstream outputs and evidence are produced.
+
+SQL PURPOSE:
+    1. Confirm the persistent strategy run campaign registry exists.
+    2. Match the current technical run key to active registry rows.
+    3. Materialize tmp_m2_campaign_registry_current_run_match.
+    4. Fail when a formal campaign run requires registry linkage but no match exists.
+    5. Fail when more than one active registry row matches the same technical run key.
+
+WHY THIS MATTERS:
+    The Module 2 archive can identify a run through long technical names.
+
+    The Validation Summary and executive evidence need compact stable IDs such as:
+        module1_run_id
+        module2_run_id
+        showcase_id
+        comparison_group_id
+        validation_evidence_group_id
+
+    This registry match creates the traceable bridge from code output to documentation evidence.
+
+BOUNDARY:
+    This gatekeeper does not change decisions.
+    This gatekeeper does not create archive rows.
+    This gatekeeper does not perform comparison.
+    This gatekeeper does not validate final strategy behavior.
+
+    It validates evidence-linkage readiness only.
+
+****************************************************************************************************/
+
+
+/*-----------------------------------------------------------------------------------------------
+3.3A Registry table existence check.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+DECLARE
+    v_registry_table_exists BOOLEAN;
+BEGIN
+    SELECT TO_REGCLASS(&#39;credit_decisioning_sim.strategy_run_campaign_registry&#39;) IS NOT NULL
+    INTO v_registry_table_exists;
+
+    IF v_registry_table_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 3 failure: strategy_run_campaign_registry does not exist. Run Section 2 campaign registry setup before Section 3.&#39;;
+    END IF;
+END $$;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.3B Current run registry match materialization.
+
+This table is intentionally temporary. It records the registry match status for the current execution
+and is consumed later by Section 16 evidence capture.
+-----------------------------------------------------------------------------------------------*/
+
+DROP TABLE IF EXISTS tmp_m2_campaign_registry_current_run_match;
+
+CREATE TEMP TABLE tmp_m2_campaign_registry_current_run_match
+ON COMMIT PRESERVE ROWS
+AS
+WITH p AS (
+    SELECT *
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1
+),
+
+s AS (
+    SELECT *
+    FROM tmp_m2_source_selection_scope
+    LIMIT 1
+),
+
+registry_matches AS (
+    SELECT
+        r.*
+    FROM credit_decisioning_sim.strategy_run_campaign_registry r
+    JOIN p
+        ON r.strategy_set_name = p.strategy_set_name
+       AND r.strategy_name = p.strategy_name
+       AND r.strategy_version = p.strategy_version
+    JOIN s
+        ON r.module1_scenario_set_name = s.effective_module1_scenario_set_name
+       AND r.module1_scenario_name = s.effective_module1_scenario_name
+       AND r.population_id = s.effective_population_id
+    WHERE r.registry_active_flag IS TRUE
+),
+
+match_summary AS (
+    SELECT
+        COUNT(*) AS registry_match_count
+    FROM registry_matches
+)
+
+SELECT
+    p.campaign_registry_required_flag,
+
+    p.module2_model_version,
+    p.strategy_set_name,
+    p.strategy_name,
+    p.strategy_version,
+    p.strategy_run_id,
+    p.strategy_run_ts,
+
+    s.module1_input_source,
+    s.source_table_schema,
+    s.source_table_name,
+    s.effective_module1_scenario_set_name AS module1_scenario_set_name,
+    s.effective_module1_scenario_name AS module1_scenario_name,
+    s.effective_population_id AS population_id,
+
+    ms.registry_match_count,
+
+    CASE
+        WHEN ms.registry_match_count = 1
+            THEN &#39;RUN_REGISTRY_MATCHED&#39;
+
+        WHEN ms.registry_match_count = 0
+         AND p.campaign_registry_required_flag IS TRUE
+            THEN &#39;RUN_REGISTRY_NOT_FOUND_REQUIRED_REVIEW&#39;
+
+        WHEN ms.registry_match_count = 0
+         AND p.campaign_registry_required_flag IS FALSE
+            THEN &#39;RUN_REGISTRY_NOT_FOUND_FALLBACK_ALLOWED&#39;
+
+        WHEN ms.registry_match_count &gt; 1
+            THEN &#39;RUN_REGISTRY_DUPLICATE_MATCH_REVIEW_REQUIRED&#39;
+
+        ELSE &#39;RUN_REGISTRY_MATCH_STATUS_UNKNOWN&#39;
+    END AS run_registry_match_status,
+
+    r.module1_run_id,
+    r.module2_run_id,
+    r.run_sequence_number,
+
+    r.showcase_id,
+    r.showcase_name,
+    r.comparison_group_id,
+    r.validation_evidence_group_id,
+
+    r.module1_parameter_family_changed,
+    r.module1_parameter_change_summary,
+    r.module2_strategy_family_changed,
+    r.module2_parameter_change_summary,
+
+    r.expected_storyline,
+    r.validation_summary_section_hint,
+    r.readme_storyline_label,
+    r.linkedin_post_sequence,
+
+    r.registry_active_flag,
+    r.registry_created_ts,
+    r.registry_updated_ts
+
+FROM p
+CROSS JOIN s
+CROSS JOIN match_summary ms
+LEFT JOIN registry_matches r
+    ON ms.registry_match_count = 1;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+3.3C Registry match fail-fast checks.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+DECLARE
+    m RECORD;
+BEGIN
+    SELECT *
+    INTO m
+    FROM tmp_m2_campaign_registry_current_run_match
+    LIMIT 1;
+
+    IF m.registry_match_count &gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 3 failure: current run key matched % active campaign registry rows. Expected at most one.&#39;,
+            m.registry_match_count;
+    END IF;
+
+    IF m.campaign_registry_required_flag IS TRUE
+       AND m.registry_match_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 3 failure: campaign_registry_required_flag = TRUE but current run key did not match exactly one active campaign registry row. Match status: %.&#39;,
+            m.run_registry_match_status;
+    END IF;
+
+    IF m.campaign_registry_required_flag IS TRUE
+       AND (
+              m.module1_run_id IS NULL
+           OR m.module2_run_id IS NULL
+           OR m.validation_evidence_group_id IS NULL
+       ) THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 3 failure: matched campaign registry row is missing module1_run_id, module2_run_id, or validation_evidence_group_id.&#39;;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 3.4 — THRESHOLD EQUALITY CONVENTION DOCUMENTATION
+****************************************************************************************************
+
+PURPOSE:
+    Document the equality conventions that downstream Section 5, Section 6, Section 7, Section 8,
+    and Section 9 depend on.
+
+WHY THIS MATTERS:
+    Boundary conditions can materially change strategy outcomes.
+
+    For example:
+        estimated_pd = decline_min_estimated_pd_proxy
+    should route consistently as severe synthetic estimated-risk decline trigger.
+
+    Documenting equality conventions prevents later strategy tuning from accidentally changing band
+    coverage and route assignment.
+
+SYNTHETIC ESTIMATED-PD PROXY:
+    APPROVE eligibility:
+        estimated_pd &lt;= approve_max_estimated_pd_proxy
+
+    COUNTEROFFER eligibility:
+        estimated_pd &gt; approve_max_estimated_pd_proxy
+        AND estimated_pd &lt;= counteroffer_max_estimated_pd_proxy
+
+    MANUAL_REVIEW synthetic risk band:
+        estimated_pd &gt; counteroffer_max_estimated_pd_proxy
+        AND estimated_pd &lt; decline_min_estimated_pd_proxy
+
+    DECLINE trigger:
+        estimated_pd &gt;= decline_min_estimated_pd_proxy
+
+REQUESTED PTI:
+    APPROVE:
+        requested_payment_to_income_ratio &lt;= product_approve_max_pti
+
+    COUNTEROFFER candidate:
+        requested_payment_to_income_ratio &gt; product_approve_max_pti
+        and counteroffer can potentially reduce approved PTI to target
+
+    MANUAL_REVIEW:
+        requested_payment_to_income_ratio &gt; product_approve_max_pti
+        and requested_payment_to_income_ratio &lt; product_decline_min_pti
+        where counteroffer is not cleanly viable or review triggers apply
+
+    DECLINE trigger:
+        requested_payment_to_income_ratio &gt;= product_decline_min_pti
+        when no viable counteroffer or review path is intended
+
+DTI:
+    APPROVE:
+        debt_to_income_ratio &lt;= approve_max_dti
+
+    MANUAL_REVIEW:
+        debt_to_income_ratio &gt; approve_max_dti
+        AND debt_to_income_ratio &lt; decline_min_dti
+
+    DECLINE:
+        debt_to_income_ratio &gt;= decline_min_dti
+
+REQUESTED EXPECTED LOSS:
+    Clean approval must satisfy:
+        requested_expected_loss_amount &lt;= product_approve_max_requested_el
+
+    Counteroffer may be considered when requested Expected Loss exceeds clean approval tolerance
+    but approved-exposure Expected Loss can satisfy product_approved_el_cap.
+
+    Decline / review boundary uses:
+        product_review_max_requested_el
+        product_decline_min_requested_el
+        final strategy hierarchy
+
+COUNTEROFFER:
+    A preliminary counteroffer route is not final.
+    Feasibility requires later approved-exposure calculation.
+
+MANUAL REVIEW:
+    Manual review remains unresolved by design.
+
+BOUNDARY:
+    This section is documentation only.
+    It does not execute logic.
+    It does not change thresholds.
+    It does not change final outcomes.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 3.5 — LOCAL PARAMETER, SOURCE, PRODUCT POLICY, AND REGISTRY SANITY CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight setup diagnostics after the fail-fast checks have passed.
+
+INTERPRETATION:
+    These queries are setup visibility checks only.
+
+    They are not:
+        full Module 2 QA,
+        final strategy validation,
+        archive validation,
+        matched comparison,
+        or evidence capture.
+
+WHY THESE OUTPUTS MATTER:
+    Before downstream stages run, users should be able to see:
+        the active strategy card,
+        the effective Module 1 source scope,
+        the campaign registry match,
+        the threshold setup,
+        and the product policy setup.
+
+****************************************************************************************************/
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5A Active strategy parameter row.
+
+Expected:
+    exactly one row.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    active_strategy_flag,
+
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    campaign_registry_required_flag,
+
+    module1_input_source,
+    source_module1_scenario_set_name,
+    source_module1_scenario_name,
+    source_population_id,
+
+    archive_run_flag,
+    strategy_archive_reset_mode,
+    failed_counteroffer_resolution
+FROM tmp_module2_strategy_params
+WHERE active_strategy_flag IS TRUE;
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5B Effective Module 1 source-selection scope.
+
+Expected:
+    exactly one row.
+
+This confirms what Module 1 scenario / population slice Section 3 validated.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    module1_input_source,
+    source_table_schema,
+    source_table_name,
+    source_scenario_set_column_name,
+    source_scenario_name_column_name,
+
+    effective_module1_scenario_set_name,
+    effective_module1_scenario_name,
+    effective_population_id,
+
+    selected_row_count,
+    selected_distinct_application_id_count,
+    duplicate_application_group_count,
+    null_required_field_row_count
+FROM tmp_m2_source_selection_scope;
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5C Current run campaign registry match.
+
+Expected for formal campaign runs:
+    run_registry_match_status = RUN_REGISTRY_MATCHED
+
+Ad hoc development runs may use:
+    RUN_REGISTRY_NOT_FOUND_FALLBACK_ALLOWED
+
+if campaign_registry_required_flag = FALSE.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    campaign_registry_required_flag,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    registry_match_count,
+    run_registry_match_status,
+
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    module1_parameter_family_changed,
+    module2_strategy_family_changed,
+
+    expected_storyline,
+    readme_storyline_label,
+    linkedin_post_sequence
+FROM tmp_m2_campaign_registry_current_run_match;
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5D Global threshold setup.
+
+These are strategy controls only. They are not final strategy outcomes.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    approve_max_estimated_pd_proxy,
+    counteroffer_max_estimated_pd_proxy,
+    review_max_estimated_pd_proxy,
+    decline_min_estimated_pd_proxy,
+
+    global_approve_max_pti,
+    global_review_max_pti,
+    global_decline_min_pti,
+
+    approve_max_dti,
+    review_max_dti,
+    decline_min_dti,
+
+    borderline_threshold_buffer_pct
+FROM tmp_module2_strategy_params
+WHERE active_strategy_flag IS TRUE;
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5E Section 6 rule-control setup.
+
+These controls construct rule-trigger flags later. They do not assign final decisions.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    bankruptcy_policy_stop_enabled,
+    major_derogatory_policy_stop_enabled,
+    severe_delinquency_policy_stop_enabled,
+    severe_delinquency_count_threshold,
+
+    high_utilization_review_enabled,
+    high_utilization_review_threshold,
+
+    low_score_review_enabled,
+    low_score_review_threshold
+FROM tmp_module2_strategy_params
+WHERE active_strategy_flag IS TRUE;
+
+
+/*-----------------------------------------------------------------------------------------------
+3.5F Product policy setup.
+
+Expected:
+    five rows, one per supported product.
+
+Review this output when changing affordability thresholds, approved exposure limits,
+approved Expected Loss caps, counteroffer controls, or rounding increments.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    product_type,
+
+    product_approve_max_pti,
+    product_review_max_pti,
+    product_decline_min_pti,
+    counteroffer_target_pti,
+
+    product_approve_max_requested_el,
+    product_review_max_requested_el,
+    product_decline_min_requested_el,
+    product_approved_el_cap,
+
+    product_min_approved_amount,
+    product_max_approved_amount,
+
+    counteroffer_allowed_flag,
+    manual_review_allowed_flag,
+    product_min_counteroffer_pct,
+    product_max_exposure_reduction_pct,
+    exposure_assignment_method,
+    approved_amount_rounding_increment
+FROM tmp_module2_product_policy_params
+ORDER BY product_type;
+
+
+
+/***************************************************************************************************
+END OF SECTION 3 — FAIL-FAST STRATEGY PARAMETER, SOURCE, PRODUCT POLICY, AND REGISTRY GATEKEEPER
+
+Section 3 established:
+    1. Active strategy parameter cardinality validation.
+    2. Strategy identity validation.
+    3. Module 1 source-control validation.
+    4. Archive-control validation.
+    5. Campaign registry requirement validation.
+    6. Synthetic estimated-risk, PTI, and DTI threshold validation.
+    7. Decision convention validation.
+    8. Failed-counteroffer resolution validation.
+    9. Product policy cardinality and threshold validation.
+    10. Module 1 source table and selected-slice validation.
+    11. tmp_m2_source_selection_scope for effective source-scope review.
+    12. tmp_m2_campaign_registry_current_run_match for evidence-ID linkage.
+    13. Local setup diagnostics for strategy, source, registry, thresholds, rule controls, and product policy.
+
+No Module 1 rows have been staged into the main Module 2 pipeline.
+No strategy segmentation has been created.
+No rule flags have been assigned.
+No preliminary routing has been assigned.
+No approved exposure has been calculated.
+No approved Expected Loss has been calculated.
+No final decision_outcome has been assigned.
+No simulated reason codes have been assigned.
+No latest-run output has been created.
+No archive rows have been inserted.
+No matched comparison has been performed.
+No full QA validation has been performed.
+
+***************************************************************************************************/
+</code></pre>
+</div></article><article id="c038-m00657" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00657 · 2026-05-09T16:06:02.656000-04:00 · active path</p><div class="body"><p>section 4: </p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(111).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00661" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00661 · 2026-05-09T16:09:26.646421-04:00 · active path</p><div class="body"><p>Section 4 has been hardened as the Module 1 → Module 2 handoff layer. I preserved the accepted source-selection, lineage-normalization, requested-field aliasing, product-key normalization, product-policy validation, and local gatekeeper logic from the current Section 4 design. I also added a <strong>non-invasive registry-linkage sanity check</strong> so the staged technical run key can be visibly tied back to the Section 3 campaign registry match, without carrying campaign IDs into every row of the stage table. fileciteturn11file6</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 4 — MODULE 1 SOURCE SELECTION AND LINEAGE NORMALIZATION
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Safely consume finalized Module 1 outputs and create the clean Module 2 input foundation.
+
+    Section 4 answers:
+
+        &quot;Which Module 1 synthetic applicant population is the current Module 2 strategy run using,
+         and has that source been normalized into a stable Module 2 staging shape?&quot;
+
+    Module 2 can consume either:
+        1. the Module 1 latest-run table; or
+        2. a selected Module 1 scenario archive slice.
+
+    This section is the Module 1 → Module 2 handoff layer.
+
+SQL PURPOSE:
+    1. Read the active Module 2 strategy source-selection settings.
+    2. Select the correct Module 1 input source:
+            credit_decisioning_sim.synthetic_applications
+        or:
+            credit_decisioning_sim.synthetic_applications_scenario_archive
+    3. Normalize upstream Module 1 scenario lineage into Module 2 naming:
+            module1_scenario_set_name
+            module1_scenario_name
+            population_id
+    4. Preserve application-level identifiers.
+    5. Preserve borrower, product, affordability, requested-structure, and risk-economics fields.
+    6. Preserve Module 2 strategy metadata in the staged input.
+    7. Alias requested-exposure economics clearly for Module 2:
+            requested_monthly_payment_proxy
+            requested_payment_to_income_ratio
+            requested_expected_loss_amount
+    8. Create product_type_policy_key for later product-policy joins.
+    9. Validate that every source row maps to exactly one product policy configuration.
+    10. Confirm that Section 4 does not create decision, reason-code, or approved-exposure fields.
+
+INPUTS:
+    tmp_module2_strategy_params
+        Active Module 2 strategy parameter card.
+
+    tmp_module2_product_policy_params
+        Product-specific strategy and exposure policy parameter card.
+
+    tmp_m2_source_selection_scope
+        Effective Module 1 source-scope helper created by Section 3.
+
+    tmp_m2_campaign_registry_current_run_match
+        Campaign registry match helper created by Section 3.
+
+    credit_decisioning_sim.synthetic_applications
+        Module 1 latest-run output, used when module1_input_source = &#39;LATEST&#39;.
+
+    credit_decisioning_sim.synthetic_applications_scenario_archive
+        Module 1 scenario archive, used when module1_input_source = &#39;ARCHIVE&#39;.
+
+OUTPUT:
+    tmp_m2_stage_1_source_applications
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+WHY MODULE 2 CONSUMES MODULE 1 RATHER THAN REWRITING MODULE 1:
+    Module 1 is finalized, validated, and authoritative for synthetic applicant generation,
+    product structure, affordability proxy, estimated-PD proxy, LGD, and requested-exposure Expected
+    Loss.
+
+    Module 2 consumes Module 1 outputs as the synthetic applicant and risk foundation.
+
+    Module 2 does not redesign the synthetic population.
+    Module 2 does not recalculate estimated_pd.
+    Module 2 does not reinterpret Module 1 scenario outputs as forecasts.
+    Module 2 does not replace Module 1 scenario lineage.
+
+WHY LATEST-RUN AND ARCHIVE INPUTS ARE BOTH SUPPORTED:
+    LATEST input supports single-strategy development, smoke testing, and immediate QA against the
+    current Module 1 latest-run table.
+
+    ARCHIVE input supports controlled strategy comparison across completed Module 1 scenario slices
+    while preserving upstream Module 1 lineage.
+
+    For formal scenario / strategy campaigns, ARCHIVE input is preferred because it preserves the
+    exact upstream scenario slice used for matched comparison.
+
+WHY MODULE 1 SCENARIO LINEAGE MUST BE PRESERVED:
+    Module 1 scenario fields describe the upstream synthetic population and risk environment.
+
+    Module 2 strategy fields describe the downstream simulated strategy applied to that population.
+
+    These concepts must not be overloaded.
+
+    The same Module 2 strategy may be applied to many Module 1 scenarios.
+    The same Module 1 scenario may be evaluated under many Module 2 strategies.
+
+WHY CAMPAIGN IDS ARE NOT ADDED TO THIS STAGE:
+    Campaign IDs such as module1_run_id, module2_run_id, showcase_id, comparison_group_id, and
+    validation_evidence_group_id are evidence-linkage metadata.
+
+    They help connect SQL outputs to the run roadmap and Validation Summary.
+
+    They do not replace:
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        application_id.
+
+    Section 3 confirms the registry match.
+    Section 16 persists campaign IDs into evidence tables.
+
+    Section 4 preserves technical lineage and applicant-level source fields only.
+
+WHY PRODUCT_TYPE MAY NEED A POLICY KEY:
+    Module 1 may output product_type in a normalized code format or a display-style format.
+
+    Module 2 product policy parameters use normalized product keys:
+        MORTGAGE
+        HELOC
+        AUTO_LOAN
+        UNSECURED_PERSONAL_LOAN
+        REVOLVING_LINE
+
+    Section 4 preserves the original product_type and derives product_type_policy_key for later
+    strategy joins.
+
+    Module 1 is not modified.
+
+WHY PRODUCT POLICY VALIDATION HAPPENS BEFORE POLICY RULES:
+    Downstream strategy rules are product-aware.
+
+    A missing product policy configuration would make decision logic ambiguous, so Section 4 fails
+    before strategy segmentation, rule flags, or decisions are created.
+
+WHY REQUESTED-STRUCTURE ALIASES ARE CREATED:
+    Module 1 monthly_payment_proxy and payment_to_income_ratio describe the original requested
+    structure.
+
+    Module 2 later calculates approved_monthly_payment_proxy and approved_payment_to_income_ratio
+    after exposure treatment.
+
+    Creating requested_* aliases now prevents ambiguity.
+
+WHY EXPECTED_LOSS_AMOUNT IS ALIASED:
+    Module 1 expected_loss_amount is requested-exposure Expected Loss.
+
+    Module 2 carries it as:
+        requested_expected_loss_amount
+
+    Module 2 later calculates:
+        approved_expected_loss_amount
+
+WHY ESTIMATED_PD REMAINS THE COLUMN NAME:
+    estimated_pd is the finalized Module 1 SQL output column.
+
+    In all interpretation, comments, QA, and documentation, estimated_pd means the synthetic
+    estimated-PD proxy.
+
+    Module 2 V1.0 does not recalculate estimated_pd.
+
+WHY NO DECISION OUTCOMES ARE CREATED IN SECTION 4:
+    Section 4 is a source-staging and lineage-normalization layer only.
+
+    It does not create:
+        decision_outcome
+        decision_path
+        approval_flag
+        decline_flag
+        manual_review_flag
+        counteroffer_flag
+        simulated_offer_exposure_flag
+        reason codes
+        approved_amount
+        approved payment
+        approved PTI
+        approved Expected Loss
+
+WHY PRODUCT-POLICY JOIN IN SECTION 4 IS VALIDATION-ONLY:
+    Section 4 confirms product policy configuration availability.
+
+    It does not apply:
+        product caps,
+        counteroffer limits,
+        PTI rules,
+        requested Expected Loss rules,
+        approved Expected Loss rules,
+        or final strategy treatment.
+
+GOVERNANCE ROLE:
+    Section 4 protects source lineage, source grain, product mapping, and requested-exposure
+    interpretation before downstream strategy logic begins.
+
+TESTING RELEVANCE:
+    Section 4 diagnostics confirm:
+        the selected source row count,
+        application_id uniqueness,
+        Module 1 scenario lineage,
+        Module 2 strategy metadata,
+        product normalization,
+        product-policy configuration availability,
+        requested-field aliasing,
+        and estimated_pd availability.
+
+DOWNSTREAM DEPENDENCY:
+    Section 5 consumes tmp_m2_stage_1_source_applications.
+
+    All downstream Module 2 logic should read from the staged source table, not directly from
+    Module 1 latest-run or archive tables.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 4.1 — CLEAN RESET OF SECTION 4 STAGING OBJECT
+****************************************************************************************************
+
+PURPOSE:
+    Drop the Section 4 staging object before rebuilding the Module 1 → Module 2 handoff layer.
+
+WHY THIS MATTERS:
+    A partial rerun should not allow stale source-stage rows to remain available to Section 5.
+
+BOUNDARY:
+    This drop affects only the temporary source-stage object.
+
+    It does not modify Module 1 outputs.
+    It does not modify Module 2 latest-run output.
+    It does not modify Module 2 archive output.
+    It does not modify evidence tables.
+    It does not modify registry tables.
+
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_stage_1_source_applications;
+
+
+
+/***************************************************************************************************
+SECTION 4.2 — CREATE MODULE 1 SOURCE-STAGING TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_m2_stage_1_source_applications
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+SOURCE OPTIONS:
+    LATEST:
+        credit_decisioning_sim.synthetic_applications
+
+    ARCHIVE:
+        credit_decisioning_sim.synthetic_applications_scenario_archive
+        filtered to:
+            source_module1_scenario_set_name
+            source_module1_scenario_name
+            source_population_id
+
+IMPORTANT:
+    Downstream Module 2 stages should read from:
+        tmp_m2_stage_1_source_applications
+
+    They should not read directly from Module 1 tables.
+
+DYNAMIC SQL BOUNDARY:
+    Dynamic SQL is used only because the selected source table and scenario column names can vary.
+
+    The output schema is fixed and governed.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    p RECORD;
+
+    v_source_table_schema TEXT;
+    v_source_table_name TEXT;
+
+    v_scenario_set_col TEXT;
+    v_scenario_name_col TEXT;
+
+    v_module1_model_version_expr TEXT;
+    v_anchor_date_expr TEXT;
+    v_application_seq_expr TEXT;
+    v_application_date_expr TEXT;
+    v_loan_term_months_expr TEXT;
+    v_base_apr_expr TEXT;
+    v_prequalified_flag_expr TEXT;
+    v_returning_customer_flag_expr TEXT;
+
+    v_create_sql TEXT;
+BEGIN
+    SELECT *
+    INTO p
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1;
+
+    IF p.module1_input_source = &#39;LATEST&#39; THEN
+        v_source_table_schema := &#39;credit_decisioning_sim&#39;;
+        v_source_table_name := &#39;synthetic_applications&#39;;
+    ELSIF p.module1_input_source = &#39;ARCHIVE&#39; THEN
+        v_source_table_schema := &#39;credit_decisioning_sim&#39;;
+        v_source_table_name := &#39;synthetic_applications_scenario_archive&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: module1_input_source must be LATEST or ARCHIVE. Found: %.&#39;,
+            COALESCE(p.module1_input_source, &#39;&lt;NULL&gt;&#39;);
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Identify Module 1 scenario columns.
+
+    Module 1 latest-run outputs may use:
+        scenario_set_name
+        scenario_name
+
+    Archive or downstream-normalized outputs may use:
+        module1_scenario_set_name
+        module1_scenario_name
+
+    Section 4 normalizes both forms into:
+        module1_scenario_set_name
+        module1_scenario_name
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;module1_scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;module1_scenario_set_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;scenario_set_name&#39;
+    ) THEN
+        v_scenario_set_col := &#39;scenario_set_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: selected Module 1 source %.% must contain scenario_set_name or module1_scenario_set_name.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;module1_scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;module1_scenario_name&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;scenario_name&#39;
+    ) THEN
+        v_scenario_name_col := &#39;scenario_name&#39;;
+    ELSE
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: selected Module 1 source %.% must contain scenario_name or module1_scenario_name.&#39;,
+            v_source_table_schema,
+            v_source_table_name;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Optional / normalized source expressions.
+
+    If a field is required for Module 2 V1.0 but absent from Module 1, the source expression is set
+    to NULL and the local Section 4 gatekeeper fails clearly.
+
+    This avoids silently inventing missing Module 1 data.
+
+    Optional relationship fields:
+        prequalified_flag
+        returning_customer_flag
+
+    These remain nullable because they may not exist in every Module 1 output version.
+    -------------------------------------------------------------------------------------------*/
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;module1_model_version&#39;
+    ) THEN
+        v_module1_model_version_expr := &#39;src.module1_model_version::TEXT&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;model_version&#39;
+    ) THEN
+        v_module1_model_version_expr := &#39;src.model_version::TEXT&#39;;
+    ELSE
+        v_module1_model_version_expr := &#39;NULL::TEXT&#39;;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;anchor_date&#39;
+    ) THEN
+        v_anchor_date_expr := &#39;src.anchor_date::DATE&#39;;
+    ELSE
+        v_anchor_date_expr := &#39;NULL::DATE&#39;;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;application_seq&#39;
+    ) THEN
+        v_application_seq_expr := &#39;src.application_seq::BIGINT&#39;;
+    ELSE
+        v_application_seq_expr := &#39;NULL::BIGINT&#39;;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;application_date&#39;
+    ) THEN
+        v_application_date_expr := &#39;src.application_date::DATE&#39;;
+    ELSE
+        v_application_date_expr := &#39;NULL::DATE&#39;;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;loan_term_months&#39;
+    ) THEN
+        v_loan_term_months_expr := &#39;src.loan_term_months::INTEGER&#39;;
+    ELSE
+        v_loan_term_months_expr := &#39;NULL::INTEGER&#39;;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;base_apr_for_payment_calc&#39;
+    ) THEN
+        v_base_apr_expr := &#39;src.base_apr_for_payment_calc::NUMERIC&#39;;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;base_apr_for_payment_calculation&#39;
+    ) THEN
+        v_base_apr_expr := &#39;src.base_apr_for_payment_calculation::NUMERIC&#39;;
+    ELSE
+        v_base_apr_expr := &#39;NULL::NUMERIC&#39;;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;prequalified_flag&#39;
+    ) THEN
+        v_prequalified_flag_expr := &#39;src.prequalified_flag::BOOLEAN&#39;;
+    ELSE
+        v_prequalified_flag_expr := &#39;NULL::BOOLEAN&#39;;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = v_source_table_schema
+          AND table_name = v_source_table_name
+          AND column_name = &#39;returning_customer_flag&#39;
+    ) THEN
+        v_returning_customer_flag_expr := &#39;src.returning_customer_flag::BOOLEAN&#39;;
+    ELSE
+        v_returning_customer_flag_expr := &#39;NULL::BOOLEAN&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Dynamic source-staging query.
+
+    Dynamic SQL is used only to safely handle:
+        selected source table,
+        scenario lineage column names,
+        optional source-field expressions.
+
+    The output schema is fixed and governed.
+    -------------------------------------------------------------------------------------------*/
+    v_create_sql := FORMAT($sql$
+        CREATE TEMP TABLE tmp_m2_stage_1_source_applications
+        ON COMMIT PRESERVE ROWS
+        AS
+        WITH active_strategy_params AS (
+            SELECT *
+            FROM tmp_module2_strategy_params
+            WHERE active_strategy_flag IS TRUE
+            LIMIT 1
+        ),
+
+        source_rows AS (
+            SELECT
+                /***********************************************************************************
+                Module 2 strategy metadata.
+
+                These fields are carried from the beginning so every downstream stage preserves both
+                upstream Module 1 lineage and downstream Module 2 strategy lineage.
+
+                strategy_run_id and strategy_run_ts are audit metadata. They do not replace the
+                archive replacement / rerun key.
+                ***********************************************************************************/
+                p.module2_model_version,
+                p.strategy_set_name,
+                p.strategy_name,
+                p.strategy_version,
+                p.strategy_run_id,
+                p.strategy_run_ts,
+
+                /***********************************************************************************
+                Module 1 lineage.
+
+                Module 1 scenario metadata describes the synthetic population and upstream risk
+                environment.
+                ***********************************************************************************/
+                %s AS module1_model_version,
+                %s AS module1_scenario_set_name,
+                %s AS module1_scenario_name,
+                src.population_id::TEXT AS population_id,
+                %s AS anchor_date,
+                p.module1_input_source,
+                %L::TEXT AS module1_source_table_name,
+
+                /***********************************************************************************
+                Application lineage.
+                ***********************************************************************************/
+                %s AS application_seq,
+                src.application_id::TEXT AS application_id,
+                src.applicant_id::TEXT AS applicant_id,
+                %s AS application_date,
+
+                /***********************************************************************************
+                Product / score fields.
+
+                product_type preserves the original Module 1 value.
+
+                product_type_policy_key is the normalized Module 2 product policy join key.
+                ***********************************************************************************/
+                src.product_type::TEXT AS product_type,
+
+                CASE
+                    WHEN UPPER(REGEXP_REPLACE(BTRIM(src.product_type::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (&#39;MORTGAGE&#39;, &#39;MORTGAGE_LOAN&#39;)
+                        THEN &#39;MORTGAGE&#39;
+
+                    WHEN UPPER(REGEXP_REPLACE(BTRIM(src.product_type::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (&#39;HELOC&#39;, &#39;HOME_EQUITY_LINE&#39;, &#39;HOME_EQUITY_LINE_OF_CREDIT&#39;)
+                        THEN &#39;HELOC&#39;
+
+                    WHEN UPPER(REGEXP_REPLACE(BTRIM(src.product_type::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (&#39;AUTO&#39;, &#39;AUTO_LOAN&#39;, &#39;AUTO_FINANCE&#39;)
+                        THEN &#39;AUTO_LOAN&#39;
+
+                    WHEN UPPER(REGEXP_REPLACE(BTRIM(src.product_type::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (
+                            &#39;UNSECURED_PERSONAL_LOAN&#39;,
+                            &#39;PERSONAL_LOAN&#39;,
+                            &#39;UNSECURED_LOAN&#39;,
+                            &#39;UNSECURED_INSTALLMENT_LOAN&#39;
+                         )
+                        THEN &#39;UNSECURED_PERSONAL_LOAN&#39;
+
+                    WHEN UPPER(REGEXP_REPLACE(BTRIM(src.product_type::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                         IN (
+                            &#39;REVOLVING_LINE&#39;,
+                            &#39;REVOLVING&#39;,
+                            &#39;CREDIT_CARD&#39;,
+                            &#39;CREDIT_CARD_LINE&#39;,
+                            &#39;REVOLVING_CREDIT_LINE&#39;
+                         )
+                        THEN &#39;REVOLVING_LINE&#39;
+
+                    ELSE NULL
+                END AS product_type_policy_key,
+
+                src.score_band::TEXT AS score_band,
+                src.credit_score::INTEGER AS credit_score,
+
+                /***********************************************************************************
+                Borrower / behavioral fields.
+                ***********************************************************************************/
+                src.annual_income::NUMERIC AS annual_income,
+                src.debt_to_income_ratio::NUMERIC AS debt_to_income_ratio,
+                src.utilization_rate::NUMERIC AS utilization_rate,
+                src.tradeline_count::INTEGER AS tradeline_count,
+                src.months_since_oldest_trade::INTEGER AS months_since_oldest_trade,
+                src.recent_inquiry_count::INTEGER AS recent_inquiry_count,
+                src.delinquency_count_12m::INTEGER AS delinquency_count_12m,
+                src.major_derogatory_flag::BOOLEAN AS major_derogatory_flag,
+                src.bankruptcy_flag::BOOLEAN AS bankruptcy_flag,
+
+                /***********************************************************************************
+                Optional relationship / context fields.
+
+                These remain nullable if Module 1 did not surface them.
+                ***********************************************************************************/
+                %s AS prequalified_flag,
+                %s AS returning_customer_flag,
+
+                /***********************************************************************************
+                Requested structure from Module 1.
+                ***********************************************************************************/
+                src.requested_amount::NUMERIC AS requested_amount,
+                %s AS loan_term_months,
+                %s AS base_apr_for_payment_calc,
+                src.monthly_payment_proxy::NUMERIC AS monthly_payment_proxy,
+                src.payment_to_income_ratio::NUMERIC AS payment_to_income_ratio,
+                src.amount_to_income_ratio::NUMERIC AS amount_to_income_ratio,
+
+                /***********************************************************************************
+                Module 2 requested-structure aliases.
+
+                These clarify that the values are based on the original requested structure.
+                ***********************************************************************************/
+                src.monthly_payment_proxy::NUMERIC AS requested_monthly_payment_proxy,
+                src.payment_to_income_ratio::NUMERIC AS requested_payment_to_income_ratio,
+                src.expected_loss_amount::NUMERIC AS requested_expected_loss_amount,
+
+                /***********************************************************************************
+                Module 1 risk economics.
+
+                estimated_pd remains the finalized Module 1 SQL field and is interpreted as the
+                synthetic estimated-PD proxy.
+
+                expected_loss_amount remains available as the original Module 1 requested-exposure
+                Expected Loss.
+                ***********************************************************************************/
+                src.estimated_pd::NUMERIC AS estimated_pd,
+                src.estimated_lgd::NUMERIC AS estimated_lgd,
+                src.expected_loss_amount::NUMERIC AS expected_loss_amount
+
+            FROM %I.%I src
+            CROSS JOIN active_strategy_params p
+            WHERE p.module1_input_source = &#39;LATEST&#39;
+               OR (
+                    p.module1_input_source = &#39;ARCHIVE&#39;
+                AND %s = p.source_module1_scenario_set_name
+                AND %s = p.source_module1_scenario_name
+                AND src.population_id::TEXT = p.source_population_id
+               )
+        ),
+
+        product_policy_match AS (
+            SELECT
+                product_type,
+                COUNT(*) AS product_policy_match_count
+            FROM tmp_module2_product_policy_params
+            GROUP BY product_type
+        )
+
+        SELECT
+            sr.*,
+
+            COALESCE(pp.product_policy_match_count, 0) AS product_policy_match_count,
+
+            (
+                COALESCE(pp.product_policy_match_count, 0) = 1
+            ) AS product_policy_config_found_flag
+
+        FROM source_rows sr
+        LEFT JOIN product_policy_match pp
+            ON pp.product_type = sr.product_type_policy_key;
+    $sql$,
+        v_module1_model_version_expr,
+        FORMAT(&#39;src.%I::TEXT&#39;, v_scenario_set_col),
+        FORMAT(&#39;src.%I::TEXT&#39;, v_scenario_name_col),
+        v_anchor_date_expr,
+        v_source_table_schema || &#39;.&#39; || v_source_table_name,
+
+        v_application_seq_expr,
+        v_application_date_expr,
+
+        v_prequalified_flag_expr,
+        v_returning_customer_flag_expr,
+
+        v_loan_term_months_expr,
+        v_base_apr_expr,
+
+        v_source_table_schema,
+        v_source_table_name,
+
+        FORMAT(&#39;src.%I::TEXT&#39;, v_scenario_set_col),
+        FORMAT(&#39;src.%I::TEXT&#39;, v_scenario_name_col)
+    );
+
+    EXECUTE v_create_sql;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 4.3 — LOCAL FAIL-FAST CHECKS FOR SOURCE STAGING
+****************************************************************************************************
+
+PURPOSE:
+    Protect the decision engine from consuming ambiguous or malformed source input.
+
+BUSINESS PURPOSE:
+    Ensure the Module 1 → Module 2 handoff is complete, unique, scoped, and interpretable before
+    downstream strategy segmentation begins.
+
+WHY THESE CHECKS EXIST:
+    Once Section 5 begins, downstream stages assume that:
+        the staged source contains one row per application_id,
+        exactly one Module 1 scenario / population slice is present,
+        Module 2 strategy metadata is populated,
+        required Module 1 source fields are available,
+        product types normalize to supported policy keys,
+        product-policy configuration exists,
+        and no decision or approved-exposure fields have been created too early.
+
+These checks are local Section 4 gatekeepers only.
+
+They are not:
+    final strategy QA,
+    reason-code validation,
+    approved-exposure validation,
+    archive validation,
+    matched strategy comparison,
+    or full Module 2 validation.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage_row_count BIGINT;
+    v_distinct_application_count BIGINT;
+    v_duplicate_application_group_count BIGINT;
+
+    v_scenario_population_count BIGINT;
+    v_null_required_field_count BIGINT;
+    v_unmapped_product_type_count BIGINT;
+    v_missing_product_policy_count BIGINT;
+    v_multiple_product_policy_count BIGINT;
+
+    v_strategy_metadata_null_count BIGINT;
+    v_forbidden_column_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: staged source table must contain rows.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage_row_count
+    FROM tmp_m2_stage_1_source_applications;
+
+    IF v_stage_row_count = 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: tmp_m2_stage_1_source_applications contains zero rows.&#39;;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id must remain unique.
+
+    Module 2 V1.0 expects one staged row per synthetic application for the selected Module 1 source
+    slice.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_distinct_application_count
+    FROM tmp_m2_stage_1_source_applications;
+
+    IF v_distinct_application_count &lt;&gt; v_stage_row_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_group_count
+        FROM (
+            SELECT application_id
+            FROM tmp_m2_stage_1_source_applications
+            GROUP BY application_id
+            HAVING COUNT(*) &gt; 1
+        ) d;
+
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: staged source contains duplicate application_id values. Rows=%, distinct application_id=%, duplicate groups=%.&#39;,
+            v_stage_row_count,
+            v_distinct_application_count,
+            v_duplicate_application_group_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exactly one Module 1 scenario / population slice.
+
+    Multi-scenario processing is intentionally not built in Module 2 V1.0.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT (
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    ))
+    INTO v_scenario_population_count
+    FROM tmp_m2_stage_1_source_applications;
+
+    IF v_scenario_population_count &lt;&gt; 1 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: staged source contains % Module 1 scenario / population combinations. Expected exactly one.&#39;,
+            v_scenario_population_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Module 2 strategy metadata must be present.
+
+    These fields support traceability through every downstream stage.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_strategy_metadata_null_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE module2_model_version IS NULL
+       OR NULLIF(BTRIM(module2_model_version), &#39;&#39;) IS NULL
+       OR strategy_set_name IS NULL
+       OR NULLIF(BTRIM(strategy_set_name), &#39;&#39;) IS NULL
+       OR strategy_name IS NULL
+       OR NULLIF(BTRIM(strategy_name), &#39;&#39;) IS NULL
+       OR strategy_version IS NULL
+       OR NULLIF(BTRIM(strategy_version), &#39;&#39;) IS NULL
+       OR strategy_run_id IS NULL
+       OR NULLIF(BTRIM(strategy_run_id), &#39;&#39;) IS NULL
+       OR strategy_run_ts IS NULL;
+
+    IF v_strategy_metadata_null_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % staged row(s) have missing Module 2 strategy metadata.&#39;,
+            v_strategy_metadata_null_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required source fields must be populated.
+
+    Optional relationship fields are intentionally excluded:
+        prequalified_flag
+        returning_customer_flag
+
+    Product-specific term convention:
+        loan_term_months is required for fixed-term / term-reference products, but it is not
+        required for REVOLVING_LINE.
+
+        Module 1 represents Revolving Line as a revolving exposure without a fixed amortizing term.
+        A NULL loan_term_months value for REVOLVING_LINE is therefore expected source behavior, not
+        a malformed source row.
+
+        Do not impute a revolving term here. Section 4 preserves Module 1 outputs and normalizes
+        lineage for Module 2; it does not rewrite Module 1 product mechanics.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_null_required_field_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE module1_model_version IS NULL
+       OR NULLIF(BTRIM(module1_model_version), &#39;&#39;) IS NULL
+       OR module1_scenario_set_name IS NULL
+       OR NULLIF(BTRIM(module1_scenario_set_name), &#39;&#39;) IS NULL
+       OR module1_scenario_name IS NULL
+       OR NULLIF(BTRIM(module1_scenario_name), &#39;&#39;) IS NULL
+       OR population_id IS NULL
+       OR NULLIF(BTRIM(population_id), &#39;&#39;) IS NULL
+       OR anchor_date IS NULL
+       OR module1_input_source IS NULL
+       OR NULLIF(BTRIM(module1_input_source), &#39;&#39;) IS NULL
+       OR module1_source_table_name IS NULL
+       OR NULLIF(BTRIM(module1_source_table_name), &#39;&#39;) IS NULL
+
+       OR application_seq IS NULL
+       OR application_id IS NULL
+       OR NULLIF(BTRIM(application_id), &#39;&#39;) IS NULL
+       OR applicant_id IS NULL
+       OR NULLIF(BTRIM(applicant_id), &#39;&#39;) IS NULL
+       OR application_date IS NULL
+
+       OR product_type IS NULL
+       OR NULLIF(BTRIM(product_type), &#39;&#39;) IS NULL
+       OR product_type_policy_key IS NULL
+       OR NULLIF(BTRIM(product_type_policy_key), &#39;&#39;) IS NULL
+       OR score_band IS NULL
+       OR NULLIF(BTRIM(score_band), &#39;&#39;) IS NULL
+       OR credit_score IS NULL
+
+       OR annual_income IS NULL
+       OR debt_to_income_ratio IS NULL
+       OR utilization_rate IS NULL
+       OR tradeline_count IS NULL
+       OR months_since_oldest_trade IS NULL
+       OR recent_inquiry_count IS NULL
+       OR delinquency_count_12m IS NULL
+       OR major_derogatory_flag IS NULL
+       OR bankruptcy_flag IS NULL
+
+       OR requested_amount IS NULL
+
+       OR (
+            COALESCE(product_type_policy_key, &#39;__UNMAPPED__&#39;) &lt;&gt; &#39;REVOLVING_LINE&#39;
+            AND loan_term_months IS NULL
+       )
+
+       OR base_apr_for_payment_calc IS NULL
+       OR monthly_payment_proxy IS NULL
+       OR payment_to_income_ratio IS NULL
+       OR amount_to_income_ratio IS NULL
+       OR requested_monthly_payment_proxy IS NULL
+       OR requested_payment_to_income_ratio IS NULL
+       OR requested_expected_loss_amount IS NULL
+
+       OR estimated_pd IS NULL
+       OR estimated_lgd IS NULL
+       OR expected_loss_amount IS NULL;
+
+    IF v_null_required_field_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % staged row(s) have null required source or lineage fields.&#39;,
+            v_null_required_field_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: every product_type must normalize into a supported product_type_policy_key.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_unmapped_product_type_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE product_type_policy_key IS NULL
+       OR product_type_policy_key NOT IN (
+            &#39;MORTGAGE&#39;,
+            &#39;HELOC&#39;,
+            &#39;AUTO_LOAN&#39;,
+            &#39;UNSECURED_PERSONAL_LOAN&#39;,
+            &#39;REVOLVING_LINE&#39;
+       );
+
+    IF v_unmapped_product_type_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % staged row(s) have product_type values that cannot be normalized to supported Module 2 product policy keys.&#39;,
+            v_unmapped_product_type_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: every staged product key must map to exactly one product policy row.
+
+    Section 4 does not apply product policy rules. It only validates that product policy
+    configuration is available.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_missing_product_policy_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE product_policy_match_count = 0
+       OR product_policy_config_found_flag IS DISTINCT FROM TRUE;
+
+    IF v_missing_product_policy_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % staged row(s) do not map to a product policy configuration.&#39;,
+            v_missing_product_policy_count;
+    END IF;
+
+    SELECT COUNT(*)
+    INTO v_multiple_product_policy_count
+    FROM tmp_m2_stage_1_source_applications
+    WHERE product_policy_match_count &gt; 1;
+
+    IF v_multiple_product_policy_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: % staged row(s) map to more than one product policy configuration.&#39;,
+            v_multiple_product_policy_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 4 must not create decision, reason-code, or approved-exposure fields.
+
+    Section 4 is the source-staging layer only. If any final-decision or approved-exposure fields
+    appear here, a downstream section boundary has been violated.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_forbidden_column_count
+    FROM pg_attribute
+    WHERE attrelid = &#39;tmp_m2_stage_1_source_applications&#39;::REGCLASS
+      AND attnum &gt; 0
+      AND NOT attisdropped
+      AND attname IN (
+            &#39;decision_outcome&#39;,
+            &#39;decision_path&#39;,
+            &#39;approval_flag&#39;,
+            &#39;decline_flag&#39;,
+            &#39;manual_review_flag&#39;,
+            &#39;counteroffer_flag&#39;,
+            &#39;simulated_offer_exposure_flag&#39;,
+
+            &#39;primary_reason_code&#39;,
+            &#39;secondary_reason_code&#39;,
+            &#39;tertiary_reason_code&#39;,
+            &#39;triggered_reason_code_list&#39;,
+            &#39;reason_priority_rank&#39;,
+            &#39;primary_reason_family&#39;,
+
+            &#39;approved_amount&#39;,
+            &#39;counteroffer_amount&#39;,
+            &#39;approved_monthly_payment_proxy&#39;,
+            &#39;approved_payment_to_income_ratio&#39;,
+            &#39;approved_expected_loss_amount&#39;
+      );
+
+    IF v_forbidden_column_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 4 failure: forbidden decision, reason-code, or approved-exposure field(s) were created in source staging.&#39;;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 4.4 — LOCAL SOURCE-STAGING SANITY CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight staging diagnostics for source selection and lineage normalization.
+
+BUSINESS PURPOSE:
+    Make the Module 1 → Module 2 handoff reviewable before downstream strategy logic begins.
+
+INTERPRETATION:
+    These are Section 4 sanity checks only.
+
+    They are not:
+        full Module 2 QA,
+        final decision validation,
+        reason-code validation,
+        approved-exposure validation,
+        archive validation,
+        matched strategy comparison,
+        or Validation Summary evidence by themselves.
+
+****************************************************************************************************/
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.1 Row count and distinct application_id count.
+
+Expected:
+    staged_row_count = distinct_application_id_count.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS staged_row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+FROM tmp_m2_stage_1_source_applications;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.2 Module 1 scenario / population lineage.
+
+Expected:
+    exactly one row in this output for Module 2 V1.0 single-slice processing.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    COUNT(*) AS row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.3 Module 2 strategy metadata carried into source stage.
+
+Expected:
+    exactly one strategy identity for the staged run.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts
+ORDER BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.3A Campaign registry linkage available for evidence capture.
+
+Purpose:
+    Confirm that the technical Module 1 scenario × Module 2 strategy identity staged in Section 4
+    aligns with the registry match created in Section 3.
+
+Interpretation:
+    Section 4 does not carry campaign IDs into every staged row.
+
+    Section 16 consumes the registry match to persist campaign IDs into evidence tables.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    run_registry_match_status,
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+    readme_storyline_label,
+    linkedin_post_sequence
+FROM tmp_m2_campaign_registry_current_run_match;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.4 Source input type and source table.
+
+Expected:
+    exactly one row.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    module1_input_source,
+    module1_source_table_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    module1_input_source,
+    module1_source_table_name
+ORDER BY
+    module1_input_source,
+    module1_source_table_name;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.5 Product type normalization review.
+
+product_type:
+    original Module 1 value.
+
+product_type_policy_key:
+    normalized Module 2 policy join key.
+
+Expected:
+    each product_type maps to one supported product_type_policy_key.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    product_type,
+    product_type_policy_key,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    product_type,
+    product_type_policy_key
+ORDER BY
+    product_type_policy_key,
+    product_type;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.6 Unmapped product_type count.
+
+Expected:
+    zero.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS unmapped_product_type_rows
+FROM tmp_m2_stage_1_source_applications
+WHERE product_type_policy_key IS NULL
+   OR product_type_policy_key NOT IN (
+        &#39;MORTGAGE&#39;,
+        &#39;HELOC&#39;,
+        &#39;AUTO_LOAN&#39;,
+        &#39;UNSECURED_PERSONAL_LOAN&#39;,
+        &#39;REVOLVING_LINE&#39;
+   );
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.7 Product policy configuration match.
+
+Expected:
+    product_policy_config_found_flag = TRUE for every staged row.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    product_type_policy_key,
+    product_policy_match_count,
+    product_policy_config_found_flag,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    product_type_policy_key,
+    product_policy_match_count,
+    product_policy_config_found_flag
+ORDER BY
+    product_type_policy_key,
+    product_policy_match_count,
+    product_policy_config_found_flag;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.8 Required source-field null diagnostic.
+
+Expected:
+    null_required_source_or_lineage_rows = 0.
+
+This diagnostic mirrors the Section 4.3 fail-fast check for review visibility.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS null_required_source_or_lineage_rows
+FROM tmp_m2_stage_1_source_applications
+WHERE module1_model_version IS NULL
+   OR NULLIF(BTRIM(module1_model_version), &#39;&#39;) IS NULL
+   OR module1_scenario_set_name IS NULL
+   OR NULLIF(BTRIM(module1_scenario_set_name), &#39;&#39;) IS NULL
+   OR module1_scenario_name IS NULL
+   OR NULLIF(BTRIM(module1_scenario_name), &#39;&#39;) IS NULL
+   OR population_id IS NULL
+   OR NULLIF(BTRIM(population_id), &#39;&#39;) IS NULL
+   OR anchor_date IS NULL
+   OR module1_input_source IS NULL
+   OR NULLIF(BTRIM(module1_input_source), &#39;&#39;) IS NULL
+   OR module1_source_table_name IS NULL
+   OR NULLIF(BTRIM(module1_source_table_name), &#39;&#39;) IS NULL
+
+   OR application_seq IS NULL
+   OR application_id IS NULL
+   OR NULLIF(BTRIM(application_id), &#39;&#39;) IS NULL
+   OR applicant_id IS NULL
+   OR NULLIF(BTRIM(applicant_id), &#39;&#39;) IS NULL
+   OR application_date IS NULL
+
+   OR product_type IS NULL
+   OR NULLIF(BTRIM(product_type), &#39;&#39;) IS NULL
+   OR product_type_policy_key IS NULL
+   OR NULLIF(BTRIM(product_type_policy_key), &#39;&#39;) IS NULL
+   OR score_band IS NULL
+   OR NULLIF(BTRIM(score_band), &#39;&#39;) IS NULL
+   OR credit_score IS NULL
+
+   OR annual_income IS NULL
+   OR debt_to_income_ratio IS NULL
+   OR utilization_rate IS NULL
+   OR tradeline_count IS NULL
+   OR months_since_oldest_trade IS NULL
+   OR recent_inquiry_count IS NULL
+   OR delinquency_count_12m IS NULL
+   OR major_derogatory_flag IS NULL
+   OR bankruptcy_flag IS NULL
+
+   OR requested_amount IS NULL
+
+   OR (
+        COALESCE(product_type_policy_key, &#39;__UNMAPPED__&#39;) &lt;&gt; &#39;REVOLVING_LINE&#39;
+        AND loan_term_months IS NULL
+   )
+
+   OR base_apr_for_payment_calc IS NULL
+   OR monthly_payment_proxy IS NULL
+   OR payment_to_income_ratio IS NULL
+   OR amount_to_income_ratio IS NULL
+   OR requested_monthly_payment_proxy IS NULL
+   OR requested_payment_to_income_ratio IS NULL
+   OR requested_expected_loss_amount IS NULL
+
+   OR estimated_pd IS NULL
+   OR estimated_lgd IS NULL
+   OR expected_loss_amount IS NULL;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.9 Requested Expected Loss alias confirmation.
+
+Expected:
+    requested_expected_loss_amount = expected_loss_amount for every row.
+
+Interpretation:
+    expected_loss_amount is Module 1 requested-exposure Expected Loss.
+    requested_expected_loss_amount is the preferred Module 2 alias for that same value.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS rows_checked,
+    COUNT(*) FILTER (
+        WHERE requested_expected_loss_amount IS DISTINCT FROM expected_loss_amount
+    ) AS requested_expected_loss_alias_mismatch_rows,
+    MIN(requested_expected_loss_amount) AS min_requested_expected_loss_amount,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    MAX(requested_expected_loss_amount) AS max_requested_expected_loss_amount
+FROM tmp_m2_stage_1_source_applications;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.10 Requested monthly payment alias confirmation.
+
+Expected:
+    requested_monthly_payment_proxy = monthly_payment_proxy for every row.
+
+Interpretation:
+    monthly_payment_proxy is the Module 1 requested-structure payment proxy.
+    approved_monthly_payment_proxy is calculated later only after exposure treatment.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS rows_checked,
+    COUNT(*) FILTER (
+        WHERE requested_monthly_payment_proxy IS DISTINCT FROM monthly_payment_proxy
+    ) AS requested_monthly_payment_alias_mismatch_rows,
+    MIN(requested_monthly_payment_proxy) AS min_requested_monthly_payment_proxy,
+    AVG(requested_monthly_payment_proxy) AS avg_requested_monthly_payment_proxy,
+    MAX(requested_monthly_payment_proxy) AS max_requested_monthly_payment_proxy
+FROM tmp_m2_stage_1_source_applications;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.11 Requested PTI alias confirmation.
+
+Expected:
+    requested_payment_to_income_ratio = payment_to_income_ratio for every row.
+
+Interpretation:
+    payment_to_income_ratio is the Module 1 requested-structure PTI.
+    approved_payment_to_income_ratio is calculated later only after exposure treatment.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS rows_checked,
+    COUNT(*) FILTER (
+        WHERE requested_payment_to_income_ratio IS DISTINCT FROM payment_to_income_ratio
+    ) AS requested_pti_alias_mismatch_rows,
+    MIN(requested_payment_to_income_ratio) AS min_requested_payment_to_income_ratio,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    MAX(requested_payment_to_income_ratio) AS max_requested_payment_to_income_ratio
+FROM tmp_m2_stage_1_source_applications;
+
+
+/*-----------------------------------------------------------------------------------------------
+4.4.12 estimated_pd availability and synthetic estimated-PD proxy interpretation.
+
+Expected:
+    rows_missing_synthetic_estimated_pd_proxy = 0.
+
+Boundary:
+    estimated_pd remains the SQL field name from Module 1.
+    It is interpreted as the synthetic estimated-PD proxy.
+    Module 2 does not recalculate it.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS rows_with_estimated_pd,
+    COUNT(*) FILTER (WHERE estimated_pd IS NULL) AS rows_missing_synthetic_estimated_pd_proxy,
+    MIN(estimated_pd) AS min_synthetic_estimated_pd_proxy,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    MAX(estimated_pd) AS max_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_1_source_applications;
+
+
+
+/***************************************************************************************************
+END OF SECTION 4 — MODULE 1 SOURCE SELECTION AND LINEAGE NORMALIZATION
+
+If execution reaches this point:
+    1. tmp_m2_stage_1_source_applications exists.
+    2. It contains one row per application_id.
+    3. It contains exactly one Module 1 scenario / population slice.
+    4. Module 1 scenario lineage is normalized and preserved.
+    5. Module 2 strategy metadata is preserved.
+    6. Campaign registry match metadata remains available through
+       tmp_m2_campaign_registry_current_run_match for Section 16 evidence capture.
+    7. Application and applicant identifiers are preserved.
+    8. Borrower, product, requested-structure, affordability, and risk fields are preserved.
+    9. product_type_policy_key is created.
+    10. Every product_type maps to exactly one product policy row.
+    11. expected_loss_amount is aliased as requested_expected_loss_amount.
+    12. monthly_payment_proxy is aliased as requested_monthly_payment_proxy.
+    13. payment_to_income_ratio is aliased as requested_payment_to_income_ratio.
+    14. estimated_pd is preserved as the Module 1 SQL field and interpreted as the synthetic
+        estimated-PD proxy.
+
+No decision outcomes have been created.
+No decision flags have been created.
+No simulated offer-exposure flag has been created.
+No reason codes have been assigned.
+No approved amount has been calculated.
+No approved payment has been calculated.
+No approved PTI has been calculated.
+No approved Expected Loss has been calculated.
+No latest-run strategy decision output has been created.
+No archive rows have been inserted.
+No evidence rows have been inserted.
+No matched comparison has been performed.
+No full QA framework has been built.
+
+***************************************************************************************************/
+</code></pre>
+</div></article><article id="c038-m00663" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00663 · 2026-05-09T16:11:25.786000-04:00 · active path</p><div class="body"><p>section 5: </p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(112).txt</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00668" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00668 · 2026-05-09T16:15:20.045522-04:00 · active path</p><div class="body"><p>Section 5 is a commentary-hardening replacement only. No business logic, table names, thresholds, joins, or downstream dependencies are changed; no campaign registry update is needed in this section. I used your uploaded Section 5 as the base. fileciteturn13file1</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 5 — DERIVED STRATEGY SEGMENTATION LAYER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Create a non-decisioning strategy segmentation layer that translates continuous and categorical
+    Module 1 inputs into policy-readable diagnostic segments.
+
+    Section 5 answers:
+
+        &quot;How should this synthetic applicant be described for strategy-rule interpretation?&quot;
+
+    Section 5 does not answer:
+
+        &quot;What final simulated strategy outcome should this synthetic applicant receive?&quot;
+
+SQL PURPOSE:
+    1. Read from tmp_m2_stage_1_source_applications.
+    2. Preserve all Section 4 source, lineage, and Module 2 strategy metadata fields.
+    3. Attach active global strategy thresholds.
+    4. Attach product-specific policy thresholds and controls.
+    5. Normalize score_band into score_band_policy_key.
+    6. Derive non-decisioning diagnostic segments:
+            strategy_risk_tier
+            requested_pti_bucket
+            dti_bucket
+            requested_exposure_tier
+            requested_expected_loss_tier
+            product_score_policy_segment
+            mixed_signal_profile_type
+            mixed_signal_condition_count
+            borderline_profile_flag
+    7. Preserve threshold values in the staged data for downstream auditability.
+    8. Validate that segmentation is populated without creating decisions, flags, reason codes, or
+       approved-exposure outputs.
+
+INPUT:
+    tmp_m2_stage_1_source_applications
+
+OUTPUT:
+    tmp_m2_stage_2_strategy_segments
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+WHY SEGMENTATION IS SEPARATED FROM DECISION RULES:
+    Segmentation describes the synthetic applicant profile.
+
+    Decision rules later evaluate that profile and create rule-trigger flags.
+
+    Preliminary routing later prioritizes overlapping rule triggers.
+
+    Final decision resolution later incorporates approved exposure, counteroffer feasibility, approved
+    PTI, and approved Expected Loss.
+
+    Keeping these layers separate improves:
+        readability,
+        auditability,
+        QA,
+        troubleshooting,
+        strategy tuning,
+        and documentation traceability.
+
+WHY THRESHOLD VALUES ARE ATTACHED:
+    Downstream stages should be interpretable without forcing reviewers to reverse-engineer the
+    active strategy parameter tables.
+
+    Section 5 therefore carries forward:
+        global synthetic estimated-risk thresholds,
+        global PTI thresholds,
+        DTI thresholds,
+        rule-control parameters,
+        product PTI thresholds,
+        requested Expected Loss thresholds,
+        approved Expected Loss caps,
+        approved amount limits,
+        counteroffer controls,
+        and rounding controls.
+
+    This makes later rule flags, preliminary routing, exposure treatment, and final decision resolution
+    easier to audit.
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the finalized Module 1 SQL field.
+
+    Section 5 uses estimated_pd only as the synthetic estimated-PD proxy input for diagnostic
+    segmentation.
+
+    Section 5 does not recalculate estimated_pd.
+    Section 5 does not create a new post-decision risk model.
+
+REQUESTED PTI BOUNDARY:
+    requested_payment_to_income_ratio is the original requested-structure PTI from Module 1.
+
+    Approved payment and approved PTI do not exist yet.
+
+    Section 5 therefore segments requested affordability pressure, not approved affordability after
+    exposure treatment.
+
+DTI BOUNDARY:
+    debt_to_income_ratio is an existing-obligation capacity signal.
+
+    In Module 2 V1.0, DTI is not directly fixed by counteroffer exposure reduction because a
+    counteroffer changes the requested exposure treatment, not the applicant&#39;s existing obligations.
+
+REQUESTED EXPOSURE VS APPROVED EXPOSURE:
+    requested_amount is the original requested exposure from Module 1.
+
+    approved_amount does not exist in Section 5.
+
+    Section 5 may describe requested exposure intensity, but it does not assign approved exposure.
+
+REQUESTED EXPECTED LOSS VS APPROVED EXPECTED LOSS:
+    requested_expected_loss_amount is requested-exposure Expected Loss carried from Module 1.
+
+    approved_expected_loss_amount does not exist in Section 5.
+
+    Section 5 segments requested-exposure Expected Loss pressure before any approved-exposure
+    treatment is calculated.
+
+MIXED-SIGNAL PROFILE BOUNDARY:
+    mixed_signal_profile_type is diagnostic only.
+
+    It identifies realistic overlap patterns such as:
+        strong credit with high requested PTI,
+        weak credit with low requested PTI,
+        large exposure with low synthetic estimated-risk,
+        high synthetic estimated-risk with low exposure,
+        high DTI with low requested PTI.
+
+    It does not automatically approve, decline, route to review, or trigger counteroffer.
+
+BORDERLINE PROFILE BOUNDARY:
+    borderline_profile_flag uses the governed borderline_threshold_buffer_pct parameter from Section 2.
+
+    No hidden hardcoded threshold-adjacent buffer is used.
+
+    Borderline status is diagnostic only. It helps later QA and manual-review trigger interpretation
+    but does not create a final outcome in Section 5.
+
+WHY NO DECISION OUTPUTS ARE CREATED IN SECTION 5:
+    Section 5 does not create:
+        decision_outcome
+        decision_path
+        approval_flag
+        decline_flag
+        manual_review_flag
+        counteroffer_flag
+        simulated_offer_exposure_flag
+        reason codes
+        approved_amount
+        approved payment
+        approved PTI
+        approved Expected Loss
+
+GOVERNANCE ROLE:
+    Section 5 makes the strategy-rule input profile transparent.
+
+    It demonstrates separation of concerns:
+        Module 1 source values are preserved.
+        Strategy thresholds are attached.
+        Diagnostic segments are created.
+        Decision logic remains deferred.
+
+COMMON MISUSE TO AVOID:
+    Do not interpret strategy_risk_tier as a final decision.
+    Do not interpret requested_pti_bucket as approved affordability.
+    Do not interpret requested_expected_loss_tier as approved Expected Loss.
+    Do not interpret mixed_signal_profile_type as a final route.
+    Do not interpret borderline_profile_flag as automatic manual review.
+    Do not treat segmentation output as operational applicant treatment.
+
+TESTING RELEVANCE:
+    Section 5 local diagnostics help confirm that diagnostic segmentation is complete, stable, and
+    aligned to the selected Module 1 population and Module 2 strategy before rule-trigger construction
+    begins.
+
+DOWNSTREAM DEPENDENCY:
+    Section 6 consumes tmp_m2_stage_2_strategy_segments.
+
+    Downstream rule logic should not read directly from Section 4 when Section 5-derived diagnostic
+    fields are needed.
+
+PORTFOLIO ARTIFACT VALUE:
+    This section shows that the strategy engine is not a monolithic decision CASE block.
+
+    It demonstrates a mature staged architecture where applicant description, rule triggers,
+    preliminary routing, exposure treatment, final outcomes, explanation codes, archive comparison,
+    and validation evidence are separated and reviewable.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 5.1 — CLEAN RESET OF SECTION 5 STAGING OBJECT
+****************************************************************************************************
+
+PURPOSE:
+    Drop the Section 5 segmentation stage before rebuilding it.
+
+WHY THIS MATTERS:
+    A partial rerun should not allow stale segmentation rows to remain available to Section 6.
+
+BOUNDARY:
+    This drop affects only the temporary Section 5 staging object.
+
+    It does not modify Module 1 outputs.
+    It does not modify Module 2 latest-run output.
+    It does not modify Module 2 archive output.
+    It does not modify evidence tables.
+    It does not modify registry tables.
+
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_stage_2_strategy_segments;
+
+
+
+/***************************************************************************************************
+SECTION 5.2 — CREATE DERIVED STRATEGY SEGMENTATION TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_m2_stage_2_strategy_segments
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+INPUT:
+    tmp_m2_stage_1_source_applications
+
+OUTPUT:
+    All Section 4 fields plus:
+        global strategy thresholds,
+        product policy thresholds,
+        rule-control parameters,
+        normalized score band key,
+        diagnostic strategy segmentation fields,
+        mixed-signal diagnostics,
+        and borderline profile flag.
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_stage_2_strategy_segments
+ON COMMIT PRESERVE ROWS
+AS
+WITH active_strategy_params AS (
+    SELECT *
+    FROM tmp_module2_strategy_params
+    WHERE active_strategy_flag IS TRUE
+    LIMIT 1
+),
+
+threshold_enriched AS (
+    SELECT
+        s.*,
+
+        /*******************************************************************************************
+        Global synthetic estimated-risk thresholds.
+
+        estimated_pd is interpreted as the synthetic estimated-PD proxy.
+        These thresholds describe synthetic risk bands used for strategy simulation.
+        *******************************************************************************************/
+        p.approve_max_estimated_pd_proxy,
+        p.counteroffer_max_estimated_pd_proxy,
+        p.review_max_estimated_pd_proxy,
+        p.decline_min_estimated_pd_proxy,
+
+        /*******************************************************************************************
+        Global PTI thresholds.
+
+        Product-specific PTI thresholds are used for product-aware segmentation, but global values
+        are retained for strategy transparency.
+        *******************************************************************************************/
+        p.global_approve_max_pti,
+        p.global_review_max_pti,
+        p.global_decline_min_pti,
+
+        /*******************************************************************************************
+        DTI thresholds.
+
+        DTI remains an existing-obligation capacity signal.
+        *******************************************************************************************/
+        p.approve_max_dti,
+        p.review_max_dti,
+        p.decline_min_dti,
+
+        /*******************************************************************************************
+        Borderline diagnostic buffer.
+
+        This governed parameter prevents hidden hardcoded threshold-adjacent logic.
+        *******************************************************************************************/
+        p.borderline_threshold_buffer_pct,
+
+        /*******************************************************************************************
+        Section 6 rule-control parameters.
+
+        These are carried forward so rule-trigger logic is transparent in the staged data.
+        They do not assign final decisions in Section 5.
+        *******************************************************************************************/
+        p.bankruptcy_policy_stop_enabled,
+        p.major_derogatory_policy_stop_enabled,
+        p.severe_delinquency_policy_stop_enabled,
+        p.severe_delinquency_count_threshold,
+        p.high_utilization_review_enabled,
+        p.high_utilization_review_threshold,
+        p.low_score_review_enabled,
+        p.low_score_review_threshold,
+
+        /*******************************************************************************************
+        Product policy thresholds and controls.
+
+        These are attached here for downstream transparency.
+        Section 5 does not apply final exposure treatment or counteroffer feasibility logic.
+        *******************************************************************************************/
+        pp.product_approve_max_pti,
+        pp.product_review_max_pti,
+        pp.product_decline_min_pti,
+        pp.counteroffer_target_pti,
+
+        pp.product_approve_max_requested_el,
+        pp.product_review_max_requested_el,
+        pp.product_decline_min_requested_el,
+        pp.product_approved_el_cap,
+
+        pp.product_min_approved_amount,
+        pp.product_max_approved_amount,
+
+        pp.counteroffer_allowed_flag,
+        pp.manual_review_allowed_flag,
+        pp.product_min_counteroffer_pct,
+        pp.product_max_exposure_reduction_pct,
+        pp.exposure_assignment_method,
+        pp.approved_amount_rounding_increment,
+
+        /*******************************************************************************************
+        Requested Expected Loss low / moderate split.
+
+        This uses product_approve_max_requested_el / 2.0 because Section 5 classifies
+        requested-exposure Expected Loss.
+
+        product_approved_el_cap is carried forward for later approved-exposure logic but does not
+        drive pre-decision requested Expected Loss tiering.
+        *******************************************************************************************/
+        (pp.product_approve_max_requested_el / 2.0) AS requested_el_low_moderate_split
+
+    FROM tmp_m2_stage_1_source_applications s
+    JOIN active_strategy_params p
+        ON TRUE
+    JOIN tmp_module2_product_policy_params pp
+        ON pp.product_type = s.product_type_policy_key
+),
+
+score_normalized AS (
+    SELECT
+        te.*,
+
+        /*******************************************************************************************
+        score_band_policy_key.
+
+        Preserve original score_band and create a normalized strategy policy key.
+
+        Module 1 is not modified.
+        *******************************************************************************************/
+        CASE
+            WHEN UPPER(REGEXP_REPLACE(BTRIM(te.score_band::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                 IN (&#39;SUPER_PRIME&#39;, &#39;SUPERPRIME&#39;, &#39;SP&#39;)
+                THEN &#39;SUPER_PRIME&#39;
+
+            WHEN UPPER(REGEXP_REPLACE(BTRIM(te.score_band::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                 IN (&#39;PRIME&#39;, &#39;P&#39;)
+                THEN &#39;PRIME&#39;
+
+            WHEN UPPER(REGEXP_REPLACE(BTRIM(te.score_band::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                 IN (&#39;NEAR_PRIME&#39;, &#39;NEARPRIME&#39;, &#39;NP&#39;)
+                THEN &#39;NEAR_PRIME&#39;
+
+            WHEN UPPER(REGEXP_REPLACE(BTRIM(te.score_band::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                 IN (&#39;SUBPRIME&#39;, &#39;SUB_PRIME&#39;, &#39;SUB&#39;)
+                THEN &#39;SUBPRIME&#39;
+
+            WHEN UPPER(REGEXP_REPLACE(BTRIM(te.score_band::TEXT), &#39;[^A-Za-z0-9]+&#39;, &#39;_&#39;, &#39;g&#39;))
+                 IN (&#39;DEEP_SUBPRIME&#39;, &#39;DEEP_SUB_PRIME&#39;, &#39;DEEP_SUB&#39;, &#39;DS&#39;)
+                THEN &#39;DEEP_SUBPRIME&#39;
+
+            ELSE NULL
+        END AS score_band_policy_key
+
+    FROM threshold_enriched te
+),
+
+core_segments AS (
+    SELECT
+        sn.*,
+
+        /*******************************************************************************************
+        Synthetic estimated-risk tier.
+
+        Uses estimated_pd as the Module 1 synthetic estimated-PD proxy input.
+
+        Equality handling:
+            estimated_pd &lt;= approve_max_estimated_pd_proxy / 2.0
+                LOW_SYNTHETIC_RISK
+
+            estimated_pd &lt;= approve_max_estimated_pd_proxy
+                MODERATE_SYNTHETIC_RISK
+
+            estimated_pd &lt;= counteroffer_max_estimated_pd_proxy
+                ELEVATED_SYNTHETIC_RISK
+
+            estimated_pd &lt; decline_min_estimated_pd_proxy
+                HIGH_SYNTHETIC_RISK
+
+            estimated_pd &gt;= decline_min_estimated_pd_proxy
+                SEVERE_SYNTHETIC_RISK
+        *******************************************************************************************/
+        CASE
+            WHEN sn.estimated_pd &lt;= (sn.approve_max_estimated_pd_proxy / 2.0)
+                THEN &#39;LOW_SYNTHETIC_RISK&#39;
+
+            WHEN sn.estimated_pd &lt;= sn.approve_max_estimated_pd_proxy
+                THEN &#39;MODERATE_SYNTHETIC_RISK&#39;
+
+            WHEN sn.estimated_pd &lt;= sn.counteroffer_max_estimated_pd_proxy
+                THEN &#39;ELEVATED_SYNTHETIC_RISK&#39;
+
+            WHEN sn.estimated_pd &lt; sn.decline_min_estimated_pd_proxy
+                THEN &#39;HIGH_SYNTHETIC_RISK&#39;
+
+            ELSE &#39;SEVERE_SYNTHETIC_RISK&#39;
+        END AS strategy_risk_tier,
+
+
+        /*******************************************************************************************
+        Requested PTI bucket.
+
+        Uses requested_payment_to_income_ratio from the original Module 1 requested structure.
+
+        Product-specific PTI thresholds are used so affordability segmentation remains product-aware.
+        Approved PTI does not exist yet.
+        *******************************************************************************************/
+        CASE
+            WHEN sn.requested_payment_to_income_ratio &lt;= sn.counteroffer_target_pti
+                THEN &#39;LOW_REQUESTED_PTI&#39;
+
+            WHEN sn.requested_payment_to_income_ratio &lt;= sn.product_approve_max_pti
+                THEN &#39;MODERATE_REQUESTED_PTI&#39;
+
+            WHEN sn.requested_payment_to_income_ratio &lt;= sn.product_review_max_pti
+                THEN &#39;ELEVATED_REQUESTED_PTI&#39;
+
+            WHEN sn.requested_payment_to_income_ratio &lt; sn.product_decline_min_pti
+                THEN &#39;HIGH_REQUESTED_PTI&#39;
+
+            ELSE &#39;SEVERE_REQUESTED_PTI&#39;
+        END AS requested_pti_bucket,
+
+
+        /*******************************************************************************************
+        DTI bucket.
+
+        DTI is an existing-obligation capacity signal.
+
+        It is not directly fixed by counteroffer in Module 2 V1.0.
+        *******************************************************************************************/
+        CASE
+            WHEN sn.debt_to_income_ratio &lt;= (sn.approve_max_dti / 2.0)
+                THEN &#39;LOW_DTI&#39;
+
+            WHEN sn.debt_to_income_ratio &lt;= sn.approve_max_dti
+                THEN &#39;MODERATE_DTI&#39;
+
+            WHEN sn.debt_to_income_ratio &lt; sn.review_max_dti
+                THEN &#39;ELEVATED_DTI&#39;
+
+            WHEN sn.debt_to_income_ratio &lt; sn.decline_min_dti
+                THEN &#39;HIGH_DTI&#39;
+
+            ELSE &#39;SEVERE_DTI&#39;
+        END AS dti_bucket,
+
+
+        /*******************************************************************************************
+        Requested exposure tier.
+
+        BELOW_PRODUCT_MINIMUM:
+            requested_amount &lt; product_min_approved_amount
+
+        WITHIN_PRODUCT_LIMITS:
+            requested_amount is within product minimum and product maximum.
+
+        ABOVE_PRODUCT_APPROVAL_CAP:
+            requested_amount exceeds the product maximum, but the product cap can still satisfy the
+            governed minimum viable amount after allowed exposure reduction.
+
+        EXTREME_REQUESTED_EXPOSURE:
+            requested_amount exceeds the product cap by more than the allowed exposure-reduction
+            framework can reasonably address.
+
+        No undocumented magic number is used. The reducibility test uses governed parameters:
+            product_min_approved_amount
+            product_min_counteroffer_pct
+            product_max_exposure_reduction_pct
+        *******************************************************************************************/
+        CASE
+            WHEN sn.requested_amount &lt; sn.product_min_approved_amount
+                THEN &#39;BELOW_PRODUCT_MINIMUM&#39;
+
+            WHEN sn.requested_amount &lt;= sn.product_max_approved_amount
+                THEN &#39;WITHIN_PRODUCT_LIMITS&#39;
+
+            WHEN sn.product_max_approved_amount &gt;= GREATEST(
+                    sn.product_min_approved_amount,
+                    sn.requested_amount * sn.product_min_counteroffer_pct,
+                    sn.requested_amount * (1.0 - sn.product_max_exposure_reduction_pct)
+                 )
+                THEN &#39;ABOVE_PRODUCT_APPROVAL_CAP&#39;
+
+            ELSE &#39;EXTREME_REQUESTED_EXPOSURE&#39;
+        END AS requested_exposure_tier,
+
+
+        /*******************************************************************************************
+        Requested Expected Loss tier.
+
+        Uses requested_expected_loss_amount and requested-exposure thresholds.
+
+        product_approved_el_cap is not used for this pre-decision requested Expected Loss tier.
+        *******************************************************************************************/
+        CASE
+            WHEN sn.requested_expected_loss_amount &lt;= sn.requested_el_low_moderate_split
+                THEN &#39;LOW_REQUESTED_EL&#39;
+
+            WHEN sn.requested_expected_loss_amount &lt;= sn.product_approve_max_requested_el
+                THEN &#39;MODERATE_REQUESTED_EL&#39;
+
+            WHEN sn.requested_expected_loss_amount &lt;= sn.product_review_max_requested_el
+                THEN &#39;ELEVATED_REQUESTED_EL&#39;
+
+            WHEN sn.requested_expected_loss_amount &lt; sn.product_decline_min_requested_el
+                THEN &#39;HIGH_REQUESTED_EL&#39;
+
+            ELSE &#39;SEVERE_REQUESTED_EL&#39;
+        END AS requested_expected_loss_tier
+
+    FROM score_normalized sn
+),
+
+mixed_signal_conditions AS (
+    SELECT
+        cs.*,
+
+        /*******************************************************************************************
+        Mixed-signal diagnostic conditions.
+
+        These conditions identify realistic strategy QA profiles.
+
+        They do not assign final decisions.
+        They do not assign reason codes.
+        They do not create rule-trigger flags yet.
+        *******************************************************************************************/
+        (
+            cs.score_band_policy_key IN (&#39;SUPER_PRIME&#39;, &#39;PRIME&#39;)
+            AND cs.requested_pti_bucket IN (&#39;HIGH_REQUESTED_PTI&#39;, &#39;SEVERE_REQUESTED_PTI&#39;)
+        ) AS strong_credit_high_pti_condition,
+
+        (
+            cs.score_band_policy_key IN (&#39;SUBPRIME&#39;, &#39;DEEP_SUBPRIME&#39;)
+            AND cs.requested_pti_bucket IN (&#39;LOW_REQUESTED_PTI&#39;, &#39;MODERATE_REQUESTED_PTI&#39;)
+        ) AS weak_credit_low_pti_condition,
+
+        (
+            cs.requested_exposure_tier IN (&#39;ABOVE_PRODUCT_APPROVAL_CAP&#39;, &#39;EXTREME_REQUESTED_EXPOSURE&#39;)
+            AND cs.strategy_risk_tier IN (&#39;LOW_SYNTHETIC_RISK&#39;, &#39;MODERATE_SYNTHETIC_RISK&#39;)
+        ) AS large_exposure_low_risk_condition,
+
+        (
+            cs.strategy_risk_tier IN (&#39;HIGH_SYNTHETIC_RISK&#39;, &#39;SEVERE_SYNTHETIC_RISK&#39;)
+            AND (
+                cs.requested_exposure_tier = &#39;BELOW_PRODUCT_MINIMUM&#39;
+                OR cs.requested_amount &lt;= cs.product_min_approved_amount
+            )
+        ) AS high_risk_low_exposure_condition,
+
+        (
+            cs.dti_bucket IN (&#39;HIGH_DTI&#39;, &#39;SEVERE_DTI&#39;)
+            AND cs.requested_pti_bucket IN (&#39;LOW_REQUESTED_PTI&#39;, &#39;MODERATE_REQUESTED_PTI&#39;)
+        ) AS high_dti_low_requested_pti_condition
+
+    FROM core_segments cs
+),
+
+mixed_signal_scored AS (
+    SELECT
+        msc.*,
+
+        /*******************************************************************************************
+        mixed_signal_condition_count.
+
+        Counts the number of mixed-signal diagnostics active on the row.
+
+        Multiple mixed signals can coexist. Section 5 preserves that instead of forcing a single
+        explanation too early.
+        *******************************************************************************************/
+        (
+            msc.strong_credit_high_pti_condition::INT
+            + msc.weak_credit_low_pti_condition::INT
+            + msc.large_exposure_low_risk_condition::INT
+            + msc.high_risk_low_exposure_condition::INT
+            + msc.high_dti_low_requested_pti_condition::INT
+        ) AS mixed_signal_condition_count
+
+    FROM mixed_signal_conditions msc
+),
+
+borderline_scored AS (
+    SELECT
+        mss.*,
+
+        /*******************************************************************************************
+        Borderline profile flag.
+
+        A row is borderline if it is within the governed percentage buffer of at least one major
+        strategy threshold.
+
+        No hidden 5%, 10%, or other ungoverned buffer is embedded. The buffer is controlled by:
+            borderline_threshold_buffer_pct
+
+        Threshold families included:
+            synthetic estimated-PD proxy thresholds,
+            product PTI thresholds,
+            DTI thresholds,
+            requested Expected Loss thresholds.
+
+        This is diagnostic only.
+        *******************************************************************************************/
+        (
+            (
+                mss.approve_max_estimated_pd_proxy &gt; 0
+                AND ABS(mss.estimated_pd - mss.approve_max_estimated_pd_proxy)
+                    &lt;= mss.approve_max_estimated_pd_proxy * mss.borderline_threshold_buffer_pct
+            )
+            OR (
+                mss.counteroffer_max_estimated_pd_proxy &gt; 0
+                AND ABS(mss.estimated_pd - mss.counteroffer_max_estimated_pd_proxy)
+                    &lt;= mss.counteroffer_max_estimated_pd_proxy * mss.borderline_threshold_buffer_pct
+            )
+            OR (
+                mss.decline_min_estimated_pd_proxy &gt; 0
+                AND ABS(mss.estimated_pd - mss.decline_min_estimated_pd_proxy)
+                    &lt;= mss.decline_min_estimated_pd_proxy * mss.borderline_threshold_buffer_pct
+            )
+
+            OR (
+                mss.product_approve_max_pti &gt; 0
+                AND ABS(mss.requested_payment_to_income_ratio - mss.product_approve_max_pti)
+                    &lt;= mss.product_approve_max_pti * mss.borderline_threshold_buffer_pct
+            )
+            OR (
+                mss.product_review_max_pti &gt; 0
+                AND ABS(mss.requested_payment_to_income_ratio - mss.product_review_max_pti)
+                    &lt;= mss.product_review_max_pti * mss.borderline_threshold_buffer_pct
+            )
+            OR (
+                mss.product_decline_min_pti &gt; 0
+                AND ABS(mss.requested_payment_to_income_ratio - mss.product_decline_min_pti)
+                    &lt;= mss.product_decline_min_pti * mss.borderline_threshold_buffer_pct
+            )
+
+            OR (
+                mss.approve_max_dti &gt; 0
+                AND ABS(mss.debt_to_income_ratio - mss.approve_max_dti)
+                    &lt;= mss.approve_max_dti * mss.borderline_threshold_buffer_pct
+            )
+            OR (
+                mss.review_max_dti &gt; 0
+                AND ABS(mss.debt_to_income_ratio - mss.review_max_dti)
+                    &lt;= mss.review_max_dti * mss.borderline_threshold_buffer_pct
+            )
+            OR (
+                mss.decline_min_dti &gt; 0
+                AND ABS(mss.debt_to_income_ratio - mss.decline_min_dti)
+                    &lt;= mss.decline_min_dti * mss.borderline_threshold_buffer_pct
+            )
+
+            OR (
+                mss.product_approve_max_requested_el &gt; 0
+                AND ABS(mss.requested_expected_loss_amount - mss.product_approve_max_requested_el)
+                    &lt;= mss.product_approve_max_requested_el * mss.borderline_threshold_buffer_pct
+            )
+            OR (
+                mss.product_review_max_requested_el &gt; 0
+                AND ABS(mss.requested_expected_loss_amount - mss.product_review_max_requested_el)
+                    &lt;= mss.product_review_max_requested_el * mss.borderline_threshold_buffer_pct
+            )
+            OR (
+                mss.product_decline_min_requested_el &gt; 0
+                AND ABS(mss.requested_expected_loss_amount - mss.product_decline_min_requested_el)
+                    &lt;= mss.product_decline_min_requested_el * mss.borderline_threshold_buffer_pct
+            )
+        ) AS borderline_profile_flag
+
+    FROM mixed_signal_scored mss
+),
+
+final_segments AS (
+    SELECT
+        bs.*,
+
+        /*******************************************************************************************
+        Product × score policy segment.
+
+        This field supports later segment-level QA, matched comparison, strategy frontier, and
+        product × score evidence capture.
+        *******************************************************************************************/
+        bs.product_type_policy_key || &#39;_&#39; || bs.score_band_policy_key
+            AS product_score_policy_segment,
+
+        /*******************************************************************************************
+        Mixed-signal profile type.
+
+        Priority convention:
+            If exactly one mixed-signal condition applies, assign that type.
+            If more than one applies, assign MULTIPLE_MIXED_SIGNALS.
+            If none applies, assign NO_MIXED_SIGNAL_PROFILE.
+
+        Section 5 does not silently choose one condition over another when multiple conditions apply.
+        *******************************************************************************************/
+        CASE
+            WHEN bs.mixed_signal_condition_count &gt; 1
+                THEN &#39;MULTIPLE_MIXED_SIGNALS&#39;
+
+            WHEN bs.strong_credit_high_pti_condition IS TRUE
+                THEN &#39;STRONG_CREDIT_HIGH_PTI&#39;
+
+            WHEN bs.weak_credit_low_pti_condition IS TRUE
+                THEN &#39;WEAK_CREDIT_LOW_PTI&#39;
+
+            WHEN bs.large_exposure_low_risk_condition IS TRUE
+                THEN &#39;LARGE_EXPOSURE_LOW_RISK&#39;
+
+            WHEN bs.high_risk_low_exposure_condition IS TRUE
+                THEN &#39;HIGH_RISK_LOW_EXPOSURE&#39;
+
+            WHEN bs.high_dti_low_requested_pti_condition IS TRUE
+                THEN &#39;HIGH_DTI_LOW_REQUESTED_PTI&#39;
+
+            ELSE &#39;NO_MIXED_SIGNAL_PROFILE&#39;
+        END AS mixed_signal_profile_type
+
+    FROM borderline_scored bs
+)
+
+SELECT *
+FROM final_segments;
+
+
+
+/***************************************************************************************************
+SECTION 5.3 — LOCAL FAIL-FAST CHECKS FOR STRATEGY SEGMENTATION
+****************************************************************************************************
+
+PURPOSE:
+    Validate that the Section 5 segmentation layer preserved row-level structure and produced
+    complete diagnostic segments.
+
+BUSINESS PURPOSE:
+    Confirm that every selected synthetic application can be described consistently before Section 6
+    creates rule-trigger flags.
+
+LOCAL GATEKEEPER BOUNDARY:
+    These are Section 5 staging gatekeepers only.
+
+    They are not:
+        final decision validation,
+        reason-code validation,
+        approved-exposure validation,
+        archive validation,
+        matched strategy comparison,
+        full Module 2 QA,
+        or Validation Summary evidence by themselves.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage1_count BIGINT;
+    v_stage2_count BIGINT;
+    v_stage2_distinct_app_count BIGINT;
+    v_duplicate_application_count BIGINT;
+
+    v_null_segment_count BIGINT;
+    v_null_policy_key_count BIGINT;
+    v_product_policy_mismatch_count BIGINT;
+    v_missing_threshold_count BIGINT;
+    v_forbidden_column_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: row count must be unchanged from Section 4 to Section 5.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage1_count
+    FROM tmp_m2_stage_1_source_applications;
+
+    SELECT COUNT(*)
+    INTO v_stage2_count
+    FROM tmp_m2_stage_2_strategy_segments;
+
+    IF v_stage2_count &lt;&gt; v_stage1_count THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 5 failure: row count changed from Section 4 to Section 5. Stage 1 rows: %, Stage 2 rows: %.&#39;,
+            v_stage1_count,
+            v_stage2_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id remains unique.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage2_distinct_app_count
+    FROM tmp_m2_stage_2_strategy_segments;
+
+    IF v_stage2_distinct_app_count &lt;&gt; v_stage2_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_count
+        FROM (
+            SELECT application_id
+            FROM tmp_m2_stage_2_strategy_segments
+            GROUP BY application_id
+            HAVING COUNT(*) &gt; 1
+        ) d;
+
+        RAISE EXCEPTION
+            &#39;Module 2 Section 5 failure: application_id uniqueness was not preserved. Stage 2 rows: %, distinct application_id count: %, duplicate application_id group count: %.&#39;,
+            v_stage2_count,
+            v_stage2_distinct_app_count,
+            v_duplicate_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: required segmentation fields must be populated.
+
+    These fields describe the profile. They do not determine final outcomes yet.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_null_segment_count
+    FROM tmp_m2_stage_2_strategy_segments
+    WHERE strategy_risk_tier IS NULL
+       OR requested_pti_bucket IS NULL
+       OR dti_bucket IS NULL
+       OR requested_exposure_tier IS NULL
+       OR requested_expected_loss_tier IS NULL
+       OR product_score_policy_segment IS NULL
+       OR mixed_signal_profile_type IS NULL
+       OR mixed_signal_condition_count IS NULL
+       OR mixed_signal_condition_count &lt; 0
+       OR borderline_profile_flag IS NULL;
+
+    IF v_null_segment_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 5 failure: % row(s) have null or invalid derived segmentation fields.&#39;,
+            v_null_segment_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product and score policy keys must be populated.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_null_policy_key_count
+    FROM tmp_m2_stage_2_strategy_segments
+    WHERE product_type_policy_key IS NULL
+       OR score_band_policy_key IS NULL;
+
+    IF v_null_policy_key_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 5 failure: % row(s) have null product_type_policy_key or score_band_policy_key.&#39;,
+            v_null_policy_key_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: every row must still have exactly one product policy configuration.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_product_policy_mismatch_count
+    FROM tmp_m2_stage_2_strategy_segments
+    WHERE product_policy_match_count &lt;&gt; 1
+       OR product_policy_config_found_flag IS DISTINCT FROM TRUE;
+
+    IF v_product_policy_mismatch_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 5 failure: % row(s) no longer have exactly one product policy configuration.&#39;,
+            v_product_policy_mismatch_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: all thresholds needed for segmentation and later rule logic must be available.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_missing_threshold_count
+    FROM tmp_m2_stage_2_strategy_segments
+    WHERE approve_max_estimated_pd_proxy IS NULL
+       OR counteroffer_max_estimated_pd_proxy IS NULL
+       OR review_max_estimated_pd_proxy IS NULL
+       OR decline_min_estimated_pd_proxy IS NULL
+
+       OR global_approve_max_pti IS NULL
+       OR global_review_max_pti IS NULL
+       OR global_decline_min_pti IS NULL
+
+       OR approve_max_dti IS NULL
+       OR review_max_dti IS NULL
+       OR decline_min_dti IS NULL
+
+       OR borderline_threshold_buffer_pct IS NULL
+
+       OR bankruptcy_policy_stop_enabled IS NULL
+       OR major_derogatory_policy_stop_enabled IS NULL
+       OR severe_delinquency_policy_stop_enabled IS NULL
+       OR severe_delinquency_count_threshold IS NULL
+       OR high_utilization_review_enabled IS NULL
+       OR high_utilization_review_threshold IS NULL
+       OR low_score_review_enabled IS NULL
+       OR low_score_review_threshold IS NULL
+
+       OR product_approve_max_pti IS NULL
+       OR product_review_max_pti IS NULL
+       OR product_decline_min_pti IS NULL
+       OR counteroffer_target_pti IS NULL
+
+       OR product_approve_max_requested_el IS NULL
+       OR product_review_max_requested_el IS NULL
+       OR product_decline_min_requested_el IS NULL
+       OR product_approved_el_cap IS NULL
+       OR requested_el_low_moderate_split IS NULL
+
+       OR product_min_approved_amount IS NULL
+       OR product_max_approved_amount IS NULL
+
+       OR counteroffer_allowed_flag IS NULL
+       OR manual_review_allowed_flag IS NULL
+       OR product_min_counteroffer_pct IS NULL
+       OR product_max_exposure_reduction_pct IS NULL
+       OR exposure_assignment_method IS NULL
+       OR approved_amount_rounding_increment IS NULL;
+
+    IF v_missing_threshold_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 5 failure: % row(s) have missing threshold or product policy values.&#39;,
+            v_missing_threshold_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 5 must not create decision, reason-code, or approved-exposure fields.
+
+    This protects the staged architecture boundary.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_forbidden_column_count
+    FROM pg_attribute
+    WHERE attrelid = &#39;tmp_m2_stage_2_strategy_segments&#39;::REGCLASS
+      AND attnum &gt; 0
+      AND NOT attisdropped
+      AND attname IN (
+            &#39;decision_outcome&#39;,
+            &#39;decision_path&#39;,
+            &#39;approval_flag&#39;,
+            &#39;decline_flag&#39;,
+            &#39;manual_review_flag&#39;,
+            &#39;counteroffer_flag&#39;,
+            &#39;simulated_offer_exposure_flag&#39;,
+
+            &#39;primary_reason_code&#39;,
+            &#39;secondary_reason_code&#39;,
+            &#39;tertiary_reason_code&#39;,
+            &#39;triggered_reason_code_list&#39;,
+            &#39;reason_priority_rank&#39;,
+            &#39;primary_reason_family&#39;,
+
+            &#39;approved_amount&#39;,
+            &#39;counteroffer_amount&#39;,
+            &#39;approved_monthly_payment_proxy&#39;,
+            &#39;approved_payment_to_income_ratio&#39;,
+            &#39;approved_expected_loss_amount&#39;
+      );
+
+    IF v_forbidden_column_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 5 failure: forbidden decision, reason-code, or approved-exposure field(s) were created in segmentation stage.&#39;;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 5.4 — LOCAL SEGMENTATION SANITY CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight diagnostics for Section 5 segmentation.
+
+BUSINESS PURPOSE:
+    Let reviewers confirm that the diagnostic profile layer is populated and directionally usable
+    before rule-trigger construction begins.
+
+INTERPRETATION:
+    These are staging diagnostics only.
+
+    They should not be interpreted as:
+        final strategy validation,
+        final decision distribution,
+        reason-code coverage,
+        archive comparison,
+        or Validation Summary acceptance.
+
+****************************************************************************************************/
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.1 Row count and distinct application_id count.
+
+Expected:
+    stage2_row_count = distinct_application_id_count.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    COUNT(*) AS stage2_row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+FROM tmp_m2_stage_2_strategy_segments;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.2 Count by synthetic estimated-risk tier.
+
+Interpretation:
+    estimated_pd remains the SQL field name and is interpreted as the synthetic estimated-PD proxy.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    strategy_risk_tier,
+    COUNT(*) AS row_count,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY strategy_risk_tier
+ORDER BY
+    CASE strategy_risk_tier
+        WHEN &#39;LOW_SYNTHETIC_RISK&#39; THEN 1
+        WHEN &#39;MODERATE_SYNTHETIC_RISK&#39; THEN 2
+        WHEN &#39;ELEVATED_SYNTHETIC_RISK&#39; THEN 3
+        WHEN &#39;HIGH_SYNTHETIC_RISK&#39; THEN 4
+        WHEN &#39;SEVERE_SYNTHETIC_RISK&#39; THEN 5
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.3 Count by requested PTI bucket.
+
+Interpretation:
+    This is requested-structure affordability, not approved affordability.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    requested_pti_bucket,
+    COUNT(*) AS row_count,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY requested_pti_bucket
+ORDER BY
+    CASE requested_pti_bucket
+        WHEN &#39;LOW_REQUESTED_PTI&#39; THEN 1
+        WHEN &#39;MODERATE_REQUESTED_PTI&#39; THEN 2
+        WHEN &#39;ELEVATED_REQUESTED_PTI&#39; THEN 3
+        WHEN &#39;HIGH_REQUESTED_PTI&#39; THEN 4
+        WHEN &#39;SEVERE_REQUESTED_PTI&#39; THEN 5
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.4 Count by DTI bucket.
+
+Interpretation:
+    DTI reflects existing-obligation capacity and is not directly corrected by counteroffer.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    dti_bucket,
+    COUNT(*) AS row_count,
+    AVG(debt_to_income_ratio) AS avg_debt_to_income_ratio
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY dti_bucket
+ORDER BY
+    CASE dti_bucket
+        WHEN &#39;LOW_DTI&#39; THEN 1
+        WHEN &#39;MODERATE_DTI&#39; THEN 2
+        WHEN &#39;ELEVATED_DTI&#39; THEN 3
+        WHEN &#39;HIGH_DTI&#39; THEN 4
+        WHEN &#39;SEVERE_DTI&#39; THEN 5
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.5 Count by requested exposure tier.
+
+Interpretation:
+    This describes requested exposure relative to product policy limits.
+    It does not assign approved_amount.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    requested_exposure_tier,
+    COUNT(*) AS row_count,
+    AVG(requested_amount) AS avg_requested_amount
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY requested_exposure_tier
+ORDER BY
+    CASE requested_exposure_tier
+        WHEN &#39;BELOW_PRODUCT_MINIMUM&#39; THEN 1
+        WHEN &#39;WITHIN_PRODUCT_LIMITS&#39; THEN 2
+        WHEN &#39;ABOVE_PRODUCT_APPROVAL_CAP&#39; THEN 3
+        WHEN &#39;EXTREME_REQUESTED_EXPOSURE&#39; THEN 4
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.6 Count by requested Expected Loss tier.
+
+Interpretation:
+    This uses requested_expected_loss_amount.
+    approved_expected_loss_amount does not exist yet.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    requested_expected_loss_tier,
+    COUNT(*) AS row_count,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY requested_expected_loss_tier
+ORDER BY
+    CASE requested_expected_loss_tier
+        WHEN &#39;LOW_REQUESTED_EL&#39; THEN 1
+        WHEN &#39;MODERATE_REQUESTED_EL&#39; THEN 2
+        WHEN &#39;ELEVATED_REQUESTED_EL&#39; THEN 3
+        WHEN &#39;HIGH_REQUESTED_EL&#39; THEN 4
+        WHEN &#39;SEVERE_REQUESTED_EL&#39; THEN 5
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.7 Count by product × score policy segment.
+
+Interpretation:
+    This field supports later product × score strategy QA and evidence capture.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    product_score_policy_segment,
+    COUNT(*) AS row_count,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY product_score_policy_segment
+ORDER BY product_score_policy_segment;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.8 Count by mixed-signal profile type.
+
+Interpretation:
+    Mixed-signal profiles are diagnostic only. They are not final routes.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    mixed_signal_profile_type,
+    COUNT(*) AS row_count,
+    AVG(mixed_signal_condition_count) AS avg_mixed_signal_condition_count
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY mixed_signal_profile_type
+ORDER BY
+    CASE mixed_signal_profile_type
+        WHEN &#39;NO_MIXED_SIGNAL_PROFILE&#39; THEN 1
+        WHEN &#39;STRONG_CREDIT_HIGH_PTI&#39; THEN 2
+        WHEN &#39;WEAK_CREDIT_LOW_PTI&#39; THEN 3
+        WHEN &#39;LARGE_EXPOSURE_LOW_RISK&#39; THEN 4
+        WHEN &#39;HIGH_RISK_LOW_EXPOSURE&#39; THEN 5
+        WHEN &#39;HIGH_DTI_LOW_REQUESTED_PTI&#39; THEN 6
+        WHEN &#39;MULTIPLE_MIXED_SIGNALS&#39; THEN 7
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.9 Count by borderline profile flag.
+
+Interpretation:
+    Borderline status means at least one value is threshold-adjacent under the governed buffer.
+    It is not automatic manual review.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    borderline_profile_flag,
+    COUNT(*) AS row_count
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY borderline_profile_flag
+ORDER BY borderline_profile_flag;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.10 Product × synthetic estimated-risk tier summary.
+
+Interpretation:
+    Helps verify product-level concentration of synthetic estimated-risk tiers.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    product_type_policy_key,
+    strategy_risk_tier,
+    COUNT(*) AS row_count,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY
+    product_type_policy_key,
+    strategy_risk_tier
+ORDER BY
+    product_type_policy_key,
+    CASE strategy_risk_tier
+        WHEN &#39;LOW_SYNTHETIC_RISK&#39; THEN 1
+        WHEN &#39;MODERATE_SYNTHETIC_RISK&#39; THEN 2
+        WHEN &#39;ELEVATED_SYNTHETIC_RISK&#39; THEN 3
+        WHEN &#39;HIGH_SYNTHETIC_RISK&#39; THEN 4
+        WHEN &#39;SEVERE_SYNTHETIC_RISK&#39; THEN 5
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.11 Score band × synthetic estimated-risk tier summary.
+
+Interpretation:
+    Helps review directional alignment between score band and synthetic estimated-risk tier.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    score_band_policy_key,
+    strategy_risk_tier,
+    COUNT(*) AS row_count,
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY
+    score_band_policy_key,
+    strategy_risk_tier
+ORDER BY
+    CASE score_band_policy_key
+        WHEN &#39;SUPER_PRIME&#39; THEN 1
+        WHEN &#39;PRIME&#39; THEN 2
+        WHEN &#39;NEAR_PRIME&#39; THEN 3
+        WHEN &#39;SUBPRIME&#39; THEN 4
+        WHEN &#39;DEEP_SUBPRIME&#39; THEN 5
+        ELSE 99
+    END,
+    CASE strategy_risk_tier
+        WHEN &#39;LOW_SYNTHETIC_RISK&#39; THEN 1
+        WHEN &#39;MODERATE_SYNTHETIC_RISK&#39; THEN 2
+        WHEN &#39;ELEVATED_SYNTHETIC_RISK&#39; THEN 3
+        WHEN &#39;HIGH_SYNTHETIC_RISK&#39; THEN 4
+        WHEN &#39;SEVERE_SYNTHETIC_RISK&#39; THEN 5
+        ELSE 99
+    END;
+
+
+/*-----------------------------------------------------------------------------------------------
+5.4.12 Requested PTI bucket × synthetic estimated-risk tier summary.
+
+Interpretation:
+    Helps review interaction between requested affordability pressure and synthetic estimated-risk
+    segmentation before rule-trigger construction.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    requested_pti_bucket,
+    strategy_risk_tier,
+    COUNT(*) AS row_count,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+FROM tmp_m2_stage_2_strategy_segments
+GROUP BY
+    requested_pti_bucket,
+    strategy_risk_tier
+ORDER BY
+    CASE requested_pti_bucket
+        WHEN &#39;LOW_REQUESTED_PTI&#39; THEN 1
+        WHEN &#39;MODERATE_REQUESTED_PTI&#39; THEN 2
+        WHEN &#39;ELEVATED_REQUESTED_PTI&#39; THEN 3
+        WHEN &#39;HIGH_REQUESTED_PTI&#39; THEN 4
+        WHEN &#39;SEVERE_REQUESTED_PTI&#39; THEN 5
+        ELSE 99
+    END,
+    CASE strategy_risk_tier
+        WHEN &#39;LOW_SYNTHETIC_RISK&#39; THEN 1
+        WHEN &#39;MODERATE_SYNTHETIC_RISK&#39; THEN 2
+        WHEN &#39;ELEVATED_SYNTHETIC_RISK&#39; THEN 3
+        WHEN &#39;HIGH_SYNTHETIC_RISK&#39; THEN 4
+        WHEN &#39;SEVERE_SYNTHETIC_RISK&#39; THEN 5
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+END OF SECTION 5 — DERIVED STRATEGY SEGMENTATION LAYER
+
+If execution reaches this point:
+    1. tmp_m2_stage_2_strategy_segments exists.
+    2. Row count is preserved from tmp_m2_stage_1_source_applications.
+    3. application_id remains unique.
+    4. All Section 4 source and lineage fields are preserved.
+    5. Module 2 strategy metadata is preserved.
+    6. Global strategy thresholds are attached.
+    7. Product policy thresholds and controls are attached.
+    8. score_band_policy_key is created.
+    9. strategy_risk_tier is created.
+    10. requested_pti_bucket is created.
+    11. dti_bucket is created.
+    12. requested_exposure_tier is created.
+    13. requested_expected_loss_tier is created.
+    14. product_score_policy_segment is created.
+    15. mixed_signal_profile_type and mixed_signal_condition_count are created.
+    16. borderline_profile_flag is created using governed borderline_threshold_buffer_pct.
+    17. requested_expected_loss_amount remains requested-exposure Expected Loss.
+    18. estimated_pd remains the Module 1 SQL field and is interpreted as the synthetic estimated-PD
+        proxy.
+
+No final decision outcomes have been created.
+No decision flags have been created.
+No simulated offer-exposure flag has been created.
+No simulated reason codes have been assigned.
+No approved amount has been calculated.
+No counteroffer amount has been calculated.
+No approved payment has been calculated.
+No approved PTI has been calculated.
+No approved Expected Loss has been calculated.
+No latest-run strategy decision output has been created.
+No archive rows have been inserted.
+No evidence rows have been inserted.
+No matched comparison has been performed.
+No full QA framework has been built.
+
+***************************************************************************************************/
+</code></pre>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

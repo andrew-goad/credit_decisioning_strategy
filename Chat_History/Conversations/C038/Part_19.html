@@ -1,0 +1,4119 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 19</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 19 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_18.html">Previous</a><a href="Part_20.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00253" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00253 · 2026-05-06T19:21:05.855615-04:00 · active path</p><div class="body"><h2>1. Commentary gap assessment versus Module 1 V2.0 standard</h2>
+<p>Module 2 already has strong architecture, governance logic, staged design, gatekeepers, archive persistence, matched comparison, and QA diagnostics. The remaining gap is not the strategy design; it is the <strong>reader experience of the SQL artifact</strong>.</p>
+<p>Module 1 V2.0 treated the SQL as an executable system design artifact: section comments explained purpose, governance rationale, output interpretation, parameter discipline, QA evidence, and boundaries. The Module 1 BRD explicitly positions the implementation as a governed, staged, parameterized, QA-integrated, boundary-aware artifact rather than a generic script, and the Validation Summary reinforces that a successful run is not the same as validation evidence. fileciteturn4file1 fileciteturn4file2</p>
+<p>The Module 2 commentary should be uplifted in four areas:</p>
+<ol>
+<li><p><strong>Executive framing:</strong> The current Module 2 code should more clearly explain why strategy outcomes are simulated, how they consume Module 1 outputs, and how the module fits into the broader Enterprise Credit Decisioning Strategy Simulator.</p>
+</li>
+<li><p><strong>Reviewer job aid:</strong> The top of the SQL should tell a user how to run the module, what to inspect first, when to archive, when to compare, and when to treat outputs as validation evidence.</p>
+</li>
+<li><p><strong>Section-level teaching notes:</strong> Each section should explain not only what table it creates, but why that layer exists, what it preserves, what it intentionally does not decide, and which downstream layers depend on it.</p>
+</li>
+<li><p><strong>Testing and validation interpretation:</strong> Section 14 is strong, but the global comments should set expectations earlier: execution success, archive success, matched comparison readiness, and QA acceptance are different milestones.</p>
+</li>
+</ol>
+<p>No accepted business logic should be changed during this pass.</p>
+<h2>2. Module 2 elite commentary standard</h2>
+<p>For every major section, the commentary should follow this standard.</p>
+<p><strong>Business purpose:</strong> State the strategy question answered by the section. Example: “Which simulated policy conditions are triggered?” rather than “Creates rule flags.”</p>
+<p><strong>SQL purpose:</strong> State the technical object produced or validated, including input and output table names.</p>
+<p><strong>Input and output:</strong> Name the consumed stage and produced stage. This prevents dependency ambiguity and helps static assembly review.</p>
+<p><strong>Boundary:</strong> State what the section intentionally does not do. For example, Section 6 creates rule flags but does not assign final decisions or reason codes.</p>
+<p><strong>Interpretation:</strong> Explain how a reviewer should read the output. For example, preliminary COUNTEROFFER means a row needs feasibility testing; it does not mean a viable counteroffer exists.</p>
+<p><strong>Governance role:</strong> Explain how the section supports auditability, reproducibility, parameter control, archive traceability, or validation.</p>
+<p><strong>Common misuse:</strong> State what not to infer. For example, <code>simulated_offer_exposure_flag</code> does not mean booked exposure.</p>
+<p><strong>Testing relevance:</strong> Explain how the section supports later smoke testing, gatekeeper testing, archive testing, matched comparison, or QA evidence.</p>
+<p><strong>Downstream dependency:</strong> Identify which later sections rely on the output. Example: Section 10 reason codes rely on Section 9 final decision outcomes and Section 8 counteroffer feasibility diagnostics.</p>
+<p><strong>Portfolio artifact value:</strong> Explain what system-design maturity the section demonstrates: staged design, separation of concerns, parameter governance, reason-code transparency, archive controls, matched comparison, or validation-first architecture.</p>
+<p>The commentary should remain credit-strategy aware and boundary-disciplined. It should avoid generic comments that merely restate SQL mechanics.</p>
+<h2>3. Logic issue candidates — review before patching</h2>
+<p>These are not proposed changes for this pass. They are static-review risks to verify before runtime testing.</p>
+<h3>LOGIC ISSUE CANDIDATE — REVIEW BEFORE PATCHING 1</h3>
+<p><strong>Section:</strong> Section 11 / Section 14 dependency<br><strong>Concern:</strong> Section 14 references fields such as <code>counteroffer_target_pti</code> and <code>product_approved_el_cap</code>. Confirm that Section 11 explicitly carries these threshold fields into <code>credit_decisioning_sim.strategy_decisions</code>.<br><strong>Why it matters:</strong> Section 14 validates final counteroffer affordability and approved Expected Loss constraints using those fields. If Section 11 omits them from the final latest-run table, Section 14 will fail with missing-column errors.<br><strong>Type:</strong> Dependency / output-schema risk<br><strong>Recommended patch:</strong> If absent, add the required threshold fields to the explicit Section 11 SELECT list.<br><strong>Required before runtime testing:</strong> Yes, if the fields are absent.</p>
+<h3>LOGIC ISSUE CANDIDATE — REVIEW BEFORE PATCHING 2</h3>
+<p><strong>Section:</strong> Section 14.19 validation status summary<br><strong>Concern:</strong> The comparison-readiness CTE assumes <code>tmp_m2_strategy_comparison_params</code> exists and has at least one row. The full script creates it in Section 13, so this should be true during full execution. However, if a user runs Section 14 independently, that dependency may not exist.<br><strong>Why it matters:</strong> Section 14 is intended primarily for latest-run QA, while Section 13 handles archive comparison. A missing temporary comparison parameter object could interrupt independent Section 14 execution.<br><strong>Type:</strong> Dependency / independent-section execution risk<br><strong>Recommended patch:</strong> Either document that Section 13 must be run before Section 14 comparison-readiness recap, or add a defensive temp-table existence helper.<br><strong>Required before runtime testing:</strong> Not required for full-script testing; recommended if Section 14 is expected to run standalone.</p>
+<h3>LOGIC ISSUE CANDIDATE — REVIEW BEFORE PATCHING 3</h3>
+<p><strong>Section:</strong> Global static assembly<br><strong>Concern:</strong> The assembled code should be scanned for old terminology such as “booked,” “approved book,” “adverse action,” “regulatory reason,” “customer notice,” or “calibration” language.<br><strong>Why it matters:</strong> The module’s boundaries require simulated strategy outcome language only.<br><strong>Type:</strong> Interpretation / terminology risk<br><strong>Recommended patch:</strong> Comment-only terminology cleanup.<br><strong>Required before runtime testing:</strong> Not required for execution, but required before final portfolio artifact release.</p>
+<h2>4. Proposed global header / Section 0 replacement commentary only</h2>
+<p>This is a <strong>comment-only patch</strong>. It should replace or expand the current global header and Section 0 narrative without changing any SQL expressions, table names, columns, thresholds, joins, CASE logic, archive logic, or QA logic.</p>
+<pre><code class="language-sql">/***************************************************************************************************
+MODULE 2 — CREDIT POLICY STRATEGY &amp; DECISION OUTCOME SIMULATION ENGINE V1.0
+****************************************************************************************************
+
+PROJECT:
+    Enterprise Credit Decisioning Strategy Simulator
+
+MODULE 2 PURPOSE:
+    Module 2 consumes the finalized Module 1 synthetic application and risk outputs and applies a
+    governed, parameterized credit strategy simulation layer.
+
+    In plain English, Module 2 answers:
+
+        &quot;Given this synthetic applicant profile, this product structure, this requested exposure,
+         this affordability profile, and this Module 1 synthetic estimated-risk framework, what
+         simulated strategy outcome would this applicant trigger under a selected Module 2 strategy?&quot;
+
+    The output is a transparent simulated strategy result:
+        APPROVE
+        COUNTEROFFER
+        MANUAL_REVIEW
+        DECLINE
+
+    These are simulated strategy outcomes on synthetic applicants. They are not real applicant
+    decisions.
+
+WHAT MODULE 2 IS:
+    Module 2 is a governed synthetic decision-outcome simulation layer.
+
+    It is designed to:
+        1. consume finalized Module 1 synthetic application outputs;
+        2. preserve Module 1 scenario lineage;
+        3. apply parameterized Module 2 strategy thresholds;
+        4. construct transparent rule-trigger flags;
+        5. route applications through a preliminary strategy hierarchy;
+        6. evaluate approved-exposure and counteroffer feasibility;
+        7. resolve final simulated strategy outcomes;
+        8. assign simulated strategy explanation codes;
+        9. materialize a latest-run strategy output table;
+        10. optionally persist completed outputs to a governed archive;
+        11. support matched strategy comparison across archived strategy versions;
+        12. provide validation, QA, and strategy outcome diagnostics.
+
+WHAT MODULE 2 IS NOT:
+    Module 2 is intentionally bounded.
+
+    It is not:
+        - a production underwriting system;
+        - a real customer decision engine;
+        - an adverse-action or regulatory reason-code framework;
+        - a fair-lending or compliance adjudication framework;
+        - a production pricing engine;
+        - a profitability optimization engine;
+        - an account booking, funding, or servicing system;
+        - a calibrated probability-of-default model;
+        - a post-decision risk recalibration layer;
+        - a macroeconomic forecasting system;
+        - a substitute for production model validation.
+
+    The correct interpretation is:
+
+        &quot;Under this simulated strategy, this synthetic applicant would receive this simulated
+         strategy outcome.&quot;
+
+    The incorrect interpretation is:
+
+        &quot;This real customer should be approved, declined, reviewed, priced, booked, or treated this
+         way.&quot;
+
+RELATIONSHIP TO MODULE 1:
+    Module 1 is finalized, validated, and authoritative.
+
+    Module 2 consumes Module 1 outputs. It does not redesign, regenerate, or reinterpret Module 1.
+
+    Module 1 provides:
+        - synthetic applications;
+        - product type;
+        - score band;
+        - borrower profile variables;
+        - requested amount;
+        - APR proxy;
+        - monthly payment proxy;
+        - requested payment-to-income ratio;
+        - amount-to-income ratio;
+        - estimated_pd;
+        - estimated_lgd;
+        - expected_loss_amount;
+        - scenario lineage;
+        - scenario archive outputs.
+
+    Module 2 preserves these inputs and adds downstream strategy simulation outputs.
+
+    The Module 1 field name estimated_pd remains unchanged because it is the finalized SQL output
+    column from Module 1. In all commentary, interpretation, validation, and documentation,
+    estimated_pd should be understood as the synthetic estimated-PD proxy.
+
+    Module 2 V1.0 does not recalculate estimated_pd.
+    Module 2 V1.0 does not create a post-decision risk model.
+    Module 2 V1.0 does not treat Module 1 scenario outputs as forecasts.
+
+CORE DESIGN CHAINS:
+    Module 1 transmission chain:
+
+        Application
+            → Product Structure
+            → APR
+            → Payment
+            → PTI
+            → synthetic estimated-PD proxy
+            → Expected Loss
+
+    Module 2 strategy chain:
+
+        Module 1 Applicant / Risk Profile
+            → Module 2 Strategy Parameters
+            → Product Policy Parameters
+            → Rule Flags
+            → Preliminary Routing
+            → Exposure Treatment / Counteroffer Feasibility
+            → Final Simulated Strategy Outcome
+            → Simulated Strategy Explanation Codes
+            → Latest-Run Output
+            → Strategy Archive
+            → Matched Strategy Comparison
+            → Validation / QA Evidence
+
+MODULE 2 DESIGN PRINCIPLES:
+    1. Strategy-parameterized over hard-coded.
+       Strategy behavior should be controlled through tmp_module2_strategy_params and
+       tmp_module2_product_policy_params before downstream CASE logic is modified.
+
+    2. Staged over monolithic.
+       Each major layer is materialized into a named stage table so reviewers can inspect how
+       strategy outcomes are built.
+
+    3. Explainable over opaque.
+       Rule flags, preliminary routing, exposure treatment, final outcomes, and simulated reason
+       codes are separated so that final outputs can be traced.
+
+    4. Simulated outcomes over production decisions.
+       APPROVE, COUNTEROFFER, MANUAL_REVIEW, and DECLINE are simulated strategy outcomes on
+       synthetic applicants.
+
+    5. Reason-code transparency over black-box routing.
+       Simulated reason codes are assigned after final decision resolution and are used for QA,
+       interpretation, and strategy traceability.
+
+    6. Matched comparison over population drift.
+       Strategy comparison should preserve the same Module 1 scenario and population_id so that
+       differences reflect Module 2 strategy behavior, not upstream population changes.
+
+    7. Governed archive over ad hoc outputs.
+       The latest-run output is replaceable. The archive preserves completed strategy outputs at the
+       governed grain.
+
+    8. Diagnostics before documentation.
+       Section 14 produces validation evidence. The written BRD and Validation Summary should be
+       drafted only after runtime evidence is reviewed.
+
+    9. Validation-first over output-only.
+       A successful SQL execution is not the same as a validated strategy run.
+
+OPERATING JOB AID:
+    Recommended execution workflow:
+
+        1. Confirm Module 1 latest-run or scenario archive output exists.
+        2. Choose Module 1 input source:
+               LATEST
+               ARCHIVE
+        3. Review tmp_module2_strategy_params.
+        4. Review tmp_module2_product_policy_params.
+        5. Run fail-fast gatekeepers.
+        6. Confirm source staging preserves Module 1 lineage and Module 2 strategy metadata.
+        7. Review derived segmentation and rule flags.
+        8. Review preliminary routing and exposure-treatment outputs.
+        9. Review final decision outcomes and simulated reason codes.
+        10. Materialize credit_decisioning_sim.strategy_decisions.
+        11. If archive_run_flag = TRUE, persist to
+            credit_decisioning_sim.strategy_decisions_archive.
+        12. If at least two strategy slices are archived under the same Module 1 scenario and
+            population, run matched strategy comparison.
+        13. Review Section 14 QA evidence.
+        14. Only after QA evidence is reviewed, draft the BRD and Validation Summary.
+
+PARAMETER CHANGE GUIDANCE:
+    Strategy tuning should begin with governed parameters, not downstream SQL rewrites.
+
+    Examples of parameter-first changes:
+        - tightening synthetic estimated-PD proxy thresholds;
+        - tightening PTI thresholds;
+        - changing failed counteroffer resolution;
+        - changing product-level exposure caps;
+        - changing counteroffer minimum viable amount controls;
+        - changing archive run controls.
+
+    Downstream logic should be changed only when the business question cannot be represented through
+    the parameter framework.
+
+TESTING GUIDANCE:
+    A successful run proves that the SQL executed.
+    It does not prove that the strategy is validated.
+
+    A completed Module 2 run should be reviewed through:
+        - structural integrity checks;
+        - source lineage checks;
+        - decision distribution checks;
+        - final flag reconciliation;
+        - approved amount convention checks;
+        - approved Expected Loss convention checks;
+        - reason-code coverage checks;
+        - archive persistence checks;
+        - matched strategy comparison readiness;
+        - Section 14 validation diagnostics.
+
+INTERPRETATION BOUNDARIES:
+    estimated_pd:
+        SQL field name retained from Module 1.
+        Interpret as the synthetic estimated-PD proxy.
+
+    requested_expected_loss_amount:
+        Module 2 alias for Module 1 requested-exposure Expected Loss.
+
+    approved_expected_loss_amount:
+        Module 2 approved-exposure Expected Loss after simulated exposure treatment.
+        It is not a production loss forecast.
+
+    simulated_offer_exposure_flag:
+        TRUE for APPROVE and COUNTEROFFER simulated positive offer-exposure outcomes.
+        It does not mean booked exposure, funded exposure, account opening, operational approval,
+        or real applicant treatment.
+
+    reason codes:
+        Simulated strategy explanation codes.
+        They are not regulatory adverse-action reasons, customer notices, compliance-approved reason
+        codes, or fair-lending conclusions.
+
+    MANUAL_REVIEW:
+        Unresolved by design.
+        Manual-review rows should not have final approved exposure or approved Expected Loss
+        populated.
+
+    archive comparison:
+        Simulated strategy comparison across archived Module 2 outputs.
+        It is not production decision-change analysis.
+
+CANONICAL PERMANENT OUTPUTS:
+    credit_decisioning_sim.strategy_decisions
+        Latest-run Module 2 strategy output for the selected Module 1 source slice and active
+        strategy.
+
+    credit_decisioning_sim.strategy_decisions_archive
+        Governed archive of completed Module 2 strategy outputs.
+
+CANONICAL ARCHIVE GRAIN:
+    One row per:
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+        application_id
+
+CANONICAL ARCHIVE REPLACEMENT / RERUN KEY:
+    strategy_set_name
+    strategy_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+
+    application_id is part of the row-level archive grain, but it is not part of the replacement
+    slice key.
+
+AUDIT METADATA BOUNDARY:
+    strategy_run_id, strategy_run_ts, latest_output_created_ts, and archive_inserted_ts support
+    traceability.
+
+    They should not replace the archive replacement key.
+    They should not be used as deterministic matched-comparison keys.
+
+SQL SECTION MAP:
+    Section 0  — Executive Purpose, Module 2 Boundaries, and SQL Section Map
+    Section 1  — Schema Setup / Clean Rerun Reset
+    Section 2  — Strategy Parameter Framework and Product Policy Parameter Framework
+    Section 3  — Fail-Fast Strategy Parameter Gatekeeper
+    Section 4  — Module 1 Source Selection and Lineage Normalization
+    Section 5  — Derived Strategy Segmentation Layer
+    Section 6  — Rule Flag Construction Layer
+    Section 7  — Preliminary Decision Routing Layer
+    Section 8  — Approved Exposure and Counteroffer Feasibility Layer
+    Section 9  — Final Decision Resolution Layer
+    Section 10 — Simulated Reason-Code Assignment Layer
+    Section 11 — Latest-Run Strategy Decision Output Table
+    Section 12 — Strategy Decision Archive Persistence Layer
+    Section 13 — Archive Inventory and Matched Strategy Comparison Framework
+    Section 14 — Module 2 Validation, QA, and Strategy Outcome Diagnostics
+
+***************************************************************************************************/
+</code></pre>
+<h2>5. Section-by-section commentary uplift plan</h2>
+<h3>Chunk A — Global header, Sections 0–3</h3>
+<p><strong>Current commentary gap:</strong> Good governance foundation exists, but Section 0 needs a stronger executive job aid and Section 1–3 comments should better explain why clean rerun behavior, parameters, and gatekeepers are enterprise controls rather than setup boilerplate.</p>
+<p><strong>Required uplift:</strong> Add the global header above; expand Section 1 comments around latest-run versus archive separation; expand Section 2 parameter-family rationale; expand Section 3 gatekeeper commentary around fail-fast governance.</p>
+<p><strong>Comment-only:</strong> Yes.</p>
+<p><strong>Logic issue candidate:</strong> Verify Section 3 gatekeeper references every parameter added later, including <code>failed_counteroffer_resolution</code>, borderline buffer, and supplemental rule controls.</p>
+<p><strong>Recommended next patch:</strong> Apply global header / Section 0 replacement first.</p>
+<h3>Chunk B — Sections 4–6</h3>
+<p><strong>Current commentary gap:</strong> The staging logic is strong, but comments should more explicitly explain that Section 4 is the Module 1-to-Module 2 handoff, Section 5 is non-decision segmentation, and Section 6 is trigger construction rather than outcome assignment.</p>
+<p><strong>Required uplift:</strong> Add input/output summaries, source-lineage interpretation, product-policy key rationale, diagnostic segmentation explanation, and rule-flag overlap explanation.</p>
+<p><strong>Comment-only:</strong> Yes.</p>
+<p><strong>Logic issue candidate:</strong> Verify Section 11 carries any Section 5/6 threshold fields later referenced by Section 14.</p>
+<p><strong>Recommended next patch:</strong> After Chunk A, apply Section 4–6 commentary additions.</p>
+<h3>Chunk C — Sections 7–10</h3>
+<p><strong>Current commentary gap:</strong> The logic is layered correctly, but comments should better distinguish preliminary route, preliminary exposure treatment, final decision outcome, and reason-code explanation.</p>
+<p><strong>Required uplift:</strong> Add lifecycle-style comments: preliminary outcome is not final; counteroffer feasibility is not counteroffer approval; final decision resolution is not reason-code assignment; reason codes are simulated explanations only.</p>
+<p><strong>Comment-only:</strong> Yes.</p>
+<p><strong>Logic issue candidate:</strong> Verify exact string alignment between Section 8 failure labels and Section 10 reason-code candidates during Phase 0 static review.</p>
+<p><strong>Recommended next patch:</strong> Apply after Section 4–6 uplift.</p>
+<h3>Chunk D — Sections 11–14</h3>
+<p><strong>Current commentary gap:</strong> The latest-run, archive, comparison, and QA sections are already rich. The uplift should emphasize output consumption, archive grain, timestamp boundaries, matched comparison prerequisites, and validation evidence capture.</p>
+<p><strong>Required uplift:</strong> Add reviewer guidance around latest-run replacement, archive mode interpretation, matched comparison readiness, all-app versus offer-only exposure metrics, and Section 14 evidence use.</p>
+<p><strong>Comment-only:</strong> Mostly yes.</p>
+<p><strong>Logic issue candidate:</strong> Confirm <code>strategy_decisions</code> contains all fields needed by Section 13 and Section 14 diagnostics.</p>
+<p><strong>Recommended next patch:</strong> Apply after Chunk C and before runtime testing.</p>
+<h2>6. Runtime testing strategy</h2>
+<p>I would keep the testing order you proposed, with one refinement: run negative gatekeeper tests in a sandbox transaction or isolated schema state so intentional failures do not contaminate the archive.</p>
+<h3>PHASE 0 — Static Assembly Review</h3>
+<p><strong>Purpose:</strong> Detect assembly defects before PostgreSQL execution.</p>
+<p>Review for duplicate section markers, missing stage dependencies, missing temp tables, missing columns, inconsistent aliases, string-label mismatches, placeholder text, markdown artifacts, prohibited terminology, and ambiguous references to <code>estimated_pd</code>.</p>
+<p>Expected output: targeted patch list only.</p>
+<p>Required checks include:</p>
+<ul>
+<li>all canonical object names are used consistently;</li>
+<li>Sections 4–14 reference only fields created earlier or carried into later outputs;</li>
+<li>Section 10 reason-code labels exactly match Section 8 / Section 9 string values;</li>
+<li>Section 13 and Section 14 do not mutate archive or latest-run outputs;</li>
+<li>comments preserve synthetic estimated-PD proxy language;</li>
+<li>no prohibited “booked,” “adverse action,” “customer notice,” or production-decision language remains.</li>
+</ul>
+<h3>PHASE 1 — Module 1 Source Readiness</h3>
+<p>Initial smoke test should use <code>LATEST</code>.</p>
+<p>Test both paths eventually:</p>
+<ul>
+<li><code>credit_decisioning_sim.synthetic_applications</code></li>
+<li><code>credit_decisioning_sim.synthetic_applications_scenario_archive</code></li>
+</ul>
+<p>Expected checks:</p>
+<ul>
+<li>source table exists;</li>
+<li>row count &gt; 0;</li>
+<li><code>application_id</code> unique;</li>
+<li>required fields populated;</li>
+<li>scenario lineage populated;</li>
+<li><code>estimated_pd</code> populated and within expected bounds;</li>
+<li><code>expected_loss_amount</code> populated.</li>
+</ul>
+<h3>PHASE 2 — Module 2 LATEST Smoke Test, No Archive</h3>
+<p>Run with:</p>
+<ul>
+<li><code>module1_input_source = &#39;LATEST&#39;</code></li>
+<li><code>archive_run_flag = FALSE</code></li>
+</ul>
+<p>Expected results:</p>
+<ul>
+<li><code>credit_decisioning_sim.strategy_decisions</code> created;</li>
+<li>row count equals Module 1 latest-run row count;</li>
+<li><code>application_id</code> unique;</li>
+<li>final <code>decision_outcome</code> populated;</li>
+<li>exactly one final decision flag per row;</li>
+<li>reason codes populated;</li>
+<li>approved amount and approved Expected Loss conventions hold;</li>
+<li>archive remains unchanged.</li>
+</ul>
+<h3>PHASE 3 — Module 2 LATEST With Archive</h3>
+<p>Run with:</p>
+<ul>
+<li><code>module1_input_source = &#39;LATEST&#39;</code></li>
+<li><code>archive_run_flag = TRUE</code></li>
+<li><code>strategy_archive_reset_mode = &#39;STRATEGY_SCENARIO_ONLY&#39;</code></li>
+</ul>
+<p>Expected results:</p>
+<ul>
+<li><code>credit_decisioning_sim.strategy_decisions_archive</code> created or reused;</li>
+<li>current archived slice row count equals latest-run row count;</li>
+<li>archive grain unique;</li>
+<li>archived decision, exposure, economics, reason-code, and lineage fields match latest-run values;</li>
+<li><code>archive_inserted_ts</code> populated.</li>
+</ul>
+<h3>PHASE 4 — Archive Reset Mode Tests</h3>
+<p>Test in this order:</p>
+<ol>
+<li><p><code>STRATEGY_SCENARIO_ONLY</code><br>Rerun same strategy / scenario / population. Existing slice should be replaced cleanly.</p>
+</li>
+<li><p><code>NONE</code><br>Rerun same replacement key. Should fail before insert.</p>
+</li>
+<li><p><code>STRATEGY_SET_ONLY</code><br>Run after at least two strategies exist in the same strategy set. Should clear only the selected strategy set + Module 1 scenario + population.</p>
+</li>
+<li><p><code>ALL</code><br>Sandbox only. Should clear the archive before insert.</p>
+</li>
+</ol>
+<h3>PHASE 5 — Challenger Strategy Test</h3>
+<p>Create one challenger strategy using parameters only.</p>
+<p>Suggested challengers:</p>
+<ul>
+<li>tighter affordability strategy;</li>
+<li>tighter synthetic estimated-PD proxy strategy.</li>
+</ul>
+<p>Expected results:</p>
+<ul>
+<li>challenger archives successfully;</li>
+<li>same Module 1 scenario and <code>population_id</code>;</li>
+<li>row count matches baseline;</li>
+<li>application overlap is complete.</li>
+</ul>
+<h3>PHASE 6 — Matched Strategy Comparison Test</h3>
+<p>Configure Section 13 comparison params for:</p>
+<ul>
+<li>baseline strategy;</li>
+<li>challenger strategy;</li>
+<li>same Module 1 scenario;</li>
+<li>same <code>population_id</code>.</li>
+</ul>
+<p>Expected results:</p>
+<ul>
+<li><code>readiness_status = READY_FOR_MATCHED_COMPARISON</code>;</li>
+<li>matched application count equals baseline and challenger counts;</li>
+<li>source-field consistency shows <code>SOURCE_FIELDS_MATCH</code>;</li>
+<li>decision migration matrix is populated;</li>
+<li>approved amount and approved Expected Loss deltas are attributable to strategy changes.</li>
+</ul>
+<h3>PHASE 7 — Negative Gatekeeper Tests</h3>
+<p>Run controlled failure tests:</p>
+<ul>
+<li>duplicate active strategy rows;</li>
+<li>invalid <code>module1_input_source</code>;</li>
+<li>missing <code>strategy_name</code>;</li>
+<li>invalid archive reset mode;</li>
+<li>incoherent synthetic estimated-PD proxy thresholds;</li>
+<li>incoherent PTI thresholds;</li>
+<li>incoherent DTI thresholds;</li>
+<li>unsupported product type;</li>
+<li>duplicate product policy row;</li>
+<li>approved amount above requested enabled;</li>
+<li>archive <code>NONE</code> duplicate replacement key.</li>
+</ul>
+<p>Expected result: each failure stops clearly with an interpretable exception.</p>
+<h3>PHASE 8 — Full Section 14 QA Evidence Capture</h3>
+<p>Capture outputs from:</p>
+<ul>
+<li>decision outcome distribution;</li>
+<li>product-level distribution;</li>
+<li>score-band distribution;</li>
+<li>product × score matrix;</li>
+<li>synthetic risk ordering;</li>
+<li>affordability sensitivity;</li>
+<li>approved exposure and Expected Loss QA;</li>
+<li>counteroffer QA;</li>
+<li>manual review QA;</li>
+<li>decline / policy-stop QA;</li>
+<li>reason-code QA;</li>
+<li>simulated offer-exposure QA;</li>
+<li>mixed-signal / edge-case review;</li>
+<li>archive readiness;</li>
+<li>matched comparison readiness;</li>
+<li>validation status summary.</li>
+</ul>
+<p>This becomes the evidence foundation for the Module 2 Validation Summary.</p>
+<h2>7. Test evidence capture plan</h2>
+<table>
+<thead>
+<tr>
+<th>test_id</th>
+<th>test_name</th>
+<th>purpose</th>
+<th>setup</th>
+<th>source input</th>
+<th>parameters changed</th>
+<th>expected result</th>
+<th>SQL section / output query</th>
+<th>evidence to capture</th>
+<th>pass / review / fail interpretation</th>
+<th>downstream documentation use</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M2-T00</td>
+<td>Static assembly review</td>
+<td>Catch assembly, dependency, naming, and terminology issues before execution.</td>
+<td>Review assembled SQL file.</td>
+<td>Full SQL script.</td>
+<td>None.</td>
+<td>Targeted patch list only.</td>
+<td>All sections.</td>
+<td>Static review notes.</td>
+<td>Pass if no blocking syntax/dependency issues remain; review if patch list exists.</td>
+<td>Implementation readiness evidence.</td>
+</tr>
+<tr>
+<td>M2-T01</td>
+<td>Module 1 latest source readiness</td>
+<td>Confirm latest-run Module 1 source is usable.</td>
+<td>Module 1 latest output exists.</td>
+<td><code>synthetic_applications</code></td>
+<td>None.</td>
+<td>Source exists, rows &gt; 0, required fields populated.</td>
+<td>Section 3 / Section 4 checks.</td>
+<td>Row count, distinct application count, null checks.</td>
+<td>Pass if source is complete and unique.</td>
+<td>Source readiness evidence.</td>
+</tr>
+<tr>
+<td>M2-T02</td>
+<td>Module 2 latest smoke, no archive</td>
+<td>Confirm latest-run strategy output builds without archive mutation.</td>
+<td><code>archive_run_flag = FALSE</code>.</td>
+<td>LATEST</td>
+<td>Archive flag only.</td>
+<td><code>strategy_decisions</code> created; archive unchanged.</td>
+<td>Sections 4–11.</td>
+<td>Latest row count, decision counts, flag reconciliation.</td>
+<td>Pass if latest output conventions hold and no archive rows inserted.</td>
+<td>Initial runtime evidence.</td>
+</tr>
+<tr>
+<td>M2-T03</td>
+<td>Latest-run final outcome integrity</td>
+<td>Confirm one final simulated outcome per row.</td>
+<td>Use output from T02.</td>
+<td><code>strategy_decisions</code></td>
+<td>None.</td>
+<td>Exactly one final flag per row.</td>
+<td>Section 11 / Section 14.17.</td>
+<td>Violation counts.</td>
+<td>Pass if zero violations.</td>
+<td>Core output validation.</td>
+</tr>
+<tr>
+<td>M2-T04</td>
+<td>Reason-code coverage</td>
+<td>Confirm all rows have simulated explanation codes.</td>
+<td>Use output from T02.</td>
+<td><code>strategy_decisions</code></td>
+<td>None.</td>
+<td>Primary reason populated and family aligned.</td>
+<td>Section 10 / Section 14.14.</td>
+<td>Reason-code nulls, family alignment.</td>
+<td>Pass if no missing or family leakage.</td>
+<td>Reason-code validation evidence.</td>
+</tr>
+<tr>
+<td>M2-T05</td>
+<td>Approved exposure convention</td>
+<td>Confirm approved amount and approved Expected Loss conventions.</td>
+<td>Use output from T02.</td>
+<td><code>strategy_decisions</code></td>
+<td>None.</td>
+<td>APPROVE, COUNTEROFFER, MANUAL_REVIEW, DECLINE conventions hold.</td>
+<td>Section 14.10 / 14.17.</td>
+<td>Convention violation counts.</td>
+<td>Pass if zero violations.</td>
+<td>Exposure validation evidence.</td>
+</tr>
+<tr>
+<td>M2-T06</td>
+<td>Latest with archive</td>
+<td>Confirm completed latest run persists correctly.</td>
+<td><code>archive_run_flag = TRUE</code>, <code>STRATEGY_SCENARIO_ONLY</code>.</td>
+<td>LATEST</td>
+<td>Archive controls.</td>
+<td>Archive slice row count equals latest-run row count.</td>
+<td>Section 12.</td>
+<td>Archive row count, unique grain, inserted timestamp.</td>
+<td>Pass if archive mirrors latest-run slice.</td>
+<td>Archive persistence evidence.</td>
+</tr>
+<tr>
+<td>M2-T07</td>
+<td>Archive persistence field match</td>
+<td>Confirm archive did not alter results.</td>
+<td>Use T06 archive slice.</td>
+<td>Latest + archive.</td>
+<td>None.</td>
+<td>Decision, exposure, economics, reason-code, lineage fields match.</td>
+<td>Section 12 mismatch check.</td>
+<td>Mismatch count.</td>
+<td>Pass if zero mismatches.</td>
+<td>Archive integrity evidence.</td>
+</tr>
+<tr>
+<td>M2-T08</td>
+<td>Archive reset mode: NONE duplicate</td>
+<td>Confirm duplicate protection.</td>
+<td>Rerun same key with <code>NONE</code>.</td>
+<td>LATEST</td>
+<td>Reset mode.</td>
+<td>Fail-fast before duplicate insert.</td>
+<td>Section 12.</td>
+<td>Exception text.</td>
+<td>Pass if clear failure occurs.</td>
+<td>Archive governance evidence.</td>
+</tr>
+<tr>
+<td>M2-T09</td>
+<td>Archive reset mode: STRATEGY_SET_ONLY</td>
+<td>Confirm broader controlled reset.</td>
+<td>At least two strategies in same set.</td>
+<td>Archive.</td>
+<td>Reset mode.</td>
+<td>Selected strategy set + Module 1 scenario + population cleared before insert.</td>
+<td>Section 12 inventory.</td>
+<td>Before/after archive inventory.</td>
+<td>Pass if unrelated scenarios/populations remain.</td>
+<td>Archive mode validation.</td>
+</tr>
+<tr>
+<td>M2-T10</td>
+<td>Archive reset mode: ALL sandbox</td>
+<td>Confirm full reset behavior.</td>
+<td>Sandbox only.</td>
+<td>Archive.</td>
+<td>Reset mode.</td>
+<td>Archive cleared before insert.</td>
+<td>Section 12 inventory.</td>
+<td>Archive inventory before/after.</td>
+<td>Pass if only current slice remains after reset.</td>
+<td>Destructive-mode validation.</td>
+</tr>
+<tr>
+<td>M2-T11</td>
+<td>Challenger strategy archive</td>
+<td>Create challenger using parameter changes only.</td>
+<td>Change thresholds, not logic.</td>
+<td>LATEST</td>
+<td>Strategy params.</td>
+<td>Challenger archives under same Module 1 scenario/population.</td>
+<td>Sections 2–12.</td>
+<td>Baseline/challenger inventory.</td>
+<td>Pass if row counts and application sets match.</td>
+<td>Strategy comparison setup evidence.</td>
+</tr>
+<tr>
+<td>M2-T12</td>
+<td>Matched comparison readiness</td>
+<td>Confirm comparison can isolate strategy effects.</td>
+<td>Baseline and challenger archived.</td>
+<td>Archive.</td>
+<td>Comparison params.</td>
+<td><code>READY_FOR_MATCHED_COMPARISON</code>.</td>
+<td>Section 13.2.</td>
+<td>Readiness query.</td>
+<td>Pass if matched count equals both slices and no unmatched rows.</td>
+<td>Matched comparison evidence.</td>
+</tr>
+<tr>
+<td>M2-T13</td>
+<td>Source-field consistency</td>
+<td>Confirm no Module 1 source drift across strategies.</td>
+<td>Use T12 matched slices.</td>
+<td>Archive.</td>
+<td>None.</td>
+<td><code>SOURCE_FIELDS_MATCH</code>.</td>
+<td>Section 13.11.</td>
+<td>Mismatch counts.</td>
+<td>Pass if zero mismatches.</td>
+<td>Attribution evidence.</td>
+</tr>
+<tr>
+<td>M2-T14</td>
+<td>Decision migration matrix</td>
+<td>Quantify strategy movement.</td>
+<td>Use T12 matched slices.</td>
+<td>Archive.</td>
+<td>None.</td>
+<td>Migration matrix populated.</td>
+<td>Section 13.5.</td>
+<td>Outcome transition table.</td>
+<td>Review; movement should be interpretable.</td>
+<td>Strategy impact evidence.</td>
+</tr>
+<tr>
+<td>M2-T15</td>
+<td>Negative gatekeeper battery</td>
+<td>Confirm invalid configs fail fast.</td>
+<td>Sandbox / isolated transactions.</td>
+<td>Varies.</td>
+<td>Invalid params.</td>
+<td>Clear exceptions.</td>
+<td>Section 3 / Section 4 / Section 12.</td>
+<td>Exception text by scenario.</td>
+<td>Pass if each invalid config fails clearly.</td>
+<td>Governance validation evidence.</td>
+</tr>
+<tr>
+<td>M2-T16</td>
+<td>Full QA evidence capture</td>
+<td>Capture latest-run validation evidence.</td>
+<td>Completed latest run.</td>
+<td><code>strategy_decisions</code></td>
+<td>None.</td>
+<td>Section 14 outputs available.</td>
+<td>Section 14.</td>
+<td>QA outputs and <code>tmp_m2_validation_status_summary</code>.</td>
+<td>Pass/review based on diagnostics.</td>
+<td>Foundation for Validation Summary.</td>
+</tr>
+</tbody></table>
+<h2>8. Runtime testing order</h2>
+<p>I confirm the proposed order, with minor execution notes:</p>
+<ol>
+<li>Static assembly review  </li>
+<li>LATEST smoke test with archive disabled  </li>
+<li>LATEST smoke test with archive enabled  </li>
+<li>Archive reset mode tests  </li>
+<li>Challenger strategy test  </li>
+<li>Matched comparison test  </li>
+<li>Negative gatekeeper tests in isolated sandbox conditions  </li>
+<li>Full Section 14 QA evidence capture  </li>
+<li>BRD and Validation Summary drafting only after evidence review</li>
+</ol>
+<p>This order is appropriate because it proves the latest-run engine before archive persistence, archive persistence before matched comparison, and matched comparison before final documentation.</p>
+<h2>9. Recommended next patch chunk</h2>
+<p>Recommended next patch:</p>
+<p><strong>Chunk A-0 — Global header / Section 0 commentary replacement only.</strong></p>
+<p>Scope:</p>
+<ul>
+<li>Replace or expand the current global header and Section 0 narrative with the proposed comment block above.</li>
+<li>Do not touch Section 1–14 logic.</li>
+<li>Do not change thresholds, CASE logic, joins, table names, archive logic, or QA queries.</li>
+</ul>
+<p>After Chunk A-0 is accepted, proceed to:</p>
+<p><strong>Chunk A-1 — Sections 1–3 commentary uplift</strong>, focused on schema/reset interpretation, parameter governance, and fail-fast gatekeeper explanation.</p>
+</div></article><article id="c038-m00255" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00255 · 2026-05-06T19:37:55.108000-04:00 · active path</p><div class="body"><p>The prior response improved the top-level commentary, but it also became too broad and difficult to act on.</p>
+<p>I want to narrow the next step.</p>
+<p>Current priority is not broad commentary uplift.</p>
+<p>Current priority is:</p>
+<ol>
+<li>confirm the assembled SQL is internally consistent;</li>
+<li>identify any blocker issues before runtime;</li>
+<li>prepare the first controlled runtime smoke test.</li>
+</ol>
+<p>Do not rewrite the full SQL.</p>
+<p>Do not rewrite the header again yet.</p>
+<p>Do not apply broad commentary changes yet.</p>
+<p>Do not draft the BRD or Validation Summary.</p>
+<p>Do not change business logic unless a blocker is identified and I explicitly approve the patch.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>CURRENT DECISION: VALIDATE FIRST, COMMENTARY SECOND</h1>
+</li>
+</ol>
+<p>We will validate the code before doing a full commentary uplift.</p>
+<p>Reason:
+The Module 2 SQL logic has been assembled across many prior responses. Before polishing comments, we need to confirm:</p>
+<ul>
+<li>all sections are present;</li>
+<li>table dependencies are valid;</li>
+<li>column references are consistent;</li>
+<li>temp tables are created before use;</li>
+<li>final output fields exist where downstream sections expect them;</li>
+<li>Section 13 and Section 14 can reference the fields they need;</li>
+<li>archive logic is structurally coherent;</li>
+<li>no accepted logic was lost during full-code capture.</li>
+</ul>
+<p>Once the SQL runs and the structural tests pass, we will come back and elevate comments/header/section notes to Module 1 V2.0 quality.</p>
+<p>For now, commentary changes should be limited to blocker-level interpretation fixes only.</p>
+<p>================================================================================
+2. DO NOT CHANGE THESE YET
+================================================================================</p>
+<p>For this pass, do not change:</p>
+<ul>
+<li>thresholds</li>
+<li>strategy parameters</li>
+<li>product policy parameters</li>
+<li>table names</li>
+<li>column names</li>
+<li>CASE logic</li>
+<li>JOIN logic</li>
+<li>archive reset behavior</li>
+<li>reason-code priority logic</li>
+<li>approved exposure logic</li>
+<li>approved Expected Loss logic</li>
+<li>Section 14 QA logic</li>
+<li>broad section comments</li>
+<li>global header</li>
+</ul>
+<p>If you believe any of the above contains a defect, report it as a candidate issue first.</p>
+<p>================================================================================
+3. PHASE 0 STATIC ASSEMBLY REVIEW ONLY
+================================================================================</p>
+<p>Please perform a static assembly review of the current full canonical Module 2 SQL script.</p>
+<p>Do not rewrite the script.</p>
+<p>Do not provide a full replacement script.</p>
+<p>Provide only a targeted issue register.</p>
+<p>Review for:</p>
+<ol>
+<li><p>Section completeness</p>
+<ul>
+<li>Sections 0 through 14 are present</li>
+<li>no duplicate section numbers</li>
+<li>no missing section markers</li>
+<li>no placeholder text</li>
+<li>no ellipses</li>
+<li>no “same as above” language</li>
+</ul>
+</li>
+<li><p>Dependency order</p>
+<ul>
+<li>every temp table is created before it is referenced</li>
+<li>every permanent table is created before it is referenced</li>
+<li>every CTE references only prior CTEs or valid base tables</li>
+<li>Section 14 does not depend on a temp table that may not exist if the full script is run normally</li>
+</ul>
+</li>
+<li><p>Column lineage</p>
+<ul>
+<li>every column referenced downstream is created or carried forward upstream</li>
+<li>Section 11 includes all fields required by Section 12, Section 13, and Section 14</li>
+<li>Section 13 references only fields available in strategy_decisions_archive</li>
+<li>Section 14 references only fields available in strategy_decisions or archive/comparison temp structures</li>
+</ul>
+</li>
+<li><p>Naming consistency</p>
+<ul>
+<li>estimated_pd remains the SQL field name and is interpreted as synthetic estimated-PD proxy</li>
+<li>requested_expected_loss_amount is consistently used for Module 1 requested-exposure Expected Loss</li>
+<li>approved_expected_loss_amount is consistently used for Module 2 approved-exposure Expected Loss</li>
+<li>simulated_offer_exposure_flag is used instead of booked_exposure_flag</li>
+<li>strategy metadata and Module 1 scenario metadata remain separate</li>
+</ul>
+</li>
+<li><p>String-label consistency</p>
+<ul>
+<li><p>decision_outcome values align everywhere:
+APPROVE
+COUNTEROFFER
+MANUAL_REVIEW
+DECLINE</p>
+</li>
+<li><p>decision_path values referenced in reason-code logic are actually produced in Section 9</p>
+</li>
+<li><p>counteroffer_feasibility_failure_reason values referenced in Section 10 are actually produced in Section 8</p>
+</li>
+<li><p>reason-code family values align with final decision outcomes</p>
+</li>
+<li><p>archive reset mode values align everywhere:
+NONE
+STRATEGY_SCENARIO_ONLY
+STRATEGY_SET_ONLY
+ALL</p>
+</li>
+</ul>
+</li>
+<li><p>Gatekeeper consistency</p>
+<ul>
+<li>gatekeepers reference columns that exist</li>
+<li>gatekeeper variables are declared before use</li>
+<li>exception messages are interpretable</li>
+<li>no gatekeeper accidentally blocks a valid run</li>
+</ul>
+</li>
+<li><p>Forbidden terminology scan
+Search comments and output fields for problematic interpretation language:</p>
+<ul>
+<li>adverse action</li>
+<li>regulatory reason</li>
+<li>customer notice</li>
+<li>fair lending conclusion</li>
+<li>booked account</li>
+<li>funded exposure</li>
+<li>production approval</li>
+<li>calibrated PD</li>
+<li>risk recalibration</li>
+</ul>
+<p>If the phrase appears only to say “this is not X,” classify it as COMMENT_ONLY unless it creates ambiguity.</p>
+</li>
+</ol>
+<p>================================================================================
+4. STATIC REVIEW OUTPUT FORMAT
+================================================================================</p>
+<p>Return a concise issue register with this format:</p>
+<p>issue_id
+section
+severity
+issue_type
+description
+why_it_matters
+recommended_action
+required_before_runtime_test</p>
+<p>Use these severity levels:</p>
+<ul>
+<li>BLOCKER: likely prevents execution or invalidates output</li>
+<li>HIGH: may execute but could materially distort results or validation</li>
+<li>MEDIUM: should be fixed before finalization, not necessarily before first smoke test</li>
+<li>COMMENT_ONLY: interpretation or documentation cleanup</li>
+<li>DEFER: acceptable to address after runtime validation</li>
+</ul>
+<p>Do not include long essays.</p>
+<p>Do not rewrite code unless there is a BLOCKER or HIGH issue.</p>
+<p>For any BLOCKER or HIGH issue, provide an exact targeted patch in BEFORE / AFTER format.</p>
+<p>================================================================================
+5. FIRST RUNTIME SMOKE TEST PLAN
+================================================================================</p>
+<p>After the static issue register, provide a compact first-run test packet only.</p>
+<p>The first runtime test should be:</p>
+<p>Module 2 LATEST smoke test with archive disabled.</p>
+<p>Recommended setup:</p>
+<ul>
+<li>module1_input_source = &#39;LATEST&#39;</li>
+<li>archive_run_flag = FALSE</li>
+<li>strategy_archive_reset_mode = &#39;STRATEGY_SCENARIO_ONLY&#39;</li>
+<li>use the default baseline Module 2 strategy parameters</li>
+<li>do not create a challenger strategy yet</li>
+<li>do not use archive input yet</li>
+</ul>
+<p>The purpose of this test is only to prove that the latest-run Module 2 engine executes and creates:</p>
+<p>credit_decisioning_sim.strategy_decisions</p>
+<p>Expected first-run outcomes:</p>
+<ul>
+<li>strategy_decisions table exists</li>
+<li>row count equals Module 1 latest-run row count</li>
+<li>application_id is unique</li>
+<li>decision_outcome is populated for every row</li>
+<li>exactly one final outcome flag is TRUE per row</li>
+<li>primary_reason_code is populated for every row</li>
+<li>approved amount conventions hold</li>
+<li>approved Expected Loss conventions hold</li>
+<li>archive is not inserted because archive_run_flag = FALSE</li>
+</ul>
+<p>================================================================================
+6. FIRST RUNTIME TEST PACKET FORMAT
+================================================================================</p>
+<p>Please provide the first-run test packet with only these items:</p>
+<ol>
+<li>Pre-run assumptions</li>
+<li>Exact parameter values to use for first smoke test</li>
+<li>Exact expected outputs</li>
+<li>The top 10 SQL checks I should run after execution</li>
+<li>What error details I should send back if execution fails</li>
+</ol>
+<p>Do not provide the full testing matrix again.</p>
+<p>Do not provide commentary uplift plan again.</p>
+<p>Do not provide BRD or Validation Summary guidance yet.</p>
+<p>================================================================================
+7. IF RUNTIME ERRORS OCCUR
+================================================================================</p>
+<p>Once I run the SQL, I will send back the first error only.</p>
+<p>When I send an error, you should:</p>
+<ol>
+<li>identify the likely section;</li>
+<li>explain the cause;</li>
+<li>provide the smallest targeted patch;</li>
+<li>avoid broad rewrites;</li>
+<li>preserve all accepted logic and commentary.</li>
+</ol>
+<p>================================================================================
+8. AFTER THE SMOKE TEST PASSES
+================================================================================</p>
+<p>After the LATEST / archive-off smoke test passes, we will proceed in this order:</p>
+<ol>
+<li>LATEST with archive enabled</li>
+<li>archive reset mode tests</li>
+<li>challenger strategy using parameter changes only</li>
+<li>matched strategy comparison</li>
+<li>negative gatekeeper tests</li>
+<li>full Section 14 evidence capture</li>
+<li>commentary/header uplift</li>
+<li>Module 2 BRD</li>
+<li>Module 2 Validation Summary</li>
+</ol>
+<p>For now, focus only on:</p>
+<ul>
+<li>static assembly review;</li>
+<li>blocker/high patch list if needed;</li>
+<li>first runtime smoke test packet.</li>
+</ul>
+<p>Please proceed with Phase 0 static assembly review only.</p>
+</div></article><article id="c038-m00261" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00261 · 2026-05-06T19:41:08.850177-04:00 · active path</p><div class="body"><p>Phase 0 static review is using the same validation discipline established for Module 1: staged SQL should be executable, reviewable, parameter-governed, QA-integrated, and boundary-aware; validation evidence should prove behavior, not merely successful execution. fileciteturn4file1 fileciteturn4file2</p>
+<h2>Phase 0 static assembly issue register</h2>
+<h3>Summary</h3>
+<p>No confirmed <strong>BLOCKER</strong> or <strong>HIGH</strong> issue is identified from the assembled canonical capture. I would proceed to the first LATEST / archive-off smoke test after doing one quick local grep/static check on the final saved <code>.sql</code> file for the dependency items below.</p>
+<table>
+<thead>
+<tr>
+<th>issue_id</th>
+<th align="right">section</th>
+<th>severity</th>
+<th>issue_type</th>
+<th>description</th>
+<th>why_it_matters</th>
+<th>recommended_action</th>
+<th>required_before_runtime_test</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M2-P0-001</td>
+<td align="right">11, 14</td>
+<td>MEDIUM</td>
+<td>dependency / column lineage</td>
+<td>Confirm <code>strategy_decisions</code> includes fields later referenced by Section 14, especially <code>counteroffer_target_pti</code>, <code>product_approved_el_cap</code>, and any product policy threshold fields used in final QA.</td>
+<td>If omitted from Section 11’s explicit SELECT list, Section 14 will fail on missing-column references.</td>
+<td>Before runtime, grep Section 11 SELECT list for these fields. Patch only if missing.</td>
+<td>Yes, as a quick verification; patch only if absent.</td>
+</tr>
+<tr>
+<td>M2-P0-002</td>
+<td align="right">9, 11</td>
+<td>MEDIUM</td>
+<td>dependency / column lineage</td>
+<td>Confirm <code>failed_counteroffer_resolution</code> is carried into the final latest-run output if Section 11 or diagnostics reference it.</td>
+<td>Section 9 uses this parameter to resolve failed counteroffers; preserving it improves traceability and may be needed by downstream review.</td>
+<td>Grep final script for <code>failed_counteroffer_resolution</code> in Section 11 SELECT list.</td>
+<td>Not required for execution unless downstream SQL references it; recommended before smoke test.</td>
+</tr>
+<tr>
+<td>M2-P0-003</td>
+<td align="right">13, 14</td>
+<td>DEFER</td>
+<td>execution dependency</td>
+<td>Section 14 archive/comparison readiness recap assumes Section 13 has created <code>tmp_m2_strategy_comparison_params</code> during full-script execution.</td>
+<td>Full script order is valid, but running Section 14 standalone could fail or produce incomplete comparison-readiness output.</td>
+<td>No patch before full-script smoke test. Document later if Section 14 should run independently.</td>
+<td>No.</td>
+</tr>
+<tr>
+<td>M2-P0-004</td>
+<td align="right">13</td>
+<td>DEFER</td>
+<td>expected diagnostic behavior</td>
+<td>In the first smoke test, <code>archive_run_flag = FALSE</code>, so Section 13 readiness will likely show missing challenger or not-ready statuses.</td>
+<td>This is expected because no challenger strategy has been archived yet. It should not be interpreted as a Module 2 failure.</td>
+<td>Treat Section 13 comparison readiness as informational during archive-off smoke test.</td>
+<td>No.</td>
+</tr>
+<tr>
+<td>M2-P0-005</td>
+<td align="right">12</td>
+<td>MEDIUM</td>
+<td>test setup / archive verification</td>
+<td>Archive-off behavior cannot be proven solely from final row counts if the archive already contains prior rows for the same replacement key.</td>
+<td>Existing archived rows could be mistaken for newly inserted rows.</td>
+<td>Capture archive row count before and after first smoke test if archive already exists.</td>
+<td>Recommended.</td>
+</tr>
+<tr>
+<td>M2-P0-006</td>
+<td align="right">8, 10</td>
+<td>MEDIUM</td>
+<td>string-label consistency</td>
+<td>Confirm exact alignment between Section 8 <code>counteroffer_feasibility_failure_reason</code> strings and Section 10 references. Previously accepted labels include <code>COUNTEROFFER_ROUNDED_AMOUNT_NONPOSITIVE</code>, not <code>COUNTEROFFER_ROUNDED_AMOUNT_NON_POSITIVE</code>.</td>
+<td>A one-character label mismatch would silently suppress intended reason-code candidates.</td>
+<td>Grep final script for <code>NON_POSITIVE</code>; if found in Section 10, patch to <code>NONPOSITIVE</code>.</td>
+<td>Yes, quick static grep before runtime.</td>
+</tr>
+<tr>
+<td>M2-P0-007</td>
+<td align="right">all comments / outputs</td>
+<td>COMMENT_ONLY</td>
+<td>terminology</td>
+<td>Boundary-negating terms such as “not adverse-action,” “not regulatory,” or “not customer notice” may appear in comments.</td>
+<td>These are acceptable when used to deny production/regulatory interpretation, but should be checked for any affirmative use.</td>
+<td>Grep prohibited terms; patch only affirmative or ambiguous usage.</td>
+<td>No, unless affirmative usage is found.</td>
+</tr>
+<tr>
+<td>M2-P0-008</td>
+<td align="right">0–14</td>
+<td>DEFER</td>
+<td>section assembly</td>
+<td>Final saved file should be checked for markdown fences, ellipses, placeholders, or capture markers if the file is intended to execute directly.</td>
+<td>SQL capture markers are comments and safe; markdown fences outside SQL would break execution if copied into a <code>.sql</code> file.</td>
+<td>Ensure the saved <code>.sql</code> file contains SQL comments only, not markdown ``` fences.</td>
+<td>Yes, if copied from chat manually.</td>
+</tr>
+</tbody></table>
+<h3>Recommended pre-runtime grep checks</h3>
+<p>Run these quick local checks on the saved SQL file before execution:</p>
+<pre><code class="language-bash">grep -n &quot;same as above\|omitted for brevity\|insert prior code\|\.\.\.&quot; module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+grep -n &quot;NON_POSITIVE&quot; module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+grep -n &quot;counteroffer_target_pti&quot; module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+grep -n &quot;product_approved_el_cap&quot; module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+grep -n &quot;failed_counteroffer_resolution&quot; module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+grep -ni &quot;booked\|adverse action\|regulatory reason\|customer notice\|fair lending conclusion\|production approval\|calibrated PD\|risk recalibration&quot; module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql
+</code></pre>
+<p>No code patch is recommended unless one of those checks confirms an actual missing dependency or affirmative prohibited terminology.</p>
+<h2>First runtime smoke test packet</h2>
+<h3>1. Pre-run assumptions</h3>
+<p>The first smoke test should use the Module 1 latest-run table only:</p>
+<pre><code class="language-sql">credit_decisioning_sim.synthetic_applications
+</code></pre>
+<p>Assumptions:</p>
+<ul>
+<li>Module 1 latest-run output exists and has rows.</li>
+<li>Module 1 latest-run output represents one Module 1 scenario / population slice.</li>
+<li><code>application_id</code> is unique in the latest-run source.</li>
+<li>Required Module 1 fields are populated, including <code>estimated_pd</code>, interpreted as the synthetic estimated-PD proxy.</li>
+<li>The Module 2 SQL file has no markdown fences or placeholder text.</li>
+<li>Archive may exist or may not exist; first smoke test should not insert archive rows.</li>
+</ul>
+<h3>2. Exact parameter values to use for first smoke test</h3>
+<p>Use the accepted default baseline Module 2 strategy parameters, with these smoke-test controls confirmed:</p>
+<pre><code class="language-text">active_strategy_flag = TRUE
+module1_input_source = &#39;LATEST&#39;
+archive_run_flag = FALSE
+strategy_archive_reset_mode = &#39;STRATEGY_SCENARIO_ONLY&#39;
+failed_counteroffer_resolution = &#39;MANUAL_REVIEW&#39;
+reason_code_required_flag = TRUE
+simulated_offer_exposure_flag_enabled = TRUE
+manual_review_approved_amount_convention = &#39;NULL_UNRESOLVED&#39;
+decline_approved_amount_convention = &#39;ZERO&#39;
+approved_el_decline_convention = &#39;ZERO&#39;
+approved_el_manual_review_convention = &#39;NULL_UNRESOLVED&#39;
+allow_approved_amount_above_requested_flag = FALSE
+</code></pre>
+<p>For the first smoke test, do not change threshold defaults, product policy defaults, reason-code priority logic, archive logic, or downstream CASE logic.</p>
+<h3>3. Exact expected outputs</h3>
+<p>Expected after execution:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions exists
+row count equals credit_decisioning_sim.synthetic_applications row count
+application_id is unique
+decision_outcome is populated for every row
+decision_outcome only contains APPROVE, COUNTEROFFER, MANUAL_REVIEW, DECLINE
+exactly one of approval_flag, counteroffer_flag, manual_review_flag, decline_flag is TRUE per row
+primary_reason_code is populated for every row
+primary_reason_family aligns to decision_outcome
+approved_amount conventions hold by decision_outcome
+approved_expected_loss_amount conventions hold by decision_outcome
+archive_run_flag = FALSE in latest-run output
+no archive insert occurs during this run
+</code></pre>
+<h3>4. Top 10 SQL checks to run after execution</h3>
+<p><strong>Check 1 — latest-run table exists and row count matches Module 1 latest source</strong></p>
+<pre><code class="language-sql">SELECT
+    (SELECT COUNT(*) FROM credit_decisioning_sim.synthetic_applications) AS module1_latest_rows,
+    (SELECT COUNT(*) FROM credit_decisioning_sim.strategy_decisions) AS module2_latest_rows,
+    (SELECT COUNT(*) FROM credit_decisioning_sim.strategy_decisions)
+    -
+    (SELECT COUNT(*) FROM credit_decisioning_sim.synthetic_applications) AS row_count_delta;
+</code></pre>
+<p><strong>Check 2 — <code>application_id</code> uniqueness</strong></p>
+<pre><code class="language-sql">SELECT
+    COUNT(*) AS total_rows,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count,
+    COUNT(*) - COUNT(DISTINCT application_id) AS duplicate_application_id_rows
+FROM credit_decisioning_sim.strategy_decisions;
+</code></pre>
+<p><strong>Check 3 — latest-run strategy and Module 1 lineage scope</strong></p>
+<pre><code class="language-sql">SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_input_source,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    COUNT(*) AS rows
+FROM credit_decisioning_sim.strategy_decisions
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_input_source,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+</code></pre>
+<p><strong>Check 4 — decision outcome completeness</strong></p>
+<pre><code class="language-sql">SELECT
+    decision_outcome,
+    COUNT(*) AS rows
+FROM credit_decisioning_sim.strategy_decisions
+GROUP BY decision_outcome
+ORDER BY decision_outcome;
+</code></pre>
+<p><strong>Check 5 — exactly one final decision flag per row</strong></p>
+<pre><code class="language-sql">SELECT
+    (
+        COALESCE(approval_flag::INT, 0)
+        + COALESCE(counteroffer_flag::INT, 0)
+        + COALESCE(manual_review_flag::INT, 0)
+        + COALESCE(decline_flag::INT, 0)
+    ) AS final_flag_count,
+    COUNT(*) AS rows
+FROM credit_decisioning_sim.strategy_decisions
+GROUP BY
+    (
+        COALESCE(approval_flag::INT, 0)
+        + COALESCE(counteroffer_flag::INT, 0)
+        + COALESCE(manual_review_flag::INT, 0)
+        + COALESCE(decline_flag::INT, 0)
+    )
+ORDER BY final_flag_count;
+</code></pre>
+<p><strong>Check 6 — simulated offer-exposure flag reconciliation</strong></p>
+<pre><code class="language-sql">SELECT
+    decision_outcome,
+    simulated_offer_exposure_flag,
+    COUNT(*) AS rows
+FROM credit_decisioning_sim.strategy_decisions
+GROUP BY
+    decision_outcome,
+    simulated_offer_exposure_flag
+ORDER BY
+    decision_outcome,
+    simulated_offer_exposure_flag;
+</code></pre>
+<p><strong>Check 7 — reason-code completeness and family alignment</strong></p>
+<pre><code class="language-sql">SELECT
+    COUNT(*) FILTER (WHERE primary_reason_code IS NULL) AS null_primary_reason_code_rows,
+    COUNT(*) FILTER (WHERE primary_reason_family IS NULL) AS null_primary_reason_family_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;APPROVE&#39;
+          AND primary_reason_family &lt;&gt; &#39;APPROVAL&#39;
+    ) AS approve_reason_family_mismatch_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+          AND primary_reason_family &lt;&gt; &#39;COUNTEROFFER&#39;
+    ) AS counteroffer_reason_family_mismatch_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+          AND primary_reason_family &lt;&gt; &#39;MANUAL_REVIEW&#39;
+    ) AS manual_review_reason_family_mismatch_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;DECLINE&#39;
+          AND primary_reason_family &lt;&gt; &#39;POLICY_STOP&#39;
+    ) AS decline_reason_family_mismatch_rows
+FROM credit_decisioning_sim.strategy_decisions;
+</code></pre>
+<p><strong>Check 8 — approved amount conventions</strong></p>
+<pre><code class="language-sql">SELECT
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;APPROVE&#39;
+          AND approved_amount IS DISTINCT FROM requested_amount
+    ) AS approve_amount_violation_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+          AND (
+                approved_amount IS NULL
+             OR approved_amount &lt;= 0
+             OR approved_amount &gt;= requested_amount
+             OR counteroffer_amount IS DISTINCT FROM approved_amount
+          )
+    ) AS counteroffer_amount_violation_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+          AND approved_amount IS NOT NULL
+    ) AS manual_review_amount_violation_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;DECLINE&#39;
+          AND approved_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_amount_violation_rows
+FROM credit_decisioning_sim.strategy_decisions;
+</code></pre>
+<p><strong>Check 9 — approved Expected Loss conventions</strong></p>
+<pre><code class="language-sql">SELECT
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;APPROVE&#39;
+          AND approved_expected_loss_amount IS DISTINCT FROM requested_expected_loss_amount
+    ) AS approve_el_violation_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;COUNTEROFFER&#39;
+          AND (
+                approved_expected_loss_amount IS NULL
+             OR approved_expected_loss_amount &lt; 0
+             OR approved_expected_loss_amount &gt; requested_expected_loss_amount
+          )
+    ) AS counteroffer_el_violation_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;
+          AND approved_expected_loss_amount IS NOT NULL
+    ) AS manual_review_el_violation_rows,
+    COUNT(*) FILTER (
+        WHERE decision_outcome = &#39;DECLINE&#39;
+          AND approved_expected_loss_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_el_violation_rows
+FROM credit_decisioning_sim.strategy_decisions;
+</code></pre>
+<p><strong>Check 10 — archive disabled behavior</strong></p>
+<p>If you captured a pre-run archive count, compare it to the post-run archive count. If not, at minimum run:</p>
+<pre><code class="language-sql">SELECT
+    archive_run_flag,
+    strategy_archive_reset_mode,
+    COUNT(*) AS latest_run_rows
+FROM credit_decisioning_sim.strategy_decisions
+GROUP BY
+    archive_run_flag,
+    strategy_archive_reset_mode;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">archive_run_flag = FALSE
+strategy_archive_reset_mode = STRATEGY_SCENARIO_ONLY
+</code></pre>
+<p>If the archive table exists and you want to check the current latest-run replacement key:</p>
+<pre><code class="language-sql">SELECT
+    sd.strategy_set_name,
+    sd.strategy_name,
+    sd.strategy_version,
+    sd.module1_scenario_set_name,
+    sd.module1_scenario_name,
+    sd.population_id,
+    COUNT(ar.application_id) AS archived_rows_for_latest_replacement_key
+FROM (
+    SELECT DISTINCT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM credit_decisioning_sim.strategy_decisions
+) sd
+LEFT JOIN credit_decisioning_sim.strategy_decisions_archive ar
+    ON ar.strategy_set_name = sd.strategy_set_name
+   AND ar.strategy_name = sd.strategy_name
+   AND ar.strategy_version = sd.strategy_version
+   AND ar.module1_scenario_set_name = sd.module1_scenario_set_name
+   AND ar.module1_scenario_name = sd.module1_scenario_name
+   AND ar.population_id = sd.population_id
+GROUP BY
+    sd.strategy_set_name,
+    sd.strategy_name,
+    sd.strategy_version,
+    sd.module1_scenario_set_name,
+    sd.module1_scenario_name,
+    sd.population_id;
+</code></pre>
+<p>Interpretation: if this returns existing archived rows from a prior run, that is not automatically a failure. For strict no-insert proof, compare pre-run and post-run archive counts.</p>
+<h3>5. What error details to send back if execution fails</h3>
+<p>Send back only the first failure, with:</p>
+<pre><code class="language-text">1. PostgreSQL error message exactly as shown
+2. SQLSTATE, if available
+3. line number, if available
+4. section number where execution stopped, if known
+5. the last 20–40 lines before the error
+6. the failing SQL statement, if your client shows it
+7. whether the script was run from a clean database session
+8. whether Module 1 latest-run table existed and row count before execution
+9. whether archive table already existed before execution
+10. any edits made to the canonical SQL before running
+</code></pre>
+<p>When you send the first error, the next step should be a smallest-possible targeted patch, not a broad rewrite.</p>
+</div></article><article id="c038-m00262" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00262 · 2026-05-07T10:25:52.485000-04:00 · active path</p><div class="body"><p>during smoke test, the following error populated: SQL Error [P0001]: ERROR: Module 2 Section 4 failure: 12455 staged row(s) have null required source or lineage fields.
+  Where: PL/pgSQL function inline_code_block line 168 at RAISE
+  ERROR: Module 2 Section 4 failure: 12455 staged row(s) have null required source or lineage fields.
+  Where: PL/pgSQL function inline_code_block line 168 at RAISE</p>
+</div></article><article id="c038-m00264" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00264 · 2026-05-07T10:27:39.779712-04:00 · active path</p><div class="body"><p>This is a <strong>BLOCKER</strong>, but the failure is very likely a <strong>Section 4 gatekeeper overreach</strong>, not a Module 1 data-quality defect.</p>
+<p>The count is the clue: <strong>12,455</strong> matches the Module 1 validated Revolving Line population count. Module 1 treats Revolving Line as having no fixed amortizing term, so <code>loan_term_months</code> being null for Revolving Line rows is expected behavior, not a missing required field. The Module 1 BRD lists Revolving Line term structure as not applicable / no fixed amortizing term, and the Module 1 Validation Summary shows 12,455 Revolving Line applications. fileciteturn4file1 fileciteturn4file2</p>
+<h2>Issue register</h2>
+<table>
+<thead>
+<tr>
+<th>issue_id</th>
+<th align="right">section</th>
+<th>severity</th>
+<th>issue_type</th>
+<th>description</th>
+<th>why_it_matters</th>
+<th>recommended_action</th>
+<th>required_before_runtime_test</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M2-RUNTIME-001</td>
+<td align="right">4</td>
+<td>BLOCKER</td>
+<td>gatekeeper / product-specific null convention</td>
+<td>Section 4 required-source-field gatekeeper appears to treat <code>loan_term_months</code> as globally required. For <code>REVOLVING_LINE</code>, null <code>loan_term_months</code> is expected because Module 1 does not assign a fixed amortizing term to revolving products.</td>
+<td>Blocks valid Module 1 source rows from entering Module 2. The failure count equals the validated Revolving Line population count, strongly indicating false-positive rejection.</td>
+<td>Patch Section 4 required-field null logic so <code>loan_term_months</code> is required only for non-<code>REVOLVING_LINE</code> rows. Preserve the field in output. Do not impute a term.</td>
+<td>Yes</td>
+</tr>
+</tbody></table>
+<h2>Confirmation query before patch</h2>
+<p>Run this against the failed staging table if it still exists in the same session:</p>
+<pre><code class="language-sql">SELECT
+    product_type,
+    product_type_policy_key,
+    COUNT(*) AS staged_rows,
+    COUNT(*) FILTER (WHERE loan_term_months IS NULL) AS null_loan_term_month_rows
+FROM tmp_m2_stage_1_source_applications
+GROUP BY
+    product_type,
+    product_type_policy_key
+ORDER BY
+    product_type_policy_key;
+</code></pre>
+<p>Expected diagnostic pattern:</p>
+<pre><code class="language-text">REVOLVING_LINE has 12,455 rows with null loan_term_months
+Other product_type_policy_key values should generally have non-null loan_term_months
+</code></pre>
+<p>If that is the pattern, apply the patch below.</p>
+<h2>Targeted patch — Section 4 required-source-field gatekeeper</h2>
+<p>Patch only the Section 4 required-source-field null check. Do not change staging output fields, product normalization, decision logic, or downstream sections.</p>
+<h3>BEFORE</h3>
+<p>Locate the Section 4 PL/pgSQL block that counts null required source or lineage fields. It will contain logic directionally like this:</p>
+<pre><code class="language-sql">SELECT COUNT(*)
+INTO v_null_required_source_field_count
+FROM tmp_m2_stage_1_source_applications
+WHERE module1_model_version IS NULL
+   OR module1_scenario_set_name IS NULL
+   OR module1_scenario_name IS NULL
+   OR population_id IS NULL
+   OR application_id IS NULL
+   OR applicant_id IS NULL
+   OR product_type IS NULL
+   OR product_type_policy_key IS NULL
+   OR score_band IS NULL
+   OR credit_score IS NULL
+   OR annual_income IS NULL
+   OR requested_amount IS NULL
+   OR loan_term_months IS NULL
+   OR monthly_payment_proxy IS NULL
+   OR payment_to_income_ratio IS NULL
+   OR requested_monthly_payment_proxy IS NULL
+   OR requested_payment_to_income_ratio IS NULL
+   OR estimated_pd IS NULL
+   OR estimated_lgd IS NULL
+   OR expected_loss_amount IS NULL
+   OR requested_expected_loss_amount IS NULL;
+</code></pre>
+<h3>AFTER</h3>
+<p>Replace only the <code>loan_term_months IS NULL</code> predicate with a product-aware requirement:</p>
+<pre><code class="language-sql">SELECT COUNT(*)
+INTO v_null_required_source_field_count
+FROM tmp_m2_stage_1_source_applications
+WHERE module1_model_version IS NULL
+   OR module1_scenario_set_name IS NULL
+   OR module1_scenario_name IS NULL
+   OR population_id IS NULL
+   OR application_id IS NULL
+   OR applicant_id IS NULL
+   OR product_type IS NULL
+   OR product_type_policy_key IS NULL
+   OR score_band IS NULL
+   OR credit_score IS NULL
+   OR annual_income IS NULL
+   OR requested_amount IS NULL
+
+   /*
+   Product-specific term convention:
+       loan_term_months is required for fixed-term / term-reference products, but it is
+       not required for REVOLVING_LINE.
+
+       Module 1 represents Revolving Line as a revolving exposure without a fixed
+       amortizing term. A NULL loan_term_months value for REVOLVING_LINE is therefore
+       expected source behavior, not a malformed source row.
+
+       Do not impute a revolving term here. Section 4 preserves Module 1 outputs and
+       normalizes lineage for Module 2; it does not rewrite Module 1 product mechanics.
+   */
+   OR (
+        COALESCE(product_type_policy_key, &#39;__UNMAPPED__&#39;) &lt;&gt; &#39;REVOLVING_LINE&#39;
+        AND loan_term_months IS NULL
+   )
+
+   OR monthly_payment_proxy IS NULL
+   OR payment_to_income_ratio IS NULL
+   OR requested_monthly_payment_proxy IS NULL
+   OR requested_payment_to_income_ratio IS NULL
+   OR estimated_pd IS NULL
+   OR estimated_lgd IS NULL
+   OR expected_loss_amount IS NULL
+   OR requested_expected_loss_amount IS NULL;
+</code></pre>
+<h2>Also patch any Section 4 local sanity count using the same required-null predicate</h2>
+<p>If Section 4 has a local sanity-check query that counts rows with null required fields, apply the same replacement there too. Otherwise the module may run successfully while the staging diagnostic still reports 12,455 false-positive missing rows.</p>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">COUNT(*) FILTER (
+    WHERE module1_model_version IS NULL
+       OR module1_scenario_set_name IS NULL
+       OR module1_scenario_name IS NULL
+       OR population_id IS NULL
+       OR application_id IS NULL
+       OR applicant_id IS NULL
+       OR product_type_policy_key IS NULL
+       OR credit_score IS NULL
+       OR annual_income IS NULL
+       OR requested_amount IS NULL
+       OR loan_term_months IS NULL
+       OR requested_monthly_payment_proxy IS NULL
+       OR requested_payment_to_income_ratio IS NULL
+       OR estimated_pd IS NULL
+       OR estimated_lgd IS NULL
+       OR requested_expected_loss_amount IS NULL
+) AS null_required_source_field_rows
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">COUNT(*) FILTER (
+    WHERE module1_model_version IS NULL
+       OR module1_scenario_set_name IS NULL
+       OR module1_scenario_name IS NULL
+       OR population_id IS NULL
+       OR application_id IS NULL
+       OR applicant_id IS NULL
+       OR product_type_policy_key IS NULL
+       OR credit_score IS NULL
+       OR annual_income IS NULL
+       OR requested_amount IS NULL
+       OR (
+            COALESCE(product_type_policy_key, &#39;__UNMAPPED__&#39;) &lt;&gt; &#39;REVOLVING_LINE&#39;
+            AND loan_term_months IS NULL
+       )
+       OR requested_monthly_payment_proxy IS NULL
+       OR requested_payment_to_income_ratio IS NULL
+       OR estimated_pd IS NULL
+       OR estimated_lgd IS NULL
+       OR requested_expected_loss_amount IS NULL
+) AS null_required_source_field_rows
+</code></pre>
+<h2>Why this patch is correct</h2>
+<p>This preserves all accepted Module 2 logic. It only corrects the Section 4 gatekeeper so that “required” means <strong>required for that product structure</strong>.</p>
+<p>It does <strong>not</strong>:</p>
+<ul>
+<li>modify Module 1;</li>
+<li>impute <code>loan_term_months</code>;</li>
+<li>change product policy logic;</li>
+<li>change decision logic;</li>
+<li>change counteroffer logic;</li>
+<li>change approved exposure logic;</li>
+<li>change Expected Loss logic;</li>
+<li>change reason-code logic;</li>
+<li>change archive logic.</li>
+</ul>
+<p>After applying the patch, rerun the same LATEST / archive-off smoke test.</p>
+</div></article><article id="c038-m00266" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00266 · 2026-05-07T10:55:49.337000-04:00 · active path</p><div class="body"><p>executed without error.  let&#39;s review the output.  first, here are the section 3 and 4 quality checks to review.</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.10_QA_local_source_staging_sanity_alias_confirmation_monthly_payment_proxy.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.9_QA_local_source_staging_sanity_alias_confirmation_expected_loss.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.8_QA_local_source_staging_sanity_null_required_source_field.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.7_QA_local_source_staging_sanity_missing_product_policy_configuration.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.6_QA_local_source_staging_sanity_unmapped_product_type.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.5_QA_local_source_staging_sanity_product_type.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.4_QA_local_source_staging_sanity_source_input.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.3_QA_local_source_staging_sanity_module_2_strategy_metadata.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.2_QA_local_source_staging_sanity_scenario_population_lineage.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.1_QA_local_source_staging_sanity_row_application_count.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_3.4_QA_product_policy_setup.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_3.4_QA_global_threshold_setup.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_3.3_QA_threshold_equality_convention_documentation.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.12_QA_local_source_staging_sanity_estimated_pd_presence_check.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.11_QA_local_source_staging_sanity_alias_confirmation_pti_ratio.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00271" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00271 · 2026-05-07T10:58:06.735056-04:00 · active path</p><div class="body"><h2>Section 3–4 QA review result</h2>
+<p><strong>Verdict: PASS with one interpretation note.</strong></p>
+<p>The Section 3 parameter setup and Section 4 source-staging checks are internally coherent. The prior Section 4 gatekeeper patch for <code>REVOLVING_LINE</code> term handling appears to have worked: the local null-required-field check now returns <strong>0</strong>.</p>
+<p>No blocker or high-severity issue is indicated by these outputs.</p>
+<h2>Section 3 parameter / threshold checks</h2>
+<table>
+<thead>
+<tr>
+<th>QA area</th>
+<th align="right">Observed result</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Active strategy row</td>
+<td align="right"><code>active_strategy_flag = true</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 2 version</td>
+<td align="right"><code>MODULE2_V1_0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Strategy identity</td>
+<td align="right"><code>MODULE2_BASELINE_STRATEGY_SET / BASELINE_STRATEGY / V1_0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Source mode</td>
+<td align="right"><code>LATEST</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Archive flag</td>
+<td align="right"><code>false</code></td>
+<td>PASS for archive-off smoke test</td>
+</tr>
+<tr>
+<td>Archive reset mode</td>
+<td align="right"><code>STRATEGY_SCENARIO_ONLY</code></td>
+<td>PASS; harmless while archive is disabled</td>
+</tr>
+<tr>
+<td>Failed counteroffer resolution</td>
+<td align="right"><code>MANUAL_REVIEW</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Synthetic estimated-PD proxy thresholds</td>
+<td align="right"><code>0.08 &lt; 0.16 &lt;= 0.30 &lt;= 0.35</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Global PTI thresholds</td>
+<td align="right"><code>0.25 &lt; 0.40 &lt;= 0.55</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>DTI thresholds</td>
+<td align="right"><code>0.43 &lt; 0.60 &lt;= 0.60</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Borderline buffer</td>
+<td align="right"><code>0.05</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Product policy rows</td>
+<td align="right">5 supported products populated</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Product policy product set</td>
+<td align="right"><code>AUTO_LOAN</code>, <code>HELOC</code>, <code>MORTGAGE</code>, <code>REVOLVING_LINE</code>, <code>UNSECURED_PERSONAL_LOAN</code></td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>The DTI equality convention is coherent: review applies between approval max and decline minimum, and decline applies at <code>&gt;= 0.60</code>.</p>
+<p>The product policy setup is complete and product-specific. The values are plausible for simulation defaults and remain clearly parameter-driven rather than embedded downstream logic.</p>
+<h2>Section 4 source staging checks</h2>
+<table>
+<thead>
+<tr>
+<th>QA area</th>
+<th align="right">Observed result</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Staged row count</td>
+<td align="right"><code>50,000</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Distinct <code>application_id</code> count</td>
+<td align="right"><code>50,000</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Duplicate application rows</td>
+<td align="right">implied <code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 1 input source</td>
+<td align="right"><code>LATEST</code> from <code>credit_decisioning_sim.synthetic_applications</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 1 scenario lineage</td>
+<td align="right"><code>MODULE1_V2_BASELINE_SET / RATE_UP_200BP / BASE_POPULATION_V1</code></td>
+<td>PASS with interpretation note</td>
+</tr>
+<tr>
+<td>Module 2 strategy metadata</td>
+<td align="right">50,000 rows carry strategy metadata</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Product normalization</td>
+<td align="right">all product values map to policy keys</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Unmapped product types</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Missing product policy configuration</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Null required source fields</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Expected Loss alias mismatch</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Monthly payment alias mismatch</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>PTI alias mismatch</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>estimated_pd</code> populated</td>
+<td align="right"><code>50,000</code> rows populated, <code>0</code> missing</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Synthetic estimated-PD proxy range</td>
+<td align="right">min <code>0.008404</code>, avg <code>0.163858</code>, max <code>0.450000</code></td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>The product distribution exactly matches the finalized Module 1 population structure: Mortgage <code>15,065</code>, Revolving Line <code>12,455</code>, Auto Loan <code>9,946</code>, Unsecured Personal Loan <code>7,572</code>, and HELOC <code>4,962</code>. This is consistent with the Module 1 validated 50,000-row product mix, including the 12,455 Revolving Line rows that caused the earlier false-positive <code>loan_term_months</code> gatekeeper issue. fileciteturn4file2</p>
+<h2>Important interpretation note</h2>
+<p>Your Module 2 smoke test is applying:</p>
+<pre><code class="language-text">Module 2 strategy = BASELINE_STRATEGY / V1_0
+Module 1 latest source = RATE_UP_200BP
+population_id = BASE_POPULATION_V1
+</code></pre>
+<p>That is not a defect. It means the current latest-run Module 1 table is the <strong>Module 1 rate-up scenario</strong>, not the Module 1 baseline scenario.</p>
+<p>So the current output should be interpreted as:</p>
+<pre><code class="language-text">Baseline Module 2 strategy applied to the Module 1 RATE_UP_200BP latest-run population.
+</code></pre>
+<p>For the first archive-off smoke test, that is acceptable because the goal is execution and structural validation. For later baseline-versus-challenger Module 2 strategy comparison, we should be explicit about whether the upstream Module 1 slice is <code>BASELINE_V2</code>, <code>RATE_UP_200BP</code>, or another scenario. Module 2 should preserve that lineage exactly, which it is doing here.</p>
+<h2>Section 3–4 acceptance conclusion</h2>
+<p>Sections 3 and 4 pass the first smoke-test review.</p>
+<p>Accepted evidence:</p>
+<ul>
+<li>Strategy parameter card is populated and coherent.</li>
+<li>Product policy table is complete for all five supported Module 1 product types.</li>
+<li>Threshold ordering is coherent.</li>
+<li>Section 4 preserves exactly 50,000 staged rows.</li>
+<li><code>application_id</code> remains unique.</li>
+<li>Module 1 scenario lineage is preserved.</li>
+<li>Module 2 strategy metadata is preserved.</li>
+<li>Product normalization works.</li>
+<li>Every staged product has exactly one policy configuration.</li>
+<li>Required source field null count is now zero.</li>
+<li><code>expected_loss_amount</code> is correctly aliased to <code>requested_expected_loss_amount</code>.</li>
+<li><code>monthly_payment_proxy</code> is correctly aliased to <code>requested_monthly_payment_proxy</code>.</li>
+<li><code>payment_to_income_ratio</code> is correctly aliased to <code>requested_payment_to_income_ratio</code>.</li>
+<li><code>estimated_pd</code> is present and should continue to be interpreted as the synthetic estimated-PD proxy.</li>
+</ul>
+<h2>Patch recommendation</h2>
+<p>No Section 3 or Section 4 patch is recommended from these outputs.</p>
+<p>The only review note is interpretive: the smoke test is using Module 1 <code>RATE_UP_200BP</code> as the latest source. That is valid for smoke testing, but should be documented when interpreting downstream decision distribution, approved exposure, Expected Loss, and strategy comparison results.</p>
+</div></article><article id="c038-m00272" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00272 · 2026-05-07T11:06:06.766000-04:00 · active path</p><div class="body"><p>regarding that important interpretation note, for context, my archive table prior to running this module 2 included both the baseline and the 200 rate up.</p>
+<p><strong>Attachments in export:</strong> <code>synthetic_applications_scenario_archive_202605071009.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00276" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00276 · 2026-05-07T11:08:00.655834-04:00 · active path</p><div class="body"><p>That context resolves the interpretation cleanly.</p>
+<p>Your uploaded Module 1 scenario archive contains <strong>both</strong> Module 1 scenarios under the same scenario set and population:</p>
+<table>
+<thead>
+<tr>
+<th>Module 1 scenario set</th>
+<th align="right">Module 1 scenario</th>
+<th align="right">population_id</th>
+<th align="right">rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td align="right"><code>BASELINE_V2</code></td>
+<td align="right"><code>BASE_POPULATION_V1</code></td>
+<td align="right">50,000</td>
+</tr>
+<tr>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td align="right"><code>RATE_UP_200BP</code></td>
+<td align="right"><code>BASE_POPULATION_V1</code></td>
+<td align="right">50,000</td>
+</tr>
+</tbody></table>
+<p>So the archive is correctly preserving the matched Module 1 baseline and rate-up scenarios. fileciteturn4file0 This is also consistent with the Module 1 scenario framework: baseline and rate-stress scenarios are intended to share the same <code>population_id</code> so row-level differences can be attributed to scenario assumptions rather than population drift. fileciteturn4file1</p>
+<h2>Interpretation update</h2>
+<p>The Module 2 smoke test used:</p>
+<pre><code class="language-text">module1_input_source = LATEST
+</code></pre>
+<p>That means Module 2 did <strong>not</strong> choose between the two archived Module 1 scenarios. It simply consumed the current contents of:</p>
+<pre><code class="language-sql">credit_decisioning_sim.synthetic_applications
+</code></pre>
+<p>Based on the Section 4 lineage QA, that latest-run table currently represents:</p>
+<pre><code class="language-text">module1_scenario_set_name = MODULE1_V2_BASELINE_SET
+module1_scenario_name     = RATE_UP_200BP
+population_id             = BASE_POPULATION_V1
+</code></pre>
+<p>So there is no contradiction. The archive has both scenarios, but the latest-run table appears to be holding the <strong>most recently materialized Module 1 scenario</strong>, which is <code>RATE_UP_200BP</code>.</p>
+<h2>What this means for current smoke testing</h2>
+<p>For the first Module 2 archive-off smoke test, this is acceptable.</p>
+<p>The test objective was:</p>
+<pre><code class="language-text">Can Module 2 consume a valid Module 1 latest-run population and create strategy_decisions?
+</code></pre>
+<p>It was not yet:</p>
+<pre><code class="language-text">Can Module 2 compare strategy outcomes across Module 1 baseline vs rate-up?
+</code></pre>
+<p>So the current interpretation should be:</p>
+<pre><code class="language-text">Module 2 BASELINE_STRATEGY / V1_0 applied to the Module 1 RATE_UP_200BP latest-run scenario.
+</code></pre>
+<p>That is a valid smoke-test condition.</p>
+<h2>What to do when we want Module 2 on the Module 1 baseline scenario</h2>
+<p>You have two clean options.</p>
+<h3>Option A — Use Module 1 archive input</h3>
+<p>Set Module 2 parameters to:</p>
+<pre><code class="language-text">module1_input_source                 = &#39;ARCHIVE&#39;
+source_module1_scenario_set_name     = &#39;MODULE1_V2_BASELINE_SET&#39;
+source_module1_scenario_name         = &#39;BASELINE_V2&#39;
+source_population_id                 = &#39;BASE_POPULATION_V1&#39;
+</code></pre>
+<p>This is the better option when you want to explicitly target one of the archived Module 1 scenarios.</p>
+<h3>Option B — Rerun Module 1 baseline as latest</h3>
+<p>Rerun Module 1 so that:</p>
+<pre><code class="language-sql">credit_decisioning_sim.synthetic_applications
+</code></pre>
+<p>contains:</p>
+<pre><code class="language-text">BASELINE_V2
+</code></pre>
+<p>Then run Module 2 with:</p>
+<pre><code class="language-text">module1_input_source = &#39;LATEST&#39;
+</code></pre>
+<p>This is fine, but it depends on whatever Module 1 scenario was most recently materialized into the latest-run table.</p>
+<h2>Recommended testing discipline going forward</h2>
+<p>For <strong>Module 2 strategy smoke testing</strong>, continue with the current latest-run <code>RATE_UP_200BP</code> slice unless you specifically want the Module 1 baseline scenario.</p>
+<p>For <strong>Module 2 baseline vs challenger strategy comparison</strong>, hold Module 1 fixed to one scenario, for example:</p>
+<pre><code class="language-text">MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+</code></pre>
+<p>or:</p>
+<pre><code class="language-text">MODULE1_V2_BASELINE_SET / RATE_UP_200BP / BASE_POPULATION_V1
+</code></pre>
+<p>Then compare Module 2 strategies against that same Module 1 slice.</p>
+<p>For <strong>Module 1 scenario sensitivity + Module 2 strategy testing</strong>, run the same Module 2 strategy on both Module 1 archive slices. That would answer a different question:</p>
+<pre><code class="language-text">How does the same Module 2 strategy behave under Module 1 baseline vs rate-up conditions?
+</code></pre>
+<p>That is valuable, but it should be kept separate from pure Module 2 strategy comparison.</p>
+<h2>Updated Section 3–4 conclusion</h2>
+<p>Sections 3–4 still pass.</p>
+<p>The only interpretation refinement is:</p>
+<pre><code class="language-text">The archive contains both Module 1 BASELINE_V2 and RATE_UP_200BP.
+The latest-run source used by this smoke test was RATE_UP_200BP.
+This is valid because module1_input_source = LATEST.
+</code></pre>
+<p>No patch is needed.</p>
+</div></article><article id="c038-m00278" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00278 · 2026-05-07T12:29:07.774000-04:00 · active path</p><div class="body"><p>I re-ran with option A above (use module 1 archive input BASELINE_V2). re-evaluate section 3/4 QA:</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.7_QA_local_source_staging_sanity_missing_product_policy_configuration(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.6_QA_local_source_staging_sanity_unmapped_product_type(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.5_QA_local_source_staging_sanity_product_type(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.4_QA_local_source_staging_sanity_source_input(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.3_QA_local_source_staging_sanity_module_2_strategy_metadata(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.2_QA_local_source_staging_sanity_scenario_population_lineage(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.1_QA_local_source_staging_sanity_row_application_count(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_3.4_QA_product_policy_setup(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_3.4_QA_global_threshold_setup(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_3.3_QA_threshold_equality_convention_documentation(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.12_QA_local_source_staging_sanity_estimated_pd_presence_check(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.11_QA_local_source_staging_sanity_alias_confirmation_pti_ratio(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.10_QA_local_source_staging_sanity_alias_confirmation_monthly_payment_proxy(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.9_QA_local_source_staging_sanity_alias_confirmation_expected_loss(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_4.4.8_QA_local_source_staging_sanity_null_required_source_field(1).csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00282" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00282 · 2026-05-07T12:31:27.483630-04:00 · active path</p><div class="body"><h2>Section 3–4 QA re-evaluation after ARCHIVE / BASELINE_V2 rerun</h2>
+<p><strong>Verdict: PASS.</strong></p>
+<p>The rerun correctly switched Module 2 source selection from the Module 1 latest-run table to the selected Module 1 scenario archive slice:</p>
+<pre><code class="language-text">module1_input_source = ARCHIVE
+source_module1_scenario_set_name = MODULE1_V2_BASELINE_SET
+source_module1_scenario_name = BASELINE_V2
+source_population_id = BASE_POPULATION_V1
+</code></pre>
+<p>This now validates the <strong>Module 1 archive input path</strong> for the baseline scenario. That is exactly the right setup when you want Module 2 to consume the archived <code>BASELINE_V2</code> slice rather than whatever scenario currently sits in <code>credit_decisioning_sim.synthetic_applications</code>.</p>
+<p>This is also aligned to the Module 1 design: archived scenarios are intended to preserve scenario lineage and enable matched comparison using the same <code>population_id</code>; Module 1 validation confirmed 50,000-row archived baseline and rate-stress scenario slices under the matched scenario framework. fileciteturn4file1 fileciteturn4file2</p>
+<h2>Section 3 parameter / threshold checks</h2>
+<table>
+<thead>
+<tr>
+<th>QA area</th>
+<th align="right">Observed result</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Active strategy row</td>
+<td align="right"><code>active_strategy_flag = true</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 2 version</td>
+<td align="right"><code>MODULE2_V1_0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Strategy identity</td>
+<td align="right"><code>MODULE2_BASELINE_STRATEGY_SET / BASELINE_STRATEGY / V1_0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Strategy run ID</td>
+<td align="right"><code>MODULE2_BASELINE_STRATEGY_V1_0_RUN</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Strategy run timestamp</td>
+<td align="right"><code>2026-05-07 12:02:04.163</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 1 input source</td>
+<td align="right"><code>ARCHIVE</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Source Module 1 scenario set</td>
+<td align="right"><code>MODULE1_V2_BASELINE_SET</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Source Module 1 scenario</td>
+<td align="right"><code>BASELINE_V2</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Source population</td>
+<td align="right"><code>BASE_POPULATION_V1</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Archive run flag</td>
+<td align="right"><code>false</code></td>
+<td>PASS for archive-off smoke test</td>
+</tr>
+<tr>
+<td>Archive reset mode</td>
+<td align="right"><code>STRATEGY_SCENARIO_ONLY</code></td>
+<td>PASS; inactive because archive flag is false</td>
+</tr>
+<tr>
+<td>Failed counteroffer resolution</td>
+<td align="right"><code>MANUAL_REVIEW</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Synthetic estimated-PD proxy thresholds</td>
+<td align="right"><code>0.08 &lt; 0.16 &lt;= 0.30 &lt;= 0.35</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Global PTI thresholds</td>
+<td align="right"><code>0.25 &lt; 0.40 &lt;= 0.55</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>DTI thresholds</td>
+<td align="right"><code>0.43 &lt; 0.60 &lt;= 0.60</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Borderline buffer</td>
+<td align="right"><code>0.05</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Product policy rows</td>
+<td align="right">5 supported products</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Product policy values</td>
+<td align="right">All five Module 1 product types represented</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>The Section 3 setup is coherent and still aligned to the locked Module 2 v1.0 design. The strategy metadata is stable, the source selection is now explicitly the Module 1 archive baseline slice, and archive persistence is intentionally disabled for the smoke test.</p>
+<h2>Section 4 source staging checks</h2>
+<table>
+<thead>
+<tr>
+<th>QA area</th>
+<th align="right">Observed result</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Staged row count</td>
+<td align="right"><code>50,000</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Distinct <code>application_id</code> count</td>
+<td align="right"><code>50,000</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Duplicate application rows</td>
+<td align="right"><code>0</code> implied</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 1 scenario lineage</td>
+<td align="right"><code>MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 2 strategy metadata</td>
+<td align="right">50,000 rows carry strategy metadata</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 1 source input</td>
+<td align="right"><code>ARCHIVE</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Module 1 source table</td>
+<td align="right"><code>credit_decisioning_sim.synthetic_applications_scenario_archive</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Product normalization</td>
+<td align="right">all products mapped to policy keys</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Unmapped product types</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Missing product policy configuration</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Null required source fields</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Expected Loss alias mismatch</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Monthly payment alias mismatch</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>PTI alias mismatch</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Rows with <code>estimated_pd</code></td>
+<td align="right"><code>50,000</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Missing synthetic estimated-PD proxy input</td>
+<td align="right"><code>0</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Synthetic estimated-PD proxy min / avg / max</td>
+<td align="right"><code>0.008404 / 0.163366 / 0.450000</code></td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>The Section 4 staging layer is doing exactly what it should do:</p>
+<pre><code class="language-text">Module 1 archive slice → Module 2 normalized source staging table
+</code></pre>
+<p>No Module 1 rewrite occurred. Module 1 scenario lineage is preserved. Module 2 strategy lineage is preserved. The expected Module 2 aliases are populated correctly:</p>
+<pre><code class="language-text">expected_loss_amount       → requested_expected_loss_amount
+monthly_payment_proxy      → requested_monthly_payment_proxy
+payment_to_income_ratio    → requested_payment_to_income_ratio
+</code></pre>
+<p>The <code>estimated_pd</code> field is present and should continue to be interpreted as the <strong>synthetic estimated-PD proxy</strong>.</p>
+<h2>Product staging validation</h2>
+<table>
+<thead>
+<tr>
+<th>Product type</th>
+<th>Policy key</th>
+<th align="right">Rows</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td><code>MORTGAGE</code></td>
+<td align="right">15,065</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">12,455</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">9,946</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">7,572</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td><code>HELOC</code></td>
+<td align="right">4,962</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>The product distribution matches the finalized Module 1 validated product mix. The <code>REVOLVING_LINE</code> population remains 12,455 rows, and the prior <code>loan_term_months</code> false-positive gatekeeper issue is now resolved because the required-source-field null count is <strong>0</strong>. Module 1 explicitly treats Revolving Line as having no fixed amortizing term, so this product-aware convention is correct. fileciteturn4file1</p>
+<h2>Interpretation update</h2>
+<p>The current run should now be interpreted as:</p>
+<pre><code class="language-text">Module 2 BASELINE_STRATEGY / V1_0
+applied to
+Module 1 archived BASELINE_V2 scenario
+under
+MODULE1_V2_BASELINE_SET / BASE_POPULATION_V1
+</code></pre>
+<p>That is the cleanest baseline configuration for downstream Module 2 smoke testing because the upstream Module 1 source slice is now explicit and stable.</p>
+<p>This also gives you a better foundation for later matched Module 2 challenger testing. You can now create a challenger Module 2 strategy against the same Module 1 archive slice:</p>
+<pre><code class="language-text">MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+</code></pre>
+<p>That will isolate downstream Module 2 strategy effects rather than mixing in Module 1 rate-scenario effects.</p>
+<h2>Section 3–4 acceptance conclusion</h2>
+<p>Sections 3 and 4 pass after the ARCHIVE / <code>BASELINE_V2</code> rerun.</p>
+<p>Accepted evidence:</p>
+<ul>
+<li>Exactly one active Module 2 strategy parameter row.</li>
+<li>Module 2 source mode correctly set to <code>ARCHIVE</code>.</li>
+<li>Selected Module 1 archive slice is explicitly <code>BASELINE_V2</code>.</li>
+<li>Strategy metadata is preserved.</li>
+<li>Module 1 scenario lineage is preserved.</li>
+<li>50,000 staged rows created.</li>
+<li>50,000 distinct <code>application_id</code> values.</li>
+<li>Product normalization is complete.</li>
+<li>Product policy configuration is complete.</li>
+<li>Required source field null count is zero.</li>
+<li>Requested-exposure aliases are correct.</li>
+<li>Synthetic estimated-PD proxy input is populated.</li>
+<li>No Section 3 or Section 4 patch is recommended.</li>
+</ul>
+<p>Next, review Section 5 and Section 6 outputs: segmentation buckets and rule-trigger flags.</p>
+</div></article><article id="c038-m00284" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00284 · 2026-05-07T12:48:45.503000-04:00 · active path</p><div class="body"><p>Since section 6 has 22 QA, I am first going to send only section 5 QA to review next:</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.5_QA_local_segmentation_sanity_requested_exposure_tier.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.6_QA_local_segmentation_sanity_requested_expected_loss_tier.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.7_QA_local_segmentation_sanity_product_score_policy_segment.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.8_QA_local_segmentation_sanity_mixed_signal_profile_type.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.9_QA_local_segmentation_sanity_borderline_profile_flag.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.10_QA_local_segmentation_sanity_proxy_x_synthetic_estimated_risk_tier.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.11_QA_local_segmentation_sanity_score_band_x_synthetic_estimated_risk_tier.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.12_QA_local_segmentation_sanity_requested_pti_bucket_x_synthetic_estimated_risk_tier.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.1_QA_local_segmentation_sanity_row_application_count.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.2_QA_local_segmentation_sanity_strategy_risk_tier.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.3_QA_local_segmentation_sanity_requested_pti_bucket.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_5.4.4_QA_local_segmentation_sanity_dti_bucket.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00286" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00286 · 2026-05-07T12:51:27.866817-04:00 · active path</p><div class="body"><h2>Section 5 QA review — Derived Strategy Segmentation Layer</h2>
+<p><strong>Verdict: PASS with monitoring notes.</strong></p>
+<p>Section 5 is behaving as intended for the Module 1 archived <code>BASELINE_V2</code> slice. The segmentation layer preserved row count, retained application uniqueness, populated the required segmentation fields, and produced interpretable pre-decision diagnostic buckets. No blocker or high-severity issue is indicated.</p>
+<p>This is still a <strong>non-decisioning staging layer</strong>. These outputs should be interpreted as diagnostic segments that prepare the data for later rule flags, routing, exposure treatment, and final simulated strategy outcomes.</p>
+<h2>Core structural checks</h2>
+<table>
+<thead>
+<tr>
+<th>QA area</th>
+<th align="right">Observed result</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Stage 2 row count</td>
+<td align="right">50,000</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Distinct <code>application_id</code> count</td>
+<td align="right">50,000</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Row preservation from Section 4</td>
+<td align="right">50,000 → 50,000</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Product × score segments</td>
+<td align="right">25 populated combinations</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Required segmentation fields</td>
+<td align="right">populated across uploaded outputs</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>estimated_pd</code> use</td>
+<td align="right">preserved as Module 1 SQL field</td>
+<td>PASS; interpret as synthetic estimated-PD proxy</td>
+</tr>
+</tbody></table>
+<p>This confirms Section 5 did not lose rows, duplicate applications, or collapse product/score segmentation.</p>
+<h2>Synthetic estimated-risk tier</h2>
+<table>
+<thead>
+<tr>
+<th>Strategy risk tier</th>
+<th align="right">Rows</th>
+<th align="right">Avg synthetic estimated-PD proxy</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LOW_SYNTHETIC_RISK</code></td>
+<td align="right">17,122</td>
+<td align="right">0.0225</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>MODERATE_SYNTHETIC_RISK</code></td>
+<td align="right">6,813</td>
+<td align="right">0.0534</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>ELEVATED_SYNTHETIC_RISK</code></td>
+<td align="right">8,683</td>
+<td align="right">0.1147</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>HIGH_SYNTHETIC_RISK</code></td>
+<td align="right">6,412</td>
+<td align="right">0.2622</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>SEVERE_SYNTHETIC_RISK</code></td>
+<td align="right">10,970</td>
+<td align="right">0.4323</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>The synthetic risk tiers are directionally coherent. Average synthetic estimated-PD proxy increases cleanly across tiers. This is exactly what Section 5 should establish before rule flags and routing are applied.</p>
+<p>The score-band cross-tab also looks directionally strong:</p>
+<ul>
+<li><code>SUPER_PRIME</code> appears entirely in <code>LOW_SYNTHETIC_RISK</code>.</li>
+<li><code>PRIME</code> is mostly low/moderate, with a very small elevated/high tail.</li>
+<li><code>NEAR_PRIME</code> spans moderate through high, with a small severe tail.</li>
+<li><code>SUBPRIME</code> concentrates in high/severe.</li>
+<li><code>DEEP_SUBPRIME</code> is almost entirely severe.</li>
+</ul>
+<p>That is consistent with the Module 1 validated score-band and synthetic estimated-risk framework, where stronger bands generally show lower synthetic estimated risk while preserving some overlap in adjacent regions. fileciteturn4file2</p>
+<h2>Requested PTI bucket</h2>
+<table>
+<thead>
+<tr>
+<th>Requested PTI bucket</th>
+<th align="right">Rows</th>
+<th align="right">Avg requested PTI</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LOW_REQUESTED_PTI</code></td>
+<td align="right">34,325</td>
+<td align="right">0.0973</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>MODERATE_REQUESTED_PTI</code></td>
+<td align="right">3,715</td>
+<td align="right">0.2315</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>ELEVATED_REQUESTED_PTI</code></td>
+<td align="right">8,710</td>
+<td align="right">0.3050</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>HIGH_REQUESTED_PTI</code></td>
+<td align="right">2,326</td>
+<td align="right">0.3852</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>SEVERE_REQUESTED_PTI</code></td>
+<td align="right">924</td>
+<td align="right">0.5419</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>Requested PTI buckets are populated and directionally ordered. The severe bucket is small but present, which is appropriate for a realistic synthetic portfolio. Module 1 validation emphasized that high-PTI observations should remain present but bounded and non-dominant, not eliminated entirely. fileciteturn4file2</p>
+<p>The requested PTI × synthetic risk tier output also looks realistic: low requested PTI appears across all synthetic risk tiers, while severe requested PTI is concentrated mostly in elevated/high/severe synthetic risk tiers. That supports the separation between <strong>credit risk</strong> and <strong>requested-structure affordability</strong>.</p>
+<h2>DTI bucket</h2>
+<table>
+<thead>
+<tr>
+<th>DTI bucket</th>
+<th align="right">Rows</th>
+<th align="right">Avg DTI</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LOW_DTI</code></td>
+<td align="right">2,084</td>
+<td align="right">0.1838</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>MODERATE_DTI</code></td>
+<td align="right">29,620</td>
+<td align="right">0.3353</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>ELEVATED_DTI</code></td>
+<td align="right">16,119</td>
+<td align="right">0.4956</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>SEVERE_DTI</code></td>
+<td align="right">2,177</td>
+<td align="right">0.6431</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>DTI buckets are populated and directionally ordered.</p>
+<p><strong>Monitoring note:</strong> <code>HIGH_DTI</code> does not appear in this run. That is not a defect given the accepted default DTI thresholds:</p>
+<pre><code class="language-text">approve_max_dti = 0.43
+review_max_dti  = 0.60
+decline_min_dti = 0.60
+</code></pre>
+<p>Because <code>review_max_dti</code> equals <code>decline_min_dti</code>, there is effectively no separate interval for a high-but-not-severe DTI band under the current default strategy. The output is coherent with the parameters. No patch is recommended.</p>
+<h2>Requested exposure tier</h2>
+<table>
+<thead>
+<tr>
+<th>Requested exposure tier</th>
+<th align="right">Rows</th>
+<th align="right">Avg requested amount</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>WITHIN_PRODUCT_LIMITS</code></td>
+<td align="right">37,372</td>
+<td align="right">145,367</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>ABOVE_PRODUCT_APPROVAL_CAP</code></td>
+<td align="right">12,628</td>
+<td align="right">97,703</td>
+<td>PASS / monitor later</td>
+</tr>
+</tbody></table>
+<p>No rows appear in:</p>
+<pre><code class="language-text">BELOW_PRODUCT_MINIMUM
+EXTREME_REQUESTED_EXPOSURE
+</code></pre>
+<p>That is acceptable. It means the Module 1 requested amounts are not below product minimums and the above-cap cases are still within the reducible exposure framework rather than being classified as extreme.</p>
+<p><strong>Monitoring note:</strong> 12,628 rows, or about 25.3% of the population, are above the product approval cap. That is not a Section 5 defect because Section 5 is diagnostic only. It does mean Section 6–8 counteroffer and exposure-treatment behavior should be reviewed carefully to make sure above-cap exposure does not create excessive counteroffer routing or unresolved manual review.</p>
+<h2>Requested Expected Loss tier</h2>
+<table>
+<thead>
+<tr>
+<th>Requested Expected Loss tier</th>
+<th align="right">Rows</th>
+<th align="right">Avg requested Expected Loss</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LOW_REQUESTED_EL</code></td>
+<td align="right">26,158</td>
+<td align="right">1,063</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>MODERATE_REQUESTED_EL</code></td>
+<td align="right">8,409</td>
+<td align="right">4,678</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>ELEVATED_REQUESTED_EL</code></td>
+<td align="right">7,891</td>
+<td align="right">8,581</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>HIGH_REQUESTED_EL</code></td>
+<td align="right">5,553</td>
+<td align="right">14,270</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>SEVERE_REQUESTED_EL</code></td>
+<td align="right">1,989</td>
+<td align="right">12,735</td>
+<td>REVIEW NOTE</td>
+</tr>
+</tbody></table>
+<p>The requested Expected Loss tiering is populated and uses requested-exposure Expected Loss, which is correct for Section 5.</p>
+<p><strong>Review note, not a defect:</strong> The aggregate average for <code>SEVERE_REQUESTED_EL</code> is lower than <code>HIGH_REQUESTED_EL</code>. That can happen because Section 5 uses <strong>product-specific Expected Loss thresholds</strong>, not one universal dollar threshold. A severe requested Expected Loss tier within a lower-balance product can have a lower absolute average dollar amount than a high tier dominated by larger-balance secured products.</p>
+<p>No patch is recommended from this aggregate result. Later QA should review requested Expected Loss tiers by product if this pattern needs deeper interpretation.</p>
+<h2>Product × score policy segment</h2>
+<p>All 25 product × score combinations are populated.</p>
+<p>This is a strong result because Section 5 preserved enough density for downstream product × score strategy QA. It also confirms the segmentation layer did not collapse any product or score band.</p>
+<p>The product and score mix remains consistent with the validated Module 1 population design, which supports product-aware and score-aware downstream strategy testing. fileciteturn4file1</p>
+<h2>Mixed-signal profile type</h2>
+<table>
+<thead>
+<tr>
+<th>Mixed-signal profile type</th>
+<th align="right">Rows</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>NO_MIXED_SIGNAL_PROFILE</code></td>
+<td align="right">32,190</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>STRONG_CREDIT_HIGH_PTI</code></td>
+<td align="right">539</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>WEAK_CREDIT_LOW_PTI</code></td>
+<td align="right">8,426</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>LARGE_EXPOSURE_LOW_RISK</code></td>
+<td align="right">6,711</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>HIGH_RISK_LOW_EXPOSURE</code></td>
+<td align="right">123</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>HIGH_DTI_LOW_REQUESTED_PTI</code></td>
+<td align="right">266</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>MULTIPLE_MIXED_SIGNALS</code></td>
+<td align="right">1,745</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>This is a positive result. The mixed-signal layer is doing what it should: surfacing realistic overlap without assigning decisions.</p>
+<p>The counts show that mixed-signal profiles are present but not universal. <code>NO_MIXED_SIGNAL_PROFILE</code> remains the majority at 32,190 rows, while meaningful diagnostic populations exist for weak-credit/low-PTI, large-exposure/low-risk, strong-credit/high-PTI, and multiple mixed signals.</p>
+<p>This aligns with the Module 1 design and validation thesis that realistic synthetic credit populations should preserve mixed-signal cases rather than forcing rigid segmentation. fileciteturn4file1</p>
+<h2>Borderline profile flag</h2>
+<table>
+<thead>
+<tr>
+<th>Borderline profile flag</th>
+<th align="right">Rows</th>
+<th align="right">Share</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">32,663</td>
+<td align="right">65.3%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">17,337</td>
+<td align="right">34.7%</td>
+<td>PASS / monitor later</td>
+</tr>
+</tbody></table>
+<p>The governed borderline logic is functioning and produces a substantial diagnostic population.</p>
+<p><strong>Monitoring note:</strong> 34.7% borderline is high enough that Section 6 and Section 7 should be reviewed carefully. This is not a Section 5 defect because <code>borderline_profile_flag</code> is diagnostic at this stage. But if Section 6 uses borderline status too aggressively in manual-review candidate logic, it could materially increase manual review routing.</p>
+<p>For now, no patch is recommended. The right next step is to evaluate whether Section 6 manual-review candidate flags remain proportionate.</p>
+<h2>Section 5 acceptance conclusion</h2>
+<p>Section 5 passes.</p>
+<p>Accepted evidence:</p>
+<ul>
+<li><code>tmp_m2_stage_2_strategy_segments</code> preserved 50,000 rows.</li>
+<li><code>application_id</code> remained unique.</li>
+<li>Synthetic estimated-risk tiers are populated and directionally ordered.</li>
+<li>Requested PTI buckets are populated and directionally ordered.</li>
+<li>DTI buckets are populated and directionally ordered.</li>
+<li>Requested exposure tiers are populated and interpretable.</li>
+<li>Requested Expected Loss tiers are populated using requested-exposure Expected Loss.</li>
+<li>Product × score policy segments are fully populated.</li>
+<li>Mixed-signal diagnostics are populated and realistic.</li>
+<li>Borderline flag is populated using governed parameterization.</li>
+<li>No final decision outcomes are created.</li>
+<li>No approval / decline / manual review / counteroffer flags are created.</li>
+<li>No reason codes are assigned.</li>
+<li>No approved amount, approved PTI, or approved Expected Loss is calculated.</li>
+</ul>
+<h2>Patch recommendation</h2>
+<p>No Section 5 patch is recommended.</p>
+<h2>Items to monitor in Section 6</h2>
+<p>When you send Section 6 QA, I would focus on these three areas:</p>
+<ol>
+<li><p><strong>Borderline-driven review pressure</strong><br>Confirm <code>borderline_profile_flag = TRUE</code> does not create excessive <code>manual_review_candidate_flag</code> volume.</p>
+</li>
+<li><p><strong>Exposure counteroffer candidate volume</strong><br>The 12,628 <code>ABOVE_PRODUCT_APPROVAL_CAP</code> rows may create a large counteroffer candidate population. That may be intended, but it should be checked.</p>
+</li>
+<li><p><strong>Requested Expected Loss trigger behavior</strong><br>Because aggregate <code>SEVERE_REQUESTED_EL</code> has lower average EL than <code>HIGH_REQUESTED_EL</code>, confirm requested Expected Loss triggers behave coherently by product and do not overfire due to product-specific thresholds.</p>
+</li>
+</ol>
+</div></article><article id="c038-m00288" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00288 · 2026-05-07T12:56:42.771000-04:00 · active path</p><div class="body"><p>Ingest the first 16 / 22 section 6 QA.  Do not review yet, just ingest the detail.  I will send the remaining 6 section 6 QA and then we will perform the review.</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.4_QA_local_rule_flag_sanity_severe_delinquency_policy_stop.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.5_QA_local_rule_flag_sanity_synthetic_risk_decline_trigger.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.6_QA_local_rule_flag_sanity_requested_pti_decline_trigger.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.7_QA_local_rule_flag_sanity_dti_decline_trigger.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.8_QA_local_rule_flag_sanity_requested_el_decline_trigger.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.9_QA_local_rule_flag_sanity_requested_exposure_above_product_cap.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.10_QA_local_rule_flag_sanity_requested_exposure_extreme.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.11_QA_local_rule_flag_sanity_exposure_counteroffer_candidate.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.12_QA_local_rule_flag_sanity_counteroffer_candidate.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.13_QA_local_rule_flag_sanity_manual_review_candidate.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.14_QA_local_rule_flag_sanity_high_utilization_review_trigger.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.15_QA_local_rule_flag_sanity_low_score_review_trigger.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.16_QA_local_rule_flag_sanity_clean_approval_candidate.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.1_QA_local_rule_flag_sanity_hard_policy_stop.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.2_QA_local_rule_flag_sanity_bankruptcy_policy_stop.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.3_QA_local_rule_flag_sanity_major_derogatory_policy_stop.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00292" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00292 · 2026-05-07T12:57:25.803919-04:00 · active path</p><div class="body"><p>Ingested the first 16 of 22 Section 6 QA outputs:</p>
+<pre><code class="language-text">6.4.1  hard_policy_stop
+6.4.2  bankruptcy_policy_stop
+6.4.3  major_derogatory_policy_stop
+6.4.4  severe_delinquency_policy_stop
+6.4.5  synthetic_risk_decline_trigger
+6.4.6  requested_pti_decline_trigger
+6.4.7  dti_decline_trigger
+6.4.8  requested_el_decline_trigger
+6.4.9  requested_exposure_above_product_cap
+6.4.10 requested_exposure_extreme
+6.4.11 exposure_counteroffer_candidate
+6.4.12 counteroffer_candidate
+6.4.13 manual_review_candidate
+6.4.14 high_utilization_review_trigger
+6.4.15 low_score_review_trigger
+6.4.16 clean_approval_candidate
+</code></pre>
+<p>No review performed yet. Awaiting the remaining 6 Section 6 QA outputs.</p>
+</div></article><article id="c038-m00293" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00293 · 2026-05-07T12:58:15.343000-04:00 · active path</p><div class="body"><p>remaining section 6 QA outputs.  perform section 6 QA review.</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.19_QA_local_rule_flag_sanity_score_band_x_synthetic_risk_trigger.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.20_QA_local_rule_flag_sanity_requested_pti_bucket_x_affordability_trigger.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.21_QA_local_rule_flag_sanity_mixed_signal_profile_x_manual_review_candidate.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.22_QA_local_rule_flag_sanity_borderline_profile_x_manual_review_candidate.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.17_QA_local_rule_flag_sanity_product_x_hard_policy_stop.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_6.4.18_QA_local_rule_flag_sanity_product_x_counteroffer_candidate.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00302" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00302 · 2026-05-07T13:01:15.007007-04:00 · active path</p><div class="body"><h2>Section 6 QA review — Rule Flag Construction Layer</h2>
+<p><strong>Verdict: PASS with monitoring notes.</strong></p>
+<p>Section 6 is behaving as designed as a <strong>non-final rule-trigger layer</strong>. It converts Section 5 segmentation into transparent candidate flags without assigning final outcomes, approved exposure, approved Expected Loss, or simulated reason codes.</p>
+<p>No blocker or high-severity issue is indicated. I do <strong>not</strong> recommend a Section 6 patch at this point.</p>
+<p>The main review theme is that Section 6 is intentionally broad: multiple trigger families can coexist on the same synthetic applicant. The high <code>counteroffer_candidate_flag</code> and <code>manual_review_candidate_flag</code> rates should be monitored in Sections 7–9, but they are not Section 6 defects.</p>
+<hr>
+<h2>Core rule-flag structural interpretation</h2>
+<p>All uploaded Section 6 QA outputs reconcile to the expected 50,000-row staged population.</p>
+<p>The major flag families are populated, interpretable, and directionally consistent:</p>
+<table>
+<thead>
+<tr>
+<th>Flag family</th>
+<th align="right">Triggered rows</th>
+<th align="right">Share of population</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hard simulated policy stop</td>
+<td align="right">5,889</td>
+<td align="right">11.78%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Bankruptcy policy stop</td>
+<td align="right">827</td>
+<td align="right">1.65%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Major derogatory policy stop</td>
+<td align="right">2,893</td>
+<td align="right">5.79%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Severe delinquency policy stop</td>
+<td align="right">3,440</td>
+<td align="right">6.88%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Synthetic risk decline trigger</td>
+<td align="right">10,970</td>
+<td align="right">21.94%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Requested PTI decline trigger</td>
+<td align="right">924</td>
+<td align="right">1.85%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>DTI decline trigger</td>
+<td align="right">2,177</td>
+<td align="right">4.35%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Requested Expected Loss decline trigger</td>
+<td align="right">1,989</td>
+<td align="right">3.98%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Above product approval cap</td>
+<td align="right">12,628</td>
+<td align="right">25.26%</td>
+<td>PASS / monitor</td>
+</tr>
+<tr>
+<td>Extreme requested exposure</td>
+<td align="right">0</td>
+<td align="right">0.00%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Exposure counteroffer candidate</td>
+<td align="right">12,628</td>
+<td align="right">25.26%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Counteroffer candidate</td>
+<td align="right">31,322</td>
+<td align="right">62.64%</td>
+<td>PASS / monitor</td>
+</tr>
+<tr>
+<td>Manual review candidate</td>
+<td align="right">36,495</td>
+<td align="right">72.99%</td>
+<td>PASS / monitor</td>
+</tr>
+<tr>
+<td>High utilization review trigger</td>
+<td align="right">538</td>
+<td align="right">1.08%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Low score review trigger</td>
+<td align="right">6,220</td>
+<td align="right">12.44%</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Clean approval candidate</td>
+<td align="right">11,291</td>
+<td align="right">22.58%</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>This distribution is credible for a trigger layer. It should not be interpreted as final approval, final decline, final manual-review, or final counteroffer distribution.</p>
+<hr>
+<h2>Hard simulated policy stop flags</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Hard simulated policy stop flags are populated and plausible:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th align="right">Triggered rows</th>
+<th align="right">Share</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>bankruptcy_policy_stop_flag</code></td>
+<td align="right">827</td>
+<td align="right">1.65%</td>
+</tr>
+<tr>
+<td><code>major_derogatory_policy_stop_flag</code></td>
+<td align="right">2,893</td>
+<td align="right">5.79%</td>
+</tr>
+<tr>
+<td><code>severe_delinquency_policy_stop_flag</code></td>
+<td align="right">3,440</td>
+<td align="right">6.88%</td>
+</tr>
+<tr>
+<td><code>hard_policy_stop_flag</code></td>
+<td align="right">5,889</td>
+<td align="right">11.78%</td>
+</tr>
+</tbody></table>
+<p>The component flags sum to more than the total hard stop count, which indicates overlap across severe risk signals. That is expected: a synthetic applicant can have more than one severe simulated policy stop trigger.</p>
+<p>Product-level hard stop rates are very stable across products:</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Hard stop rows</th>
+<th align="right">Approx. hard stop rate</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Auto Loan</td>
+<td align="right">1,180 / 9,946</td>
+<td align="right">11.86%</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">594 / 4,962</td>
+<td align="right">11.97%</td>
+</tr>
+<tr>
+<td>Mortgage</td>
+<td align="right">1,726 / 15,065</td>
+<td align="right">11.46%</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">1,459 / 12,455</td>
+<td align="right">11.71%</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">930 / 7,572</td>
+<td align="right">12.28%</td>
+</tr>
+</tbody></table>
+<p>That product-neutrality is appropriate because bankruptcy, major derogatory, and severe delinquency are borrower/profile risk triggers rather than product exposure rules.</p>
+<p>These flags are still <strong>not final declines</strong>. They are high-priority triggers that Section 7 should route before counteroffer, manual review, or approval paths.</p>
+<hr>
+<h2>Synthetic estimated-risk flags</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The synthetic risk decline trigger is populated exactly where expected:</p>
+<table>
+<thead>
+<tr>
+<th><code>synthetic_risk_decline_trigger_flag</code></th>
+<th align="right">Rows</th>
+<th align="right">Avg synthetic estimated-PD proxy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">39,030</td>
+<td align="right">0.0878</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">10,970</td>
+<td align="right">0.4323</td>
+</tr>
+</tbody></table>
+<p>This aligns with Section 5’s <code>SEVERE_SYNTHETIC_RISK</code> population. The average synthetic estimated-PD proxy for triggered rows is materially higher than for non-triggered rows, which confirms that the flag is capturing the severe synthetic estimated-risk band.</p>
+<p>The score-band cross-tab is also directionally coherent:</p>
+<ul>
+<li><code>SUPER_PRIME</code> is entirely in the clean synthetic-risk band.</li>
+<li><code>PRIME</code> is overwhelmingly clean, with a small counteroffer/review tail.</li>
+<li><code>NEAR_PRIME</code> spans clean, counteroffer, review, and a small severe-risk decline trigger population.</li>
+<li><code>SUBPRIME</code> is concentrated in review and decline trigger bands.</li>
+<li><code>DEEP_SUBPRIME</code> is almost entirely in the decline trigger band.</li>
+</ul>
+<p>That is consistent with the Module 1 validated design principle that score bands should show directional risk ordering while still preserving realistic overlap and edge cases. fileciteturn4file2</p>
+<hr>
+<h2>Requested affordability flags</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Requested PTI flags are behaving coherently:</p>
+<table>
+<thead>
+<tr>
+<th>Requested PTI bucket</th>
+<th>Counteroffer candidate</th>
+<th>Review trigger</th>
+<th>Decline trigger</th>
+<th align="right">Rows</th>
+<th align="right">Avg requested PTI</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LOW_REQUESTED_PTI</code></td>
+<td>false</td>
+<td>false</td>
+<td>false</td>
+<td align="right">34,325</td>
+<td align="right">0.0973</td>
+</tr>
+<tr>
+<td><code>MODERATE_REQUESTED_PTI</code></td>
+<td>false</td>
+<td>false</td>
+<td>false</td>
+<td align="right">3,715</td>
+<td align="right">0.2315</td>
+</tr>
+<tr>
+<td><code>ELEVATED_REQUESTED_PTI</code></td>
+<td>true</td>
+<td>true</td>
+<td>false</td>
+<td align="right">8,710</td>
+<td align="right">0.3050</td>
+</tr>
+<tr>
+<td><code>HIGH_REQUESTED_PTI</code></td>
+<td>true</td>
+<td>true</td>
+<td>false</td>
+<td align="right">2,326</td>
+<td align="right">0.3852</td>
+</tr>
+<tr>
+<td><code>SEVERE_REQUESTED_PTI</code></td>
+<td>true</td>
+<td>false</td>
+<td>true</td>
+<td align="right">924</td>
+<td align="right">0.5419</td>
+</tr>
+</tbody></table>
+<p>The overlap between counteroffer and review triggers for elevated/high requested PTI is acceptable in Section 6. Section 6 is not a final hierarchy; it is a trigger layer. The later routing and feasibility sections determine whether these records become counteroffer routes, review routes, or other outcomes.</p>
+<p>The severe requested PTI count of 924 matches the Section 5 severe requested PTI bucket. That is clean internal consistency.</p>
+<hr>
+<h2>DTI capacity flags</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<table>
+<thead>
+<tr>
+<th><code>dti_decline_trigger_flag</code></th>
+<th align="right">Rows</th>
+<th align="right">Avg DTI</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">47,823</td>
+<td align="right">0.3827</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">2,177</td>
+<td align="right">0.6431</td>
+</tr>
+</tbody></table>
+<p>The triggered group is clearly above the configured severe DTI boundary. This is behaving as intended.</p>
+<p>DTI is not counteroffer-adjustable in Module 2 v1.0. Therefore, these flags should remain important in Section 7 routing and should generally route ahead of counteroffer treatment where the DTI decline trigger is active.</p>
+<hr>
+<h2>Requested Expected Loss flags</h2>
+<p><strong>Assessment: PASS with interpretation note.</strong></p>
+<table>
+<thead>
+<tr>
+<th><code>requested_el_decline_trigger_flag</code></th>
+<th align="right">Rows</th>
+<th align="right">Avg requested Expected Loss</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">48,011</td>
+<td align="right">4,459</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">1,989</td>
+<td align="right">12,735</td>
+</tr>
+</tbody></table>
+<p>The triggered group has materially higher requested-exposure Expected Loss, which confirms the requested Expected Loss trigger is directionally sound.</p>
+<p>Interpretation note: requested Expected Loss thresholds are product-specific. A product-specific severe requested Expected Loss trigger does not necessarily mean every triggered row has a higher absolute dollar Expected Loss than every high requested Expected Loss row in another product. That was already visible in Section 5 and remains acceptable.</p>
+<p>Section 6 is correctly using requested-exposure Expected Loss. It is not using approved Expected Loss, which does not exist until Section 8.</p>
+<hr>
+<h2>Exposure flags</h2>
+<p><strong>Assessment: PASS with monitoring note.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Exposure flag</th>
+<th align="right">Triggered rows</th>
+<th align="right">Share</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>requested_exposure_above_product_cap_flag</code></td>
+<td align="right">12,628</td>
+<td align="right">25.26%</td>
+</tr>
+<tr>
+<td><code>requested_exposure_extreme_flag</code></td>
+<td align="right">0</td>
+<td align="right">0.00%</td>
+</tr>
+<tr>
+<td><code>exposure_counteroffer_candidate_flag</code></td>
+<td align="right">12,628</td>
+<td align="right">25.26%</td>
+</tr>
+</tbody></table>
+<p>The exact match between above-product-cap rows and exposure counteroffer candidates is internally coherent.</p>
+<p>The average requested amount for above-cap rows is lower than the average requested amount for rows within product limits. That is not a defect. Product caps are product-specific; above-cap flags can be concentrated in lower-balance products with lower approval caps, while within-limit rows can include high-balance products such as mortgages and HELOCs.</p>
+<p>Monitoring note: 12,628 exposure counteroffer candidates is a meaningful population. Section 8 should confirm how many of these can be feasibly reduced within product caps, PTI target, approved Expected Loss cap, minimum approved amount, and maximum exposure reduction constraints.</p>
+<hr>
+<h2>Counteroffer candidate flags</h2>
+<p><strong>Assessment: PASS / monitor later.</strong></p>
+<table>
+<thead>
+<tr>
+<th><code>counteroffer_candidate_flag</code></th>
+<th align="right">Rows</th>
+<th align="right">Avg counteroffer trigger count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">18,678</td>
+<td align="right">0.0000</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">31,322</td>
+<td align="right">1.5549</td>
+</tr>
+</tbody></table>
+<p>Counteroffer candidate rate is high at <strong>62.64%</strong>, but this is not yet a defect because Section 6 identifies candidate triggers only. A candidate row still has to survive:</p>
+<ol>
+<li>Section 7 preliminary routing priority,</li>
+<li>Section 8 counteroffer feasibility,</li>
+<li>Section 9 final decision resolution.</li>
+</ol>
+<p>Product-level counteroffer candidate rates are broad but plausible:</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Counteroffer candidate rows</th>
+<th align="right">Approx. rate</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Auto Loan</td>
+<td align="right">5,571 / 9,946</td>
+<td align="right">56.01%</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">3,034 / 4,962</td>
+<td align="right">61.14%</td>
+</tr>
+<tr>
+<td>Mortgage</td>
+<td align="right">9,278 / 15,065</td>
+<td align="right">61.59%</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">8,382 / 12,455</td>
+<td align="right">67.30%</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">5,057 / 7,572</td>
+<td align="right">66.79%</td>
+</tr>
+</tbody></table>
+<p>Unsecured Personal Loan and Revolving Line showing higher candidate rates is intuitive because they are more sensitive to affordability, unsecured risk, product caps, or approved-exposure controls.</p>
+<p>This is a <strong>monitoring item for Sections 7–9</strong>, not a Section 6 patch item.</p>
+<hr>
+<h2>Manual review candidate flags</h2>
+<p><strong>Assessment: PASS / monitor later.</strong></p>
+<table>
+<thead>
+<tr>
+<th><code>manual_review_candidate_flag</code></th>
+<th align="right">Rows</th>
+<th align="right">Avg manual review trigger count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">13,505</td>
+<td align="right">0.0000</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">36,495</td>
+<td align="right">2.4249</td>
+</tr>
+</tbody></table>
+<p>Manual review candidate rate is high at <strong>72.99%</strong>.</p>
+<p>This is acceptable at Section 6 because manual review candidate flags are intentionally broad and overlapping. They include risk, affordability, DTI, expected loss, mixed-signal, borderline, and supplemental behavioral diagnostics. They are not final manual-review outcomes.</p>
+<p>However, this is the most important Section 6 monitoring item. Section 7 and Section 9 must confirm that final <code>MANUAL_REVIEW</code> does not become excessive unless the strategy is intentionally conservative.</p>
+<p>The cross-tabs explain why manual review candidates are broad:</p>
+<ul>
+<li>Every mixed-signal profile is flagged for manual-review candidacy.</li>
+<li>Every borderline profile is flagged for manual-review candidacy.</li>
+<li>A large number of no-mixed-signal rows are also flagged due to other review triggers.</li>
+</ul>
+<p>Mixed-signal review candidate pattern:</p>
+<table>
+<thead>
+<tr>
+<th>Mixed-signal profile</th>
+<th align="right">Manual review candidate rows</th>
+<th align="right">Avg manual review trigger count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>NO_MIXED_SIGNAL_PROFILE</code></td>
+<td align="right">18,685</td>
+<td align="right">2.2564</td>
+</tr>
+<tr>
+<td><code>STRONG_CREDIT_HIGH_PTI</code></td>
+<td align="right">539</td>
+<td align="right">2.8293</td>
+</tr>
+<tr>
+<td><code>WEAK_CREDIT_LOW_PTI</code></td>
+<td align="right">8,426</td>
+<td align="right">3.4600</td>
+</tr>
+<tr>
+<td><code>LARGE_EXPOSURE_LOW_RISK</code></td>
+<td align="right">6,711</td>
+<td align="right">1.4044</td>
+</tr>
+<tr>
+<td><code>HIGH_RISK_LOW_EXPOSURE</code></td>
+<td align="right">123</td>
+<td align="right">4.1870</td>
+</tr>
+<tr>
+<td><code>HIGH_DTI_LOW_REQUESTED_PTI</code></td>
+<td align="right">266</td>
+<td align="right">2.1767</td>
+</tr>
+<tr>
+<td><code>MULTIPLE_MIXED_SIGNALS</code></td>
+<td align="right">1,745</td>
+<td align="right">2.9433</td>
+</tr>
+</tbody></table>
+<p>Borderline review candidate pattern:</p>
+<table>
+<thead>
+<tr>
+<th>Borderline flag</th>
+<th>Manual review candidate flag</th>
+<th align="right">Rows</th>
+<th align="right">Avg trigger count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>FALSE</code></td>
+<td align="right">13,505</td>
+<td align="right">0.0000</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>TRUE</code></td>
+<td align="right">19,158</td>
+<td align="right">1.9244</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>TRUE</code></td>
+<td align="right">17,337</td>
+<td align="right">2.9779</td>
+</tr>
+</tbody></table>
+<p>This indicates the governed borderline logic is actively contributing to review candidacy. That is acceptable, but final manual review rate should be reviewed carefully.</p>
+<hr>
+<h2>Supplemental behavioral review flags</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>High utilization trigger:</p>
+<table>
+<thead>
+<tr>
+<th><code>high_utilization_review_trigger_flag</code></th>
+<th align="right">Rows</th>
+<th align="right">Avg utilization</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">49,462</td>
+<td align="right">0.3949</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">538</td>
+<td align="right">0.8904</td>
+</tr>
+</tbody></table>
+<p>This is clean. Triggered rows are clearly high-utilization rows.</p>
+<p>Low score trigger:</p>
+<table>
+<thead>
+<tr>
+<th><code>low_score_review_trigger_flag</code></th>
+<th align="right">Rows</th>
+<th align="right">Avg credit score</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">43,780</td>
+<td align="right">704.61</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">6,220</td>
+<td align="right">540.76</td>
+</tr>
+</tbody></table>
+<p>This is also clean. Triggered rows are concentrated in very weak score ranges. The count is slightly above the deep-subprime population, which is consistent with threshold equality or edge scores around the low-score threshold. No issue indicated.</p>
+<p>These supplemental behavioral flags are diagnostic review inputs. They are not final outcomes and not reason codes.</p>
+<hr>
+<h2>Clean approval candidate flag</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<table>
+<thead>
+<tr>
+<th><code>clean_approval_candidate_flag</code></th>
+<th align="right">Rows</th>
+<th align="right">Avg synthetic estimated-PD proxy</th>
+<th align="right">Avg requested PTI</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">38,709</td>
+<td align="right">0.2032</td>
+<td align="right">0.1881</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">11,291</td>
+<td align="right">0.0268</td>
+<td align="right">0.0861</td>
+</tr>
+</tbody></table>
+<p>This is a strong result.</p>
+<p>Clean approval candidates are materially lower-risk and lower-PTI than non-clean rows. That confirms the diagnostic definition is working: clean candidates are not mixing with material trigger families.</p>
+<p>The clean approval candidate count is <strong>22.58%</strong>, which provides a plausible base for later preliminary approval routing.</p>
+<hr>
+<h2>Band coverage and overlap interpretation</h2>
+<p>The true banding families appear coherent.</p>
+<p>Synthetic risk band coverage sums to the full population and shows exactly one synthetic risk band per row in the score-band cross-tab. Because the script executed without a Section 6 exception, the <code>synthetic_risk_band_flag_count &lt;&gt; 1</code> gatekeeper did not fail.</p>
+<p>DTI band coverage was not among the uploaded 22 local outputs, but because execution proceeded successfully, the Section 6 DTI band coverage gatekeeper also passed.</p>
+<p>Important: Section 6 should <strong>not</strong> force mutual exclusivity across broader trigger families. The uploaded outputs correctly show valid overlap across:</p>
+<ul>
+<li>counteroffer candidates and PTI pressure,</li>
+<li>manual review candidates and borderline profiles,</li>
+<li>mixed-signal profiles and manual review candidates,</li>
+<li>hard simulated policy stops and other risk diagnostics,</li>
+<li>requested Expected Loss and synthetic risk triggers,</li>
+<li>exposure pressure and counteroffer candidacy.</li>
+</ul>
+<p>That is the intended behavior.</p>
+<hr>
+<h2>Section 6 acceptance conclusion</h2>
+<p>Section 6 passes.</p>
+<p>Accepted evidence:</p>
+<ul>
+<li>Rule-flag stage preserved the 50,000-row population.</li>
+<li>Hard simulated policy stop flags are populated and interpretable.</li>
+<li>Synthetic risk decline trigger is directionally coherent and aligns to severe synthetic estimated-risk.</li>
+<li>Requested PTI decline trigger aligns to severe requested PTI.</li>
+<li>DTI decline trigger aligns to severe DTI.</li>
+<li>Requested Expected Loss decline trigger aligns to elevated requested-exposure risk.</li>
+<li>Exposure counteroffer candidate exactly aligns with above-product-cap exposure.</li>
+<li>No rows are classified as extreme requested exposure.</li>
+<li>Counteroffer candidates are populated broadly but remain candidate-only.</li>
+<li>Manual-review candidates are populated broadly but remain candidate-only.</li>
+<li>High-utilization and low-score supplemental review flags are targeted and interpretable.</li>
+<li>Clean approval candidates show low synthetic estimated-PD proxy and low requested PTI.</li>
+<li>Product-level and score-band-level flag distributions are coherent.</li>
+<li>Mixed-signal and borderline diagnostics are feeding review candidacy as designed.</li>
+<li>No decision outcome is assigned in Section 6.</li>
+<li>No reason code is assigned in Section 6.</li>
+<li>No approved amount, approved payment, approved PTI, or approved Expected Loss is calculated in Section 6.</li>
+</ul>
+<h2>Patch recommendation</h2>
+<p>No Section 6 patch is recommended.</p>
+<h2>Monitoring items for Sections 7–9</h2>
+<p>The next review should focus on whether the broad candidate flags resolve appropriately downstream.</p>
+<ol>
+<li><p><strong>Manual review pressure</strong><br><code>manual_review_candidate_flag = TRUE</code> for 36,495 rows. Section 7 and Section 9 need to show how much of this remains final <code>MANUAL_REVIEW</code> after hard-stop, counteroffer, and clean-approval routing.</p>
+</li>
+<li><p><strong>Counteroffer pressure</strong><br><code>counteroffer_candidate_flag = TRUE</code> for 31,322 rows. Section 8 needs to show feasibility pass/fail rates and whether final counteroffer volume is plausible.</p>
+</li>
+<li><p><strong>Above-cap exposure treatment</strong><br>12,628 rows are above product approval caps and exposure counteroffer candidates. Section 8 should confirm whether exposure reduction produces feasible approved amounts within product limits.</p>
+</li>
+<li><p><strong>Borderline-driven review volume</strong><br>All 17,337 borderline profiles are manual-review candidates. That is acceptable as a candidate diagnostic, but final manual-review concentration should be reviewed.</p>
+</li>
+<li><p><strong>Synthetic risk priority</strong><br>10,970 rows have <code>synthetic_risk_decline_trigger_flag = TRUE</code>. Section 7 should route these to preliminary <code>DECLINE</code> unless hard simulated policy stop has already taken priority.</p>
+</li>
+</ol>
+<p>Next recommended review: Section 7 preliminary routing QA.</p>
+</div></article><article id="c038-m00304" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00304 · 2026-05-07T13:34:37.528000-04:00 · active path</p><div class="body"><p>review section 7 QA: </p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.4_QA_local_preliminary_routing_sanity_preliminary_route_reason_family.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.5_QA_local_preliminary_routing_sanity_product_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.6_QA_local_preliminary_routing_sanity_score_band_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.7_QA_local_preliminary_routing_sanity_requested_pti_bucket_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.8_QA_local_preliminary_routing_sanity_strategy_risk_tier_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.9_QA_local_preliminary_routing_sanity_requested_exposure_tier_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.10_QA_local_preliminary_routing_sanity_requested_expected_loss_tier_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.11_QA_local_preliminary_routing_sanity_mixed_signal_profile_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.12_QA_local_preliminary_routing_sanity_borderline_profile_flag_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.13_QA_local_preliminary_routing_sanity_hard_policy_stop_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.14_QA_local_preliminary_routing_sanity_synthetic_risk_decline_trigger_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.15_QA_local_preliminary_routing_sanity_dti_decline_trigger_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.16_QA_local_preliminary_routing_sanity_counteroffer_candidate_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.17_QA_local_preliminary_routing_sanity_manual_review_candidate_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.18_QA_local_preliminary_routing_sanity_clean_approval_candidate_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.19_QA_local_preliminary_routing_sanity_requires_counteroffer_feasibility_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.20_QA_local_preliminary_routing_sanity_requires_approved_exposure_calculation_x_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.1_QA_local_preliminary_routing_sanity_preliminary_decision_outcome.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.2_QA_local_preliminary_routing_sanity_preliminary_decision_path.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_7.4.3_QA_local_preliminary_routing_sanity_preliminary_decision_priority_rank.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00309" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00309 · 2026-05-07T13:37:35.364042-04:00 · active path</p><div class="body"><h2>Section 7 QA review — Preliminary Decision Routing Layer</h2>
+<p><strong>Verdict: PASS with monitoring notes.</strong></p>
+<p>Section 7 is behaving as intended. It successfully converts overlapping Section 6 trigger flags into <strong>one preliminary route per synthetic applicant</strong> while preserving the boundary that this is <strong>not yet the final decision outcome</strong>.</p>
+<p>No blocker, high-severity issue, or patch recommendation is indicated.</p>
+<p>Section 7 is correctly doing what it was designed to do:</p>
+<pre><code class="language-text">Rule flags → priority hierarchy → one preliminary route
+</code></pre>
+<p>It is not yet deciding final approved exposure, counteroffer feasibility, approved PTI, approved Expected Loss, or reason codes.</p>
+<hr>
+<h2>1. Preliminary routing distribution</h2>
+<table>
+<thead>
+<tr>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+<th align="right">Share</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+<td align="right">22.58%</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">21,286</td>
+<td align="right">42.57%</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+<td align="right">9.44%</td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td align="right">12,703</td>
+<td align="right">25.41%</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>This is a coherent preliminary routing distribution. It shows that Section 7 is materially reducing the broad Section 6 candidate populations into a more controlled preliminary hierarchy:</p>
+<ul>
+<li><p>Section 6 <code>counteroffer_candidate_flag = TRUE</code>: 31,322 rows  </p>
+</li>
+<li><p>Section 7 preliminary <code>COUNTEROFFER</code>: 21,286 rows  </p>
+</li>
+<li><p>Section 6 <code>manual_review_candidate_flag = TRUE</code>: 36,495 rows  </p>
+</li>
+<li><p>Section 7 preliminary <code>MANUAL_REVIEW</code>: 4,720 rows</p>
+</li>
+</ul>
+<p>That is exactly what Section 7 should do. Section 6 allowed overlapping candidate flags; Section 7 applied hierarchy.</p>
+<hr>
+<h2>2. Priority hierarchy behavior</h2>
+<table>
+<thead>
+<tr>
+<th align="right">Priority rank</th>
+<th>Preliminary path</th>
+<th align="right">Rows</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">1</td>
+<td><code>HARD_POLICY_STOP</code></td>
+<td align="right">5,889</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td><code>SEVERE_SYNTHETIC_RISK</code></td>
+<td align="right">6,369</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td><code>SEVERE_DTI_CAPACITY</code></td>
+<td align="right">445</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td align="right">4</td>
+<td><code>COUNTEROFFER_FEASIBILITY_CHECK</code></td>
+<td align="right">21,286</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td align="right">6</td>
+<td><code>MANUAL_REVIEW_CANDIDATE</code></td>
+<td align="right">4,720</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td align="right">7</td>
+<td><code>CLEAN_APPROVAL_CANDIDATE</code></td>
+<td align="right">11,291</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>The routing order is working as designed.</p>
+<p>Priority 1, 2, and 3 decline paths are firing before counteroffer, manual review, and clean approval. This is the intended hierarchy: hard simulated policy stops, severe synthetic estimated-risk, and severe DTI capacity issues take precedence.</p>
+<p><strong>Monitoring note:</strong> Priority 5 <code>REQUESTED_STRUCTURE_SEVERE_REVIEW</code> and Priority 8 <code>RESIDUAL_STRATEGY_REVIEW</code> did not fire in this run. That is not a defect. It means all rows were resolved by higher-priority decline paths, counteroffer routing, manual-review candidacy, or clean approval routing. It does mean those branches have not yet been exercised in this baseline smoke-test population; we can test them later with targeted parameter or edge-case tests if desired.</p>
+<hr>
+<h2>3. Hard simulated policy stop routing</h2>
+<table>
+<thead>
+<tr>
+<th><code>hard_policy_stop_flag</code></th>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">21,286</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">6,814</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">5,889</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Every hard simulated policy stop row routes to preliminary <code>DECLINE</code>.</p>
+<p>This confirms Priority 1 enforcement:</p>
+<pre><code class="language-text">hard_policy_stop_flag = TRUE → preliminary DECLINE / HARD_POLICY_STOP
+</code></pre>
+<p>No issue indicated.</p>
+<hr>
+<h2>4. Severe synthetic estimated-risk routing</h2>
+<table>
+<thead>
+<tr>
+<th><code>synthetic_risk_decline_trigger_flag</code></th>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">21,286</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">1,733</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">10,970</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Every row with <code>synthetic_risk_decline_trigger_flag = TRUE</code> routes to preliminary <code>DECLINE</code>.</p>
+<p>The 10,970 triggered rows match the severe synthetic risk population seen in Section 5 and Section 6. This is coherent with the intended treatment: severe synthetic estimated-risk is not solved by exposure reduction in Module 2 v1.0.</p>
+<p>This remains consistent with the Module 1 design boundary: <code>estimated_pd</code> is used as a synthetic estimated-PD proxy for strategy simulation, not as a calibrated production PD. fileciteturn4file1</p>
+<hr>
+<h2>5. Severe DTI capacity routing</h2>
+<table>
+<thead>
+<tr>
+<th><code>dti_decline_trigger_flag</code></th>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">21,286</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">10,526</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">2,177</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Every row with <code>dti_decline_trigger_flag = TRUE</code> routes to preliminary <code>DECLINE</code>.</p>
+<p>Only 445 rows are assigned the specific <code>SEVERE_DTI_CAPACITY</code> preliminary path because many severe DTI rows are already captured by higher-priority hard policy stop or severe synthetic estimated-risk routes. That is correct hierarchy behavior.</p>
+<p>DTI remains an existing-obligation capacity signal and is not directly fixed by counteroffer in Module 2 v1.0.</p>
+<hr>
+<h2>6. Counteroffer candidate routing</h2>
+<table>
+<thead>
+<tr>
+<th><code>counteroffer_candidate_flag</code></th>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">2,667</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">21,286</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">10,036</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS / monitor Section 8.</strong></p>
+<p>Preliminary <code>COUNTEROFFER</code> occurs only when <code>counteroffer_candidate_flag = TRUE</code>.</p>
+<p>The 10,036 counteroffer candidates routed to preliminary <code>DECLINE</code> are not a contradiction. They are counteroffer candidates that also triggered higher-priority decline routes, most likely hard simulated policy stops, severe synthetic estimated-risk, or severe DTI.</p>
+<p>This is correct:</p>
+<pre><code class="language-text">Counteroffer candidacy does not override higher-priority decline routes.
+</code></pre>
+<p>Monitoring item: 21,286 preliminary counteroffer rows is a large feasibility workload. Section 8 must now determine how many of these are economically and structurally feasible after approved exposure, approved PTI, and approved Expected Loss are calculated.</p>
+<hr>
+<h2>7. Manual review candidate routing</h2>
+<table>
+<thead>
+<tr>
+<th><code>manual_review_candidate_flag</code></th>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">1,984</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">230</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">19,302</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">12,473</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Manual-review candidate rows are being prioritized correctly. Many manual-review candidates are routed elsewhere because higher-priority or more specific routes apply:</p>
+<ul>
+<li>12,473 manual-review candidates route to preliminary <code>DECLINE</code>.</li>
+<li>19,302 manual-review candidates route to preliminary <code>COUNTEROFFER</code>.</li>
+<li>4,720 remain preliminary <code>MANUAL_REVIEW</code>.</li>
+</ul>
+<p>This is the intended behavior. Manual-review candidacy is broad in Section 6, but Section 7 does not allow it to override hard simulated policy stops, severe synthetic risk, severe DTI, or counteroffer feasibility routing.</p>
+<p>This resolves the main Section 6 monitoring concern: the broad manual-review candidate population does <strong>not</strong> automatically become an excessive preliminary manual-review population.</p>
+<hr>
+<h2>8. Clean approval candidate routing</h2>
+<table>
+<thead>
+<tr>
+<th><code>clean_approval_candidate_flag</code></th>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">21,286</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">12,703</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Every clean approval candidate routes to preliminary <code>APPROVE</code>, and no non-clean row routes to preliminary <code>APPROVE</code>.</p>
+<p>This is a strong reconciliation result. It confirms that preliminary approval routing is conservative and only occurs after material trigger families have been excluded.</p>
+<hr>
+<h2>9. Exposure-routing flags</h2>
+<h3>Counteroffer feasibility flag</h3>
+<table>
+<thead>
+<tr>
+<th><code>requires_counteroffer_feasibility_flag</code></th>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">12,703</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">21,286</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Only preliminary <code>COUNTEROFFER</code> rows require counteroffer feasibility evaluation.</p>
+<h3>Approved exposure calculation flag</h3>
+<table>
+<thead>
+<tr>
+<th><code>requires_approved_exposure_calculation_flag</code></th>
+<th>Preliminary outcome</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td><code>DECLINE</code></td>
+<td align="right">12,703</td>
+</tr>
+<tr>
+<td><code>FALSE</code></td>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>APPROVE</code></td>
+<td align="right">11,291</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">21,286</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Only preliminary <code>APPROVE</code> and preliminary <code>COUNTEROFFER</code> rows require approved exposure calculation. This is exactly the accepted Section 7 convention.</p>
+<hr>
+<h2>10. Product-level preliminary routing</h2>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">APPROVE</th>
+<th align="right">COUNTEROFFER</th>
+<th align="right">MANUAL_REVIEW</th>
+<th align="right">DECLINE</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Auto Loan</td>
+<td align="right">2,789</td>
+<td align="right">3,552</td>
+<td align="right">1,130</td>
+<td align="right">2,475</td>
+<td>Balanced routing</td>
+</tr>
+<tr>
+<td>HELOC</td>
+<td align="right">1,126</td>
+<td align="right">1,981</td>
+<td align="right">489</td>
+<td align="right">1,366</td>
+<td>Balanced, higher decline than auto</td>
+</tr>
+<tr>
+<td>Mortgage</td>
+<td align="right">3,233</td>
+<td align="right">6,357</td>
+<td align="right">1,460</td>
+<td align="right">4,015</td>
+<td>Large counteroffer population</td>
+</tr>
+<tr>
+<td>Revolving Line</td>
+<td align="right">2,603</td>
+<td align="right">5,948</td>
+<td align="right">979</td>
+<td align="right">2,925</td>
+<td>High counteroffer routing</td>
+</tr>
+<tr>
+<td>Unsecured Personal Loan</td>
+<td align="right">1,540</td>
+<td align="right">3,448</td>
+<td align="right">662</td>
+<td align="right">1,922</td>
+<td>High counteroffer routing</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS / monitor Section 8.</strong></p>
+<p>Product-level routing is plausible. Revolving Line and Unsecured Personal Loan show higher counteroffer routing, which is intuitive given unsecured / exposure / affordability sensitivity. Mortgage also has a large counteroffer population, consistent with exposure treatment pressure.</p>
+<p>No product is missing an outcome family. No product collapses entirely into one route.</p>
+<hr>
+<h2>11. Score-band preliminary routing</h2>
+<table>
+<thead>
+<tr>
+<th>Score band</th>
+<th align="right">APPROVE</th>
+<th align="right">COUNTEROFFER</th>
+<th align="right">MANUAL_REVIEW</th>
+<th align="right">DECLINE</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SUPER_PRIME</code></td>
+<td align="right">4,947</td>
+<td align="right">3,622</td>
+<td align="right">364</td>
+<td align="right">51</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>PRIME</code></td>
+<td align="right">5,784</td>
+<td align="right">5,716</td>
+<td align="right">2,101</td>
+<td align="right">386</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>NEAR_PRIME</code></td>
+<td align="right">560</td>
+<td align="right">9,555</td>
+<td align="right">753</td>
+<td align="right">1,205</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>SUBPRIME</code></td>
+<td align="right">0</td>
+<td align="right">2,391</td>
+<td align="right">1,487</td>
+<td align="right">5,024</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>DEEP_SUBPRIME</code></td>
+<td align="right">0</td>
+<td align="right">2</td>
+<td align="right">15</td>
+<td align="right">6,037</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>This is directionally strong.</p>
+<ul>
+<li>Stronger score bands retain meaningful preliminary approval volume.</li>
+<li>Near Prime shifts heavily toward counteroffer.</li>
+<li>Subprime shifts heavily toward decline and manual review.</li>
+<li>Deep Subprime is almost entirely preliminary decline.</li>
+</ul>
+<p>This is consistent with the Module 1 validated score-band risk ordering and mixed-signal realism: stronger bands generally exhibit lower synthetic risk while overlap remains possible. fileciteturn4file2</p>
+<p>The two Deep Subprime preliminary counteroffer rows and 15 Deep Subprime manual-review rows are not automatically defects. They are likely low-exposure or otherwise non-severe rows that avoided the severe synthetic risk decline trigger. These should be visible later in edge-case QA, but they do not indicate a Section 7 issue.</p>
+<hr>
+<h2>12. Requested PTI preliminary routing</h2>
+<table>
+<thead>
+<tr>
+<th>Requested PTI bucket</th>
+<th align="right">APPROVE</th>
+<th align="right">COUNTEROFFER</th>
+<th align="right">MANUAL_REVIEW</th>
+<th align="right">DECLINE</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LOW_REQUESTED_PTI</code></td>
+<td align="right">11,008</td>
+<td align="right">12,332</td>
+<td align="right">4,198</td>
+<td align="right">6,787</td>
+</tr>
+<tr>
+<td><code>MODERATE_REQUESTED_PTI</code></td>
+<td align="right">283</td>
+<td align="right">1,621</td>
+<td align="right">522</td>
+<td align="right">1,289</td>
+</tr>
+<tr>
+<td><code>ELEVATED_REQUESTED_PTI</code></td>
+<td align="right">0</td>
+<td align="right">5,838</td>
+<td align="right">0</td>
+<td align="right">2,872</td>
+</tr>
+<tr>
+<td><code>HIGH_REQUESTED_PTI</code></td>
+<td align="right">0</td>
+<td align="right">1,378</td>
+<td align="right">0</td>
+<td align="right">948</td>
+</tr>
+<tr>
+<td><code>SEVERE_REQUESTED_PTI</code></td>
+<td align="right">0</td>
+<td align="right">117</td>
+<td align="right">0</td>
+<td align="right">807</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The pattern is coherent:</p>
+<ul>
+<li>Clean preliminary approvals are concentrated in low / moderate requested PTI.</li>
+<li>Elevated and high requested PTI routes to counteroffer or decline.</li>
+<li>Severe requested PTI routes mostly to decline, with some counteroffer feasibility testing.</li>
+</ul>
+<p>No severe requested PTI rows are routed to preliminary approval, which is correct.</p>
+<p>The fact that low requested PTI still has declines is also correct: low requested PTI does not override hard simulated policy stops, severe synthetic risk, or severe DTI.</p>
+<hr>
+<h2>13. Strategy risk tier preliminary routing</h2>
+<table>
+<thead>
+<tr>
+<th>Strategy risk tier</th>
+<th align="right">APPROVE</th>
+<th align="right">COUNTEROFFER</th>
+<th align="right">MANUAL_REVIEW</th>
+<th align="right">DECLINE</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LOW_SYNTHETIC_RISK</code></td>
+<td align="right">9,467</td>
+<td align="right">6,037</td>
+<td align="right">1,562</td>
+<td align="right">56</td>
+</tr>
+<tr>
+<td><code>MODERATE_SYNTHETIC_RISK</code></td>
+<td align="right">1,824</td>
+<td align="right">3,363</td>
+<td align="right">1,368</td>
+<td align="right">258</td>
+</tr>
+<tr>
+<td><code>ELEVATED_SYNTHETIC_RISK</code></td>
+<td align="right">0</td>
+<td align="right">8,269</td>
+<td align="right">0</td>
+<td align="right">414</td>
+</tr>
+<tr>
+<td><code>HIGH_SYNTHETIC_RISK</code></td>
+<td align="right">0</td>
+<td align="right">3,617</td>
+<td align="right">1,790</td>
+<td align="right">1,005</td>
+</tr>
+<tr>
+<td><code>SEVERE_SYNTHETIC_RISK</code></td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">10,970</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>This is one of the strongest Section 7 QA results.</p>
+<ul>
+<li><code>SEVERE_SYNTHETIC_RISK</code> routes entirely to preliminary <code>DECLINE</code>.</li>
+<li><code>ELEVATED_SYNTHETIC_RISK</code> routes mostly to counteroffer, with some decline.</li>
+<li><code>HIGH_SYNTHETIC_RISK</code> routes to counteroffer, review, and decline, but never approval.</li>
+<li>Low and moderate risk tiers retain preliminary approval capacity.</li>
+</ul>
+<p>This is exactly the intended routing behavior.</p>
+<hr>
+<h2>14. Requested exposure preliminary routing</h2>
+<table>
+<thead>
+<tr>
+<th>Requested exposure tier</th>
+<th align="right">APPROVE</th>
+<th align="right">COUNTEROFFER</th>
+<th align="right">MANUAL_REVIEW</th>
+<th align="right">DECLINE</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>WITHIN_PRODUCT_LIMITS</code></td>
+<td align="right">11,291</td>
+<td align="right">11,285</td>
+<td align="right">4,720</td>
+<td align="right">10,076</td>
+</tr>
+<tr>
+<td><code>ABOVE_PRODUCT_APPROVAL_CAP</code></td>
+<td align="right">0</td>
+<td align="right">10,001</td>
+<td align="right">0</td>
+<td align="right">2,627</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Above-product-cap exposure never routes to preliminary <code>APPROVE</code>, which is correct. It routes to:</p>
+<ul>
+<li>preliminary <code>COUNTEROFFER</code> when no higher-priority decline route applies;</li>
+<li>preliminary <code>DECLINE</code> when higher-priority decline conditions apply.</li>
+</ul>
+<p>This is exactly how exposure counteroffer candidacy should behave before Section 8 feasibility testing.</p>
+<hr>
+<h2>15. Requested Expected Loss preliminary routing</h2>
+<table>
+<thead>
+<tr>
+<th>Requested Expected Loss tier</th>
+<th align="right">APPROVE</th>
+<th align="right">COUNTEROFFER</th>
+<th align="right">MANUAL_REVIEW</th>
+<th align="right">DECLINE</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LOW_REQUESTED_EL</code></td>
+<td align="right">11,114</td>
+<td align="right">10,544</td>
+<td align="right">3,495</td>
+<td align="right">1,005</td>
+</tr>
+<tr>
+<td><code>MODERATE_REQUESTED_EL</code></td>
+<td align="right">177</td>
+<td align="right">4,764</td>
+<td align="right">1,225</td>
+<td align="right">2,243</td>
+</tr>
+<tr>
+<td><code>ELEVATED_REQUESTED_EL</code></td>
+<td align="right">0</td>
+<td align="right">4,478</td>
+<td align="right">0</td>
+<td align="right">3,413</td>
+</tr>
+<tr>
+<td><code>HIGH_REQUESTED_EL</code></td>
+<td align="right">0</td>
+<td align="right">1,413</td>
+<td align="right">0</td>
+<td align="right">4,140</td>
+</tr>
+<tr>
+<td><code>SEVERE_REQUESTED_EL</code></td>
+<td align="right">0</td>
+<td align="right">87</td>
+<td align="right">0</td>
+<td align="right">1,902</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>This is coherent. Clean preliminary approvals occur only in low/moderate requested Expected Loss tiers. Elevated/high/severe requested Expected Loss tiers route to counteroffer or decline.</p>
+<p>The small severe requested Expected Loss counteroffer population, 87 rows, should be watched in Section 8 to confirm approved exposure and approved Expected Loss feasibility.</p>
+<hr>
+<h2>16. Mixed-signal routing</h2>
+<table>
+<thead>
+<tr>
+<th>Mixed-signal profile</th>
+<th align="right">APPROVE</th>
+<th align="right">COUNTEROFFER</th>
+<th align="right">MANUAL_REVIEW</th>
+<th align="right">DECLINE</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>NO_MIXED_SIGNAL_PROFILE</code></td>
+<td align="right">11,291</td>
+<td align="right">12,303</td>
+<td align="right">3,213</td>
+<td align="right">5,383</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>STRONG_CREDIT_HIGH_PTI</code></td>
+<td align="right">0</td>
+<td align="right">526</td>
+<td align="right">0</td>
+<td align="right">13</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>WEAK_CREDIT_LOW_PTI</code></td>
+<td align="right">0</td>
+<td align="right">1,624</td>
+<td align="right">1,431</td>
+<td align="right">5,371</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>LARGE_EXPOSURE_LOW_RISK</code></td>
+<td align="right">0</td>
+<td align="right">6,637</td>
+<td align="right">0</td>
+<td align="right">74</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>HIGH_RISK_LOW_EXPOSURE</code></td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">5</td>
+<td align="right">118</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>HIGH_DTI_LOW_REQUESTED_PTI</code></td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">266</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>MULTIPLE_MIXED_SIGNALS</code></td>
+<td align="right">0</td>
+<td align="right">196</td>
+<td align="right">71</td>
+<td align="right">1,478</td>
+<td>PASS</td>
+</tr>
+</tbody></table>
+<p>Mixed-signal routing is highly interpretable:</p>
+<ul>
+<li>Strong credit / high PTI routes mostly to counteroffer.</li>
+<li>Large exposure / low risk routes mostly to counteroffer.</li>
+<li>Weak credit / low PTI routes mostly to decline or review, with some counteroffer.</li>
+<li>High DTI / low requested PTI routes entirely to decline, consistent with severe DTI priority.</li>
+<li>Multiple mixed signals route mostly to decline, with small counteroffer and review populations.</li>
+</ul>
+<p>This is strong evidence that Section 7 is not treating mixed-signal diagnostics as automatic decisions. It routes them according to the broader hierarchy.</p>
+<hr>
+<h2>17. Borderline routing</h2>
+<table>
+<thead>
+<tr>
+<th>Borderline flag</th>
+<th align="right">APPROVE</th>
+<th align="right">COUNTEROFFER</th>
+<th align="right">MANUAL_REVIEW</th>
+<th align="right">DECLINE</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>FALSE</code></td>
+<td align="right">11,291</td>
+<td align="right">13,400</td>
+<td align="right">1,759</td>
+<td align="right">6,213</td>
+</tr>
+<tr>
+<td><code>TRUE</code></td>
+<td align="right">0</td>
+<td align="right">7,886</td>
+<td align="right">2,961</td>
+<td align="right">6,490</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS / monitor final manual review.</strong></p>
+<p>Borderline rows do not route to preliminary approval, which is conservative and expected given the current rule construction.</p>
+<p>Most borderline rows are not automatically routed to preliminary manual review; many become counteroffer or decline. That is a positive result because Section 6’s broad borderline diagnostic does not overtake the full hierarchy.</p>
+<p>Monitoring item: borderline still contributes to 2,961 preliminary manual-review rows. Section 9 should confirm the final manual-review rate remains interpretable.</p>
+<hr>
+<h2>18. Preliminary route reason families</h2>
+<table>
+<thead>
+<tr>
+<th>Preliminary route reason family</th>
+<th align="right">Rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>CLEAN_APPROVAL</code></td>
+<td align="right">11,291</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER_FEASIBILITY</code></td>
+<td align="right">21,286</td>
+</tr>
+<tr>
+<td><code>DTI_CAPACITY</code></td>
+<td align="right">445</td>
+</tr>
+<tr>
+<td><code>HARD_POLICY_STOP</code></td>
+<td align="right">5,889</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">4,720</td>
+</tr>
+<tr>
+<td><code>SYNTHETIC_ESTIMATED_RISK</code></td>
+<td align="right">6,369</td>
+</tr>
+</tbody></table>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The reason-family distribution aligns exactly to the preliminary paths and priority ranks. There are no unexpected route families.</p>
+<hr>
+<h2>Section 7 acceptance conclusion</h2>
+<p>Section 7 passes.</p>
+<p>Accepted evidence:</p>
+<ul>
+<li><code>tmp_m2_stage_4_preliminary_decision_routing</code> is populated.</li>
+<li>The 50,000-row population is preserved.</li>
+<li>Every row receives one preliminary decision route.</li>
+<li>Preliminary outcome values are limited to <code>APPROVE</code>, <code>COUNTEROFFER</code>, <code>MANUAL_REVIEW</code>, and <code>DECLINE</code>.</li>
+<li>Hard simulated policy stops route to preliminary <code>DECLINE</code>.</li>
+<li>Severe synthetic estimated-risk routes to preliminary <code>DECLINE</code>.</li>
+<li>Severe DTI routes to preliminary <code>DECLINE</code>.</li>
+<li>Counteroffer candidates route to preliminary <code>COUNTEROFFER</code> only when no higher-priority decline route applies.</li>
+<li>Manual-review candidates route to preliminary <code>MANUAL_REVIEW</code> only after higher-priority routes are exhausted.</li>
+<li>Clean approval candidates route to preliminary <code>APPROVE</code>.</li>
+<li>No non-clean row routes to preliminary <code>APPROVE</code>.</li>
+<li>Preliminary <code>COUNTEROFFER</code> rows require counteroffer feasibility testing.</li>
+<li>Preliminary <code>APPROVE</code> and <code>COUNTEROFFER</code> rows require approved exposure calculation.</li>
+<li>Preliminary <code>DECLINE</code> and <code>MANUAL_REVIEW</code> rows do not require approved exposure calculation.</li>
+<li>The broad Section 6 candidate flags are resolving through hierarchy rather than becoming final outcomes.</li>
+</ul>
+<h2>Patch recommendation</h2>
+<p>No Section 7 patch is recommended.</p>
+<h2>Items to monitor in Section 8 and Section 9</h2>
+<ol>
+<li><p><strong>Counteroffer feasibility pressure</strong><br>Preliminary <code>COUNTEROFFER</code> volume is 21,286 rows, or 42.57%. Section 8 needs to show how many are feasible after product cap, PTI target, approved Expected Loss cap, minimum viable amount, and rounding constraints.</p>
+</li>
+<li><p><strong>Above-cap exposure treatment</strong><br>10,001 above-product-cap rows route to counteroffer feasibility. Section 8 should confirm whether the approved amount can be reduced within product policy and reduction constraints.</p>
+</li>
+<li><p><strong>Severe requested Expected Loss counteroffer rows</strong><br>87 severe requested Expected Loss rows route to preliminary counteroffer. These should be checked carefully in Section 8 to confirm approved Expected Loss cap feasibility.</p>
+</li>
+<li><p><strong>Final manual review rate</strong><br>Preliminary manual review is 4,720 rows, or 9.44%, which is reasonable. Section 9 should confirm failed counteroffers do not push final <code>MANUAL_REVIEW</code> excessively high.</p>
+</li>
+<li><p><strong>Branch coverage</strong><br>Priority 5 and Priority 8 did not fire in this baseline run. That is acceptable, but later negative / edge-case tests could deliberately exercise those branches if we want full hierarchy coverage.</p>
+</li>
+</ol>
+<p>Next recommended review: Section 8 approved exposure and counteroffer feasibility QA.</p>
+</div></article><article id="c038-m00310" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00310 · 2026-05-07T13:45:18.230000-04:00 · active path</p><div class="body"><p>review section 8 QA:</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.5_QA_local_exposure_treatment_sanity_counteroffer_feasibility_failure_reason.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.6_QA_local_exposure_treatment_sanity_product_x_counteroffer_feasibility_pass.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.7_QA_local_exposure_treatment_sanity_score_band_x_counteroffer_feasibility_pass.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.8_QA_local_exposure_treatment_sanity_requested_pti_bucket_x_counteroffer_feasibility_pass.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.9_QA_local_exposure_treatment_sanity_strategy_risk_tier_x_counteroffer_feasibility_pass.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.10_QA_local_exposure_treatment_sanity_average_requested_amount_vs_approved_amount_preliminary_by_exposure_treatment_status.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.11_QA_local_exposure_treatment_sanity_average_requested_pti_vs_approved_pti_by_exposure_treatment_status.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.12_QA_local_exposure_treatment_sanity_average_requested_expected_loss_vs_approved_expected_loss_by_exposure_treatment_status.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.13_QA_local_exposure_treatment_sanity_average_exposure_reduction_pct_preliminary_by_product_for_feasible_customers.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.14_QA_local_exposure_treatment_sanity_count_of_counteroffer_failures_by_product_and_failure_reason.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.15_QA_local_exposure_treatment_sanity_average_counteroffer_feasibility_constraint_count_for_failed_counteroffers.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.1_QA_local_exposure_treatment_sanity_preliminary_decision_outcome_x_exposure_treatment_status.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.2_QA_local_exposure_treatment_sanity_exposure_treatment_path.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.3_QA_local_exposure_treatment_sanity_counteroffer_feasibility_evaluated.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_8.4.4_QA_local_exposure_treatment_sanity_counteroffer_feasibility_pass.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

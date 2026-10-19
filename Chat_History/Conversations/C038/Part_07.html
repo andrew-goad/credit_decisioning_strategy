@@ -1,0 +1,3122 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 7</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 07 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_06.html">Previous</a><a href="Part_08.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00164" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00164 · 2026-05-06T15:54:04.617000-04:00 · active path</p><div class="body"><p>This is strong. I agree with the Section 11 patches and the Section 12 Strategy Decision Archive Persistence Layer.</p>
+<p>Section 12 correctly:</p>
+<ul>
+<li>consumes credit_decisioning_sim.strategy_decisions</li>
+<li>creates or reuses credit_decisioning_sim.strategy_decisions_archive</li>
+<li>preserves latest-run output as replaceable</li>
+<li>preserves archive output as governed history</li>
+<li>uses the locked archive grain:
+strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+application_id</li>
+<li>uses the locked archive replacement / rerun key:
+strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id</li>
+<li>correctly excludes application_id from the replacement / rerun key</li>
+<li>treats strategy_run_id, strategy_run_ts, latest_output_created_ts, and archive_inserted_ts as audit metadata</li>
+<li>supports archive_run_flag = FALSE without inserting or deleting archive rows</li>
+<li>supports strategy_archive_reset_mode values:
+NONE
+STRATEGY_SCENARIO_ONLY
+STRATEGY_SET_ONLY
+ALL</li>
+<li>fails in NONE mode when the same replacement key already exists</li>
+<li>inserts latest-run rows without recalculating decisions, reasons, approved exposure, or approved Expected Loss</li>
+<li>creates archive indexes</li>
+<li>provides local archive diagnostics</li>
+<li>does not build matched strategy comparison</li>
+<li>does not build full Module 2 QA</li>
+<li>does not draft BRD or Validation Summary documentation</li>
+</ul>
+<p>Treat Section 12 as accepted, subject to the targeted hardening patches below.</p>
+<p>Do not rewrite Sections 0–12 in full unless necessary.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>TARGETED SECTION 12 PATCH — ARCHIVE SCHEMA DATA-TYPE ALIGNMENT</h1>
+</li>
+</ol>
+<p>Section 12 already checks whether the archive table is missing latest-run columns.</p>
+<p>Please add a targeted schema data-type alignment check for common columns between:</p>
+<p>credit_decisioning_sim.strategy_decisions</p>
+<p>and:</p>
+<p>credit_decisioning_sim.strategy_decisions_archive</p>
+<p>Purpose:
+If the archive table already existed from an earlier build, it may contain the same column names but incompatible data types. Missing-column checks alone do not catch that.</p>
+<p>Patch objective:
+Fail clearly if any common latest-run column and archive column have incompatible data types.</p>
+<p>Recommended comparison:
+Compare information_schema.columns for both tables on column_name and validate at least:</p>
+<ul>
+<li>data_type</li>
+<li>numeric_precision where applicable</li>
+<li>numeric_scale where applicable</li>
+<li>character_maximum_length where applicable</li>
+<li>datetime_precision where applicable</li>
+</ul>
+<p>Exclude archive_inserted_ts from the latest-run-to-archive comparison because it exists only on the archive table.</p>
+<p>Recommended additional schema check:
+Also check for unexpected archive columns that do not exist in the latest-run table, except archive_inserted_ts.</p>
+<p>Preferred V1.0 behavior:
+Fail if unexpected non-latest-run archive columns exist.</p>
+<p>Reason:
+For this module, the archive should be a persisted copy of the governed latest-run output plus archive_inserted_ts. Unexpected extra archive columns may indicate an older incompatible archive schema.</p>
+<p>Commentary should explain:</p>
+<ul>
+<li>the archive table may pre-exist from an earlier implementation version</li>
+<li>Section 12 should not silently insert into a misaligned archive schema</li>
+<li>this is a schema governance check, not a modeling check</li>
+<li>if the latest-run output schema changes in future development, the archive table may need to be altered or recreated</li>
+</ul>
+<p>================================================================================
+2. TARGETED SECTION 12 PATCH — EXPAND PERSISTENCE MISMATCH CHECK
+================================================================================</p>
+<p>Section 12 already validates that archived rows match latest-run rows for key final outputs.</p>
+<p>Please expand the persistence mismatch check to include the full set of core decision, exposure, economics, and reason-code fields needed for audit traceability.</p>
+<p>At minimum, include comparisons for:</p>
+<p>Decision fields:</p>
+<ul>
+<li>decision_outcome</li>
+<li>decision_path</li>
+<li>decision_priority_rank</li>
+<li>decision_resolution_source</li>
+</ul>
+<p>Decision flags:</p>
+<ul>
+<li>approval_flag</li>
+<li>counteroffer_flag</li>
+<li>manual_review_flag</li>
+<li>decline_flag</li>
+<li>simulated_offer_exposure_flag</li>
+</ul>
+<p>Exposure fields:</p>
+<ul>
+<li>approved_amount</li>
+<li>counteroffer_amount</li>
+<li>exposure_reduction_flag</li>
+<li>exposure_reduction_amount</li>
+<li>exposure_reduction_pct</li>
+</ul>
+<p>Affordability fields:</p>
+<ul>
+<li>approved_monthly_payment_proxy</li>
+<li>approved_payment_to_income_ratio</li>
+</ul>
+<p>Expected Loss fields:</p>
+<ul>
+<li>requested_expected_loss_amount</li>
+<li>approved_expected_loss_amount</li>
+<li>approved_el_reduction_amount</li>
+<li>approved_el_reduction_pct</li>
+</ul>
+<p>Reason-code fields:</p>
+<ul>
+<li>primary_reason_code</li>
+<li>secondary_reason_code</li>
+<li>tertiary_reason_code</li>
+<li>primary_reason_family</li>
+<li>triggered_reason_code_list</li>
+<li>reason_priority_rank</li>
+<li>reason_code_count</li>
+</ul>
+<p>Key metadata / lineage fields:</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+<li>application_id</li>
+<li>applicant_id</li>
+<li>product_type_policy_key</li>
+<li>score_band_policy_key</li>
+</ul>
+<p>Use IS DISTINCT FROM for comparisons so NULL handling remains explicit and safe.</p>
+<p>Reason:
+Archive persistence should prove that Section 12 persisted the already-materialized latest-run output without changing final decision, exposure, economics, reason-code, or lineage values.</p>
+<p>Important:
+Do not compare archive_inserted_ts to latest_output_created_ts. They are different audit timestamps with different meanings.</p>
+<p>================================================================================
+3. TARGETED SECTION 12 PATCH — UNIQUE ARCHIVE GRAIN ENFORCEMENT
+================================================================================</p>
+<p>If not already present, please ensure Section 12 creates or validates a uniqueness control on the full archive row-level grain:</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+<li>application_id</li>
+</ul>
+<p>Preferred implementation:
+Create a unique index if feasible:</p>
+<p>strategy_set_name,
+strategy_name,
+strategy_version,
+module1_scenario_set_name,
+module1_scenario_name,
+population_id,
+application_id</p>
+<p>If an existing archive table contains duplicates that prevent unique-index creation, Section 12 should fail clearly and instruct the user to reset or clean the archive.</p>
+<p>Reason:
+The archive should not contain duplicate rows for the same application under the same Module 1 scenario and Module 2 strategy version.</p>
+<p>This protects matched strategy comparison from ambiguous row-level joins.</p>
+<p>================================================================================
+4. SECTION 12 ACCEPTANCE CRITERIA
+================================================================================</p>
+<p>After these targeted patches, treat Section 12 as accepted if:</p>
+<ul>
+<li>credit_decisioning_sim.strategy_decisions_archive exists</li>
+<li>archive_inserted_ts exists</li>
+<li>archive table contains all latest-run columns plus archive_inserted_ts</li>
+<li>common latest-run / archive columns have aligned data types</li>
+<li>unexpected archive columns do not exist, except archive_inserted_ts</li>
+<li>archive_run_flag = FALSE skips insert/delete behavior without changing archive rows</li>
+<li>NONE mode fails if the current replacement key already exists</li>
+<li>STRATEGY_SCENARIO_ONLY replaces only the current strategy / Module 1 scenario / population slice</li>
+<li>STRATEGY_SET_ONLY replaces all strategy_name / strategy_version outputs within the selected strategy_set_name + Module 1 scenario + population</li>
+<li>ALL clears the archive before inserting the latest-run output</li>
+<li>archive grain is unique at:
+strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+application_id</li>
+<li>archive replacement key excludes application_id</li>
+<li>latest-run row count equals current archived slice row count when archive_run_flag = TRUE</li>
+<li>current archived slice has no duplicate application_id values</li>
+<li>archived core decision / exposure / economics / reason-code fields match latest-run values</li>
+<li>archived lineage fields match latest-run values</li>
+<li>no outcomes are recalculated</li>
+<li>no reason codes are recalculated</li>
+<li>no approved exposure or approved Expected Loss is recalculated</li>
+<li>no matched strategy comparison is built yet</li>
+<li>no full Module 2 QA framework is built yet</li>
+</ul>
+<p>================================================================================
+5. NEXT BUILD SCOPE: SECTION 13 ONLY
+================================================================================</p>
+<p>After the targeted Section 12 patches, please build only:</p>
+<p>SECTION 13 — ARCHIVE INVENTORY AND MATCHED STRATEGY COMPARISON FRAMEWORK</p>
+<p>Section 13 should consume:</p>
+<p>credit_decisioning_sim.strategy_decisions_archive</p>
+<p>Do not build:</p>
+<ul>
+<li>full Module 2 QA framework</li>
+<li>final Validation Summary</li>
+<li>BRD documentation</li>
+<li>dashboards</li>
+<li>production reporting layer</li>
+</ul>
+<p>Those belong later.</p>
+<p>================================================================================
+6. SECTION 13 OBJECTIVE
+================================================================================</p>
+<p>Section 13 should provide read-only archive inventory and matched strategy comparison queries.</p>
+<p>Section 13 should answer:</p>
+<p>“How do two archived Module 2 strategy runs differ when applied to the same Module 1 scenario and population?”</p>
+<p>Section 13 should not answer:</p>
+<p>“Is the full Module 2 system validated?”</p>
+<p>Full validation comes later after the complete SQL module is assembled and executed.</p>
+<p>================================================================================
+7. SECTION 13 DESIGN BOUNDARY
+================================================================================</p>
+<p>Section 13 should be read-only.</p>
+<p>It should not:</p>
+<ul>
+<li>insert rows</li>
+<li>delete rows</li>
+<li>update rows</li>
+<li>create or replace final output tables</li>
+<li>modify archive rows</li>
+<li>recalculate decision outcomes</li>
+<li>recalculate reason codes</li>
+<li>recalculate approved exposure</li>
+<li>recalculate approved Expected Loss</li>
+</ul>
+<p>It should only inspect archived strategy outputs.</p>
+<p>Important:
+Section 13 should not be a blocking gatekeeper for ordinary single-strategy execution.</p>
+<p>If only one strategy is archived, Section 13 should still provide archive inventory and clearly show that matched comparison requires two selected archived strategy slices.</p>
+<p>================================================================================
+8. COMPARISON PARAMETER DESIGN
+================================================================================</p>
+<p>Please create a temporary comparison parameter table.</p>
+<p>Recommended table:</p>
+<p>tmp_m2_strategy_comparison_params</p>
+<p>Recommended fields:</p>
+<ul>
+<li>comparison_set_name</li>
+<li>baseline_strategy_set_name</li>
+<li>baseline_strategy_name</li>
+<li>baseline_strategy_version</li>
+<li>challenger_strategy_set_name</li>
+<li>challenger_strategy_name</li>
+<li>challenger_strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+</ul>
+<p>Recommended default values can be placeholders, but the commentary should explain that users must set them to archived strategy slices that exist.</p>
+<p>Do not overload Module 1 scenario fields.</p>
+<p>For Module 2 v1.0, matched strategy comparison should require:</p>
+<ul>
+<li>same module1_scenario_set_name</li>
+<li>same module1_scenario_name</li>
+<li>same population_id</li>
+<li>different strategy_name and/or strategy_version</li>
+</ul>
+<p>Do not compare across different Module 1 scenarios in v1.0 unless explicitly designed later.</p>
+<p>Reason:
+Module 2 strategy comparison should isolate downstream strategy effects. Comparing across different Module 1 scenarios would mix upstream population / rate-environment effects with strategy effects.</p>
+<p>================================================================================
+9. SECTION 13 COMPARISON READINESS CHECK
+================================================================================</p>
+<p>Create a non-mutating comparison readiness query.</p>
+<p>This should report:</p>
+<ul>
+<li>comparison_set_name</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+<li>baseline strategy identifiers</li>
+<li>challenger strategy identifiers</li>
+<li>baseline archived row count</li>
+<li>challenger archived row count</li>
+<li>baseline distinct application_id count</li>
+<li>challenger distinct application_id count</li>
+<li>matched application_id count</li>
+<li>baseline-only application_id count</li>
+<li>challenger-only application_id count</li>
+<li>readiness_status</li>
+</ul>
+<p>Recommended readiness_status values:</p>
+<p>READY_FOR_MATCHED_COMPARISON:</p>
+<ul>
+<li>baseline rows &gt; 0</li>
+<li>challenger rows &gt; 0</li>
+<li>baseline distinct application count = challenger distinct application count</li>
+<li>matched application count = baseline distinct application count</li>
+<li>baseline-only count = 0</li>
+<li>challenger-only count = 0</li>
+</ul>
+<p>NOT_READY_BASELINE_MISSING:</p>
+<ul>
+<li>baseline rows = 0</li>
+</ul>
+<p>NOT_READY_CHALLENGER_MISSING:</p>
+<ul>
+<li>challenger rows = 0</li>
+</ul>
+<p>NOT_READY_ROW_COUNT_MISMATCH:</p>
+<ul>
+<li>both exist, but baseline / challenger row counts differ</li>
+</ul>
+<p>NOT_READY_UNMATCHED_APPLICATIONS:</p>
+<ul>
+<li>row counts may match, but application_id sets are not identical</li>
+</ul>
+<p>NOT_READY_DUPLICATE_ARCHIVE_GRAIN:</p>
+<ul>
+<li>either selected slice has duplicate application_id values</li>
+</ul>
+<p>This is a diagnostic readiness query, not a table mutation.</p>
+<p>================================================================================
+10. SECTION 13 QUERY BLOCKS TO BUILD
+================================================================================</p>
+<p>Please build the following read-only query blocks.</p>
+<hr>
+<h2>13.1 Archive inventory</h2>
+<p>Purpose:
+Show what archived Module 2 strategy runs are available.</p>
+<p>Group by:</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>row count</li>
+<li>distinct application_id count</li>
+<li>min archive_inserted_ts</li>
+<li>max archive_inserted_ts</li>
+<li>min latest_output_created_ts</li>
+<li>max latest_output_created_ts</li>
+<li>count by decision_outcome if practical, or provide a separate outcome inventory</li>
+</ul>
+<p>Interpretation:
+This is the first query users run to confirm which strategy slices exist.</p>
+<hr>
+<h2>13.2 Selected comparison readiness</h2>
+<p>Use tmp_m2_strategy_comparison_params.</p>
+<p>Purpose:
+Confirm the selected baseline and challenger strategy slices are suitable for matched comparison.</p>
+<p>Include the readiness_status logic described above.</p>
+<hr>
+<h2>13.3 Portfolio-level archived strategy summary</h2>
+<p>Purpose:
+Compare archived strategies at the portfolio level.</p>
+<p>For each selected strategy slice, include:</p>
+<p>Counts and rates:</p>
+<ul>
+<li>applications</li>
+<li>approval_count / approval_rate</li>
+<li>counteroffer_count / counteroffer_rate</li>
+<li>manual_review_count / manual_review_rate</li>
+<li>decline_count / decline_rate</li>
+<li>simulated_offer_exposure_count / simulated_offer_exposure_rate</li>
+</ul>
+<p>Exposure:</p>
+<ul>
+<li>total_requested_amount</li>
+<li>total_approved_amount</li>
+<li>average_requested_amount</li>
+<li>average_approved_amount</li>
+<li>average_exposure_reduction_pct among counteroffers</li>
+</ul>
+<p>Affordability:</p>
+<ul>
+<li>average_requested_payment_to_income_ratio</li>
+<li>average_approved_payment_to_income_ratio for rows with simulated_offer_exposure_flag = TRUE</li>
+</ul>
+<p>Risk / economics:</p>
+<ul>
+<li>average estimated_pd</li>
+<li>average estimated_lgd</li>
+<li>total_requested_expected_loss_amount</li>
+<li>total_approved_expected_loss_amount</li>
+<li>average_requested_expected_loss_amount</li>
+<li>average_approved_expected_loss_amount</li>
+</ul>
+<p>Reason code:</p>
+<ul>
+<li>top-level primary_reason_family distribution, if practical, or separate reason-code summary query</li>
+</ul>
+<hr>
+<h2>13.4 Baseline vs challenger portfolio delta summary</h2>
+<p>Purpose:
+Show direct portfolio-level deltas between baseline and challenger.</p>
+<p>Output one row for the comparison.</p>
+<p>Include:</p>
+<ul>
+<li>delta approval_rate</li>
+<li>delta counteroffer_rate</li>
+<li>delta manual_review_rate</li>
+<li>delta decline_rate</li>
+<li>delta simulated_offer_exposure_rate</li>
+<li>delta total_approved_amount</li>
+<li>delta average_approved_amount</li>
+<li>delta total_approved_expected_loss_amount</li>
+<li>delta average_approved_expected_loss_amount</li>
+<li>delta average_approved_payment_to_income_ratio</li>
+<li>delta average estimated_pd among offered rows</li>
+<li>delta average estimated_pd among declined rows</li>
+</ul>
+<p>Use clear naming:</p>
+<ul>
+<li>baseline_*</li>
+<li>challenger_*</li>
+<li>delta_*</li>
+</ul>
+<p>Do not treat this as causal proof beyond the matched strategy simulation boundary.</p>
+<hr>
+<h2>13.5 Decision migration matrix</h2>
+<p>Purpose:
+Show how final decision outcomes changed from baseline to challenger.</p>
+<p>Rows should include:</p>
+<ul>
+<li>baseline_decision_outcome</li>
+<li>challenger_decision_outcome</li>
+<li>matched_rows</li>
+<li>pct_of_matched_population</li>
+</ul>
+<p>This is one of the most important Section 13 outputs.</p>
+<p>It should help answer:</p>
+<ul>
+<li>How many approvals became counteroffers?</li>
+<li>How many approvals became manual reviews?</li>
+<li>How many approvals became declines?</li>
+<li>How many declines became approvals?</li>
+<li>How much movement occurred versus stability?</li>
+</ul>
+<hr>
+<h2>13.6 Matched applicant-level delta sample</h2>
+<p>Purpose:
+Show row-level examples of the largest strategy movements.</p>
+<p>Join baseline and challenger on:</p>
+<ul>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+<li>application_id</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>application_id</li>
+<li>applicant_id</li>
+<li>product_type_policy_key</li>
+<li>score_band_policy_key</li>
+<li>requested_amount</li>
+<li>baseline decision_outcome</li>
+<li>challenger decision_outcome</li>
+<li>baseline primary_reason_code</li>
+<li>challenger primary_reason_code</li>
+<li>baseline approved_amount</li>
+<li>challenger approved_amount</li>
+<li>delta approved_amount</li>
+<li>baseline approved_payment_to_income_ratio</li>
+<li>challenger approved_payment_to_income_ratio</li>
+<li>delta approved_payment_to_income_ratio</li>
+<li>baseline approved_expected_loss_amount</li>
+<li>challenger approved_expected_loss_amount</li>
+<li>delta approved_expected_loss_amount</li>
+</ul>
+<p>Sort by:</p>
+<ul>
+<li>largest absolute delta approved_expected_loss_amount</li>
+<li>then largest absolute delta approved_amount</li>
+</ul>
+<p>Limit:</p>
+<ul>
+<li>50 rows</li>
+</ul>
+<hr>
+<h2>13.7 Product × score matched strategy delta summary</h2>
+<p>Purpose:
+Show where strategy changes concentrate by product and score band.</p>
+<p>Group by:</p>
+<ul>
+<li>product_type_policy_key</li>
+<li>score_band_policy_key</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>matched_rows</li>
+<li>baseline approval_rate</li>
+<li>challenger approval_rate</li>
+<li>delta approval_rate</li>
+<li>baseline counteroffer_rate</li>
+<li>challenger counteroffer_rate</li>
+<li>delta counteroffer_rate</li>
+<li>baseline manual_review_rate</li>
+<li>challenger manual_review_rate</li>
+<li>delta manual_review_rate</li>
+<li>baseline decline_rate</li>
+<li>challenger decline_rate</li>
+<li>delta decline_rate</li>
+<li>baseline average approved_amount</li>
+<li>challenger average approved_amount</li>
+<li>delta average approved_amount</li>
+<li>baseline average approved_expected_loss_amount</li>
+<li>challenger average approved_expected_loss_amount</li>
+<li>delta average approved_expected_loss_amount</li>
+</ul>
+<p>This is the main segment-level comparison view.</p>
+<hr>
+<h2>13.8 Reason-code movement summary</h2>
+<p>Purpose:
+Show how strategy explanation codes differ between baseline and challenger.</p>
+<p>Include two views:</p>
+<p>A. Primary reason distribution by selected strategy</p>
+<ul>
+<li>strategy identifiers</li>
+<li>decision_outcome</li>
+<li>primary_reason_family</li>
+<li>primary_reason_code</li>
+<li>row_count</li>
+<li>pct_of_strategy_population</li>
+</ul>
+<p>B. Matched reason-code migration</p>
+<ul>
+<li>baseline_primary_reason_code</li>
+<li>challenger_primary_reason_code</li>
+<li>matched_rows</li>
+<li>pct_of_matched_population</li>
+</ul>
+<p>This helps validate whether strategy changes are explainable, not just numeric.</p>
+<hr>
+<h2>13.9 Simulated offer-exposure comparison</h2>
+<p>Purpose:
+Compare offered-book profiles between baseline and challenger.</p>
+<p>For rows where simulated_offer_exposure_flag = TRUE, include:</p>
+<ul>
+<li>offer_count</li>
+<li>total_approved_amount</li>
+<li>average_approved_amount</li>
+<li>average estimated_pd</li>
+<li>average approved_payment_to_income_ratio</li>
+<li>total_approved_expected_loss_amount</li>
+<li>average approved_expected_loss_amount</li>
+</ul>
+<p>Also include:</p>
+<ul>
+<li>positive_offer_rate</li>
+<li>counteroffer_share_of_offers</li>
+<li>approval_share_of_offers</li>
+</ul>
+<p>This should be presented separately from the total applicant population because manual review and decline rows do not have booked / offered exposure economics.</p>
+<p>Use “simulated offer exposure,” not “booked exposure.”</p>
+<hr>
+<h2>13.10 Unmatched row diagnostic</h2>
+<p>Purpose:
+If readiness_status is not READY_FOR_MATCHED_COMPARISON, provide a diagnostic identifying baseline-only and challenger-only application_id values.</p>
+<p>Include:</p>
+<ul>
+<li>application_id</li>
+<li>presence_status:
+BASELINE_ONLY
+CHALLENGER_ONLY</li>
+</ul>
+<p>Limit:</p>
+<ul>
+<li>100 rows</li>
+</ul>
+<p>This supports debugging archive selection or archive integrity issues.</p>
+<p>================================================================================
+11. SECTION 13 COMPARISON METRIC CONVENTIONS
+================================================================================</p>
+<p>Please preserve these metric conventions:</p>
+<p>Approval rate:
+approval_count / applications</p>
+<p>Counteroffer rate:
+counteroffer_count / applications</p>
+<p>Manual review rate:
+manual_review_count / applications</p>
+<p>Decline rate:
+decline_count / applications</p>
+<p>Simulated offer exposure rate:
+simulated_offer_exposure_count / applications</p>
+<p>Positive offer outcomes:
+APPROVE + COUNTEROFFER</p>
+<p>Requested Expected Loss:
+requested_expected_loss_amount</p>
+<p>Approved Expected Loss:
+approved_expected_loss_amount</p>
+<p>Estimated-PD proxy:
+estimated_pd remains the SQL field name, interpreted only as the synthetic estimated-PD proxy.</p>
+<p>Do not rename it in SQL unless explicitly instructed.</p>
+<p>Timestamp fields:
+Do not use strategy_run_ts, latest_output_created_ts, or archive_inserted_ts as deterministic comparison metrics.</p>
+<p>They are audit metadata.</p>
+<p>================================================================================
+12. SECTION 13 LOCAL READ-ONLY SANITY CHECKS
+================================================================================</p>
+<p>Because Section 13 is read-only, local checks should be diagnostics rather than mutating gatekeepers.</p>
+<p>Include diagnostic checks for:</p>
+<ul>
+<li>selected baseline slice exists</li>
+<li>selected challenger slice exists</li>
+<li>selected baseline and challenger are under the same Module 1 scenario and population</li>
+<li>selected baseline and challenger are not the exact same strategy_set_name + strategy_name + strategy_version</li>
+<li>baseline row count</li>
+<li>challenger row count</li>
+<li>matched application count</li>
+<li>unmatched application count</li>
+<li>duplicate application_id count in each selected slice</li>
+</ul>
+<p>Do not block ordinary script execution if only inventory is being reviewed.</p>
+<p>But clearly label comparison readiness.</p>
+<p>================================================================================
+13. SECTION 13 COMMENTARY QUALITY
+================================================================================</p>
+<p>Please keep the same elite commentary standard.</p>
+<p>Section 13 comments should explain:</p>
+<ul>
+<li>why archive inventory is separated from archive persistence</li>
+<li>why matched comparison requires the same Module 1 scenario and population</li>
+<li>why Module 2 strategy metadata must remain separate from Module 1 scenario metadata</li>
+<li>why row-level matching uses application_id</li>
+<li>why strategy_run_id and timestamps are audit metadata, not matched-comparison keys</li>
+<li>why strategy comparison is read-only</li>
+<li>why decision migration is useful for strategy interpretation</li>
+<li>why requested Expected Loss and approved Expected Loss should both be compared</li>
+<li>why simulated offer exposure is not booked exposure</li>
+<li>why reason-code migration supports explainability</li>
+<li>why Section 13 is not the full QA framework</li>
+</ul>
+<p>No silent assumptions.
+No unexplained magic numbers.
+No production-decision language.
+No booked-account language.
+No adverse-action reason-code language.</p>
+<p>================================================================================
+14. SECTION 13 DELIVERABLE
+================================================================================</p>
+<p>Please now provide:</p>
+<ol>
+<li><p>Targeted Section 12 patches only:</p>
+<ul>
+<li>archive schema data-type alignment check</li>
+<li>expanded persistence mismatch check</li>
+<li>unique archive grain enforcement if not already present</li>
+</ul>
+</li>
+<li><p>Section 13 SQL only:
+ARCHIVE INVENTORY AND MATCHED STRATEGY COMPARISON FRAMEWORK.</p>
+</li>
+<li><p>A short explanation of what Section 13 establishes.</p>
+</li>
+<li><p>A short explanation of what Section 13 intentionally does not build.</p>
+</li>
+<li><p>The recommended next build step after Section 13.</p>
+</li>
+</ol>
+<p>Do not write Section 14+ yet.</p>
+</div></article><article id="c038-m00167" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00167 · 2026-05-06T15:59:09.482939-04:00 · active path</p><div class="body"><p>Section 12 remains accepted after the hardening patches below. These patches strengthen archive governance without changing the strategy logic, outcome logic, exposure logic, or reason-code assignment logic. They preserve the Module 1 lineage and deterministic comparison discipline: Module 1 outputs remain synthetic, governed, scenario-comparable inputs, with <code>estimated_pd</code> interpreted as the synthetic estimated-PD proxy and Expected Loss interpreted as a comparative simulation metric. fileciteturn4file0 Module 1 validation confirms that matched scenario comparison depends on stable population lineage and row-level comparability, which Section 13 extends into Module 2 strategy comparison. fileciteturn4file1</p>
+<h1>1. Targeted Section 12 patches only</h1>
+<h2>Patch 12.A — Archive schema data-type alignment check</h2>
+<p>Add this to <strong>Section 12.2 — Archive Table Setup and Schema Alignment Check</strong>, inside the existing schema-alignment <code>DO $$</code> block.</p>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">DO $$
+DECLARE
+    v_missing_archive_columns TEXT;
+    v_archive_inserted_ts_exists BOOLEAN;
+BEGIN
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">DO $$
+DECLARE
+    v_missing_archive_columns TEXT;
+    v_type_mismatch_columns TEXT;
+    v_unexpected_archive_columns TEXT;
+    v_archive_inserted_ts_exists BOOLEAN;
+BEGIN
+</code></pre>
+<p>Add this block after the missing-column check and before the <code>archive_inserted_ts</code> existence check.</p>
+<pre><code class="language-sql">    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: archive schema data-type alignment.
+
+    The archive table may already exist from an earlier implementation version. A missing-column
+    check alone is not sufficient because the archive could contain the same column names with
+    incompatible data types.
+
+    This is a schema governance check, not a modeling check.
+
+    If the latest-run output schema changes in future development, the archive table may need to be
+    altered or recreated so it remains a persisted copy of the governed latest-run output plus
+    archive_inserted_ts.
+    -------------------------------------------------------------------------------------------*/
+    WITH common_columns AS (
+        SELECT
+            l.column_name,
+
+            l.data_type AS latest_data_type,
+            a.data_type AS archive_data_type,
+
+            l.numeric_precision AS latest_numeric_precision,
+            a.numeric_precision AS archive_numeric_precision,
+
+            l.numeric_scale AS latest_numeric_scale,
+            a.numeric_scale AS archive_numeric_scale,
+
+            l.character_maximum_length AS latest_character_maximum_length,
+            a.character_maximum_length AS archive_character_maximum_length,
+
+            l.datetime_precision AS latest_datetime_precision,
+            a.datetime_precision AS archive_datetime_precision,
+
+            l.ordinal_position
+        FROM information_schema.columns l
+        JOIN information_schema.columns a
+            ON a.table_schema = &#39;credit_decisioning_sim&#39;
+           AND a.table_name = &#39;strategy_decisions_archive&#39;
+           AND a.column_name = l.column_name
+        WHERE l.table_schema = &#39;credit_decisioning_sim&#39;
+          AND l.table_name = &#39;strategy_decisions&#39;
+    )
+    SELECT STRING_AGG(
+        FORMAT(
+            &#39;%s latest(data_type=%s, numeric_precision=%s, numeric_scale=%s, char_len=%s, datetime_precision=%s) archive(data_type=%s, numeric_precision=%s, numeric_scale=%s, char_len=%s, datetime_precision=%s)&#39;,
+            column_name,
+            COALESCE(latest_data_type, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(latest_numeric_precision::TEXT, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(latest_numeric_scale::TEXT, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(latest_character_maximum_length::TEXT, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(latest_datetime_precision::TEXT, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(archive_data_type, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(archive_numeric_precision::TEXT, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(archive_numeric_scale::TEXT, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(archive_character_maximum_length::TEXT, &#39;&lt;NULL&gt;&#39;),
+            COALESCE(archive_datetime_precision::TEXT, &#39;&lt;NULL&gt;&#39;)
+        ),
+        &#39;; &#39;
+        ORDER BY ordinal_position
+    )
+    INTO v_type_mismatch_columns
+    FROM common_columns
+    WHERE latest_data_type IS DISTINCT FROM archive_data_type
+       OR latest_numeric_precision IS DISTINCT FROM archive_numeric_precision
+       OR latest_numeric_scale IS DISTINCT FROM archive_numeric_scale
+       OR latest_character_maximum_length IS DISTINCT FROM archive_character_maximum_length
+       OR latest_datetime_precision IS DISTINCT FROM archive_datetime_precision;
+
+    IF v_type_mismatch_columns IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 12 failure: strategy_decisions_archive has data-type mismatch(es) versus strategy_decisions: %.&#39;,
+            v_type_mismatch_columns;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: unexpected archive columns.
+
+    For Module 2 v1.0, the archive should be a persisted copy of the governed latest-run output
+    plus archive_inserted_ts.
+
+    Unexpected extra columns may indicate an older incompatible archive schema. Section 12 fails
+    clearly instead of silently inserting into a misaligned archive structure.
+    -------------------------------------------------------------------------------------------*/
+    SELECT STRING_AGG(a.column_name, &#39;, &#39; ORDER BY a.ordinal_position)
+    INTO v_unexpected_archive_columns
+    FROM information_schema.columns a
+    WHERE a.table_schema = &#39;credit_decisioning_sim&#39;
+      AND a.table_name = &#39;strategy_decisions_archive&#39;
+      AND a.column_name &lt;&gt; &#39;archive_inserted_ts&#39;
+      AND NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns l
+            WHERE l.table_schema = &#39;credit_decisioning_sim&#39;
+              AND l.table_name = &#39;strategy_decisions&#39;
+              AND l.column_name = a.column_name
+      );
+
+    IF v_unexpected_archive_columns IS NOT NULL THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 12 failure: strategy_decisions_archive contains unexpected non-latest-run column(s): %. Align or recreate the archive table before persistence.&#39;,
+            v_unexpected_archive_columns;
+    END IF;
+</code></pre>
+<hr>
+<h2>Patch 12.B — Expanded persistence mismatch check</h2>
+<p>Replace the existing <code>v_persistence_mismatch_count</code> comparison block in <strong>Section 12.6</strong> with the expanded version below.</p>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">        SELECT COUNT(*)
+        INTO v_persistence_mismatch_count
+        FROM credit_decisioning_sim.strategy_decisions sd
+        JOIN credit_decisioning_sim.strategy_decisions_archive ar
+            ON ar.strategy_set_name = sd.strategy_set_name
+           AND ar.strategy_name = sd.strategy_name
+           AND ar.strategy_version = sd.strategy_version
+           AND ar.module1_scenario_set_name = sd.module1_scenario_set_name
+           AND ar.module1_scenario_name = sd.module1_scenario_name
+           AND ar.population_id = sd.population_id
+           AND ar.application_id = sd.application_id
+        WHERE sd.strategy_set_name = a.strategy_set_name
+          AND sd.strategy_name = a.strategy_name
+          AND sd.strategy_version = a.strategy_version
+          AND sd.module1_scenario_set_name = a.module1_scenario_set_name
+          AND sd.module1_scenario_name = a.module1_scenario_name
+          AND sd.population_id = a.population_id
+          AND (
+                ar.decision_outcome IS DISTINCT FROM sd.decision_outcome
+             OR ar.decision_path IS DISTINCT FROM sd.decision_path
+             OR ar.approval_flag IS DISTINCT FROM sd.approval_flag
+             OR ar.counteroffer_flag IS DISTINCT FROM sd.counteroffer_flag
+             OR ar.manual_review_flag IS DISTINCT FROM sd.manual_review_flag
+             OR ar.decline_flag IS DISTINCT FROM sd.decline_flag
+             OR ar.simulated_offer_exposure_flag IS DISTINCT FROM sd.simulated_offer_exposure_flag
+             OR ar.approved_amount IS DISTINCT FROM sd.approved_amount
+             OR ar.counteroffer_amount IS DISTINCT FROM sd.counteroffer_amount
+             OR ar.approved_payment_to_income_ratio IS DISTINCT FROM sd.approved_payment_to_income_ratio
+             OR ar.approved_expected_loss_amount IS DISTINCT FROM sd.approved_expected_loss_amount
+             OR ar.primary_reason_code IS DISTINCT FROM sd.primary_reason_code
+             OR ar.triggered_reason_code_list IS DISTINCT FROM sd.triggered_reason_code_list
+          );
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">        SELECT COUNT(*)
+        INTO v_persistence_mismatch_count
+        FROM credit_decisioning_sim.strategy_decisions sd
+        JOIN credit_decisioning_sim.strategy_decisions_archive ar
+            ON ar.strategy_set_name = sd.strategy_set_name
+           AND ar.strategy_name = sd.strategy_name
+           AND ar.strategy_version = sd.strategy_version
+           AND ar.module1_scenario_set_name = sd.module1_scenario_set_name
+           AND ar.module1_scenario_name = sd.module1_scenario_name
+           AND ar.population_id = sd.population_id
+           AND ar.application_id = sd.application_id
+        WHERE sd.strategy_set_name = a.strategy_set_name
+          AND sd.strategy_name = a.strategy_name
+          AND sd.strategy_version = a.strategy_version
+          AND sd.module1_scenario_set_name = a.module1_scenario_set_name
+          AND sd.module1_scenario_name = a.module1_scenario_name
+          AND sd.population_id = a.population_id
+          AND (
+                /* Key metadata and lineage fields */
+                ar.strategy_set_name IS DISTINCT FROM sd.strategy_set_name
+             OR ar.strategy_name IS DISTINCT FROM sd.strategy_name
+             OR ar.strategy_version IS DISTINCT FROM sd.strategy_version
+             OR ar.module1_scenario_set_name IS DISTINCT FROM sd.module1_scenario_set_name
+             OR ar.module1_scenario_name IS DISTINCT FROM sd.module1_scenario_name
+             OR ar.population_id IS DISTINCT FROM sd.population_id
+             OR ar.application_id IS DISTINCT FROM sd.application_id
+             OR ar.applicant_id IS DISTINCT FROM sd.applicant_id
+             OR ar.product_type_policy_key IS DISTINCT FROM sd.product_type_policy_key
+             OR ar.score_band_policy_key IS DISTINCT FROM sd.score_band_policy_key
+
+                /* Final decision fields */
+             OR ar.decision_outcome IS DISTINCT FROM sd.decision_outcome
+             OR ar.decision_path IS DISTINCT FROM sd.decision_path
+             OR ar.decision_priority_rank IS DISTINCT FROM sd.decision_priority_rank
+             OR ar.decision_resolution_source IS DISTINCT FROM sd.decision_resolution_source
+
+                /* Final decision flags */
+             OR ar.approval_flag IS DISTINCT FROM sd.approval_flag
+             OR ar.counteroffer_flag IS DISTINCT FROM sd.counteroffer_flag
+             OR ar.manual_review_flag IS DISTINCT FROM sd.manual_review_flag
+             OR ar.decline_flag IS DISTINCT FROM sd.decline_flag
+             OR ar.simulated_offer_exposure_flag IS DISTINCT FROM sd.simulated_offer_exposure_flag
+
+                /* Final exposure fields */
+             OR ar.approved_amount IS DISTINCT FROM sd.approved_amount
+             OR ar.counteroffer_amount IS DISTINCT FROM sd.counteroffer_amount
+             OR ar.exposure_reduction_flag IS DISTINCT FROM sd.exposure_reduction_flag
+             OR ar.exposure_reduction_amount IS DISTINCT FROM sd.exposure_reduction_amount
+             OR ar.exposure_reduction_pct IS DISTINCT FROM sd.exposure_reduction_pct
+
+                /* Final affordability fields */
+             OR ar.approved_monthly_payment_proxy IS DISTINCT FROM sd.approved_monthly_payment_proxy
+             OR ar.approved_payment_to_income_ratio IS DISTINCT FROM sd.approved_payment_to_income_ratio
+
+                /* Requested and approved Expected Loss fields */
+             OR ar.requested_expected_loss_amount IS DISTINCT FROM sd.requested_expected_loss_amount
+             OR ar.approved_expected_loss_amount IS DISTINCT FROM sd.approved_expected_loss_amount
+             OR ar.approved_el_reduction_amount IS DISTINCT FROM sd.approved_el_reduction_amount
+             OR ar.approved_el_reduction_pct IS DISTINCT FROM sd.approved_el_reduction_pct
+
+                /* Simulated reason-code fields */
+             OR ar.primary_reason_code IS DISTINCT FROM sd.primary_reason_code
+             OR ar.secondary_reason_code IS DISTINCT FROM sd.secondary_reason_code
+             OR ar.tertiary_reason_code IS DISTINCT FROM sd.tertiary_reason_code
+             OR ar.primary_reason_family IS DISTINCT FROM sd.primary_reason_family
+             OR ar.triggered_reason_code_list IS DISTINCT FROM sd.triggered_reason_code_list
+             OR ar.reason_priority_rank IS DISTINCT FROM sd.reason_priority_rank
+             OR ar.reason_code_count IS DISTINCT FROM sd.reason_code_count
+          );
+</code></pre>
+<p>This confirms Section 12 persisted the already-materialized latest-run result without changing final decision, exposure, affordability, Expected Loss, reason-code, or lineage values.</p>
+<hr>
+<h2>Patch 12.C — Unique archive grain enforcement</h2>
+<p>Add this immediately before the unique archive row-grain index in <strong>Section 12.7</strong>.</p>
+<pre><code class="language-sql">/*-----------------------------------------------------------------------------------------------
+Pre-index duplicate grain check.
+
+If an existing archive table contains duplicate rows at the locked row-level archive grain, the
+unique index cannot be created safely. This gatekeeper fails clearly and instructs the user to
+reset or clean the archive before matched strategy comparison is used.
+
+Locked row-level archive grain:
+    strategy_set_name
+    strategy_name
+    strategy_version
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+    application_id
+-----------------------------------------------------------------------------------------------*/
+DO $$
+DECLARE
+    v_duplicate_archive_grain_count BIGINT;
+BEGIN
+    SELECT COUNT(*)
+    INTO v_duplicate_archive_grain_count
+    FROM (
+        SELECT
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+            application_id
+        FROM credit_decisioning_sim.strategy_decisions_archive
+        GROUP BY
+            strategy_set_name,
+            strategy_name,
+            strategy_version,
+            module1_scenario_set_name,
+            module1_scenario_name,
+            population_id,
+            application_id
+        HAVING COUNT(*) &gt; 1
+    ) d;
+
+    IF v_duplicate_archive_grain_count &gt; 0 THEN
+        RAISE EXCEPTION
+            &#39;Module 2 Section 12 failure: archive contains % duplicate row-level grain group(s). Reset or clean the archive before creating the unique archive grain index.&#39;,
+            v_duplicate_archive_grain_count;
+    END IF;
+END $$;
+</code></pre>
+<p>Then replace the existing unique index creation with a recreate-safe version.</p>
+<h3>BEFORE</h3>
+<pre><code class="language-sql">CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_archive_row_grain_unique
+    ON credit_decisioning_sim.strategy_decisions_archive (
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+    );
+</code></pre>
+<h3>AFTER</h3>
+<pre><code class="language-sql">DROP INDEX IF EXISTS credit_decisioning_sim.idx_m2_strategy_archive_row_grain_unique;
+
+CREATE UNIQUE INDEX idx_m2_strategy_archive_row_grain_unique
+    ON credit_decisioning_sim.strategy_decisions_archive (
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+    );
+</code></pre>
+<hr>
+<h1>2. Section 13 SQL only — Archive Inventory and Matched Strategy Comparison Framework</h1>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 13 — ARCHIVE INVENTORY AND MATCHED STRATEGY COMPARISON FRAMEWORK
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide read-only archive inventory and matched strategy comparison queries for completed Module 2
+    strategy runs.
+
+    Section 13 answers:
+
+        &quot;How do two archived Module 2 strategy runs differ when applied to the same Module 1
+         scenario and population?&quot;
+
+    Section 13 does NOT answer:
+
+        &quot;Is the full Module 2 system validated?&quot;
+
+    Full validation is built later after the complete SQL module is assembled and executed.
+
+SQL PURPOSE:
+    1. Inspect credit_decisioning_sim.strategy_decisions_archive.
+    2. List archived Module 2 strategy slices.
+    3. Define comparison parameters for selecting a baseline and challenger strategy.
+    4. Diagnose whether the selected archived slices are ready for matched comparison.
+    5. Compare selected archived strategies at portfolio, decision migration, row-level, segment,
+       reason-code, and simulated offer-exposure levels.
+    6. Provide unmatched-row diagnostics when selected slices are not match-ready.
+
+READ-ONLY BOUNDARY:
+    Section 13 does not insert, delete, update, or replace archive rows.
+    Section 13 does not recalculate decisions, reason codes, approved exposure, approved payment,
+    approved PTI, or approved Expected Loss.
+
+    The only table created here is a temporary comparison-parameter table used to select archived
+    strategy slices for read-only diagnostics.
+
+WHY ARCHIVE INVENTORY IS SEPARATED FROM ARCHIVE PERSISTENCE:
+    Section 12 persists completed latest-run outputs into the archive.
+    Section 13 inspects those archived outputs.
+
+    This separation prevents comparison logic from modifying archive history.
+
+WHY MATCHED COMPARISON REQUIRES THE SAME MODULE 1 SCENARIO AND POPULATION:
+    Module 2 strategy comparison should isolate downstream strategy effects.
+
+    For Module 2 v1.0, matched strategy comparison requires:
+        same module1_scenario_set_name
+        same module1_scenario_name
+        same population_id
+
+    Comparing across different Module 1 scenarios would mix upstream synthetic population or
+    risk-environment effects with downstream strategy effects.
+
+MODULE 1 SCENARIO METADATA VS MODULE 2 STRATEGY METADATA:
+    Module 1 scenario metadata:
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    Module 2 strategy metadata:
+        strategy_set_name
+        strategy_name
+        strategy_version
+
+    These concepts remain separate.
+
+WHY ROW-LEVEL MATCHING USES APPLICATION_ID:
+    application_id is the row-level synthetic application identifier.
+
+    Matched comparison joins baseline and challenger rows using:
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+        application_id
+
+    This preserves the same synthetic applicant across strategy runs.
+
+AUDIT METADATA BOUNDARY:
+    strategy_run_id, strategy_run_ts, latest_output_created_ts, and archive_inserted_ts are audit
+    metadata.
+
+    They support traceability but are not matched-comparison keys and should not define deterministic
+    comparison grain.
+
+REQUESTED VS APPROVED EXPECTED LOSS:
+    requested_expected_loss_amount:
+        requested-exposure Expected Loss carried from Module 1.
+
+    approved_expected_loss_amount:
+        approved-exposure Expected Loss created by Module 2 after exposure treatment.
+
+    Both are compared because strategy changes may alter approved exposure while requested exposure
+    remains constant.
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the finalized Module 1 SQL field name.
+
+    In Section 13, estimated_pd is interpreted as the synthetic estimated-PD proxy.
+    It is not a calibrated production probability of default.
+
+SIMULATED OFFER EXPOSURE BOUNDARY:
+    simulated_offer_exposure_flag identifies APPROVE and COUNTEROFFER simulated positive offer
+    exposure.
+
+    It does not imply operational account creation, funded exposure, production approval, or real
+    customer treatment.
+
+REASON-CODE MIGRATION:
+    Reason-code migration helps explain how strategy outcomes changed, not merely that they changed.
+
+    primary_reason_code and related fields are simulated strategy explanation codes only.
+
+SECTION 13 IS NOT THE FULL QA FRAMEWORK:
+    Section 13 provides archive inventory and matched strategy comparison diagnostics.
+    Full Module 2 QA is built later.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 13.0 — COMPARISON PARAMETER TABLE
+****************************************************************************************************
+
+Purpose:
+    Select one archived baseline strategy slice and one archived challenger strategy slice.
+
+Users should update these placeholder values to archived slices that exist in:
+    credit_decisioning_sim.strategy_decisions_archive
+
+For Module 2 v1.0, the baseline and challenger should share:
+    module1_scenario_set_name
+    module1_scenario_name
+    population_id
+
+and should differ by:
+    strategy_name and/or strategy_version
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_comparison_params;
+
+CREATE TEMP TABLE tmp_m2_strategy_comparison_params (
+    comparison_set_name              TEXT,
+
+    baseline_strategy_set_name        TEXT,
+    baseline_strategy_name            TEXT,
+    baseline_strategy_version         TEXT,
+
+    challenger_strategy_set_name      TEXT,
+    challenger_strategy_name          TEXT,
+    challenger_strategy_version       TEXT,
+
+    module1_scenario_set_name         TEXT,
+    module1_scenario_name             TEXT,
+    population_id                     TEXT
+) ON COMMIT PRESERVE ROWS;
+
+
+/*-----------------------------------------------------------------------------------------------
+Placeholder comparison parameters.
+
+Replace these values with archived strategy identifiers before using the selected comparison outputs.
+If the placeholders do not exist in the archive, Section 13 readiness output will clearly report that
+matched comparison is not ready.
+-----------------------------------------------------------------------------------------------*/
+INSERT INTO tmp_m2_strategy_comparison_params (
+    comparison_set_name,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+)
+VALUES (
+    &#39;MODULE2_BASELINE_VS_CHALLENGER_PLACEHOLDER&#39;,
+
+    &#39;MODULE2_BASELINE_STRATEGY_SET&#39;,
+    &#39;BASELINE_STRATEGY&#39;,
+    &#39;V1_0&#39;,
+
+    &#39;MODULE2_CHALLENGER_STRATEGY_SET&#39;,
+    &#39;CHALLENGER_STRATEGY&#39;,
+    &#39;V1_0&#39;,
+
+    &#39;MODULE1_V2_BASELINE_SET&#39;,
+    &#39;BASELINE_V2&#39;,
+    &#39;BASE_POPULATION_V1&#39;
+);
+
+
+
+/***************************************************************************************************
+SECTION 13.1 — ARCHIVE INVENTORY
+****************************************************************************************************
+
+Purpose:
+    Show which archived Module 2 strategy slices are available.
+
+Interpretation:
+    This is the first query users should review before setting comparison parameters.
+
+***************************************************************************************************/
+
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS archived_row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;) AS approve_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;) AS decline_count,
+
+    MIN(latest_output_created_ts) AS min_latest_output_created_ts,
+    MAX(latest_output_created_ts) AS max_latest_output_created_ts,
+    MIN(archive_inserted_ts) AS min_archive_inserted_ts,
+    MAX(archive_inserted_ts) AS max_archive_inserted_ts
+FROM credit_decisioning_sim.strategy_decisions_archive
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+ORDER BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+13.1B Archive outcome inventory.
+
+Purpose:
+    Provide a compact outcome distribution for every archived strategy slice.
+-----------------------------------------------------------------------------------------------*/
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    decision_outcome,
+    COUNT(*) AS row_count,
+    ROUND(
+        100.0 * COUNT(*)
+        / NULLIF(
+            SUM(COUNT(*)) OVER (
+                PARTITION BY
+                    strategy_set_name,
+                    strategy_name,
+                    strategy_version,
+                    module1_scenario_set_name,
+                    module1_scenario_name,
+                    population_id
+            ),
+            0
+        ),
+        2
+    ) AS pct_of_archived_strategy_slice
+FROM credit_decisioning_sim.strategy_decisions_archive
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    decision_outcome
+ORDER BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    CASE decision_outcome
+        WHEN &#39;APPROVE&#39; THEN 1
+        WHEN &#39;COUNTEROFFER&#39; THEN 2
+        WHEN &#39;MANUAL_REVIEW&#39; THEN 3
+        WHEN &#39;DECLINE&#39; THEN 4
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+SECTION 13.2 — SELECTED COMPARISON READINESS
+****************************************************************************************************
+
+Purpose:
+    Confirm whether the selected baseline and challenger archived strategy slices are suitable for
+    matched comparison.
+
+This query does not fail the script. It reports readiness.
+
+***************************************************************************************************/
+
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+baseline AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+challenger AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+baseline_applications AS (
+    SELECT application_id, COUNT(*) AS row_count
+    FROM baseline
+    GROUP BY application_id
+),
+challenger_applications AS (
+    SELECT application_id, COUNT(*) AS row_count
+    FROM challenger
+    GROUP BY application_id
+),
+counts AS (
+    SELECT
+        (SELECT COUNT(*) FROM baseline) AS baseline_archived_row_count,
+        (SELECT COUNT(*) FROM challenger) AS challenger_archived_row_count,
+
+        (SELECT COUNT(DISTINCT application_id) FROM baseline) AS baseline_distinct_application_id_count,
+        (SELECT COUNT(DISTINCT application_id) FROM challenger) AS challenger_distinct_application_id_count,
+
+        (
+            SELECT COUNT(*)
+            FROM baseline_applications b
+            JOIN challenger_applications c
+                ON c.application_id = b.application_id
+        ) AS matched_application_id_count,
+
+        (
+            SELECT COUNT(*)
+            FROM baseline_applications b
+            LEFT JOIN challenger_applications c
+                ON c.application_id = b.application_id
+            WHERE c.application_id IS NULL
+        ) AS baseline_only_application_id_count,
+
+        (
+            SELECT COUNT(*)
+            FROM challenger_applications c
+            LEFT JOIN baseline_applications b
+                ON b.application_id = c.application_id
+            WHERE b.application_id IS NULL
+        ) AS challenger_only_application_id_count,
+
+        (
+            SELECT COUNT(*)
+            FROM baseline_applications
+            WHERE row_count &gt; 1
+        ) AS baseline_duplicate_application_id_count,
+
+        (
+            SELECT COUNT(*)
+            FROM challenger_applications
+            WHERE row_count &gt; 1
+        ) AS challenger_duplicate_application_id_count
+)
+SELECT
+    p.comparison_set_name,
+
+    p.module1_scenario_set_name,
+    p.module1_scenario_name,
+    p.population_id,
+
+    p.baseline_strategy_set_name,
+    p.baseline_strategy_name,
+    p.baseline_strategy_version,
+
+    p.challenger_strategy_set_name,
+    p.challenger_strategy_name,
+    p.challenger_strategy_version,
+
+    c.baseline_archived_row_count,
+    c.challenger_archived_row_count,
+    c.baseline_distinct_application_id_count,
+    c.challenger_distinct_application_id_count,
+    c.matched_application_id_count,
+    c.baseline_only_application_id_count,
+    c.challenger_only_application_id_count,
+    c.baseline_duplicate_application_id_count,
+    c.challenger_duplicate_application_id_count,
+
+    (
+        p.baseline_strategy_set_name = p.challenger_strategy_set_name
+        AND p.baseline_strategy_name = p.challenger_strategy_name
+        AND p.baseline_strategy_version = p.challenger_strategy_version
+    ) AS same_strategy_selected_flag,
+
+    CASE
+        WHEN p.baseline_strategy_set_name = p.challenger_strategy_set_name
+         AND p.baseline_strategy_name = p.challenger_strategy_name
+         AND p.baseline_strategy_version = p.challenger_strategy_version
+            THEN &#39;NOT_READY_SAME_STRATEGY_SELECTED&#39;
+
+        WHEN c.baseline_archived_row_count = 0
+            THEN &#39;NOT_READY_BASELINE_MISSING&#39;
+
+        WHEN c.challenger_archived_row_count = 0
+            THEN &#39;NOT_READY_CHALLENGER_MISSING&#39;
+
+        WHEN c.baseline_duplicate_application_id_count &gt; 0
+          OR c.challenger_duplicate_application_id_count &gt; 0
+            THEN &#39;NOT_READY_DUPLICATE_ARCHIVE_GRAIN&#39;
+
+        WHEN c.baseline_archived_row_count &lt;&gt; c.challenger_archived_row_count
+          OR c.baseline_distinct_application_id_count &lt;&gt; c.challenger_distinct_application_id_count
+            THEN &#39;NOT_READY_ROW_COUNT_MISMATCH&#39;
+
+        WHEN c.baseline_only_application_id_count &gt; 0
+          OR c.challenger_only_application_id_count &gt; 0
+            THEN &#39;NOT_READY_UNMATCHED_APPLICATIONS&#39;
+
+        WHEN c.baseline_archived_row_count &gt; 0
+         AND c.challenger_archived_row_count &gt; 0
+         AND c.baseline_distinct_application_id_count = c.challenger_distinct_application_id_count
+         AND c.matched_application_id_count = c.baseline_distinct_application_id_count
+         AND c.baseline_only_application_id_count = 0
+         AND c.challenger_only_application_id_count = 0
+            THEN &#39;READY_FOR_MATCHED_COMPARISON&#39;
+
+        ELSE &#39;NOT_READY_REVIEW_REQUIRED&#39;
+    END AS readiness_status
+FROM params p
+CROSS JOIN counts c;
+
+
+
+/***************************************************************************************************
+SECTION 13.3 — PORTFOLIO-LEVEL ARCHIVED STRATEGY SUMMARY
+****************************************************************************************************
+
+Purpose:
+    Compare selected archived strategies at the portfolio level.
+
+Interpretation:
+    This is a strategy-simulation summary only. It is not causal proof outside the controlled
+    matched-strategy simulation boundary.
+
+***************************************************************************************************/
+
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+selected_archive AS (
+    SELECT
+        &#39;BASELINE&#39;::TEXT AS selected_strategy_role,
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+
+    UNION ALL
+
+    SELECT
+        &#39;CHALLENGER&#39;::TEXT AS selected_strategy_role,
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+)
+SELECT
+    selected_strategy_role,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS applications,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;) AS approval_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;) AS decline_count,
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) AS simulated_offer_exposure_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS approval_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS decline_rate,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+    SUM(requested_amount) AS total_requested_amount,
+    SUM(approved_amount) AS total_approved_amount,
+    AVG(requested_amount) AS average_requested_amount,
+    AVG(approved_amount) AS average_approved_amount,
+    AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)
+        AS average_exposure_reduction_pct_among_counteroffers,
+
+    AVG(requested_payment_to_income_ratio) AS average_requested_payment_to_income_ratio,
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS average_approved_payment_to_income_ratio_for_offers,
+
+    AVG(estimated_pd) AS average_synthetic_estimated_pd_proxy,
+    AVG(estimated_lgd) AS average_estimated_lgd,
+
+    SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+    SUM(approved_expected_loss_amount) AS total_approved_expected_loss_amount,
+    AVG(requested_expected_loss_amount) AS average_requested_expected_loss_amount,
+    AVG(approved_expected_loss_amount) AS average_approved_expected_loss_amount
+FROM selected_archive
+GROUP BY
+    selected_strategy_role,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+ORDER BY selected_strategy_role;
+
+
+
+/***************************************************************************************************
+SECTION 13.4 — BASELINE VS CHALLENGER PORTFOLIO DELTA SUMMARY
+****************************************************************************************************
+
+Purpose:
+    Show direct portfolio-level deltas between selected baseline and challenger strategies.
+
+Metric convention:
+    delta_* = challenger_* - baseline_*
+
+***************************************************************************************************/
+
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+selected_archive AS (
+    SELECT
+        &#39;BASELINE&#39;::TEXT AS selected_strategy_role,
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+
+    UNION ALL
+
+    SELECT
+        &#39;CHALLENGER&#39;::TEXT AS selected_strategy_role,
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+summary AS (
+    SELECT
+        selected_strategy_role,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        SUM(approved_amount) AS total_approved_amount,
+        AVG(approved_amount) AS average_approved_amount,
+
+        SUM(approved_expected_loss_amount) AS total_approved_expected_loss_amount,
+        AVG(approved_expected_loss_amount) AS average_approved_expected_loss_amount,
+
+        AVG(approved_payment_to_income_ratio)
+            FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS average_approved_payment_to_income_ratio_for_offers,
+
+        AVG(estimated_pd)
+            FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS average_synthetic_estimated_pd_proxy_among_offered_rows,
+
+        AVG(estimated_pd)
+            FILTER (WHERE decision_outcome = &#39;DECLINE&#39;)
+            AS average_synthetic_estimated_pd_proxy_among_declined_rows
+    FROM selected_archive
+    GROUP BY selected_strategy_role
+),
+pivoted AS (
+    SELECT
+        MAX(applications) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_applications,
+        MAX(applications) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_applications,
+
+        MAX(approval_rate) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_approval_rate,
+        MAX(approval_rate) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_approval_rate,
+
+        MAX(counteroffer_rate) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_counteroffer_rate,
+        MAX(counteroffer_rate) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_counteroffer_rate,
+
+        MAX(manual_review_rate) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_manual_review_rate,
+        MAX(manual_review_rate) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_manual_review_rate,
+
+        MAX(decline_rate) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_decline_rate,
+        MAX(decline_rate) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_decline_rate,
+
+        MAX(simulated_offer_exposure_rate) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_simulated_offer_exposure_rate,
+        MAX(simulated_offer_exposure_rate) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_simulated_offer_exposure_rate,
+
+        MAX(total_approved_amount) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_total_approved_amount,
+        MAX(total_approved_amount) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_total_approved_amount,
+
+        MAX(average_approved_amount) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_average_approved_amount,
+        MAX(average_approved_amount) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_average_approved_amount,
+
+        MAX(total_approved_expected_loss_amount) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_total_approved_expected_loss_amount,
+        MAX(total_approved_expected_loss_amount) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_total_approved_expected_loss_amount,
+
+        MAX(average_approved_expected_loss_amount) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_average_approved_expected_loss_amount,
+        MAX(average_approved_expected_loss_amount) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_average_approved_expected_loss_amount,
+
+        MAX(average_approved_payment_to_income_ratio_for_offers) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_average_approved_payment_to_income_ratio_for_offers,
+        MAX(average_approved_payment_to_income_ratio_for_offers) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_average_approved_payment_to_income_ratio_for_offers,
+
+        MAX(average_synthetic_estimated_pd_proxy_among_offered_rows) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_average_synthetic_estimated_pd_proxy_among_offered_rows,
+        MAX(average_synthetic_estimated_pd_proxy_among_offered_rows) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_average_synthetic_estimated_pd_proxy_among_offered_rows,
+
+        MAX(average_synthetic_estimated_pd_proxy_among_declined_rows) FILTER (WHERE selected_strategy_role = &#39;BASELINE&#39;) AS baseline_average_synthetic_estimated_pd_proxy_among_declined_rows,
+        MAX(average_synthetic_estimated_pd_proxy_among_declined_rows) FILTER (WHERE selected_strategy_role = &#39;CHALLENGER&#39;) AS challenger_average_synthetic_estimated_pd_proxy_among_declined_rows
+    FROM summary
+)
+SELECT
+    p.comparison_set_name,
+    p.module1_scenario_set_name,
+    p.module1_scenario_name,
+    p.population_id,
+
+    baseline_applications,
+    challenger_applications,
+
+    baseline_approval_rate,
+    challenger_approval_rate,
+    challenger_approval_rate - baseline_approval_rate AS delta_approval_rate,
+
+    baseline_counteroffer_rate,
+    challenger_counteroffer_rate,
+    challenger_counteroffer_rate - baseline_counteroffer_rate AS delta_counteroffer_rate,
+
+    baseline_manual_review_rate,
+    challenger_manual_review_rate,
+    challenger_manual_review_rate - baseline_manual_review_rate AS delta_manual_review_rate,
+
+    baseline_decline_rate,
+    challenger_decline_rate,
+    challenger_decline_rate - baseline_decline_rate AS delta_decline_rate,
+
+    baseline_simulated_offer_exposure_rate,
+    challenger_simulated_offer_exposure_rate,
+    challenger_simulated_offer_exposure_rate - baseline_simulated_offer_exposure_rate
+        AS delta_simulated_offer_exposure_rate,
+
+    baseline_total_approved_amount,
+    challenger_total_approved_amount,
+    challenger_total_approved_amount - baseline_total_approved_amount
+        AS delta_total_approved_amount,
+
+    baseline_average_approved_amount,
+    challenger_average_approved_amount,
+    challenger_average_approved_amount - baseline_average_approved_amount
+        AS delta_average_approved_amount,
+
+    baseline_total_approved_expected_loss_amount,
+    challenger_total_approved_expected_loss_amount,
+    challenger_total_approved_expected_loss_amount - baseline_total_approved_expected_loss_amount
+        AS delta_total_approved_expected_loss_amount,
+
+    baseline_average_approved_expected_loss_amount,
+    challenger_average_approved_expected_loss_amount,
+    challenger_average_approved_expected_loss_amount - baseline_average_approved_expected_loss_amount
+        AS delta_average_approved_expected_loss_amount,
+
+    baseline_average_approved_payment_to_income_ratio_for_offers,
+    challenger_average_approved_payment_to_income_ratio_for_offers,
+    challenger_average_approved_payment_to_income_ratio_for_offers
+        - baseline_average_approved_payment_to_income_ratio_for_offers
+        AS delta_average_approved_payment_to_income_ratio_for_offers,
+
+    baseline_average_synthetic_estimated_pd_proxy_among_offered_rows,
+    challenger_average_synthetic_estimated_pd_proxy_among_offered_rows,
+    challenger_average_synthetic_estimated_pd_proxy_among_offered_rows
+        - baseline_average_synthetic_estimated_pd_proxy_among_offered_rows
+        AS delta_average_synthetic_estimated_pd_proxy_among_offered_rows,
+
+    baseline_average_synthetic_estimated_pd_proxy_among_declined_rows,
+    challenger_average_synthetic_estimated_pd_proxy_among_declined_rows,
+    challenger_average_synthetic_estimated_pd_proxy_among_declined_rows
+        - baseline_average_synthetic_estimated_pd_proxy_among_declined_rows
+        AS delta_average_synthetic_estimated_pd_proxy_among_declined_rows
+FROM params p
+CROSS JOIN pivoted;
+
+
+
+/***************************************************************************************************
+SECTION 13.5 — DECISION MIGRATION MATRIX
+****************************************************************************************************
+
+Purpose:
+    Show how final decision outcomes changed from baseline to challenger.
+
+This is one of the most important Section 13 outputs.
+
+***************************************************************************************************/
+
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+baseline AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+challenger AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+matched AS (
+    SELECT
+        b.application_id,
+        b.decision_outcome AS baseline_decision_outcome,
+        c.decision_outcome AS challenger_decision_outcome
+    FROM baseline b
+    JOIN challenger c
+        ON c.module1_scenario_set_name = b.module1_scenario_set_name
+       AND c.module1_scenario_name = b.module1_scenario_name
+       AND c.population_id = b.population_id
+       AND c.application_id = b.application_id
+)
+SELECT
+    baseline_decision_outcome,
+    challenger_decision_outcome,
+    COUNT(*) AS matched_rows,
+    ROUND(
+        100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_matched_population
+FROM matched
+GROUP BY
+    baseline_decision_outcome,
+    challenger_decision_outcome
+ORDER BY
+    CASE baseline_decision_outcome
+        WHEN &#39;APPROVE&#39; THEN 1
+        WHEN &#39;COUNTEROFFER&#39; THEN 2
+        WHEN &#39;MANUAL_REVIEW&#39; THEN 3
+        WHEN &#39;DECLINE&#39; THEN 4
+        ELSE 99
+    END,
+    CASE challenger_decision_outcome
+        WHEN &#39;APPROVE&#39; THEN 1
+        WHEN &#39;COUNTEROFFER&#39; THEN 2
+        WHEN &#39;MANUAL_REVIEW&#39; THEN 3
+        WHEN &#39;DECLINE&#39; THEN 4
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+SECTION 13.6 — MATCHED APPLICANT-LEVEL DELTA SAMPLE
+****************************************************************************************************
+
+Purpose:
+    Show row-level examples of the largest strategy movements.
+
+Interpretation:
+    Manual review rows have unresolved exposure fields. For delta sorting, NULL approved exposure is
+    treated as zero simulated offer exposure only for comparison ranking.
+
+***************************************************************************************************/
+
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+baseline AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+challenger AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+matched AS (
+    SELECT
+        b.application_id,
+        b.applicant_id,
+        b.product_type_policy_key,
+        b.score_band_policy_key,
+        b.requested_amount,
+
+        b.decision_outcome AS baseline_decision_outcome,
+        c.decision_outcome AS challenger_decision_outcome,
+
+        b.primary_reason_code AS baseline_primary_reason_code,
+        c.primary_reason_code AS challenger_primary_reason_code,
+
+        b.approved_amount AS baseline_approved_amount,
+        c.approved_amount AS challenger_approved_amount,
+        COALESCE(c.approved_amount, 0) - COALESCE(b.approved_amount, 0)
+            AS delta_approved_amount,
+
+        b.approved_payment_to_income_ratio AS baseline_approved_payment_to_income_ratio,
+        c.approved_payment_to_income_ratio AS challenger_approved_payment_to_income_ratio,
+        COALESCE(c.approved_payment_to_income_ratio, 0) - COALESCE(b.approved_payment_to_income_ratio, 0)
+            AS delta_approved_payment_to_income_ratio,
+
+        b.approved_expected_loss_amount AS baseline_approved_expected_loss_amount,
+        c.approved_expected_loss_amount AS challenger_approved_expected_loss_amount,
+        COALESCE(c.approved_expected_loss_amount, 0) - COALESCE(b.approved_expected_loss_amount, 0)
+            AS delta_approved_expected_loss_amount
+    FROM baseline b
+    JOIN challenger c
+        ON c.module1_scenario_set_name = b.module1_scenario_set_name
+       AND c.module1_scenario_name = b.module1_scenario_name
+       AND c.population_id = b.population_id
+       AND c.application_id = b.application_id
+)
+SELECT *
+FROM matched
+ORDER BY
+    ABS(delta_approved_expected_loss_amount) DESC,
+    ABS(delta_approved_amount) DESC,
+    application_id
+LIMIT 50;
+
+
+
+/***************************************************************************************************
+SECTION 13.7 — PRODUCT × SCORE MATCHED STRATEGY DELTA SUMMARY
+****************************************************************************************************
+
+Purpose:
+    Show where strategy changes concentrate by product and score band.
+
+***************************************************************************************************/
+
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+baseline AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+challenger AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+matched AS (
+    SELECT
+        b.product_type_policy_key,
+        b.score_band_policy_key,
+
+        b.decision_outcome AS baseline_decision_outcome,
+        c.decision_outcome AS challenger_decision_outcome,
+
+        b.approved_amount AS baseline_approved_amount,
+        c.approved_amount AS challenger_approved_amount,
+
+        b.approved_expected_loss_amount AS baseline_approved_expected_loss_amount,
+        c.approved_expected_loss_amount AS challenger_approved_expected_loss_amount
+    FROM baseline b
+    JOIN challenger c
+        ON c.module1_scenario_set_name = b.module1_scenario_set_name
+       AND c.module1_scenario_name = b.module1_scenario_name
+       AND c.population_id = b.population_id
+       AND c.application_id = b.application_id
+)
+SELECT
+    product_type_policy_key,
+    score_band_policy_key,
+
+    COUNT(*) AS matched_rows,
+
+    COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS baseline_approval_rate,
+    COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS challenger_approval_rate,
+    (
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0)
+    )
+    -
+    (
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0)
+    ) AS delta_approval_rate,
+
+    COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS baseline_counteroffer_rate,
+    COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS challenger_counteroffer_rate,
+    (
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0)
+    )
+    -
+    (
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0)
+    ) AS delta_counteroffer_rate,
+
+    COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS baseline_manual_review_rate,
+    COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS challenger_manual_review_rate,
+    (
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0)
+    )
+    -
+    (
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;MANUAL_REVIEW&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0)
+    ) AS delta_manual_review_rate,
+
+    COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS baseline_decline_rate,
+    COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS challenger_decline_rate,
+    (
+        COUNT(*) FILTER (WHERE challenger_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0)
+    )
+    -
+    (
+        COUNT(*) FILTER (WHERE baseline_decision_outcome = &#39;DECLINE&#39;)::NUMERIC
+        / NULLIF(COUNT(*), 0)
+    ) AS delta_decline_rate,
+
+    AVG(baseline_approved_amount) AS baseline_average_approved_amount,
+    AVG(challenger_approved_amount) AS challenger_average_approved_amount,
+    AVG(challenger_approved_amount) - AVG(baseline_approved_amount)
+        AS delta_average_approved_amount,
+
+    AVG(baseline_approved_expected_loss_amount) AS baseline_average_approved_expected_loss_amount,
+    AVG(challenger_approved_expected_loss_amount) AS challenger_average_approved_expected_loss_amount,
+    AVG(challenger_approved_expected_loss_amount) - AVG(baseline_approved_expected_loss_amount)
+        AS delta_average_approved_expected_loss_amount
+FROM matched
+GROUP BY
+    product_type_policy_key,
+    score_band_policy_key
+ORDER BY
+    product_type_policy_key,
+    CASE score_band_policy_key
+        WHEN &#39;SUPER_PRIME&#39; THEN 1
+        WHEN &#39;PRIME&#39; THEN 2
+        WHEN &#39;NEAR_PRIME&#39; THEN 3
+        WHEN &#39;SUBPRIME&#39; THEN 4
+        WHEN &#39;DEEP_SUBPRIME&#39; THEN 5
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+SECTION 13.8 — REASON-CODE MOVEMENT SUMMARY
+****************************************************************************************************
+
+Purpose:
+    Show how simulated strategy explanation codes differ between selected strategies.
+
+****************************************************************************************************/
+
+
+/*-----------------------------------------------------------------------------------------------
+13.8A Primary reason distribution by selected strategy.
+-----------------------------------------------------------------------------------------------*/
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+selected_archive AS (
+    SELECT
+        &#39;BASELINE&#39;::TEXT AS selected_strategy_role,
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+
+    UNION ALL
+
+    SELECT
+        &#39;CHALLENGER&#39;::TEXT AS selected_strategy_role,
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+)
+SELECT
+    selected_strategy_role,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    ROUND(
+        100.0 * COUNT(*)
+        / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY selected_strategy_role), 0),
+        2
+    ) AS pct_of_strategy_population
+FROM selected_archive
+GROUP BY
+    selected_strategy_role,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code
+ORDER BY
+    selected_strategy_role,
+    decision_outcome,
+    primary_reason_family,
+    primary_reason_code;
+
+
+/*-----------------------------------------------------------------------------------------------
+13.8B Matched reason-code migration.
+-----------------------------------------------------------------------------------------------*/
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+baseline AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+challenger AS (
+    SELECT ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+matched AS (
+    SELECT
+        b.primary_reason_code AS baseline_primary_reason_code,
+        c.primary_reason_code AS challenger_primary_reason_code
+    FROM baseline b
+    JOIN challenger c
+        ON c.module1_scenario_set_name = b.module1_scenario_set_name
+       AND c.module1_scenario_name = b.module1_scenario_name
+       AND c.population_id = b.population_id
+       AND c.application_id = b.application_id
+)
+SELECT
+    baseline_primary_reason_code,
+    challenger_primary_reason_code,
+    COUNT(*) AS matched_rows,
+    ROUND(
+        100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_matched_population
+FROM matched
+GROUP BY
+    baseline_primary_reason_code,
+    challenger_primary_reason_code
+ORDER BY
+    matched_rows DESC,
+    baseline_primary_reason_code,
+    challenger_primary_reason_code;
+
+
+
+/***************************************************************************************************
+SECTION 13.9 — SIMULATED OFFER-EXPOSURE COMPARISON
+****************************************************************************************************
+
+Purpose:
+    Compare simulated positive offer-exposure profiles between selected strategies.
+
+Boundary:
+    This is simulated offer exposure only. It is not operational account creation or funded exposure.
+
+***************************************************************************************************/
+
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+selected_archive AS (
+    SELECT
+        &#39;BASELINE&#39;::TEXT AS selected_strategy_role,
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+
+    UNION ALL
+
+    SELECT
+        &#39;CHALLENGER&#39;::TEXT AS selected_strategy_role,
+        ar.*
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+)
+SELECT
+    selected_strategy_role,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    COUNT(*) AS applications,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE) AS offer_count,
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+        / NULLIF(COUNT(*), 0) AS positive_offer_rate,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;) AS approval_offer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_offer_count,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;)::NUMERIC
+        / NULLIF(COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE), 0)
+        AS approval_share_of_offers,
+
+    COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;)::NUMERIC
+        / NULLIF(COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE), 0)
+        AS counteroffer_share_of_offers,
+
+    SUM(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_amount,
+
+    AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS average_approved_amount,
+
+    AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS average_synthetic_estimated_pd_proxy,
+
+    AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS average_approved_payment_to_income_ratio,
+
+    SUM(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS total_approved_expected_loss_amount,
+
+    AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS average_approved_expected_loss_amount
+FROM selected_archive
+GROUP BY
+    selected_strategy_role,
+    strategy_set_name,
+    strategy_name,
+    strategy_version
+ORDER BY selected_strategy_role;
+
+
+
+/***************************************************************************************************
+SECTION 13.10 — UNMATCHED ROW DIAGNOSTIC
+****************************************************************************************************
+
+Purpose:
+    If readiness_status is not READY_FOR_MATCHED_COMPARISON, identify baseline-only and
+    challenger-only application_id values.
+
+This supports debugging archive selection or archive integrity issues.
+
+***************************************************************************************************/
+
+WITH params AS (
+    SELECT *
+    FROM tmp_m2_strategy_comparison_params
+    LIMIT 1
+),
+baseline_applications AS (
+    SELECT DISTINCT
+        ar.application_id
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.baseline_strategy_set_name
+       AND ar.strategy_name = p.baseline_strategy_name
+       AND ar.strategy_version = p.baseline_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+challenger_applications AS (
+    SELECT DISTINCT
+        ar.application_id
+    FROM credit_decisioning_sim.strategy_decisions_archive ar
+    JOIN params p
+        ON ar.strategy_set_name = p.challenger_strategy_set_name
+       AND ar.strategy_name = p.challenger_strategy_name
+       AND ar.strategy_version = p.challenger_strategy_version
+       AND ar.module1_scenario_set_name = p.module1_scenario_set_name
+       AND ar.module1_scenario_name = p.module1_scenario_name
+       AND ar.population_id = p.population_id
+),
+unmatched AS (
+    SELECT
+        b.application_id,
+        &#39;BASELINE_ONLY&#39;::TEXT AS presence_status
+    FROM baseline_applications b
+    LEFT JOIN challenger_applications c
+        ON c.application_id = b.application_id
+    WHERE c.application_id IS NULL
+
+    UNION ALL
+
+    SELECT
+        c.application_id,
+        &#39;CHALLENGER_ONLY&#39;::TEXT AS presence_status
+    FROM challenger_applications c
+    LEFT JOIN baseline_applications b
+        ON b.application_id = c.application_id
+    WHERE b.application_id IS NULL
+)
+SELECT
+    application_id,
+    presence_status
+FROM unmatched
+ORDER BY
+    presence_status,
+    application_id
+LIMIT 100;
+
+
+/***************************************************************************************************
+END OF SECTION 13 — ARCHIVE INVENTORY AND MATCHED STRATEGY COMPARISON FRAMEWORK
+
+If execution reaches this point:
+    1. Archive inventory queries are available.
+    2. Comparison parameters are available through tmp_m2_strategy_comparison_params.
+    3. Selected comparison readiness can be diagnosed.
+    4. Portfolio-level baseline / challenger summaries can be reviewed.
+    5. Portfolio-level deltas can be reviewed.
+    6. Decision migration can be reviewed.
+    7. Matched applicant-level deltas can be sampled.
+    8. Product × score matched strategy deltas can be reviewed.
+    9. Reason-code distribution and migration can be reviewed.
+    10. Simulated offer-exposure comparison can be reviewed.
+    11. Unmatched application diagnostics can be reviewed.
+
+No archive rows have been inserted, deleted, or updated.
+No decision outcomes have been recalculated.
+No approved exposure or approved Expected Loss has been recalculated.
+No simulated reason codes have been reassigned.
+No full Module 2 QA framework has been created.
+No BRD or Validation Summary documentation has been drafted.
+
+***************************************************************************************************/
+</code></pre>
+<h1>3. What Section 13 establishes</h1>
+<p>Section 13 establishes a read-only archive inventory and matched strategy comparison framework. It allows users to inspect archived Module 2 strategy slices, select a baseline and challenger, test whether those slices are match-ready, compare portfolio-level outcomes, review decision migration, inspect row-level deltas, analyze product × score movements, compare reason-code migration, and evaluate simulated offer-exposure differences.</p>
+<h1>4. What Section 13 intentionally does not build</h1>
+<p>Section 13 does not modify the archive, recalculate outcomes, reassign reason codes, recalculate approved exposure, build the full QA framework, create dashboards, or draft BRD / Validation Summary documentation.</p>
+<h1>5. Recommended next build step</h1>
+<p>Next should be:</p>
+<pre><code class="language-text">Section 14 — Module 2 Validation, QA, and Strategy Tuning Pass
+</code></pre>
+<p>That section should validate the completed Module 2 pipeline end-to-end, including structural integrity, decision distribution, risk ordering, affordability sensitivity, reason-code coverage, approved exposure consistency, archive persistence, and matched strategy comparison behavior.</p>
+</div></article><article id="c038-m00169" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00169 · 2026-05-06T16:24:04.870000-04:00 · active path</p><div class="body"><p>This is strong. I agree with the Section 12 targeted patches and the Section 13 Archive Inventory and Matched Strategy Comparison Framework.</p>
+<p>Section 13 correctly:</p>
+<ul>
+<li>consumes credit_decisioning_sim.strategy_decisions_archive</li>
+<li>remains read-only</li>
+<li>provides archive inventory</li>
+<li>creates a comparison parameter table</li>
+<li>supports baseline vs challenger strategy comparison</li>
+<li>requires the same Module 1 scenario and population for v1.0 matched strategy comparison</li>
+<li>preserves the distinction between Module 1 scenario metadata and Module 2 strategy metadata</li>
+<li>uses application_id for row-level matching</li>
+<li>provides comparison readiness diagnostics</li>
+<li>provides portfolio-level strategy summaries</li>
+<li>provides baseline vs challenger delta summaries</li>
+<li>provides decision migration analysis</li>
+<li>provides matched applicant-level delta samples</li>
+<li>provides product × score matched strategy deltas</li>
+<li>provides reason-code movement analysis</li>
+<li>provides simulated offer-exposure comparison</li>
+<li>provides unmatched-row diagnostics</li>
+<li>avoids archive mutation</li>
+<li>avoids decision recalculation</li>
+<li>avoids reason-code recalculation</li>
+<li>avoids approved exposure / approved Expected Loss recalculation</li>
+<li>avoids full Module 2 QA</li>
+<li>avoids BRD or Validation Summary documentation</li>
+</ul>
+<p>Treat Section 13 as provisionally accepted, subject to the targeted refinements below.</p>
+<p>Do not rewrite Sections 0–13 in full unless necessary.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>TARGETED SECTION 13 PATCH — SAME-STRATEGY COMPARISON READINESS CHECK</h1>
+</li>
+</ol>
+<p>Please add an explicit readiness check preventing users from accidentally comparing the exact same strategy slice to itself.</p>
+<p>Current Section 13 already compares baseline and challenger strategy identifiers, but the readiness framework should explicitly label this failure mode.</p>
+<p>Add readiness_status value:</p>
+<p>NOT_READY_SAME_STRATEGY_SELECTED</p>
+<p>Condition:</p>
+<p>baseline_strategy_set_name = challenger_strategy_set_name
+AND baseline_strategy_name = challenger_strategy_name
+AND baseline_strategy_version = challenger_strategy_version</p>
+<p>Reason:
+A matched comparison between identical strategy identifiers may be useful for reproducibility testing in some future workflow, but Section 13 v1.0 is intended for comparing different archived Module 2 strategy runs.</p>
+<p>If a user selects the same strategy on both sides, the framework should clearly identify that no strategy comparison is being performed.</p>
+<p>Commentary should explain:</p>
+<ul>
+<li>same-strategy comparison is not a valid v1.0 strategy delta comparison</li>
+<li>deterministic reproducibility testing can be designed later if needed</li>
+<li>Section 13 v1.0 is focused on baseline vs challenger strategy comparison</li>
+</ul>
+<p>================================================================================
+2. TARGETED SECTION 13 PATCH — CLARIFY NULL-SENSITIVE APPROVED-EXPOSURE METRICS
+================================================================================</p>
+<p>Please disambiguate portfolio-level and segment-level metrics involving approved_amount, approved_payment_to_income_ratio, and approved_expected_loss_amount.</p>
+<p>Reason:
+APPROVE and COUNTEROFFER rows have approved exposure.
+DECLINE rows have zero approved exposure.
+MANUAL_REVIEW rows are unresolved and use NULL approved exposure fields by design.</p>
+<p>Therefore, an expression like:</p>
+<p>AVG(approved_amount)</p>
+<p>can be ambiguous because NULL manual-review rows are excluded automatically.</p>
+<p>Please use explicit metric names and formulas.</p>
+<p>Recommended conventions:</p>
+<p>All-application approved exposure metrics:</p>
+<ul>
+<li><p>avg_approved_amount_all_apps =
+  AVG(COALESCE(approved_amount, 0))</p>
+</li>
+<li><p>total_approved_amount =
+  SUM(COALESCE(approved_amount, 0))</p>
+</li>
+<li><p>avg_approved_expected_loss_all_apps =
+  AVG(COALESCE(approved_expected_loss_amount, 0))</p>
+</li>
+<li><p>total_approved_expected_loss =
+  SUM(COALESCE(approved_expected_loss_amount, 0))</p>
+</li>
+</ul>
+<p>Simulated-offer-only metrics:</p>
+<ul>
+<li><p>avg_approved_amount_offer_rows =
+  AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag = TRUE)</p>
+</li>
+<li><p>avg_approved_pti_offer_rows =
+  AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag = TRUE)</p>
+</li>
+<li><p>avg_approved_expected_loss_offer_rows =
+  AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag = TRUE)</p>
+</li>
+</ul>
+<p>Manual-review rows should remain unresolved.
+Do not force manual-review approved_amount to zero in the source data.</p>
+<p>Interpretation:</p>
+<ul>
+<li>all-app metrics describe portfolio-level simulated exposure impact</li>
+<li>offer-only metrics describe the profile of rows receiving simulated offer exposure</li>
+<li>manual review remains unresolved by design</li>
+</ul>
+<p>Apply this convention consistently in:</p>
+<ul>
+<li>portfolio-level archived strategy summary</li>
+<li>baseline vs challenger portfolio delta summary</li>
+<li>product × score matched strategy delta summary</li>
+<li>simulated offer-exposure comparison</li>
+</ul>
+<p>================================================================================
+3. TARGETED SECTION 13 PATCH — SAFE RATE AND DELTA DENOMINATORS
+================================================================================</p>
+<p>Please ensure all Section 13 rates and percentages use explicit safe denominators.</p>
+<p>Use NULLIF in denominators.</p>
+<p>Examples:</p>
+<p>approval_rate =
+    approval_count::NUMERIC / NULLIF(applications, 0)</p>
+<p>pct_of_matched_population =
+    matched_rows::NUMERIC / NULLIF(total_matched_rows, 0)</p>
+<p>delta_approval_rate =
+    challenger_approval_rate - baseline_approval_rate</p>
+<p>Do not rely on implicit integer division.</p>
+<p>Reason:
+Section 13 should remain robust even when a selected archive slice is missing, unmatched, or not ready for comparison.</p>
+<p>This is especially important because Section 13 is read-only and diagnostic; it should make non-readiness visible rather than failing unexpectedly in ordinary inventory review.</p>
+<p>================================================================================
+4. TARGETED SECTION 13 PATCH — MATCHED COMPARISON SHOULD USE MATCHED POPULATION DENOMINATOR
+================================================================================</p>
+<p>For decision migration and matched applicant-level delta summaries, make sure the denominator is the matched population count, not the baseline row count or challenger row count.</p>
+<p>Decision migration matrix should calculate:</p>
+<p>pct_of_matched_population =
+    matched_rows / total_matched_rows</p>
+<p>Where total_matched_rows comes from the joined baseline/challenger matched set.</p>
+<p>Reason:
+If baseline and challenger are not fully matched, the migration matrix should not pretend it represents the full population. The readiness query already identifies not-ready cases, but the migration metric should still be correctly denominated.</p>
+<p>================================================================================
+5. TARGETED SECTION 13 PATCH — TERMINOLOGY CLEANUP
+================================================================================</p>
+<p>Please review Section 13 commentary and query aliases for “booked,” “book,” or “approved-book” language.</p>
+<p>Preferred terminology:</p>
+<ul>
+<li>simulated offer exposure</li>
+<li>offered population</li>
+<li>positive offer outcomes</li>
+<li>simulated offer-exposure profile</li>
+<li>offer rows</li>
+</ul>
+<p>Avoid:</p>
+<ul>
+<li>booked exposure</li>
+<li>booked account</li>
+<li>approved book</li>
+<li>booked-book</li>
+<li>funded exposure</li>
+</ul>
+<p>Reason:
+Module 2 simulates strategy outcomes on synthetic applicants. It does not represent real booked accounts, funded exposures, or operational customer treatment.</p>
+<p>If any query currently uses approved_book_* naming, please rename it to simulated_offer_* or offer_exposure_*.</p>
+<p>================================================================================
+6. TARGETED SECTION 13 PATCH — REASON-CODE MOVEMENT SHOULD INCLUDE FAMILY AND CODE
+================================================================================</p>
+<p>Please make sure reason-code movement outputs include both reason family and reason code.</p>
+<p>For primary reason distribution, include:</p>
+<ul>
+<li>decision_outcome</li>
+<li>primary_reason_family</li>
+<li>primary_reason_code</li>
+<li>row_count</li>
+<li>pct_of_strategy_population</li>
+</ul>
+<p>For matched reason-code migration, include:</p>
+<ul>
+<li>baseline_primary_reason_family</li>
+<li>baseline_primary_reason_code</li>
+<li>challenger_primary_reason_family</li>
+<li>challenger_primary_reason_code</li>
+<li>matched_rows</li>
+<li>pct_of_matched_population</li>
+</ul>
+<p>Reason:
+Reason-code migration is more interpretable when the broad family movement and the specific code movement are both visible.</p>
+<p>Example:
+A movement from POLICY_STOP / POLICY_STOP_HIGH_DTI to MANUAL_REVIEW / MANUAL_REVIEW_ELEVATED_DTI is analytically different from a movement within the same family.</p>
+<p>================================================================================
+7. SECTION 13 ACCEPTANCE CRITERIA
+================================================================================</p>
+<p>After these targeted refinements, treat Section 13 as accepted if:</p>
+<ul>
+<li>it is read-only</li>
+<li>it does not insert, delete, update, or modify archive rows</li>
+<li>it does not recalculate decision_outcome</li>
+<li>it does not recalculate reason codes</li>
+<li>it does not recalculate approved exposure</li>
+<li>it does not recalculate approved Expected Loss</li>
+<li>it provides archive inventory</li>
+<li>it provides comparison parameter controls</li>
+<li>it clearly requires same Module 1 scenario and population for v1.0 matched comparison</li>
+<li>it prevents or clearly flags same-strategy comparison</li>
+<li>it reports comparison readiness</li>
+<li>it reports missing baseline or missing challenger slices</li>
+<li>it reports row-count mismatches</li>
+<li>it reports unmatched application_id counts</li>
+<li>it reports duplicate archive grain diagnostics</li>
+<li>it provides portfolio-level strategy summaries</li>
+<li>it provides baseline vs challenger delta summaries</li>
+<li>it provides decision migration matrix</li>
+<li>it provides matched applicant-level delta sample</li>
+<li>it provides product × score strategy delta summary</li>
+<li>it provides reason-code distribution and migration outputs</li>
+<li>it provides simulated offer-exposure comparison</li>
+<li>it provides unmatched-row diagnostics</li>
+<li>all rates use safe denominators</li>
+<li>matched comparison rates use matched-population denominators</li>
+<li>all approved-exposure metrics distinguish all-app vs offer-only interpretations</li>
+<li>no booked-account language appears</li>
+<li>no adverse-action, regulatory, customer-notice, or fair-lending language appears</li>
+<li>it does not build the full Module 2 QA framework</li>
+<li>it does not draft BRD or Validation Summary documentation</li>
+</ul>
+<p>================================================================================
+8. NEXT BUILD SCOPE: SECTION 14 ONLY
+================================================================================</p>
+<p>After the targeted Section 13 refinements, please build only:</p>
+<p>SECTION 14 — MODULE 2 VALIDATION, QA, AND STRATEGY OUTCOME DIAGNOSTICS</p>
+<p>Section 14 should consume:</p>
+<p>credit_decisioning_sim.strategy_decisions</p>
+<p>and, where useful for archive-readiness context:</p>
+<p>credit_decisioning_sim.strategy_decisions_archive</p>
+<p>However, Section 14 should primarily validate the latest-run output.</p>
+<p>Do not build:</p>
+<ul>
+<li>BRD documentation</li>
+<li>Validation Summary documentation</li>
+<li>dashboard artifacts</li>
+<li>production reporting layer</li>
+<li>new decision logic</li>
+<li>new reason-code logic</li>
+<li>new approved exposure calculations</li>
+<li>new archive insert logic</li>
+</ul>
+<p>Those belong outside Section 14.</p>
+<p>================================================================================
+9. SECTION 14 OBJECTIVE
+================================================================================</p>
+<p>Section 14 should provide the full Module 2 QA and validation query framework for the latest-run strategy output.</p>
+<p>Section 14 should answer:</p>
+<p>“Does this completed Module 2 strategy run behave coherently, consistently, and within the documented simulation boundaries?”</p>
+<p>Section 14 should not answer:</p>
+<p>“Is this a production underwriting policy?”
+“Is this empirically calibrated?”
+“Is this a regulatory adverse-action framework?”
+“Is this a fair lending conclusion?”</p>
+<p>Section 14 is the evidence layer for Module 2 validation.</p>
+<p>It should support:</p>
+<ul>
+<li>structural integrity review</li>
+<li>decision distribution review</li>
+<li>risk-ordering review</li>
+<li>affordability-sensitivity review</li>
+<li>reason-code coverage review</li>
+<li>counteroffer behavior review</li>
+<li>manual-review behavior review</li>
+<li>simulated offer-exposure review</li>
+<li>edge-case review</li>
+<li>documentation-ready validation interpretation</li>
+</ul>
+<p>================================================================================
+10. SECTION 14 DESIGN BOUNDARY
+================================================================================</p>
+<p>Section 14 should be read-only.</p>
+<p>It should not:</p>
+<ul>
+<li>insert rows</li>
+<li>delete rows</li>
+<li>update rows</li>
+<li>modify latest-run output</li>
+<li>modify archive output</li>
+<li>recalculate decision outcomes</li>
+<li>recalculate reason codes</li>
+<li>recalculate approved exposure</li>
+<li>recalculate approved Expected Loss</li>
+</ul>
+<p>It should only inspect and summarize completed Module 2 outputs.</p>
+<p>================================================================================
+11. SECTION 14 QA QUERY BLOCKS TO BUILD
+================================================================================</p>
+<p>Please build the following QA query blocks.</p>
+<hr>
+<h2>14.1 Latest-run structural integrity summary</h2>
+<p>Purpose:
+Confirm that the latest-run strategy_decisions table exists, is populated, and has the expected row-level integrity.</p>
+<p>Include:</p>
+<ul>
+<li>total rows</li>
+<li>distinct application_id count</li>
+<li>duplicate application_id count</li>
+<li>distinct strategy_set_name / strategy_name / strategy_version count</li>
+<li>distinct Module 1 scenario / population count</li>
+<li>row count by module1_input_source</li>
+<li>min/max latest_output_created_ts</li>
+</ul>
+<p>Expected interpretation:</p>
+<ul>
+<li>total rows should equal distinct application_id count</li>
+<li>exactly one active strategy should be present in the latest-run output</li>
+<li>exactly one Module 1 source scenario / population should be present unless multi-scenario processing is explicitly designed later</li>
+</ul>
+<hr>
+<h2>14.2 Final decision distribution</h2>
+<p>Purpose:
+Summarize final simulated strategy outcomes.</p>
+<p>Include:</p>
+<ul>
+<li>decision_outcome</li>
+<li>row_count</li>
+<li>pct_of_population</li>
+<li>approval_flag count</li>
+<li>counteroffer_flag count</li>
+<li>manual_review_flag count</li>
+<li>decline_flag count</li>
+<li>simulated_offer_exposure_flag count</li>
+</ul>
+<p>Expected interpretation:</p>
+<ul>
+<li>every row should have exactly one final outcome</li>
+<li>APPROVE + COUNTEROFFER represent simulated positive offer-exposure outcomes</li>
+<li>MANUAL_REVIEW remains unresolved</li>
+<li>DECLINE follows zero-exposure convention</li>
+</ul>
+<hr>
+<h2>14.3 Decision outcome by product</h2>
+<p>Purpose:
+Confirm product-level strategy behavior.</p>
+<p>Group by:</p>
+<ul>
+<li>product_type_policy_key</li>
+<li>decision_outcome</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>row_count</li>
+<li>pct_within_product</li>
+<li>avg estimated_pd</li>
+<li>avg requested_payment_to_income_ratio</li>
+<li>avg approved_payment_to_income_ratio for offer rows</li>
+<li>avg requested_expected_loss_amount</li>
+<li>avg approved_expected_loss_amount all-app and offer-only, using explicit metric names</li>
+</ul>
+<p>Interpretation:
+Product-level outcomes should reflect product-specific policy parameters and structural differences.</p>
+<hr>
+<h2>14.4 Decision outcome by score band</h2>
+<p>Purpose:
+Validate directional risk ordering by score band.</p>
+<p>Group by:</p>
+<ul>
+<li>score_band_policy_key</li>
+<li>decision_outcome</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>row_count</li>
+<li>pct_within_score_band</li>
+<li>avg estimated_pd</li>
+<li>avg requested_payment_to_income_ratio</li>
+<li>approval_rate</li>
+<li>counteroffer_rate</li>
+<li>manual_review_rate</li>
+<li>decline_rate</li>
+<li>simulated_offer_exposure_rate</li>
+</ul>
+<p>Expected interpretation:
+Stronger score bands should generally show higher approval / offer rates.
+Weaker score bands should generally show higher manual review or decline rates.</p>
+<p>Do not require perfect monotonicity at every micro-segment because product mix, affordability, and exposure structure can create realistic overlap.</p>
+<hr>
+<h2>14.5 Product × score decision matrix</h2>
+<p>Purpose:
+Show where strategy outcomes concentrate across product and credit quality.</p>
+<p>Group by:</p>
+<ul>
+<li>product_type_policy_key</li>
+<li>score_band_policy_key</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>applications</li>
+<li>approval_rate</li>
+<li>counteroffer_rate</li>
+<li>manual_review_rate</li>
+<li>decline_rate</li>
+<li>simulated_offer_exposure_rate</li>
+<li>avg estimated_pd</li>
+<li>avg requested_payment_to_income_ratio</li>
+<li>avg approved_payment_to_income_ratio for offer rows</li>
+<li>avg requested_expected_loss_amount</li>
+<li>avg approved_expected_loss_amount all-app and offer-only</li>
+</ul>
+<p>This should be one of the core validation outputs.</p>
+<hr>
+<h2>14.6 Risk-tier decision validation</h2>
+<p>Purpose:
+Validate that the synthetic estimated-risk segmentation flows coherently into outcomes.</p>
+<p>Group by:</p>
+<ul>
+<li>strategy_risk_tier</li>
+<li>decision_outcome</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>row_count</li>
+<li>pct_within_risk_tier</li>
+<li>avg estimated_pd</li>
+<li>approval_rate</li>
+<li>counteroffer_rate</li>
+<li>manual_review_rate</li>
+<li>decline_rate</li>
+<li>simulated_offer_exposure_rate</li>
+</ul>
+<p>Expected interpretation:
+Higher synthetic risk tiers should generally show lower approval rates and higher review / decline rates.</p>
+<p>Reminder:
+estimated_pd is the Module 1 synthetic estimated-PD proxy, not a calibrated production PD.</p>
+<hr>
+<h2>14.7 Requested PTI / affordability decision validation</h2>
+<p>Purpose:
+Validate that requested-structure affordability pressure affects strategy outcomes.</p>
+<p>Group by:</p>
+<ul>
+<li>requested_pti_bucket</li>
+<li>decision_outcome</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>row_count</li>
+<li>pct_within_requested_pti_bucket</li>
+<li>avg requested_payment_to_income_ratio</li>
+<li>avg approved_payment_to_income_ratio for offer rows</li>
+<li>approval_rate</li>
+<li>counteroffer_rate</li>
+<li>manual_review_rate</li>
+<li>decline_rate</li>
+</ul>
+<p>Expected interpretation:
+Higher requested PTI buckets should generally show fewer clean approvals and more counteroffer / manual review / decline outcomes.</p>
+<hr>
+<h2>14.8 DTI capacity decision validation</h2>
+<p>Purpose:
+Validate that DTI capacity pressure affects strategy routing.</p>
+<p>Group by:</p>
+<ul>
+<li>dti_bucket</li>
+<li>decision_outcome</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>row_count</li>
+<li>pct_within_dti_bucket</li>
+<li>avg debt_to_income_ratio</li>
+<li>approval_rate</li>
+<li>counteroffer_rate</li>
+<li>manual_review_rate</li>
+<li>decline_rate</li>
+</ul>
+<p>Expected interpretation:
+Higher DTI should generally reduce clean approval likelihood and increase review / decline routing.</p>
+<p>DTI remains an existing-obligation capacity signal and is not directly fixed by counteroffer in Module 2 v1.0.</p>
+<hr>
+<h2>14.9 Requested vs approved exposure and economics by outcome</h2>
+<p>Purpose:
+Validate final amount and economics conventions.</p>
+<p>Group by:</p>
+<ul>
+<li>decision_outcome</li>
+</ul>
+<p>Include:</p>
+<ul>
+<li>row_count</li>
+<li>avg requested_amount</li>
+<li>avg approved_amount_all_apps using COALESCE where appropriate</li>
+<li>avg approved_amount_offer_rows using FILTER where simulated_offer_exposure_flag = TRUE</li>
+<li>total requested_amount</li>
+<li>total approved_amount</li>
+<li>avg exposure_reduction_pct for counteroffers</li>
+<li>total requested_expected_loss_amount</li>
+<li>total approved_expected_loss_amount</li>
+<li>avg requested_expected_loss_amount</li>
+<li>avg approved_expected_loss_amount_all_apps</li>
+<li>avg approved_expected_loss_amount_offer_rows</li>
+</ul>
+<p>Expected interpretation:</p>
+<ul>
+<li>APPROVE rows should preserve requested amount and requested Expected Loss</li>
+<li>COUNTEROFFER rows should reduce approved amount and approved Expected Loss</li>
+<li>DECLINE rows should have zero approved exposure and zero approved Expected Loss</li>
+<li>MANUAL_REVIEW rows should remain unresolved with NULL approved exposure fields</li>
+</ul>
+<hr>
+<h2>14.10 Counteroffer validation diagnostics</h2>
+<p>Purpose:
+Validate that counteroffer outcomes are explainable and feasible.</p>
+<p>Include:</p>
+<ul>
+<li>count of final COUNTEROFFER rows</li>
+<li>count of preliminary COUNTEROFFER rows</li>
+<li>count of feasible counteroffers</li>
+<li>count of failed counteroffers</li>
+<li>counteroffer feasibility pass rate</li>
+<li>average exposure_reduction_pct for final COUNTEROFFER rows</li>
+<li>average approved_payment_to_income_ratio for final COUNTEROFFER rows</li>
+<li>average requested_payment_to_income_ratio for final COUNTEROFFER rows</li>
+<li>average approved_expected_loss_amount for final COUNTEROFFER rows</li>
+<li>count by counteroffer_feasibility_failure_reason</li>
+<li>product × counteroffer feasibility summary</li>
+<li>score band × counteroffer feasibility summary</li>
+</ul>
+<p>Expected interpretation:
+Counteroffer rows should show:</p>
+<ul>
+<li>approved_amount &lt; requested_amount</li>
+<li>reduced PTI relative to requested PTI</li>
+<li>approved Expected Loss at or below relevant approved-exposure cap</li>
+<li>interpretable reason-code assignment</li>
+</ul>
+<hr>
+<h2>14.11 Manual review validation diagnostics</h2>
+<p>Purpose:
+Validate unresolved manual-review population.</p>
+<p>Include:</p>
+<ul>
+<li>count of MANUAL_REVIEW rows</li>
+<li>manual_review_rate</li>
+<li>count by decision_path</li>
+<li>count by primary_reason_code</li>
+<li>avg estimated_pd</li>
+<li>avg requested_payment_to_income_ratio</li>
+<li>avg requested_expected_loss_amount</li>
+<li>mixed_signal_profile_type × manual review count</li>
+<li>borderline_profile_flag × manual review count</li>
+<li>failed-counteroffer-to-manual-review count</li>
+</ul>
+<p>Expected interpretation:
+Manual review should concentrate in unresolved, borderline, mixed-signal, or failed-counteroffer cases.</p>
+<p>Manual review should not have approved_amount, approved_payment_to_income_ratio, or approved_expected_loss_amount populated.</p>
+<hr>
+<h2>14.12 Decline / policy-stop validation diagnostics</h2>
+<p>Purpose:
+Validate final no-offer strategy outcomes.</p>
+<p>Include:</p>
+<ul>
+<li>count of DECLINE rows</li>
+<li>decline_rate</li>
+<li>count by decision_path</li>
+<li>count by primary_reason_code</li>
+<li>avg estimated_pd</li>
+<li>avg debt_to_income_ratio</li>
+<li>avg requested_payment_to_income_ratio</li>
+<li>avg requested_expected_loss_amount</li>
+<li>hard_policy_stop_flag × decline count</li>
+<li>bankruptcy_policy_stop_flag × decline count</li>
+<li>major_derogatory_policy_stop_flag × decline count</li>
+<li>severe_delinquency_policy_stop_flag × decline count</li>
+</ul>
+<p>Expected interpretation:
+Declines should be explainable through policy-stop, severe synthetic-risk, severe DTI, failed-counteroffer-to-decline, high requested PTI, requested Expected Loss, or exposure-limit drivers.</p>
+<p>Reason codes are simulated strategy explanation codes, not adverse-action reasons.</p>
+<hr>
+<h2>14.13 Reason-code coverage and alignment</h2>
+<p>Purpose:
+Validate reason-code completeness and family alignment.</p>
+<p>Include:</p>
+<ul>
+<li>count of rows with null primary_reason_code</li>
+<li>count of rows with null primary_reason_family</li>
+<li>count by decision_outcome × primary_reason_family</li>
+<li>count by decision_outcome × primary_reason_code</li>
+<li>count by primary_reason_code</li>
+<li>avg reason_code_count by decision_outcome</li>
+<li>rows with reason family leakage, if any</li>
+</ul>
+<p>Expected interpretation:</p>
+<ul>
+<li>APPROVE rows should use APPROVAL family</li>
+<li>COUNTEROFFER rows should use COUNTEROFFER family</li>
+<li>MANUAL_REVIEW rows should use MANUAL_REVIEW family</li>
+<li>DECLINE rows should use POLICY_STOP family</li>
+</ul>
+<p>No reason-code language should imply regulatory adverse-action, customer notice, or fair lending conclusions.</p>
+<hr>
+<h2>14.14 Simulated offer-exposure profile</h2>
+<p>Purpose:
+Summarize rows where simulated_offer_exposure_flag = TRUE.</p>
+<p>Include:</p>
+<ul>
+<li>offer_count</li>
+<li>simulated_offer_exposure_rate</li>
+<li>approval_share_of_offers</li>
+<li>counteroffer_share_of_offers</li>
+<li>total approved_amount</li>
+<li>avg approved_amount</li>
+<li>avg estimated_pd</li>
+<li>avg approved_payment_to_income_ratio</li>
+<li>total approved_expected_loss_amount</li>
+<li>avg approved_expected_loss_amount</li>
+<li>product × simulated offer-exposure profile</li>
+<li>score band × simulated offer-exposure profile</li>
+</ul>
+<p>Terminology:
+Use simulated offer exposure, not booked exposure.</p>
+<hr>
+<h2>14.15 Edge-case and mixed-signal review</h2>
+<p>Purpose:
+Validate that realistic edge cases remain visible and explainable.</p>
+<p>Include sample queries for:</p>
+<ul>
+<li>strong-credit / high requested PTI</li>
+<li>weak-credit / low requested PTI</li>
+<li>large exposure / low synthetic risk</li>
+<li>high synthetic risk / low exposure</li>
+<li>high DTI / low requested PTI</li>
+<li>multiple mixed-signal profiles</li>
+<li>borderline profiles</li>
+<li>counteroffer cases with large exposure reductions</li>
+<li>manual review residual fallback cases</li>
+<li>decline residual fallback cases, if any</li>
+</ul>
+<p>Recommended sample size:
+Limit each sample query to 25 or 50 rows.</p>
+<p>Expected interpretation:
+Edge cases should exist but be explainable through the staged logic.</p>
+<p>Do not treat realistic overlap as a defect unless it dominates or violates output conventions.</p>
+<hr>
+<h2>14.16 Final output convention validation</h2>
+<p>Purpose:
+Confirm final output conventions hold in the latest-run table.</p>
+<p>Include checks for:</p>
+<ul>
+<li>exactly one final outcome flag per row</li>
+<li>simulated_offer_exposure_flag aligns to APPROVE / COUNTEROFFER only</li>
+<li>APPROVE rows have approved_amount = requested_amount</li>
+<li>COUNTEROFFER rows have approved_amount &lt; requested_amount</li>
+<li>MANUAL_REVIEW rows have approved_amount IS NULL</li>
+<li>DECLINE rows have approved_amount = 0</li>
+<li>APPROVE rows have approved_expected_loss_amount = requested_expected_loss_amount</li>
+<li>COUNTEROFFER rows have approved_expected_loss_amount &lt;= requested_expected_loss_amount</li>
+<li>MANUAL_REVIEW rows have approved_expected_loss_amount IS NULL</li>
+<li>DECLINE rows have approved_expected_loss_amount = 0</li>
+</ul>
+<p>This should be diagnostic and suitable for validation evidence.</p>
+<hr>
+<h2>14.17 Archive and comparison readiness recap</h2>
+<p>Purpose:
+Summarize whether the latest run is archived and whether Section 13 comparison is available.</p>
+<p>Include:</p>
+<ul>
+<li>archive_run_flag</li>
+<li>strategy_archive_reset_mode</li>
+<li>latest-run row count</li>
+<li>current archived slice row count</li>
+<li>current archived slice distinct application_id count</li>
+<li>comparison inventory count for same strategy_set_name / Module 1 scenario / population</li>
+<li>whether at least two strategy slices exist for matched comparison</li>
+</ul>
+<p>This should not replace Section 13.
+It should simply give Section 14 users a final readiness snapshot.</p>
+<p>================================================================================
+12. SECTION 14 COMMENTARY QUALITY
+================================================================================</p>
+<p>Please keep the same elite commentary standard.</p>
+<p>Section 14 comments should explain:</p>
+<ul>
+<li>why QA is separated from output creation and archive persistence</li>
+<li>why Section 14 is read-only</li>
+<li>why decision distribution is not sufficient by itself</li>
+<li>why product, score, PTI, DTI, risk tier, reason-code, and exposure diagnostics are all needed</li>
+<li>why estimated_pd remains the synthetic estimated-PD proxy</li>
+<li>why requested Expected Loss and approved Expected Loss are both reviewed</li>
+<li>why manual review remains unresolved</li>
+<li>why simulated offer exposure is not booked exposure</li>
+<li>why reason codes are simulated strategy explanation codes only</li>
+<li>why edge cases should be reviewed rather than automatically suppressed</li>
+<li>why Section 14 is validation evidence but not the final written Validation Summary</li>
+</ul>
+<p>No silent assumptions.
+No unexplained magic numbers.
+No production-decision language.
+No booked-account language.
+No adverse-action reason-code language.</p>
+<p>================================================================================
+13. SECTION 14 DELIVERABLE
+================================================================================</p>
+<p>Please now provide:</p>
+<ol>
+<li><p>Targeted Section 13 patches only:</p>
+<ul>
+<li>same-strategy comparison readiness check</li>
+<li>null-sensitive approved-exposure metric clarification</li>
+<li>safe denominator handling</li>
+<li>matched-population denominator handling</li>
+<li>terminology cleanup from booked / approved-book to simulated offer exposure</li>
+<li>reason-code movement should include reason family and reason code</li>
+</ul>
+</li>
+<li><p>Section 14 SQL only:
+MODULE 2 VALIDATION, QA, AND STRATEGY OUTCOME DIAGNOSTICS.</p>
+</li>
+<li><p>A short explanation of what Section 14 establishes.</p>
+</li>
+<li><p>A short explanation of what Section 14 intentionally does not build.</p>
+</li>
+<li><p>The recommended next step after Section 14.</p>
+</li>
+</ol>
+<p>Do not draft the BRD or Validation Summary yet.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

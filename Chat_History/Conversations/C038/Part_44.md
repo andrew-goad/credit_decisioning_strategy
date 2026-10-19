@@ -1,0 +1,2472 @@
+# Module 2 Decision Simulator Build
+
+## Part 44
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_43.md) · [Next](Part_45.md)
+
+<a id="c038-m00926"></a>
+
+### C038-M00926
+
+**ChatGPT** · 2026-05-09T23:48:42.536199-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00926 -->
+I recommend replacing Section 7 with the version below. It preserves the routing logic from your current Section 7 while adding the dependency preflight and strengthening the teaching commentary around the credit-risk concepts, the routing hierarchy, and the SQL mechanics. fileciteturn93file1
+
+```sql
+/***************************************************************************************************
+SECTION 7 — PRELIMINARY DECISION ROUTING LAYER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Convert overlapping Section 6 rule-trigger flags into one transparent preliminary strategy route.
+
+    Section 7 answers:
+
+        "Based on current simulated strategy triggers, what path should this synthetic applicant be
+         routed toward before approved exposure, approved affordability, approved Expected Loss, and
+         counteroffer feasibility are evaluated?"
+
+    Section 7 does not answer:
+
+        "What is the final simulated strategy outcome?"
+
+    This section is the route-priority layer.
+
+    It translates overlapping rule-trigger evidence into one preliminary path while preserving all
+    underlying trigger evidence for later exposure treatment, final decision resolution, simulated
+    reason-code assignment, QA, comparison, and validation evidence.
+
+SQL PURPOSE:
+    1. Confirm required Section 7 dependencies exist.
+    2. Read from tmp_m2_stage_3_rule_flags.
+    3. Preserve all prior source, lineage, Module 2 strategy metadata, segmentation, threshold,
+       product-policy, and rule-trigger fields.
+    4. Create the severe requested-structure diagnostic trigger used by routing.
+    5. Apply a transparent preliminary routing hierarchy.
+    6. Create preliminary_decision_outcome, preliminary_decision_path,
+       preliminary_decision_priority_rank, and preliminary_route_reason_family.
+    7. Create preliminary-only outcome flags:
+            preliminary_decline_flag
+            preliminary_counteroffer_flag
+            preliminary_manual_review_flag
+            preliminary_approve_flag
+    8. Create exposure-routing flags:
+            requires_counteroffer_feasibility_flag
+            requires_approved_exposure_calculation_flag
+    9. Validate routing completeness, preliminary flag reconciliation, hierarchy consistency, and
+       exposure-routing flag consistency.
+    10. Confirm that final decision fields, simulated reason-code fields, and approved-exposure
+        economics fields are not created in this section.
+    11. Provide local preliminary-routing diagnostics before Section 8 exposure-treatment logic runs.
+
+WHO SHOULD REVIEW THIS SECTION:
+    Credit strategy reviewers:
+        Confirm that the route-priority hierarchy reflects the intended simulated strategy posture:
+        severe policy stops first, severe synthetic estimated-risk and DTI before counteroffer,
+        counteroffer feasibility testing before final counteroffer, unresolved severe requested
+        structure to review, clean approval only after material triggers have cleared.
+
+    Model governance / validation reviewers:
+        Confirm that Section 7 remains preliminary routing only and does not prematurely assign final
+        decisions, approved exposure, approved Expected Loss, or reason codes.
+
+    SQL reviewers:
+        Confirm that the routing hierarchy is explicit, deterministic, auditable, and enforced with
+        local gatekeepers.
+
+    Portfolio / executive reviewers:
+        Use Section 7 diagnostics to understand how the rule-trigger population is being directed
+        into preliminary route families before final outcome economics are calculated.
+
+WHEN TO RUN THIS SECTION:
+    Run Section 7 after:
+
+        Section 6 — Rule Flag Construction Layer
+
+    Section 7 should be run before:
+
+        Section 8 — Approved Exposure and Counteroffer Feasibility Layer
+
+    Section 7 depends on:
+
+        tmp_m2_stage_3_rule_flags
+
+HOW TO INTERPRET THIS SECTION:
+    Passing Section 7 means:
+        row count is preserved from Section 6,
+        application_id remains unique,
+        every row has exactly one preliminary route,
+        preliminary flags reconcile to preliminary_decision_outcome,
+        the route-priority hierarchy is enforced,
+        preliminary COUNTEROFFER rows are marked for counteroffer feasibility testing,
+        preliminary APPROVE and preliminary COUNTEROFFER rows are marked for approved-exposure
+        calculation,
+        and no final outcome / reason-code / approved-exposure fields were created early.
+
+    Passing Section 7 does not mean:
+        a final decision has been assigned,
+        a counteroffer is feasible,
+        approved amount exists,
+        approved monthly payment exists,
+        approved PTI exists,
+        approved Expected Loss exists,
+        simulated offer exposure exists,
+        reason codes are assigned,
+        archive persistence worked,
+        or full validation has passed.
+
+INPUT:
+    tmp_m2_stage_3_rule_flags
+
+OUTPUT:
+    tmp_m2_stage_4_preliminary_decision_routing
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+PRELIMINARY ROUTING HIERARCHY:
+    Priority 1:
+        Hard simulated policy stop route
+
+    Priority 2:
+        Severe synthetic estimated-risk route
+
+    Priority 3:
+        Severe DTI capacity route
+
+    Priority 4:
+        Counteroffer feasibility-check route
+
+    Priority 5:
+        Severe requested-structure review route
+
+    Priority 6:
+        Manual-review candidate route
+
+    Priority 7:
+        Clean approval candidate route
+
+    Priority 8:
+        Residual strategy review fallback
+
+WHY THIS IS PRELIMINARY ROUTING, NOT FINAL DECISIONING:
+    Section 6 identifies which simulated policy, risk, affordability, DTI, requested Expected Loss,
+    requested exposure, counteroffer, and review triggers are active.
+
+    Those triggers can overlap.
+
+    Section 7 chooses one preliminary path using a documented priority order.
+
+    Final decision_outcome is deferred because preliminary route selection is not enough to determine
+    final approved exposure, approved affordability, approved Expected Loss, counteroffer feasibility,
+    or reason-code explanation.
+
+WHY COUNTEROFFER FEASIBILITY CANNOT BE FINALIZED HERE:
+    A preliminary COUNTEROFFER route means:
+
+        "This row should be tested for reduced-exposure feasibility."
+
+    It does not mean:
+        approved_amount exists,
+        counteroffer_amount exists,
+        approved monthly payment proxy exists,
+        approved PTI exists,
+        approved Expected Loss exists,
+        or a viable counteroffer has been created.
+
+    Section 8 calculates those economics.
+
+    Section 9 decides whether the preliminary counteroffer becomes final COUNTEROFFER, MANUAL_REVIEW,
+    or DECLINE based on feasibility and the governed failed_counteroffer_resolution parameter.
+
+WHY HARD SIMULATED POLICY STOPS OVERRIDE OTHER TRIGGERS:
+    Hard simulated policy-stop conditions represent the highest-priority simulated stop family in the
+    route hierarchy.
+
+    A row may also have affordability pressure, exposure pressure, or counteroffer candidacy, but the
+    hard simulated policy stop should remain visible as the selected preliminary path because it is the
+    highest-priority route driver.
+
+WHY SEVERE SYNTHETIC ESTIMATED-RISK IS NOT SOLVED BY EXPOSURE REDUCTION:
+    Module 2 V1.0 does not create a post-decision risk model.
+
+    It does not recalculate estimated_pd after changing exposure.
+
+    estimated_pd remains the Module 1 SQL field and is interpreted as the synthetic estimated-PD
+    proxy input.
+
+    Severe synthetic estimated-risk therefore routes to preliminary no-offer before counteroffer
+    feasibility is tested.
+
+WHY SEVERE DTI IS TREATED AS EXISTING-OBLIGATION CAPACITY:
+    DTI reflects existing borrower obligations.
+
+    Reducing requested exposure may improve requested PTI, but it does not directly change the
+    synthetic applicant's existing obligations.
+
+    Severe DTI therefore routes before counteroffer feasibility in Module 2 V1.0.
+
+WHY REQUESTED-STRUCTURE SEVERE STRESS MAY ROUTE TO REVIEW:
+    Requested PTI, requested Expected Loss, and requested exposure stress may be addressable through
+    exposure treatment in some cases.
+
+    Section 8 has not yet tested that feasibility.
+
+    If a row is not already a counteroffer candidate and is not routed by a higher-priority simulated
+    no-offer condition, unresolved severe requested-structure stress routes to preliminary review
+    rather than silent approval.
+
+WHY MANUAL REVIEW REMAINS UNRESOLVED:
+    Section 7 may route a row to preliminary MANUAL_REVIEW.
+
+    That does not create approved exposure, approved PTI, approved Expected Loss, or a completed
+    operational review.
+
+    Manual review remains unresolved until the final decision layer preserves the unresolved
+    convention.
+
+WHY CLEAN APPROVAL IS STILL PRELIMINARY:
+    A clean approval candidate still requires later population of:
+        approved_amount,
+        approved monthly payment proxy,
+        approved PTI,
+        approved Expected Loss,
+        final decision flags,
+        simulated offer-exposure flag,
+        and simulated reason codes.
+
+    Section 7 therefore creates preliminary APPROVE routing only.
+
+WHY RESIDUAL CASES ROUTE TO REVIEW:
+    Unclassified synthetic profiles should not silently become approvals or declines.
+
+    Residual preliminary review is intentionally conservative, audit-readable, and easier to validate.
+
+REASON-CODE BOUNDARY:
+    Section 7 does not assign simulated reason codes.
+
+    It does not create:
+        primary_reason_code,
+        secondary_reason_code,
+        tertiary_reason_code,
+        triggered_reason_code_list,
+        reason_priority_rank,
+        primary_reason_family.
+
+APPROVED-EXPOSURE BOUNDARY:
+    Section 7 does not calculate:
+        approved_amount,
+        counteroffer_amount,
+        approved_monthly_payment_proxy,
+        approved_payment_to_income_ratio,
+        approved_expected_loss_amount.
+
+FINAL OUTCOME BOUNDARY:
+    Section 7 does not create:
+        decision_outcome,
+        decision_path,
+        approval_flag,
+        decline_flag,
+        manual_review_flag,
+        counteroffer_flag,
+        simulated_offer_exposure_flag.
+
+SQL CONCEPTS TAUGHT IN THIS SECTION:
+    CREATE TEMP TABLE ... AS:
+        Materializes the preliminary-routing layer as a session-scoped staging table.
+
+    ON COMMIT PRESERVE ROWS:
+        Keeps the staging table available across transaction boundaries in the active session.
+
+    CTE chain:
+        The WITH clause breaks routing into named steps:
+            route_inputs
+            route_assignment
+            preliminary_flags
+
+    CASE:
+        Implements the priority hierarchy. CASE evaluates top to bottom and returns the first matching
+        branch, which makes the order of route conditions materially important.
+
+    Boolean logic:
+        Uses TRUE / FALSE trigger fields from Section 6 to decide route eligibility.
+
+    Boolean::INT:
+        Converts TRUE / FALSE signals into 1 / 0 so preliminary_route_trigger_count can count how
+        many broad route families are active before priority selection.
+
+    IS DISTINCT FROM:
+        Used in gatekeepers for NULL-safe reconciliation of Boolean flags and expected values.
+
+    pg_attribute:
+        Inspects physical columns on the temporary table to confirm that downstream-only fields were
+        not created too early.
+
+GOVERNANCE ROLE:
+    Section 7 makes the route-priority hierarchy explicit and reviewable.
+
+    It supports auditability by showing how overlapping Section 6 triggers are converted into one
+    preliminary path without overstating that path as a final strategy outcome.
+
+COMMON MISUSE TO AVOID:
+    Do not interpret preliminary_decision_outcome as final decision_outcome.
+    Do not interpret preliminary COUNTEROFFER as a feasible counteroffer.
+    Do not interpret preliminary APPROVE as completed positive offer exposure.
+    Do not interpret preliminary MANUAL_REVIEW as a completed operational review process.
+    Do not infer approved exposure, approved PTI, approved Expected Loss, or simulated reason-code
+    assignment from Section 7.
+    Do not treat preliminary route-family labels as customer-facing reason codes.
+
+TESTING RELEVANCE:
+    Section 7 local diagnostics help reviewers verify:
+        row-count preservation,
+        application_id uniqueness,
+        preliminary route coverage,
+        preliminary flag reconciliation,
+        priority hierarchy behavior,
+        counteroffer feasibility routing requirements,
+        approved-exposure routing requirements,
+        and absence of final outcome / reason-code / approved-exposure fields.
+
+DOWNSTREAM DEPENDENCY:
+    Section 8 consumes tmp_m2_stage_4_preliminary_decision_routing.
+
+    Section 8 uses:
+        preliminary_decision_outcome,
+        requires_counteroffer_feasibility_flag,
+        requires_approved_exposure_calculation_flag,
+        product policy thresholds,
+        requested structure fields,
+        estimated_pd,
+        estimated_lgd,
+        and counteroffer controls
+
+    to determine which rows require exposure-treatment evaluation.
+
+PORTFOLIO ARTIFACT VALUE:
+    This section demonstrates disciplined separation between trigger identification, route priority,
+    exposure feasibility, final outcome assignment, reason-code explanation, archive persistence, and
+    validation evidence.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 7.0 — SECTION 7 DEPENDENCY PREFLIGHT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Confirm that Section 6 rule-trigger output exists and is populated before preliminary routing is
+    built.
+
+    Section 7.0 answers:
+
+        "Can Section 7 safely route the current Section 6 trigger population?"
+
+SQL PURPOSE:
+    1. Confirm tmp_m2_stage_3_rule_flags exists.
+    2. Confirm the rule-flag table contains rows.
+    3. Confirm application_id remains unique before routing is added.
+    4. Confirm the Section 6 trigger fields required by Section 7 are populated.
+    5. Fail clearly if Section 7 is run out of order.
+
+WHY THIS PREFLIGHT EXISTS:
+    Section 7 is a transformation layer.
+
+    It should fail with a clear instructional message if Section 6 has not run, rather than producing
+    a lower-level missing-table error.
+
+BOUNDARY:
+    Section 7.0 does not create preliminary routes.
+    Section 7.0 does not create final decisions.
+    Section 7.0 does not create reason codes.
+    Section 7.0 does not calculate approved exposure.
+    Section 7.0 does not modify any persistent table.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    v_stage3_exists BOOLEAN;
+    v_stage3_row_count BIGINT;
+    v_stage3_distinct_application_count BIGINT;
+    v_required_trigger_gap_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Dependency check: Section 6 rule-flag table must exist.
+
+    SQL mechanics:
+        TO_REGCLASS checks whether the temporary object exists.
+
+        pg_temp is checked because tmp_m2_stage_3_rule_flags is a temporary table.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS('pg_temp.tmp_m2_stage_3_rule_flags'),
+        TO_REGCLASS('tmp_m2_stage_3_rule_flags')
+    ) IS NOT NULL
+    INTO v_stage3_exists;
+
+    IF v_stage3_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: tmp_m2_stage_3_rule_flags is required. Run Section 6 before Section 7.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 6 rule-flag table must contain rows.
+
+    Business interpretation:
+        Preliminary routing over an empty applicant population is not useful and usually indicates an
+        upstream source, segmentation, or rule-trigger issue.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage3_row_count
+    FROM tmp_m2_stage_3_rule_flags;
+
+    IF v_stage3_row_count <= 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: tmp_m2_stage_3_rule_flags contains zero rows.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id should be unique before preliminary routes are added.
+
+    Section 7 should add routing fields only.
+
+    It should not repair grain problems from earlier stages.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage3_distinct_application_count
+    FROM tmp_m2_stage_3_rule_flags;
+
+    IF v_stage3_distinct_application_count <> v_stage3_row_count THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: tmp_m2_stage_3_rule_flags is not unique at application_id. Rows=%, distinct application_id=%.',
+            v_stage3_row_count,
+            v_stage3_distinct_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: trigger fields required by Section 7 must be populated.
+
+    Business interpretation:
+        Section 7 depends on Section 6 producing the trigger families used in the route hierarchy.
+
+    Required route-driving fields:
+        hard_policy_stop_flag,
+        synthetic_risk_decline_trigger_flag,
+        dti_decline_trigger_flag,
+        counteroffer_candidate_flag,
+        manual_review_candidate_flag,
+        clean_approval_candidate_flag,
+        requested_pti_decline_trigger_flag,
+        requested_el_decline_trigger_flag,
+        requested_exposure_extreme_flag,
+        exposure_policy_stop_candidate_flag.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_required_trigger_gap_count
+    FROM tmp_m2_stage_3_rule_flags
+    WHERE hard_policy_stop_flag IS NULL
+       OR synthetic_risk_decline_trigger_flag IS NULL
+       OR dti_decline_trigger_flag IS NULL
+       OR counteroffer_candidate_flag IS NULL
+       OR manual_review_candidate_flag IS NULL
+       OR clean_approval_candidate_flag IS NULL
+       OR requested_pti_decline_trigger_flag IS NULL
+       OR requested_el_decline_trigger_flag IS NULL
+       OR requested_exposure_extreme_flag IS NULL
+       OR exposure_policy_stop_candidate_flag IS NULL;
+
+    IF v_required_trigger_gap_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: % Section 6 row(s) are missing rule-trigger fields required for preliminary routing.',
+            v_required_trigger_gap_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 7.1 — CLEAN RESET OF SECTION 7 STAGING OBJECT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Drop the Section 7 preliminary-routing stage before rebuilding it.
+
+SQL PURPOSE:
+    Remove only the temporary Section 7 staging table.
+
+WHY THIS MATTERS:
+    A partial rerun should not allow stale preliminary-routing rows to remain available to Section 8.
+
+    Section 8 assumes tmp_m2_stage_4_preliminary_decision_routing reflects the current:
+        Section 6 rule-trigger output,
+        active strategy parameter state already carried forward,
+        product policy thresholds already carried forward,
+        and route-priority hierarchy.
+
+SQL MECHANICS:
+    DROP TABLE IF EXISTS makes the reset rerunnable.
+
+    If the table does not exist, PostgreSQL does not error.
+
+BOUNDARY:
+    This drop affects only the temporary Section 7 staging object.
+
+    It does not modify Module 1 outputs.
+    It does not modify Module 2 latest-run output.
+    It does not modify Module 2 archive output.
+    It does not modify evidence tables.
+    It does not modify registry tables.
+
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_stage_4_preliminary_decision_routing;
+
+
+
+/***************************************************************************************************
+SECTION 7.2 — CREATE PRELIMINARY DECISION ROUTING TABLE
+****************************************************************************************************
+
+TABLE:
+    tmp_m2_stage_4_preliminary_decision_routing
+
+GRAIN:
+    One row per application_id for the selected Module 1 scenario / population and active Module 2
+    strategy.
+
+INPUT:
+    tmp_m2_stage_3_rule_flags
+
+OUTPUT:
+    All Section 6 fields plus preliminary-routing fields only.
+
+FIELDS CREATED:
+    preliminary_decision_outcome
+    preliminary_decision_path
+    preliminary_decision_priority_rank
+    preliminary_route_reason_family
+    preliminary_route_trigger_count
+
+    preliminary_decline_flag
+    preliminary_counteroffer_flag
+    preliminary_manual_review_flag
+    preliminary_approve_flag
+
+    requires_counteroffer_feasibility_flag
+    requires_approved_exposure_calculation_flag
+
+SQL DESIGN:
+    This section uses a short CTE chain so the routing process is readable and reviewable.
+
+    The chain is:
+
+        route_inputs
+            preserves Section 6 output and adds severe_requested_structure_trigger_flag.
+
+        route_assignment
+            applies the preliminary routing hierarchy.
+
+        preliminary_flags
+            adds preliminary outcome flags and exposure-routing flags.
+
+WHY SELECT * IS ACCEPTABLE HERE:
+    This is a temporary staging layer, not a permanent output table.
+
+    Section 7 intentionally preserves all prior fields plus preliminary-routing diagnostics for
+    Section 8 exposure treatment.
+
+    Permanent output selection is handled later with an explicit field list in Section 11.
+
+***************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_stage_4_preliminary_decision_routing
+ON COMMIT PRESERVE ROWS
+AS
+WITH route_inputs AS (
+    /***********************************************************************************************
+    CTE: route_inputs
+
+    Purpose:
+        Preserve all Section 6 rule-trigger fields and create severe requested-structure diagnostics.
+
+    Why this CTE exists:
+        Section 6 creates individual trigger families.
+
+        Section 7 needs a compact route-driving signal for unresolved severe requested-structure
+        pressure that is not already counteroffer-eligible and not already routed by higher-priority
+        no-offer conditions.
+
+    Credit risk interpretation:
+        Severe requested-structure pressure includes severe requested PTI, severe requested Expected
+        Loss, extreme requested exposure, and requested exposure policy-stop candidacy.
+
+        These are based on requested structure, not approved exposure.
+
+        Section 8 has not yet calculated whether reduced exposure can solve any of these pressures.
+    ***********************************************************************************************/
+    SELECT
+        rf.*,
+
+        /*******************************************************************************************
+        severe_requested_structure_trigger_flag.
+
+        TRUE when any severe requested-structure pressure indicator is active.
+
+        This is not a final decision.
+        It is a route-priority input.
+
+        Components:
+            requested_pti_decline_trigger_flag:
+                requested PTI is at or above the product decline threshold.
+
+            requested_el_decline_trigger_flag:
+                requested-exposure Expected Loss is at or above the product requested-EL decline
+                threshold.
+
+            requested_exposure_extreme_flag:
+                requested amount is extreme relative to product policy and exposure-reduction
+                constraints.
+
+            exposure_policy_stop_candidate_flag:
+                requested exposure is below product minimum or extreme enough to be a policy-stop
+                candidate.
+        *******************************************************************************************/
+        (
+            rf.requested_pti_decline_trigger_flag
+            OR rf.requested_el_decline_trigger_flag
+            OR rf.requested_exposure_extreme_flag
+            OR rf.exposure_policy_stop_candidate_flag
+        ) AS severe_requested_structure_trigger_flag,
+
+        /*******************************************************************************************
+        severe_requested_structure_trigger_count.
+
+        SQL mechanics:
+            Boolean::INT converts TRUE to 1 and FALSE to 0.
+
+        Interpretation:
+            This count tells reviewers how many severe requested-structure dimensions are active
+            before routing priority is applied.
+        *******************************************************************************************/
+        (
+            rf.requested_pti_decline_trigger_flag::INT
+            + rf.requested_el_decline_trigger_flag::INT
+            + rf.requested_exposure_extreme_flag::INT
+            + rf.exposure_policy_stop_candidate_flag::INT
+        ) AS severe_requested_structure_trigger_count
+
+    FROM tmp_m2_stage_3_rule_flags rf
+),
+
+route_assignment AS (
+    /***********************************************************************************************
+    CTE: route_assignment
+
+    Purpose:
+        Convert overlapping rule-trigger evidence into one preliminary route.
+
+    SQL mechanics:
+        CASE evaluates conditions from top to bottom and returns the first matching branch.
+
+        This means the order of WHEN clauses is the route-priority hierarchy.
+
+    Credit risk interpretation:
+        A row can have many triggers, but a strategy simulator needs one preliminary path to send
+        forward into exposure-treatment logic.
+
+        Section 7 does not erase the underlying triggers.
+        It selects the preliminary path while preserving all Section 6 evidence.
+    ***********************************************************************************************/
+    SELECT
+        ri.*,
+
+        /*******************************************************************************************
+        preliminary_decision_outcome.
+
+        Allowed values:
+            APPROVE
+            COUNTEROFFER
+            MANUAL_REVIEW
+            DECLINE
+
+        These are preliminary routing labels only.
+
+        Final decision_outcome is created later after exposure treatment and counteroffer feasibility.
+        *******************************************************************************************/
+        CASE
+            /***************************************************************************************
+            Priority 1 — Hard simulated policy stop route.
+
+            A hard simulated policy stop is the highest-priority preliminary route.
+            ***************************************************************************************/
+            WHEN ri.hard_policy_stop_flag IS TRUE
+                THEN 'DECLINE'
+
+            /***************************************************************************************
+            Priority 2 — Severe synthetic estimated-risk route.
+
+            Severe synthetic estimated-risk is routed before counteroffer because Module 2 V1.0 does
+            not recalculate estimated_pd after reducing exposure.
+            ***************************************************************************************/
+            WHEN ri.synthetic_risk_decline_trigger_flag IS TRUE
+                THEN 'DECLINE'
+
+            /***************************************************************************************
+            Priority 3 — Severe DTI capacity route.
+
+            Severe DTI is routed before counteroffer because DTI reflects existing obligation
+            capacity and is not directly solved by requested exposure reduction.
+            ***************************************************************************************/
+            WHEN ri.dti_decline_trigger_flag IS TRUE
+                THEN 'DECLINE'
+
+            /***************************************************************************************
+            Priority 4 — Counteroffer feasibility-check route.
+
+            This does not assign a final COUNTEROFFER.
+
+            It sends the row to Section 8 for approved-exposure and feasibility testing.
+            ***************************************************************************************/
+            WHEN ri.counteroffer_candidate_flag IS TRUE
+                THEN 'COUNTEROFFER'
+
+            /***************************************************************************************
+            Priority 5 — Severe requested-structure review route.
+
+            If the row has severe requested-structure pressure but is not already a counteroffer
+            candidate and has not been routed by a higher-priority decline condition, route to
+            unresolved review rather than silently approving.
+            ***************************************************************************************/
+            WHEN ri.severe_requested_structure_trigger_flag IS TRUE
+             AND ri.counteroffer_candidate_flag IS DISTINCT FROM TRUE
+                THEN 'MANUAL_REVIEW'
+
+            /***************************************************************************************
+            Priority 6 — Manual-review candidate route.
+
+            Review-oriented signals remain unresolved at this stage.
+            ***************************************************************************************/
+            WHEN ri.manual_review_candidate_flag IS TRUE
+                THEN 'MANUAL_REVIEW'
+
+            /***************************************************************************************
+            Priority 7 — Clean approval candidate route.
+
+            This is preliminary only. Section 8 and Section 9 still need to populate approved
+            exposure and final outcome conventions.
+            ***************************************************************************************/
+            WHEN ri.clean_approval_candidate_flag IS TRUE
+                THEN 'APPROVE'
+
+            /***************************************************************************************
+            Priority 8 — Residual strategy review fallback.
+
+            Unclassified rows should not silently become approvals or declines.
+            ***************************************************************************************/
+            ELSE 'MANUAL_REVIEW'
+        END AS preliminary_decision_outcome,
+
+
+        /*******************************************************************************************
+        preliminary_decision_path.
+
+        This field describes which preliminary route selected the row.
+
+        It is not final decision_path.
+
+        Final decision_path is created later after exposure-treatment feasibility and final decision
+        resolution.
+        *******************************************************************************************/
+        CASE
+            WHEN ri.hard_policy_stop_flag IS TRUE
+                THEN 'HARD_POLICY_STOP'
+
+            WHEN ri.synthetic_risk_decline_trigger_flag IS TRUE
+                THEN 'SEVERE_SYNTHETIC_RISK'
+
+            WHEN ri.dti_decline_trigger_flag IS TRUE
+                THEN 'SEVERE_DTI_CAPACITY'
+
+            WHEN ri.counteroffer_candidate_flag IS TRUE
+                THEN 'COUNTEROFFER_FEASIBILITY_CHECK'
+
+            WHEN ri.severe_requested_structure_trigger_flag IS TRUE
+             AND ri.counteroffer_candidate_flag IS DISTINCT FROM TRUE
+                THEN 'REQUESTED_STRUCTURE_SEVERE_REVIEW'
+
+            WHEN ri.manual_review_candidate_flag IS TRUE
+                THEN 'MANUAL_REVIEW_CANDIDATE'
+
+            WHEN ri.clean_approval_candidate_flag IS TRUE
+                THEN 'CLEAN_APPROVAL_CANDIDATE'
+
+            ELSE 'RESIDUAL_STRATEGY_REVIEW'
+        END AS preliminary_decision_path,
+
+
+        /*******************************************************************************************
+        preliminary_decision_priority_rank.
+
+        Lower rank means higher priority.
+
+        These ranks are diagnostic route-priority labels.
+
+        They are not reason-code priority ranks.
+        They are not final outcome priority ranks.
+        *******************************************************************************************/
+        CASE
+            WHEN ri.hard_policy_stop_flag IS TRUE
+                THEN 1
+
+            WHEN ri.synthetic_risk_decline_trigger_flag IS TRUE
+                THEN 2
+
+            WHEN ri.dti_decline_trigger_flag IS TRUE
+                THEN 3
+
+            WHEN ri.counteroffer_candidate_flag IS TRUE
+                THEN 4
+
+            WHEN ri.severe_requested_structure_trigger_flag IS TRUE
+             AND ri.counteroffer_candidate_flag IS DISTINCT FROM TRUE
+                THEN 5
+
+            WHEN ri.manual_review_candidate_flag IS TRUE
+                THEN 6
+
+            WHEN ri.clean_approval_candidate_flag IS TRUE
+                THEN 7
+
+            ELSE 8
+        END AS preliminary_decision_priority_rank,
+
+
+        /*******************************************************************************************
+        preliminary_route_reason_family.
+
+        This is a route-family label for auditability.
+
+        It is not a simulated reason code.
+
+        Simulated reason codes are assigned later in Section 10 after final decision_outcome exists.
+        *******************************************************************************************/
+        CASE
+            WHEN ri.hard_policy_stop_flag IS TRUE
+                THEN 'HARD_POLICY_STOP'
+
+            WHEN ri.synthetic_risk_decline_trigger_flag IS TRUE
+                THEN 'SYNTHETIC_ESTIMATED_RISK'
+
+            WHEN ri.dti_decline_trigger_flag IS TRUE
+                THEN 'DTI_CAPACITY'
+
+            WHEN ri.counteroffer_candidate_flag IS TRUE
+                THEN 'COUNTEROFFER_FEASIBILITY'
+
+            WHEN ri.severe_requested_structure_trigger_flag IS TRUE
+             AND ri.counteroffer_candidate_flag IS DISTINCT FROM TRUE
+                THEN 'REQUESTED_STRUCTURE_REVIEW'
+
+            WHEN ri.manual_review_candidate_flag IS TRUE
+                THEN 'MANUAL_REVIEW'
+
+            WHEN ri.clean_approval_candidate_flag IS TRUE
+                THEN 'CLEAN_APPROVAL'
+
+            ELSE 'RESIDUAL_REVIEW'
+        END AS preliminary_route_reason_family,
+
+
+        /*******************************************************************************************
+        preliminary_route_trigger_count.
+
+        Diagnostic only.
+
+        This count measures how many broad routing families are active before hierarchy is applied.
+
+        Multiple overlapping routing signals can validly exist.
+
+        Section 7 chooses one preliminary route using priority order, but this count preserves how
+        crowded the row's routing evidence was.
+        *******************************************************************************************/
+        (
+            ri.hard_policy_stop_flag::INT
+            + ri.synthetic_risk_decline_trigger_flag::INT
+            + ri.dti_decline_trigger_flag::INT
+            + ri.counteroffer_candidate_flag::INT
+            + ri.severe_requested_structure_trigger_flag::INT
+            + ri.manual_review_candidate_flag::INT
+            + ri.clean_approval_candidate_flag::INT
+        ) AS preliminary_route_trigger_count
+
+    FROM route_inputs ri
+),
+
+preliminary_flags AS (
+    /***********************************************************************************************
+    CTE: preliminary_flags
+
+    Purpose:
+        Add preliminary outcome flags and exposure-routing flags.
+
+    Boundary:
+        These are preliminary flags only.
+
+        They do not create final approval_flag, counteroffer_flag, manual_review_flag, decline_flag,
+        or simulated_offer_exposure_flag.
+    ***********************************************************************************************/
+    SELECT
+        ra.*,
+
+        /*******************************************************************************************
+        Preliminary outcome flags.
+
+        These flags reconcile to preliminary_decision_outcome only.
+
+        Final approval_flag, counteroffer_flag, manual_review_flag, and decline_flag are created
+        later after exposure-treatment feasibility and final decision resolution.
+        *******************************************************************************************/
+        (ra.preliminary_decision_outcome = 'DECLINE') AS preliminary_decline_flag,
+        (ra.preliminary_decision_outcome = 'COUNTEROFFER') AS preliminary_counteroffer_flag,
+        (ra.preliminary_decision_outcome = 'MANUAL_REVIEW') AS preliminary_manual_review_flag,
+        (ra.preliminary_decision_outcome = 'APPROVE') AS preliminary_approve_flag,
+
+
+        /*******************************************************************************************
+        Exposure-routing flags.
+
+        requires_counteroffer_feasibility_flag:
+            TRUE only for preliminary COUNTEROFFER rows.
+
+            These rows need Section 8 reduced-exposure feasibility testing.
+
+        requires_approved_exposure_calculation_flag:
+            TRUE for preliminary APPROVE and preliminary COUNTEROFFER rows.
+
+            These rows need approved exposure, approved payment proxy, approved PTI, and approved
+            Expected Loss populated later.
+
+        Preliminary DECLINE and preliminary MANUAL_REVIEW:
+            do not require approved exposure calculation at this stage.
+        *******************************************************************************************/
+        (ra.preliminary_decision_outcome = 'COUNTEROFFER')
+            AS requires_counteroffer_feasibility_flag,
+
+        (ra.preliminary_decision_outcome IN ('APPROVE', 'COUNTEROFFER'))
+            AS requires_approved_exposure_calculation_flag
+
+    FROM route_assignment ra
+)
+
+SELECT *
+FROM preliminary_flags;
+
+
+
+/***************************************************************************************************
+SECTION 7.3 — LOCAL FAIL-FAST CHECKS FOR PRELIMINARY DECISION ROUTING
+****************************************************************************************************
+
+PURPOSE:
+    Validate the Section 7 preliminary routing layer before approved exposure and counteroffer
+    feasibility are calculated.
+
+BUSINESS PURPOSE:
+    Confirm that preliminary routing is complete, internally consistent, and still within the
+    preliminary-routing boundary before Section 8 creates exposure-treatment fields.
+
+SQL PURPOSE:
+    1. Confirm row count is preserved from Section 6 to Section 7.
+    2. Confirm application_id remains unique.
+    3. Confirm preliminary routing fields are complete and valid.
+    4. Confirm exactly one preliminary outcome flag is TRUE per row.
+    5. Confirm preliminary outcome flags reconcile to preliminary_decision_outcome.
+    6. Confirm the accepted route-priority hierarchy is enforced.
+    7. Confirm exposure-routing flags reconcile to preliminary_decision_outcome.
+    8. Confirm Section 7 did not create final decision, reason-code, or approved-exposure fields.
+
+LOCAL GATEKEEPER BOUNDARY:
+    These are local Section 7 staging gatekeepers only.
+
+    They are not:
+        final decision validation,
+        reason-code validation,
+        approved-exposure validation,
+        archive validation,
+        matched strategy comparison,
+        full Module 2 QA,
+        strategy frontier review,
+        or Validation Summary evidence by themselves.
+
+SQL MECHANICS:
+    This block uses PL/pgSQL because it needs multiple diagnostic counts and fail-fast exceptions.
+
+***************************************************************************************************/
+
+DO $$
+DECLARE
+    /***********************************************************************************************
+    Row-grain diagnostics.
+    ***********************************************************************************************/
+    v_stage3_count BIGINT;
+    v_stage4_count BIGINT;
+    v_stage4_distinct_app_count BIGINT;
+    v_duplicate_application_count BIGINT;
+
+    /***********************************************************************************************
+    Preliminary routing diagnostics.
+    ***********************************************************************************************/
+    v_preliminary_completeness_failure_count BIGINT;
+    v_preliminary_flag_reconciliation_failure_count BIGINT;
+    v_priority_hierarchy_failure_count BIGINT;
+    v_feasibility_flag_failure_count BIGINT;
+
+    /***********************************************************************************************
+    Section boundary diagnostic.
+    ***********************************************************************************************/
+    v_forbidden_column_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: row count must be unchanged from Section 6 to Section 7.
+
+    Business purpose:
+        Section 7 should add preliminary-routing fields only.
+
+        It should not filter applicants or duplicate applicants.
+
+    SQL mechanics:
+        Compare Stage 3 row count to Stage 4 row count.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_stage3_count
+    FROM tmp_m2_stage_3_rule_flags;
+
+    SELECT COUNT(*)
+    INTO v_stage4_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing;
+
+    IF v_stage4_count <> v_stage3_count THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: row count changed from Section 6 to Section 7. Stage 3 rows: %, Stage 4 rows: %.',
+            v_stage3_count,
+            v_stage4_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: application_id remains unique.
+
+    Business purpose:
+        Duplicate application_id values would duplicate downstream exposure-treatment calculations,
+        final decisions, approved exposure, Expected Loss, and reason-code counts.
+
+    SQL mechanics:
+        Compare COUNT(*) to COUNT(DISTINCT application_id).
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(DISTINCT application_id)
+    INTO v_stage4_distinct_app_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing;
+
+    IF v_stage4_distinct_app_count <> v_stage4_count THEN
+        SELECT COUNT(*)
+        INTO v_duplicate_application_count
+        FROM (
+            SELECT application_id
+            FROM tmp_m2_stage_4_preliminary_decision_routing
+            GROUP BY application_id
+            HAVING COUNT(*) > 1
+        ) d;
+
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: application_id uniqueness was not preserved. Stage 4 rows: %, distinct application_id count: %, duplicate application_id group count: %.',
+            v_stage4_count,
+            v_stage4_distinct_app_count,
+            v_duplicate_application_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: preliminary routing fields must be complete and valid.
+
+    Required preliminary routing fields:
+        preliminary_decision_outcome,
+        preliminary_decision_path,
+        preliminary_decision_priority_rank,
+        preliminary_route_reason_family,
+        preliminary_route_trigger_count,
+        severe_requested_structure_trigger_flag,
+        severe_requested_structure_trigger_count.
+
+    Business interpretation:
+        Every row should have one explainable preliminary route before exposure treatment begins.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_preliminary_completeness_failure_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing
+    WHERE preliminary_decision_outcome IS NULL
+       OR preliminary_decision_outcome NOT IN ('APPROVE', 'COUNTEROFFER', 'MANUAL_REVIEW', 'DECLINE')
+       OR preliminary_decision_path IS NULL
+       OR NULLIF(BTRIM(preliminary_decision_path), '') IS NULL
+       OR preliminary_decision_priority_rank IS NULL
+       OR preliminary_decision_priority_rank < 1
+       OR preliminary_route_reason_family IS NULL
+       OR NULLIF(BTRIM(preliminary_route_reason_family), '') IS NULL
+       OR preliminary_route_trigger_count IS NULL
+       OR preliminary_route_trigger_count < 0
+       OR severe_requested_structure_trigger_flag IS NULL
+       OR severe_requested_structure_trigger_count IS NULL
+       OR severe_requested_structure_trigger_count < 0;
+
+    IF v_preliminary_completeness_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: % row(s) have incomplete or invalid preliminary routing fields.',
+            v_preliminary_completeness_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: preliminary outcome flags must reconcile to preliminary_decision_outcome.
+
+    Expected:
+        exactly one preliminary flag is TRUE per row.
+
+        preliminary_decline_flag:
+            TRUE only when preliminary_decision_outcome = DECLINE.
+
+        preliminary_counteroffer_flag:
+            TRUE only when preliminary_decision_outcome = COUNTEROFFER.
+
+        preliminary_manual_review_flag:
+            TRUE only when preliminary_decision_outcome = MANUAL_REVIEW.
+
+        preliminary_approve_flag:
+            TRUE only when preliminary_decision_outcome = APPROVE.
+
+    Boundary:
+        These are preliminary flags only.
+
+        Final outcome flags are created later.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_preliminary_flag_reconciliation_failure_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing
+    WHERE
+        (
+            COALESCE(preliminary_decline_flag::INT, 0)
+            + COALESCE(preliminary_counteroffer_flag::INT, 0)
+            + COALESCE(preliminary_manual_review_flag::INT, 0)
+            + COALESCE(preliminary_approve_flag::INT, 0)
+        ) <> 1
+
+        OR preliminary_decline_flag
+            IS DISTINCT FROM (preliminary_decision_outcome = 'DECLINE')
+
+        OR preliminary_counteroffer_flag
+            IS DISTINCT FROM (preliminary_decision_outcome = 'COUNTEROFFER')
+
+        OR preliminary_manual_review_flag
+            IS DISTINCT FROM (preliminary_decision_outcome = 'MANUAL_REVIEW')
+
+        OR preliminary_approve_flag
+            IS DISTINCT FROM (preliminary_decision_outcome = 'APPROVE');
+
+    IF v_preliminary_flag_reconciliation_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: % row(s) have preliminary flag reconciliation failures.',
+            v_preliminary_flag_reconciliation_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: priority hierarchy enforcement.
+
+    Business purpose:
+        Validate the accepted preliminary routing hierarchy without forcing mutual exclusivity across
+        underlying Section 6 trigger families.
+
+    Important:
+        This does not say only one trigger family can be active.
+
+        It says that, given the active trigger families, the selected preliminary route must follow
+        the documented priority order.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_priority_hierarchy_failure_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing
+    WHERE
+        /*******************************************************************************************
+        Priority 1:
+            Hard simulated policy stop must route to preliminary DECLINE / HARD_POLICY_STOP / rank 1.
+        *******************************************************************************************/
+        (
+            hard_policy_stop_flag IS TRUE
+            AND NOT (
+                preliminary_decision_outcome = 'DECLINE'
+                AND preliminary_decision_path = 'HARD_POLICY_STOP'
+                AND preliminary_decision_priority_rank = 1
+                AND preliminary_route_reason_family = 'HARD_POLICY_STOP'
+            )
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Priority 2:
+            Severe synthetic estimated-risk routes to preliminary DECLINE when no hard simulated
+            policy stop is active.
+        *******************************************************************************************/
+        (
+            hard_policy_stop_flag IS FALSE
+            AND synthetic_risk_decline_trigger_flag IS TRUE
+            AND NOT (
+                preliminary_decision_outcome = 'DECLINE'
+                AND preliminary_decision_path = 'SEVERE_SYNTHETIC_RISK'
+                AND preliminary_decision_priority_rank = 2
+                AND preliminary_route_reason_family = 'SYNTHETIC_ESTIMATED_RISK'
+            )
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Priority 3:
+            Severe DTI routes to preliminary DECLINE when no higher-priority route is active.
+        *******************************************************************************************/
+        (
+            hard_policy_stop_flag IS FALSE
+            AND synthetic_risk_decline_trigger_flag IS FALSE
+            AND dti_decline_trigger_flag IS TRUE
+            AND NOT (
+                preliminary_decision_outcome = 'DECLINE'
+                AND preliminary_decision_path = 'SEVERE_DTI_CAPACITY'
+                AND preliminary_decision_priority_rank = 3
+                AND preliminary_route_reason_family = 'DTI_CAPACITY'
+            )
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Priority 4:
+            Counteroffer candidate routes to preliminary COUNTEROFFER when no higher-priority
+            preliminary decline route is active.
+        *******************************************************************************************/
+        (
+            hard_policy_stop_flag IS FALSE
+            AND synthetic_risk_decline_trigger_flag IS FALSE
+            AND dti_decline_trigger_flag IS FALSE
+            AND counteroffer_candidate_flag IS TRUE
+            AND NOT (
+                preliminary_decision_outcome = 'COUNTEROFFER'
+                AND preliminary_decision_path = 'COUNTEROFFER_FEASIBILITY_CHECK'
+                AND preliminary_decision_priority_rank = 4
+                AND preliminary_route_reason_family = 'COUNTEROFFER_FEASIBILITY'
+            )
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Priority 5:
+            Severe requested-structure stress routes to preliminary MANUAL_REVIEW when not already
+            counteroffer-eligible and no higher-priority route is active.
+        *******************************************************************************************/
+        (
+            hard_policy_stop_flag IS FALSE
+            AND synthetic_risk_decline_trigger_flag IS FALSE
+            AND dti_decline_trigger_flag IS FALSE
+            AND counteroffer_candidate_flag IS FALSE
+            AND severe_requested_structure_trigger_flag IS TRUE
+            AND NOT (
+                preliminary_decision_outcome = 'MANUAL_REVIEW'
+                AND preliminary_decision_path = 'REQUESTED_STRUCTURE_SEVERE_REVIEW'
+                AND preliminary_decision_priority_rank = 5
+                AND preliminary_route_reason_family = 'REQUESTED_STRUCTURE_REVIEW'
+            )
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Priority 6:
+            Manual-review candidate routes to preliminary MANUAL_REVIEW when no higher-priority
+            route is active.
+        *******************************************************************************************/
+        (
+            hard_policy_stop_flag IS FALSE
+            AND synthetic_risk_decline_trigger_flag IS FALSE
+            AND dti_decline_trigger_flag IS FALSE
+            AND counteroffer_candidate_flag IS FALSE
+            AND severe_requested_structure_trigger_flag IS FALSE
+            AND manual_review_candidate_flag IS TRUE
+            AND NOT (
+                preliminary_decision_outcome = 'MANUAL_REVIEW'
+                AND preliminary_decision_path = 'MANUAL_REVIEW_CANDIDATE'
+                AND preliminary_decision_priority_rank = 6
+                AND preliminary_route_reason_family = 'MANUAL_REVIEW'
+            )
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Priority 7:
+            Clean approval candidate routes to preliminary APPROVE when no higher-priority route is
+            active.
+        *******************************************************************************************/
+        (
+            hard_policy_stop_flag IS FALSE
+            AND synthetic_risk_decline_trigger_flag IS FALSE
+            AND dti_decline_trigger_flag IS FALSE
+            AND counteroffer_candidate_flag IS FALSE
+            AND severe_requested_structure_trigger_flag IS FALSE
+            AND manual_review_candidate_flag IS FALSE
+            AND clean_approval_candidate_flag IS TRUE
+            AND NOT (
+                preliminary_decision_outcome = 'APPROVE'
+                AND preliminary_decision_path = 'CLEAN_APPROVAL_CANDIDATE'
+                AND preliminary_decision_priority_rank = 7
+                AND preliminary_route_reason_family = 'CLEAN_APPROVAL'
+            )
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Priority 8:
+            Residual strategy review applies only when no higher-priority route driver is active.
+        *******************************************************************************************/
+        (
+            hard_policy_stop_flag IS FALSE
+            AND synthetic_risk_decline_trigger_flag IS FALSE
+            AND dti_decline_trigger_flag IS FALSE
+            AND counteroffer_candidate_flag IS FALSE
+            AND severe_requested_structure_trigger_flag IS FALSE
+            AND manual_review_candidate_flag IS FALSE
+            AND clean_approval_candidate_flag IS FALSE
+            AND NOT (
+                preliminary_decision_outcome = 'MANUAL_REVIEW'
+                AND preliminary_decision_path = 'RESIDUAL_STRATEGY_REVIEW'
+                AND preliminary_decision_priority_rank = 8
+                AND preliminary_route_reason_family = 'RESIDUAL_REVIEW'
+            )
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Preliminary COUNTEROFFER requires counteroffer_candidate_flag.
+
+        This protects against accidental route assignment to counteroffer without a Section 6
+        counteroffer candidate signal.
+        *******************************************************************************************/
+        (
+            preliminary_decision_outcome = 'COUNTEROFFER'
+            AND counteroffer_candidate_flag IS DISTINCT FROM TRUE
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Preliminary APPROVE requires clean_approval_candidate_flag.
+
+        This protects against accidental silent approval of rows that were not clean approval
+        candidates.
+        *******************************************************************************************/
+        (
+            preliminary_decision_outcome = 'APPROVE'
+            AND clean_approval_candidate_flag IS DISTINCT FROM TRUE
+        )
+
+        OR
+
+        /*******************************************************************************************
+        Residual review should not be used when any explicit route-driver is active.
+        *******************************************************************************************/
+        (
+            preliminary_decision_path = 'RESIDUAL_STRATEGY_REVIEW'
+            AND (
+                hard_policy_stop_flag IS TRUE
+                OR synthetic_risk_decline_trigger_flag IS TRUE
+                OR dti_decline_trigger_flag IS TRUE
+                OR counteroffer_candidate_flag IS TRUE
+                OR severe_requested_structure_trigger_flag IS TRUE
+                OR manual_review_candidate_flag IS TRUE
+                OR clean_approval_candidate_flag IS TRUE
+            )
+        );
+
+    IF v_priority_hierarchy_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: % row(s) violate preliminary routing hierarchy.',
+            v_priority_hierarchy_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exposure-routing flags must reconcile to preliminary_decision_outcome.
+
+    Expected:
+        preliminary COUNTEROFFER:
+            requires_counteroffer_feasibility_flag = TRUE
+            requires_approved_exposure_calculation_flag = TRUE
+
+        preliminary APPROVE:
+            requires_counteroffer_feasibility_flag = FALSE
+            requires_approved_exposure_calculation_flag = TRUE
+
+        preliminary DECLINE / preliminary MANUAL_REVIEW:
+            requires_counteroffer_feasibility_flag = FALSE
+            requires_approved_exposure_calculation_flag = FALSE
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_feasibility_flag_failure_count
+    FROM tmp_m2_stage_4_preliminary_decision_routing
+    WHERE (
+            preliminary_decision_outcome = 'COUNTEROFFER'
+            AND requires_counteroffer_feasibility_flag IS DISTINCT FROM TRUE
+    )
+    OR (
+            preliminary_decision_outcome IN ('APPROVE', 'COUNTEROFFER')
+            AND requires_approved_exposure_calculation_flag IS DISTINCT FROM TRUE
+    )
+    OR (
+            preliminary_decision_outcome IN ('DECLINE', 'MANUAL_REVIEW')
+            AND requires_approved_exposure_calculation_flag IS DISTINCT FROM FALSE
+    )
+    OR (
+            preliminary_decision_outcome <> 'COUNTEROFFER'
+            AND requires_counteroffer_feasibility_flag IS DISTINCT FROM FALSE
+    );
+
+    IF v_feasibility_flag_failure_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: % row(s) have exposure / counteroffer feasibility routing flag failures.',
+            v_feasibility_flag_failure_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 7 must not create final decision, reason-code, or approved-exposure fields.
+
+    Business purpose:
+        Protect the staged architecture boundary.
+
+    Exact column-name checks are used.
+
+    Preliminary fields are allowed.
+    Final fields are not allowed.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_forbidden_column_count
+    FROM pg_attribute
+    WHERE attrelid = 'tmp_m2_stage_4_preliminary_decision_routing'::REGCLASS
+      AND attnum > 0
+      AND NOT attisdropped
+      AND attname IN (
+            /***************************************************************************************
+            Final decision fields that belong to Section 9 or later.
+            ***************************************************************************************/
+            'decision_outcome',
+            'decision_path',
+            'approval_flag',
+            'decline_flag',
+            'manual_review_flag',
+            'counteroffer_flag',
+            'simulated_offer_exposure_flag',
+
+            /***************************************************************************************
+            Simulated reason-code fields that belong to Section 10.
+            ***************************************************************************************/
+            'primary_reason_code',
+            'secondary_reason_code',
+            'tertiary_reason_code',
+            'triggered_reason_code_list',
+            'reason_priority_rank',
+            'primary_reason_family',
+
+            /***************************************************************************************
+            Approved-exposure economics fields that belong to Section 8 / Section 9.
+            ***************************************************************************************/
+            'approved_amount',
+            'counteroffer_amount',
+            'approved_monthly_payment_proxy',
+            'approved_payment_to_income_ratio',
+            'approved_expected_loss_amount'
+      );
+
+    IF v_forbidden_column_count > 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 7 failure: forbidden final decision, reason-code, or approved-exposure field(s) were created in preliminary routing stage.';
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 7.4 — LOCAL PRELIMINARY ROUTING SANITY CHECKS
+****************************************************************************************************
+
+PURPOSE:
+    Provide lightweight diagnostics for the Section 7 preliminary routing layer.
+
+BUSINESS PURPOSE:
+    Let reviewers inspect how overlapping Section 6 rule triggers were prioritized into one
+    preliminary route before Section 8 exposure-treatment logic begins.
+
+SQL PURPOSE:
+    Display review outputs for:
+        preliminary outcome distribution,
+        preliminary path distribution,
+        preliminary priority-rank distribution,
+        preliminary route-family distribution,
+        product × preliminary outcome,
+        score band × preliminary outcome,
+        requested PTI bucket × preliminary outcome,
+        synthetic risk tier × preliminary outcome,
+        requested exposure tier × preliminary outcome,
+        requested Expected Loss tier × preliminary outcome,
+        mixed-signal profile × preliminary outcome,
+        borderline profile × preliminary outcome,
+        hard policy stop × preliminary outcome,
+        synthetic-risk decline trigger × preliminary outcome,
+        DTI decline trigger × preliminary outcome,
+        counteroffer candidate × preliminary outcome,
+        manual-review candidate × preliminary outcome,
+        clean approval candidate × preliminary outcome,
+        counteroffer feasibility routing flag × preliminary outcome,
+        approved exposure routing flag × preliminary outcome.
+
+INTERPRETATION:
+    These are staging diagnostics only.
+
+    They should not be interpreted as:
+        final strategy validation,
+        final decision distribution,
+        reason-code coverage,
+        approved-exposure validation,
+        archive validation,
+        matched strategy comparison,
+        strategy frontier evidence,
+        or Validation Summary acceptance.
+
+SQL TEACHING POINT:
+    These SELECT statements are read-only diagnostics.
+
+    GROUP BY summarizes how the route hierarchy distributed the population.
+
+    AVG fields help reviewers understand whether the preliminary route is directionally coherent with
+    the underlying risk, affordability, or exposure values.
+
+****************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.1 Count by preliminary_decision_outcome.
+
+Purpose:
+    Show the population distribution across the four preliminary route outcomes.
+
+Expected:
+    Each row should have exactly one preliminary outcome.
+
+Boundary:
+    preliminary_decision_outcome is not final decision_outcome.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    preliminary_decision_outcome,
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_stage
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY preliminary_decision_outcome
+
+ORDER BY
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.2 Count by preliminary_decision_path.
+
+Purpose:
+    Show which preliminary route labels are active before approved-exposure feasibility is tested.
+
+Interpretation:
+    This is the clearest early read of the route hierarchy.
+
+Boundary:
+    preliminary_decision_path is not final decision_path.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    preliminary_decision_path,
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_stage
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY preliminary_decision_path
+
+ORDER BY preliminary_decision_path;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.3 Count by preliminary_decision_priority_rank.
+
+Purpose:
+    Show route-priority distribution.
+
+Interpretation:
+    Lower rank means higher-priority preliminary route.
+
+    This query helps reviewers see how much of the population is being routed by severe stop
+    conditions versus counteroffer feasibility, manual review, clean approval, or residual review.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    preliminary_decision_priority_rank,
+    preliminary_decision_path,
+    preliminary_route_reason_family,
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_stage
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    preliminary_decision_priority_rank,
+    preliminary_decision_path,
+    preliminary_route_reason_family
+
+ORDER BY
+    preliminary_decision_priority_rank,
+    preliminary_decision_path;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.4 Count by preliminary_route_reason_family.
+
+Purpose:
+    Summarize preliminary route-family labels.
+
+Interpretation:
+    This is a route-family label, not a simulated reason code.
+
+    Simulated reason codes are assigned later after final decision_outcome exists.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    preliminary_route_reason_family,
+    COUNT(*) AS row_count,
+
+    ROUND(
+        100.0 * COUNT(*)::NUMERIC
+        / NULLIF(SUM(COUNT(*)) OVER (), 0),
+        2
+    ) AS pct_of_stage
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY preliminary_route_reason_family
+
+ORDER BY preliminary_route_reason_family;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.5 Product × preliminary_decision_outcome.
+
+Purpose:
+    Show whether preliminary routing varies by product before exposure feasibility is evaluated.
+
+Credit risk interpretation:
+    Product type affects requested exposure, payment mechanics, LGD, affordability pressure, and
+    counteroffer feasibility.
+
+Boundary:
+    This is preliminary routing, not final product-level strategy outcome.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    product_type_policy_key,
+    preliminary_decision_outcome,
+    COUNT(*) AS row_count,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    product_type_policy_key,
+    preliminary_decision_outcome
+
+ORDER BY
+    product_type_policy_key,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.6 Score band × preliminary_decision_outcome.
+
+Purpose:
+    Show how preliminary routing varies by borrower-quality segment.
+
+Interpretation:
+    Weaker score bands should generally show more route pressure, while preserving realistic overlap.
+
+Boundary:
+    Score band is not the same as final outcome and not the same as estimated_pd.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    score_band_policy_key,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(credit_score) AS avg_credit_score,
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(preliminary_route_trigger_count) AS avg_preliminary_route_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    score_band_policy_key,
+    preliminary_decision_outcome
+
+ORDER BY
+    CASE score_band_policy_key
+        WHEN 'SUPER_PRIME' THEN 1
+        WHEN 'PRIME' THEN 2
+        WHEN 'NEAR_PRIME' THEN 3
+        WHEN 'SUBPRIME' THEN 4
+        WHEN 'DEEP_SUBPRIME' THEN 5
+        ELSE 99
+    END,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.7 Requested PTI bucket × preliminary_decision_outcome.
+
+Purpose:
+    Show how requested-structure affordability buckets map into preliminary routing.
+
+Credit risk interpretation:
+    PTI is the payment-to-income ratio.
+
+    This is requested PTI, not approved PTI.
+
+Boundary:
+    Approved PTI is calculated later after exposure treatment.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_pti_bucket,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_payment_to_income_ratio) AS avg_requested_payment_to_income_ratio,
+    AVG(preliminary_route_trigger_count) AS avg_preliminary_route_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    requested_pti_bucket,
+    preliminary_decision_outcome
+
+ORDER BY
+    CASE requested_pti_bucket
+        WHEN 'LOW_REQUESTED_PTI' THEN 1
+        WHEN 'MODERATE_REQUESTED_PTI' THEN 2
+        WHEN 'ELEVATED_REQUESTED_PTI' THEN 3
+        WHEN 'HIGH_REQUESTED_PTI' THEN 4
+        WHEN 'SEVERE_REQUESTED_PTI' THEN 5
+        ELSE 99
+    END,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.8 Strategy risk tier × preliminary_decision_outcome.
+
+Purpose:
+    Show how Section 5 synthetic estimated-risk tiers map into preliminary routing.
+
+Interpretation:
+    Severe synthetic estimated-risk should generally route to preliminary DECLINE unless a higher
+    priority hard simulated policy stop already routed it to preliminary DECLINE.
+
+Boundary:
+    strategy_risk_tier is diagnostic segmentation, not final decisioning.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_risk_tier,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy,
+    AVG(preliminary_route_trigger_count) AS avg_preliminary_route_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    strategy_risk_tier,
+    preliminary_decision_outcome
+
+ORDER BY
+    CASE strategy_risk_tier
+        WHEN 'LOW_SYNTHETIC_RISK' THEN 1
+        WHEN 'MODERATE_SYNTHETIC_RISK' THEN 2
+        WHEN 'ELEVATED_SYNTHETIC_RISK' THEN 3
+        WHEN 'HIGH_SYNTHETIC_RISK' THEN 4
+        WHEN 'SEVERE_SYNTHETIC_RISK' THEN 5
+        ELSE 99
+    END,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.9 Requested exposure tier × preliminary_decision_outcome.
+
+Purpose:
+    Show how requested exposure intensity maps into preliminary routing.
+
+Interpretation:
+    Above-cap exposure may route toward counteroffer feasibility.
+    Extreme requested exposure may route toward severe requested-structure review if not already
+    counteroffer-eligible or higher-priority routed.
+
+Boundary:
+    This does not assign approved exposure.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_exposure_tier,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_amount) AS avg_requested_amount,
+    AVG(preliminary_route_trigger_count) AS avg_preliminary_route_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    requested_exposure_tier,
+    preliminary_decision_outcome
+
+ORDER BY
+    CASE requested_exposure_tier
+        WHEN 'BELOW_PRODUCT_MINIMUM' THEN 1
+        WHEN 'WITHIN_PRODUCT_LIMITS' THEN 2
+        WHEN 'ABOVE_PRODUCT_APPROVAL_CAP' THEN 3
+        WHEN 'EXTREME_REQUESTED_EXPOSURE' THEN 4
+        ELSE 99
+    END,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.10 Requested Expected Loss tier × preliminary_decision_outcome.
+
+Purpose:
+    Show how requested-exposure Expected Loss pressure maps into preliminary routing.
+
+Credit risk interpretation:
+    requested_expected_loss_amount is requested-exposure Expected Loss from Module 1.
+
+    approved_expected_loss_amount does not exist yet.
+
+Boundary:
+    This does not assign approved Expected Loss.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requested_expected_loss_tier,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+    AVG(preliminary_route_trigger_count) AS avg_preliminary_route_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    requested_expected_loss_tier,
+    preliminary_decision_outcome
+
+ORDER BY
+    CASE requested_expected_loss_tier
+        WHEN 'LOW_REQUESTED_EL' THEN 1
+        WHEN 'MODERATE_REQUESTED_EL' THEN 2
+        WHEN 'ELEVATED_REQUESTED_EL' THEN 3
+        WHEN 'HIGH_REQUESTED_EL' THEN 4
+        WHEN 'SEVERE_REQUESTED_EL' THEN 5
+        ELSE 99
+    END,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.11 Mixed-signal profile × preliminary_decision_outcome.
+
+Purpose:
+    Show how diagnostic mixed-signal profiles map into preliminary routing.
+
+Interpretation:
+    Mixed-signal profiles are not final routes.
+
+    They may contribute to manual-review candidacy but can be overridden by higher-priority routes.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    mixed_signal_profile_type,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(mixed_signal_condition_count) AS avg_mixed_signal_condition_count,
+    AVG(preliminary_route_trigger_count) AS avg_preliminary_route_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    mixed_signal_profile_type,
+    preliminary_decision_outcome
+
+ORDER BY
+    CASE mixed_signal_profile_type
+        WHEN 'NO_MIXED_SIGNAL_PROFILE' THEN 1
+        WHEN 'STRONG_CREDIT_HIGH_PTI' THEN 2
+        WHEN 'WEAK_CREDIT_LOW_PTI' THEN 3
+        WHEN 'LARGE_EXPOSURE_LOW_RISK' THEN 4
+        WHEN 'HIGH_RISK_LOW_EXPOSURE' THEN 5
+        WHEN 'HIGH_DTI_LOW_REQUESTED_PTI' THEN 6
+        WHEN 'MULTIPLE_MIXED_SIGNALS' THEN 7
+        ELSE 99
+    END,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.12 Borderline profile flag × preliminary_decision_outcome.
+
+Purpose:
+    Show how threshold-adjacent profiles map into preliminary routing.
+
+Interpretation:
+    borderline_profile_flag is diagnostic only.
+
+    It is not automatic manual review and can be overridden by higher-priority routing conditions.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    borderline_profile_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(preliminary_route_trigger_count) AS avg_preliminary_route_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    borderline_profile_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    borderline_profile_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.13 Hard policy stop flag × preliminary_decision_outcome.
+
+Purpose:
+    Confirm hard simulated policy stop routing behavior.
+
+Expected:
+    hard_policy_stop_flag = TRUE should route to preliminary DECLINE / HARD_POLICY_STOP.
+
+Boundary:
+    This is still preliminary routing, not final decisioning.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    hard_policy_stop_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(hard_policy_stop_count) AS avg_hard_policy_stop_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    hard_policy_stop_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    hard_policy_stop_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.14 Synthetic risk decline trigger × preliminary_decision_outcome.
+
+Purpose:
+    Confirm severe synthetic estimated-risk routing behavior.
+
+Expected:
+    synthetic_risk_decline_trigger_flag = TRUE should route to preliminary DECLINE unless a higher
+    priority hard simulated policy stop already routed it to preliminary DECLINE.
+
+Boundary:
+    estimated_pd remains the synthetic estimated-PD proxy input and is not recalculated here.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    synthetic_risk_decline_trigger_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    synthetic_risk_decline_trigger_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    synthetic_risk_decline_trigger_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.15 DTI decline trigger × preliminary_decision_outcome.
+
+Purpose:
+    Confirm severe DTI routing behavior.
+
+Expected:
+    dti_decline_trigger_flag = TRUE should route to preliminary DECLINE unless a higher-priority route
+    already routed it to preliminary DECLINE.
+
+Credit risk interpretation:
+    DTI is an existing-obligation capacity signal and is not directly fixed by counteroffer.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    dti_decline_trigger_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(debt_to_income_ratio) AS avg_debt_to_income_ratio
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    dti_decline_trigger_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    dti_decline_trigger_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.16 Counteroffer candidate flag × preliminary_decision_outcome.
+
+Purpose:
+    Confirm counteroffer-candidate routing behavior.
+
+Interpretation:
+    Preliminary COUNTEROFFER requires counteroffer_candidate_flag = TRUE, but final COUNTEROFFER is
+    not assigned until Section 8 confirms feasibility and Section 9 resolves final outcome.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    counteroffer_candidate_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(counteroffer_candidate_trigger_count) AS avg_counteroffer_candidate_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    counteroffer_candidate_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    counteroffer_candidate_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.17 Manual review candidate flag × preliminary_decision_outcome.
+
+Purpose:
+    Show how manual-review candidacy maps into preliminary routing.
+
+Interpretation:
+    Manual-review candidacy can be overridden by higher-priority preliminary routes such as hard
+    simulated policy stop, severe synthetic estimated-risk, severe DTI, counteroffer candidate, or
+    severe requested-structure review.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    manual_review_candidate_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(manual_review_candidate_trigger_count) AS avg_manual_review_candidate_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    manual_review_candidate_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    manual_review_candidate_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.18 Clean approval candidate flag × preliminary_decision_outcome.
+
+Purpose:
+    Confirm clean-approval candidate routing behavior.
+
+Interpretation:
+    Preliminary APPROVE requires clean_approval_candidate_flag = TRUE, but final APPROVE is not
+    assigned until later sections populate final decision and approved-exposure fields.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    clean_approval_candidate_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count,
+
+    AVG(total_rule_trigger_count) AS avg_total_rule_trigger_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    clean_approval_candidate_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    clean_approval_candidate_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.19 requires_counteroffer_feasibility_flag × preliminary_decision_outcome.
+
+Purpose:
+    Confirm counteroffer feasibility routing flag behavior.
+
+Expected:
+    requires_counteroffer_feasibility_flag = TRUE only for preliminary COUNTEROFFER.
+
+Boundary:
+    This does not mean the counteroffer is feasible.
+
+    It means Section 8 should test feasibility.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requires_counteroffer_feasibility_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    requires_counteroffer_feasibility_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    requires_counteroffer_feasibility_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+7.4.20 requires_approved_exposure_calculation_flag × preliminary_decision_outcome.
+
+Purpose:
+    Confirm approved-exposure calculation routing flag behavior.
+
+Expected:
+    TRUE for preliminary APPROVE and preliminary COUNTEROFFER.
+
+    FALSE for preliminary MANUAL_REVIEW and preliminary DECLINE.
+
+Boundary:
+    This flag tells Section 8 which rows need approved-exposure calculations.
+
+    It does not calculate approved exposure in Section 7.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    requires_approved_exposure_calculation_flag,
+    preliminary_decision_outcome,
+
+    COUNT(*) AS row_count
+
+FROM tmp_m2_stage_4_preliminary_decision_routing
+
+GROUP BY
+    requires_approved_exposure_calculation_flag,
+    preliminary_decision_outcome
+
+ORDER BY
+    requires_approved_exposure_calculation_flag,
+    CASE preliminary_decision_outcome
+        WHEN 'APPROVE' THEN 1
+        WHEN 'COUNTEROFFER' THEN 2
+        WHEN 'MANUAL_REVIEW' THEN 3
+        WHEN 'DECLINE' THEN 4
+        ELSE 99
+    END;
+
+
+
+/***************************************************************************************************
+END OF SECTION 7 — PRELIMINARY DECISION ROUTING LAYER
+
+If execution reaches this point:
+    1. Section 7 dependency preflight passed.
+    2. tmp_m2_stage_4_preliminary_decision_routing exists.
+    3. Row count is unchanged from tmp_m2_stage_3_rule_flags.
+    4. application_id remains unique.
+    5. Module 1 lineage remains preserved.
+    6. Module 2 strategy metadata remains preserved.
+    7. All Section 6 rule flags remain preserved.
+    8. severe_requested_structure_trigger_flag is populated.
+    9. severe_requested_structure_trigger_count is populated.
+    10. preliminary_decision_outcome is populated for every row.
+    11. preliminary_decision_outcome is one of APPROVE, COUNTEROFFER, MANUAL_REVIEW, DECLINE.
+    12. preliminary_decision_path is populated.
+    13. preliminary_decision_priority_rank is populated.
+    14. preliminary_route_reason_family is populated.
+    15. preliminary_route_trigger_count is populated.
+    16. Exactly one preliminary outcome flag is TRUE per row.
+    17. hard_policy_stop_flag routes to preliminary DECLINE.
+    18. severe synthetic estimated-risk routes to preliminary DECLINE unless hard policy stop already
+        routed it.
+    19. severe DTI routes to preliminary DECLINE unless a higher-priority route already routed it.
+    20. counteroffer_candidate_flag routes to preliminary COUNTEROFFER when no higher-priority
+        decline route applies.
+    21. severe requested-structure stress routes to preliminary MANUAL_REVIEW when not already
+        counteroffer-eligible and no higher-priority route applies.
+    22. manual_review_candidate_flag routes to preliminary MANUAL_REVIEW when no higher-priority
+        route applies.
+    23. clean_approval_candidate_flag routes to preliminary APPROVE when no higher-priority route
+        applies.
+    24. residual unclassified rows route to preliminary MANUAL_REVIEW.
+    25. preliminary COUNTEROFFER rows require counteroffer feasibility evaluation later.
+    26. preliminary APPROVE and preliminary COUNTEROFFER rows require approved exposure calculation
+        later.
+    27. Section 7 local preliminary-routing diagnostics are available for review.
+
+No final decision_outcome exists yet.
+No final decision_path exists yet.
+No final approval / counteroffer / manual review / decline flags exist yet.
+No simulated_offer_exposure_flag exists yet.
+No simulated reason codes exist yet.
+No approved_amount has been calculated.
+No counteroffer_amount has been calculated.
+No approved monthly payment proxy has been calculated.
+No approved payment-to-income ratio has been calculated.
+No approved Expected Loss has been calculated.
+No latest-run strategy decision output has been created.
+No strategy archive rows have been inserted.
+No evidence rows have been inserted.
+No matched comparison has been performed.
+No strategy frontier has been calculated.
+No full QA framework has been built.
+
+Next section:
+    Section 8 should consume tmp_m2_stage_4_preliminary_decision_routing and calculate approved
+    exposure treatment, counteroffer feasibility, approved payment proxy, approved PTI proxy, and
+    approved Expected Loss diagnostics.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M00926 -->
+
+
+---
+
+<a id="c038-m00927"></a>
+
+### C038-M00927
+
+**Andrew** · 2026-05-09T23:51:13.562000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00927 -->
+let's do one more pass for commentary. Please note that besides the headers we want instructional commentary that details how the sql logic is working. the commentary/headers are supposed to do 3 main things: 1) Advise on the who/what/why/how to run and interpret the code and parameters; 2) teach the credit risk concepts and nuts and bolts; 3) teach how the sql logic is working. folks going through this code should not only understand how to use/interpret but also should learn about credit risk analytics and SQL. this is the elite level we are striving for. besides header comments, we expect in line comments explaining the sql logic and line by line process. here is the section 8 again. if suggested changes, return the full copy paste of those sections in one copy paste block.
+<!-- END_MESSAGE C038-M00927 -->
+
+
+**Attachments in export:** `Pasted text(146).txt`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_43.md) · [Next](Part_45.md)

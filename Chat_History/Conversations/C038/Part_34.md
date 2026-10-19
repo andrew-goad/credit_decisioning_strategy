@@ -1,0 +1,4659 @@
+# Module 2 Decision Simulator Build
+
+## Part 34
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_33.md) · [Next](Part_35.md)
+
+<a id="c038-m00796"></a>
+
+### C038-M00796
+
+**ChatGPT** · 2026-05-09T18:57:59.601015-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00796 -->
+Below is the updated **Section 15 — Strategy Frontier Summary and Executive Comparison View** copy-paste replacement, with the commentary/header layer elevated to the same governance and instructional standard as Sections 0–14 while preserving the SQL logic from your provided Section 15. fileciteturn56file2
+
+```sql
+/***************************************************************************************************
+SECTION 15 — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Provide an executive-ready, archive-backed strategy frontier view across completed Module 2
+    strategy outputs.
+
+    Section 15 answers:
+
+        "Across archived Module 1 scenario × Module 2 strategy slices, what are the portfolio-level
+         tradeoffs between simulated offer exposure, approved amount, approved Expected Loss,
+         affordability, synthetic estimated-risk profile, counteroffer usage, manual-review burden,
+         decline rate, and simulated reason-code movement?"
+
+    Section 13 answers a narrower matched-comparison question:
+
+        "How does one selected challenger strategy compare to one selected baseline strategy on the
+         same Module 1 scenario and population?"
+
+    Section 15 answers a broader frontier question:
+
+        "What does the archived strategy landscape look like, and which strategy points represent
+         access expansion, risk discipline, exposure efficiency, counteroffer management, manual-review
+         burden reduction, or mixed tradeoffs?"
+
+SQL PURPOSE:
+    1. Consume credit_decisioning_sim.strategy_decisions_archive.
+    2. Summarize every archived Module 1 scenario × Module 2 strategy slice.
+    3. Calculate frontier metrics for simulated offer exposure, approved amount, approved Expected
+       Loss, approved Expected Loss rate, affordability, synthetic estimated-risk proxy, LGD,
+       counteroffer usage, manual-review burden, decline rate, and reason-code concentration.
+    4. Calculate baseline-relative deltas where BASELINE_STRATEGY exists for the same:
+            strategy_set_name
+            module1_scenario_set_name
+            module1_scenario_name
+            population_id
+    5. Calculate reason-code movement versus baseline to support explainability.
+    6. Convert frontier metrics into executive-readable efficiency indicators.
+    7. Classify each archived strategy frontier point using transparent diagnostic labels.
+    8. Provide product, score-band, and product × score-band frontier highlights.
+    9. Produce tmp_m2_strategy_frontier_executive_summary as the primary export-ready frontier table.
+    10. Provide compact diagnostics for frontier object row counts, baseline availability, and
+        reason-code storytelling.
+
+INPUT:
+    credit_decisioning_sim.strategy_decisions_archive
+
+TEMPORARY OUTPUTS CREATED:
+    tmp_m2_strategy_frontier_inventory
+    tmp_m2_strategy_frontier_summary
+    tmp_m2_strategy_frontier_baseline_deltas
+    tmp_m2_strategy_frontier_efficiency
+    tmp_m2_strategy_frontier_classification
+    tmp_m2_strategy_frontier_segment_highlights
+    tmp_m2_strategy_frontier_executive_summary
+
+GRAIN OF CORE FRONTIER TABLES:
+    One row per archived:
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+WHY SECTION 15 USES THE ARCHIVE:
+    credit_decisioning_sim.strategy_decisions is the current latest-run output only.
+
+    It is intentionally replaceable.
+
+    A strategy frontier requires multiple completed strategy / scenario slices, so Section 15 must
+    use:
+
+        credit_decisioning_sim.strategy_decisions_archive
+
+    as the governed history layer.
+
+WHY SECTION 15 IS DIFFERENT FROM SECTION 13:
+    Section 13 is a selected matched comparison framework.
+
+    It compares one baseline and one challenger strategy slice by application_id.
+
+    Section 15 is a frontier control-tower view.
+
+    It summarizes all archived strategy / scenario slices and turns them into:
+        frontier metrics,
+        baseline-relative deltas,
+        efficiency indicators,
+        posture classifications,
+        segment highlights,
+        and executive-ready story fields.
+
+WHY SECTION 15 IS DIFFERENT FROM SECTION 14:
+    Section 14 validates the latest-run output.
+
+    Section 15 summarizes archived strategy tradeoffs.
+
+    Section 15 assumes upstream latest-run and archive validation have already occurred. It does not
+    replace Section 14 QA.
+
+STRATEGY FRONTIER CONCEPT:
+    A strategy frontier is not a single "best strategy" ranking.
+
+    It is a structured view of tradeoffs among:
+        access / simulated offer exposure,
+        approved exposure,
+        approved Expected Loss,
+        approved Expected Loss rate,
+        offered-population synthetic estimated-risk profile,
+        approved PTI quality,
+        counteroffer reliance,
+        manual-review burden,
+        decline concentration,
+        and reason-code movement.
+
+    A growth-oriented point may increase simulated offer exposure and approved amount while increasing
+    approved Expected Loss.
+
+    A risk-discipline point may reduce approved Expected Loss while lowering simulated offer exposure.
+
+    A counteroffer-management point may preserve access through reduced-exposure treatment.
+
+    A manual-review-reduction point may reduce unresolved outcomes while increasing final no-offer
+    outcomes.
+
+    These are simulated strategy tradeoffs, not production recommendations.
+
+PURE STRATEGY FRONTIER VS SCENARIO × STRATEGY FRONTIER:
+    Pure Module 2 strategy frontier:
+        Compare multiple Module 2 strategies within the same Module 1 scenario and population.
+
+        This is strongest for isolating downstream Module 2 strategy effects.
+
+    Scenario × strategy frontier:
+        Compare archived outcomes across multiple Module 1 scenarios and Module 2 strategies.
+
+        This is useful as an executive control-tower view, but users must preserve the distinction
+        between upstream Module 1 scenario effects and downstream Module 2 strategy effects.
+
+BASELINE-RELATIVE DELTA BOUNDARY:
+    Baseline-relative deltas are calculated only where a BASELINE_STRATEGY exists under the same:
+        strategy_set_name
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    If no baseline is available, baseline-relative fields are NULL and baseline_available_flag is
+    FALSE.
+
+    Missing baseline is not a failure.
+
+    It means the archived frontier point can be summarized but cannot be interpreted as a baseline-
+    relative strategy delta.
+
+ESTIMATED_PD BOUNDARY:
+    estimated_pd remains the finalized Module 1 SQL field name.
+
+    In Section 15, estimated_pd is interpreted as the synthetic estimated-PD proxy.
+
+    Section 15 does not recalculate estimated_pd.
+    Section 15 does not calibrate estimated_pd.
+    Section 15 does not validate production default forecasting.
+
+REQUESTED VS APPROVED EXPECTED LOSS:
+    requested_expected_loss_amount:
+        Requested-exposure Expected Loss carried from Module 1.
+
+    approved_expected_loss_amount:
+        Module 2 approved-exposure Expected Loss after final simulated exposure treatment.
+
+    approved_expected_loss_rate:
+        total_approved_expected_loss_amount / total_approved_amount.
+
+        This is a synthetic strategy frontier metric.
+
+        It is not a production loss-rate forecast.
+
+SIMULATED OFFER EXPOSURE BOUNDARY:
+    simulated_offer_exposure_flag identifies simulated positive offer exposure.
+
+    It is TRUE for:
+        APPROVE
+        COUNTEROFFER
+
+    It is FALSE for:
+        MANUAL_REVIEW
+        DECLINE
+
+    It does not imply:
+        operational account creation,
+        booked exposure,
+        funded exposure,
+        production approval,
+        customer treatment,
+        or real applicant treatment.
+
+SIMULATED REASON-CODE BOUNDARY:
+    primary_reason_code and primary_reason_family remain simulated strategy explanation fields.
+
+    They support:
+        frontier interpretation,
+        QA review,
+        executive storytelling,
+        README summaries,
+        LinkedIn summaries,
+        validation evidence,
+        and strategy comparison.
+
+    They are not:
+        customer communications,
+        regulatory notices,
+        adverse-action reasons,
+        production compliance determinations,
+        or fair-lending conclusions.
+
+EFFICIENCY METRIC BOUNDARY:
+    Section 15 efficiency metrics are comparative synthetic strategy metrics.
+
+    They are not:
+        profitability metrics,
+        revenue metrics,
+        pricing metrics,
+        margin metrics,
+        capital metrics,
+        funding-cost metrics,
+        or risk-adjusted return metrics.
+
+    Those belong to a future Module 3 economics layer.
+
+READ-ONLY BOUNDARY:
+    Section 15 does not insert archive rows.
+    Section 15 does not delete archive rows.
+    Section 15 does not update archive rows.
+    Section 15 does not modify credit_decisioning_sim.strategy_decisions.
+    Section 15 does not modify credit_decisioning_sim.strategy_decisions_archive.
+    Section 15 does not modify strategy parameters.
+    Section 15 does not modify product policy parameters.
+    Section 15 does not recalculate decision_outcome.
+    Section 15 does not recalculate approved exposure.
+    Section 15 does not recalculate approved Expected Loss.
+    Section 15 does not reassign simulated reason codes.
+    Section 15 does not draft the BRD or Validation Summary.
+
+GOVERNANCE ROLE:
+    Section 15 converts archived strategy outputs into a compact, executive-readable evidence layer.
+
+    It supports:
+        strategy frontier review,
+        campaign-run interpretation,
+        README result summaries,
+        LinkedIn post storytelling,
+        Validation Summary evidence selection,
+        and future Module 3 economics design.
+
+COMMON MISUSE TO AVOID:
+    Do not treat frontier_position_type as a production recommendation.
+    Do not treat executive_frontier_quadrant as a final strategy ranking.
+    Do not compare different Module 1 scenarios and call the result a pure Module 2 strategy effect.
+    Do not interpret approved_expected_loss_rate as a production loss forecast.
+    Do not interpret simulated offer exposure as booked or funded exposure.
+    Do not interpret reason-code movement as customer communication language.
+    Do not use Section 15 as a substitute for Section 14 validation.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 15.0 — FRONTIER SCOPE AND ARCHIVE READINESS SNAPSHOT
+****************************************************************************************************
+
+PURPOSE:
+    Provide a quick archive-level readiness snapshot before creating strategy frontier outputs.
+
+BUSINESS PURPOSE:
+    Confirm whether the archive contains enough completed strategy / scenario slices to support
+    frontier analysis.
+
+SQL PURPOSE:
+    1. Count archived rows.
+    2. Count distinct archived application_id values.
+    3. Count archived strategy × scenario slices.
+    4. Count Module 1 scenario / population slices.
+    5. Count Module 2 strategy versions.
+    6. Display archive timestamp range.
+    7. Assign a frontier_scope_status.
+
+FRONTIER READINESS INTERPRETATION:
+    FRONTIER_NOT_READY_ARCHIVE_EMPTY:
+        No archived rows exist.
+
+    FRONTIER_INVENTORY_ONLY_SINGLE_ARCHIVED_SLICE:
+        Only one archived strategy / scenario slice exists.
+        Section 15 can summarize inventory, but it cannot yet show strategy tradeoffs.
+
+    FRONTIER_READY_FOR_MULTI_STRATEGY_REVIEW:
+        At least two Module 2 strategy versions exist in the archive.
+        Section 15 can begin to show multi-strategy frontier tradeoffs.
+
+    FRONTIER_AVAILABLE_FOR_ARCHIVE_REVIEW:
+        Archive contains rows and can be summarized, though richer frontier interpretation may depend
+        on the mix of scenarios and strategies available.
+
+BOUNDARY:
+    This is a read-only diagnostic.
+
+    It does not require a baseline strategy to exist.
+    It does not modify archive rows.
+    It does not validate the latest-run output.
+    It does not perform matched comparison.
+
+***************************************************************************************************/
+
+SELECT
+    'SECTION_15_FRONTIER_SCOPE' AS diagnostic_name,
+
+    COUNT(*) AS archived_rows,
+    COUNT(DISTINCT application_id) AS distinct_archived_application_ids,
+
+    COUNT(DISTINCT
+        strategy_set_name
+        || '|' || strategy_name
+        || '|' || strategy_version
+        || '|' || module1_scenario_set_name
+        || '|' || module1_scenario_name
+        || '|' || population_id
+    ) AS archived_strategy_scenario_slice_count,
+
+    COUNT(DISTINCT
+        module1_scenario_set_name
+        || '|' || module1_scenario_name
+        || '|' || population_id
+    ) AS module1_scenario_population_slice_count,
+
+    COUNT(DISTINCT
+        strategy_set_name
+        || '|' || strategy_name
+        || '|' || strategy_version
+    ) AS module2_strategy_version_count,
+
+    MIN(archive_inserted_ts) AS min_archive_inserted_ts,
+    MAX(archive_inserted_ts) AS max_archive_inserted_ts,
+
+    CASE
+        WHEN COUNT(*) = 0
+            THEN 'FRONTIER_NOT_READY_ARCHIVE_EMPTY'
+
+        WHEN COUNT(DISTINCT
+                strategy_set_name
+                || '|' || strategy_name
+                || '|' || strategy_version
+                || '|' || module1_scenario_set_name
+                || '|' || module1_scenario_name
+                || '|' || population_id
+             ) = 1
+            THEN 'FRONTIER_INVENTORY_ONLY_SINGLE_ARCHIVED_SLICE'
+
+        WHEN COUNT(DISTINCT
+                strategy_set_name
+                || '|' || strategy_name
+                || '|' || strategy_version
+             ) >= 2
+            THEN 'FRONTIER_READY_FOR_MULTI_STRATEGY_REVIEW'
+
+        ELSE 'FRONTIER_AVAILABLE_FOR_ARCHIVE_REVIEW'
+    END AS frontier_scope_status
+
+FROM credit_decisioning_sim.strategy_decisions_archive;
+
+
+
+/***************************************************************************************************
+SECTION 15.1 — ARCHIVED FRONTIER INVENTORY
+****************************************************************************************************
+
+PURPOSE:
+    Create an inventory of archived strategy / scenario slices available for frontier analysis.
+
+BUSINESS PURPOSE:
+    Frontier analysis should start by confirming what archived slices exist before interpreting
+    tradeoff metrics.
+
+    This section answers:
+
+        "What completed Module 2 strategy runs are available in the archive, how many rows does each
+         contain, and what is the high-level outcome composition for each slice?"
+
+SQL PURPOSE:
+    1. Materialize tmp_m2_strategy_frontier_inventory.
+    2. Summarize archived row counts by strategy / scenario / population slice.
+    3. Confirm distinct application_id counts within each slice.
+    4. Surface duplicate application_id counts within each slice.
+    5. Show latest-output and archive timestamp ranges.
+    6. Show basic final outcome counts.
+    7. Show simulated positive offer-exposure count.
+
+GOVERNANCE ROLE:
+    Frontier analysis should be archive-driven, not latest-run-driven.
+
+    latest-run output is replaceable.
+    archive output is governed strategy history.
+
+INTERPRETATION:
+    duplicate_application_row_count should ordinarily be zero for every archived slice because
+    Section 12 protects archive row-level grain.
+
+    If duplicates appear, Section 15 frontier results should not be interpreted until archive grain is
+    corrected.
+
+BOUNDARY:
+    This inventory is read-only against the archive.
+
+    The temporary table is a diagnostic helper only.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_inventory;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_inventory
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS archived_row_count,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count,
+
+    COUNT(*) - COUNT(DISTINCT application_id) AS duplicate_application_row_count,
+
+    MIN(latest_output_created_ts) AS min_latest_output_created_ts,
+    MAX(latest_output_created_ts) AS max_latest_output_created_ts,
+
+    MIN(archive_inserted_ts) AS min_archive_inserted_ts,
+    MAX(archive_inserted_ts) AS max_archive_inserted_ts,
+
+    COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE') AS approval_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER') AS counteroffer_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW') AS manual_review_count,
+    COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE') AS decline_count,
+
+    COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+        AS simulated_offer_exposure_count
+
+FROM credit_decisioning_sim.strategy_decisions_archive
+
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+/*-----------------------------------------------------------------------------------------------
+15.1A Archive frontier inventory review output.
+
+Purpose:
+    Display every archived strategy / scenario / population slice available to Section 15.
+
+Expected use:
+    Review this output before interpreting frontier metrics.
+
+    It confirms whether the archive includes:
+        baseline strategy slices,
+        challenger strategy slices,
+        multiple Module 1 scenarios,
+        and row counts expected from the campaign roadmap.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_inventory
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.2 — STRATEGY FRONTIER SUMMARY
+****************************************************************************************************
+
+PURPOSE:
+    Produce one summary row per archived Module 1 scenario × Module 2 strategy slice.
+
+BUSINESS PURPOSE:
+    Create the core frontier summary table that converts archived applicant-level strategy outputs
+    into portfolio-level strategy tradeoff metrics.
+
+    This section answers:
+
+        "For each archived strategy / scenario slice, what are the core access, exposure, risk,
+         affordability, Expected Loss, and reason-code characteristics?"
+
+SQL PURPOSE:
+    1. Materialize tmp_m2_strategy_frontier_summary.
+    2. Calculate final decision counts and rates.
+    3. Calculate simulated positive offer-exposure counts and rates.
+    4. Calculate approval and counteroffer shares among offer rows.
+    5. Calculate requested amount and approved amount totals / averages.
+    6. Calculate counteroffer exposure-reduction averages.
+    7. Calculate requested PTI and approved PTI averages.
+    8. Calculate synthetic estimated-risk proxy averages across all rows, offer rows, declined rows,
+       and manual-review rows.
+    9. Calculate LGD averages.
+    10. Calculate requested Expected Loss and approved Expected Loss metrics.
+    11. Calculate requested and approved Expected Loss rates.
+    12. Identify top primary reason code.
+    13. Identify top non-approval reason code.
+    14. Identify top policy-stop reason code.
+
+BUSINESS INTERPRETATION:
+    This is the core strategy frontier table.
+
+    It summarizes:
+        decision distribution,
+        simulated offer exposure,
+        approved amount,
+        approved affordability,
+        synthetic estimated-risk profile,
+        requested Expected Loss,
+        approved Expected Loss,
+        approved Expected Loss rate,
+        and primary reason-code concentration.
+
+METRIC CONVENTIONS:
+    approval_rate:
+        approval_count / applications
+
+    counteroffer_rate:
+        counteroffer_count / applications
+
+    manual_review_rate:
+        manual_review_count / applications
+
+    decline_rate:
+        decline_count / applications
+
+    simulated_offer_exposure_rate:
+        simulated_offer_exposure_count / applications
+
+    approval_share_of_offers:
+        approval_count / simulated_offer_exposure_count
+
+    counteroffer_share_of_offers:
+        counteroffer_count / simulated_offer_exposure_count
+
+    requested_expected_loss_rate:
+        total_requested_expected_loss_amount / total_requested_amount
+
+    approved_expected_loss_rate:
+        total_approved_expected_loss_amount / total_approved_amount
+
+    All-application approved exposure metrics:
+        Use COALESCE(approved_amount, 0)
+        Use COALESCE(approved_expected_loss_amount, 0)
+
+    Offer-row metrics:
+        Use FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+
+WHY NON-APPROVAL REASON FIELDS ARE INCLUDED:
+    top_primary_reason_code is often APPROVED_AS_REQUESTED.
+
+    That is technically correct but not always the most useful executive explanation of strategy
+    movement.
+
+    top_non_approval_primary_reason_code and top_policy_stop_primary_reason_code help explain what
+    constrains access, drives reduced exposure, or concentrates final no-offer outcomes.
+
+BOUNDARY:
+    approved_expected_loss_rate is a synthetic strategy frontier metric.
+
+    It is not a production loss-rate forecast.
+    It is not profitability.
+    It is not capital consumption.
+    It is not risk-adjusted margin.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_summary;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_summary
+ON COMMIT PRESERVE ROWS
+AS
+WITH slice_summary AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE') AS approval_count,
+        COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER') AS counteroffer_count,
+        COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW') AS manual_review_count,
+        COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE') AS decline_count,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS simulated_offer_exposure_count,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+            / NULLIF(COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE), 0)
+            AS approval_share_of_offers,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE), 0)
+            AS counteroffer_share_of_offers,
+
+        SUM(requested_amount) AS total_requested_amount,
+        SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+        AVG(requested_amount) AS avg_requested_amount,
+        AVG(COALESCE(approved_amount, 0)) AS avg_approved_amount_all_apps,
+        AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_amount_offer_rows,
+
+        AVG(exposure_reduction_pct) FILTER (WHERE decision_outcome = 'COUNTEROFFER')
+            AS avg_exposure_reduction_pct_counteroffers,
+
+        AVG(requested_payment_to_income_ratio)
+            AS avg_requested_payment_to_income_ratio,
+
+        AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows,
+
+        AVG(estimated_pd) AS avg_synthetic_estimated_pd_proxy_all_apps,
+
+        AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+        AVG(estimated_pd) FILTER (WHERE decision_outcome = 'DECLINE')
+            AS avg_synthetic_estimated_pd_proxy_declined_rows,
+
+        AVG(estimated_pd) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')
+            AS avg_synthetic_estimated_pd_proxy_manual_review_rows,
+
+        AVG(estimated_lgd) AS avg_estimated_lgd_all_apps,
+
+        AVG(estimated_lgd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_estimated_lgd_offer_rows,
+
+        SUM(requested_expected_loss_amount) AS total_requested_expected_loss_amount,
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            AS total_approved_expected_loss_amount,
+
+        AVG(requested_expected_loss_amount) AS avg_requested_expected_loss_amount,
+
+        AVG(COALESCE(approved_expected_loss_amount, 0))
+            AS avg_approved_expected_loss_all_apps,
+
+        AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_expected_loss_offer_rows,
+
+        SUM(requested_expected_loss_amount)
+            / NULLIF(SUM(requested_amount), 0)
+            AS requested_expected_loss_rate,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+            AS approved_expected_loss_rate
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+reason_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS primary_reason_row_count,
+
+        COUNT(*)::NUMERIC
+            / NULLIF(
+                SUM(COUNT(*)) OVER (
+                    PARTITION BY
+                        strategy_set_name,
+                        strategy_name,
+                        strategy_version,
+                        module1_scenario_set_name,
+                        module1_scenario_name,
+                        population_id
+                ),
+                0
+            ) AS primary_reason_population_share,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS reason_rank
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+),
+
+non_approval_reason_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS non_approval_reason_row_count,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS non_approval_reason_rank
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    WHERE decision_outcome <> 'APPROVE'
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+),
+
+policy_stop_reason_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS policy_stop_reason_row_count,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS policy_stop_reason_rank
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    WHERE primary_reason_family = 'POLICY_STOP'
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+)
+
+SELECT
+    s.*,
+
+    r.primary_reason_family AS top_primary_reason_family,
+    r.primary_reason_code AS top_primary_reason_code,
+    r.primary_reason_row_count AS top_primary_reason_row_count,
+    r.primary_reason_population_share AS top_primary_reason_population_share,
+
+    /*
+    Storytelling enhancement:
+        top_primary_reason_code is often APPROVED_AS_REQUESTED, which is technically correct but not
+        always the most useful executive explanation of strategy movement.
+
+        The top non-approval reason fields identify the most common non-approval simulated strategy
+        explanation code within the archived strategy slice.
+
+        The top policy-stop reason fields isolate the dominant simulated no-offer explanation code.
+
+        These fields support frontier interpretation without changing any decision, exposure,
+        Expected Loss, archive, or reason-code assignment logic.
+    */
+    nr.primary_reason_family AS top_non_approval_primary_reason_family,
+    nr.primary_reason_code AS top_non_approval_primary_reason_code,
+    nr.non_approval_reason_row_count::NUMERIC
+        / NULLIF(s.applications, 0) AS top_non_approval_reason_population_share,
+
+    ps.primary_reason_family AS top_policy_stop_primary_reason_family,
+    ps.primary_reason_code AS top_policy_stop_primary_reason_code,
+    ps.policy_stop_reason_row_count::NUMERIC
+        / NULLIF(s.applications, 0) AS top_policy_stop_reason_population_share
+
+FROM slice_summary s
+
+LEFT JOIN reason_counts r
+    ON r.strategy_set_name = s.strategy_set_name
+   AND r.strategy_name = s.strategy_name
+   AND r.strategy_version = s.strategy_version
+   AND r.module1_scenario_set_name = s.module1_scenario_set_name
+   AND r.module1_scenario_name = s.module1_scenario_name
+   AND r.population_id = s.population_id
+   AND r.reason_rank = 1
+
+LEFT JOIN non_approval_reason_counts nr
+    ON nr.strategy_set_name = s.strategy_set_name
+   AND nr.strategy_name = s.strategy_name
+   AND nr.strategy_version = s.strategy_version
+   AND nr.module1_scenario_set_name = s.module1_scenario_set_name
+   AND nr.module1_scenario_name = s.module1_scenario_name
+   AND nr.population_id = s.population_id
+   AND nr.non_approval_reason_rank = 1
+
+LEFT JOIN policy_stop_reason_counts ps
+    ON ps.strategy_set_name = s.strategy_set_name
+   AND ps.strategy_name = s.strategy_name
+   AND ps.strategy_version = s.strategy_version
+   AND ps.module1_scenario_set_name = s.module1_scenario_set_name
+   AND ps.module1_scenario_name = s.module1_scenario_name
+   AND ps.population_id = s.population_id
+   AND ps.policy_stop_reason_rank = 1;
+
+
+/*-----------------------------------------------------------------------------------------------
+15.2A Core strategy frontier summary review output.
+
+Purpose:
+    Display one summary row per archived strategy / scenario / population slice.
+
+Expected use:
+    This table is the first major Section 15 output to review after inventory.
+
+    It supports high-level comparison of access, exposure, affordability, approved Expected Loss,
+    synthetic estimated-risk profile, and reason-code concentration.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_summary
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.3 — BASELINE-RELATIVE FRONTIER DELTAS
+****************************************************************************************************
+
+PURPOSE:
+    Calculate baseline-relative deltas for each archived strategy slice where a baseline strategy
+    exists for the same Module 1 scenario / population / strategy set.
+
+BUSINESS PURPOSE:
+    Make frontier interpretation sharper by anchoring each non-baseline strategy point to a
+    consistent baseline reference.
+
+    This section answers:
+
+        "Relative to BASELINE_STRATEGY on the same Module 1 scenario and population, what changed in
+         access, exposure, approved Expected Loss, affordability, offered-population synthetic risk,
+         and reason-code distribution?"
+
+BASELINE DEFINITION:
+    The baseline reference is identified by:
+
+        strategy_name = 'BASELINE_STRATEGY'
+
+    within the same:
+        strategy_set_name
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+WHY THIS MATTERS:
+    Frontier analysis is more interpretable when strategy points are compared against a consistent
+    baseline reference.
+
+    It helps distinguish:
+        absolute strategy posture,
+        versus baseline-relative movement.
+
+BASELINE UNAVAILABLE BOUNDARY:
+    If no baseline strategy exists for a scenario / strategy set, baseline-relative fields are NULL
+    and baseline_available_flag is FALSE.
+
+    This is diagnostic behavior, not a failure.
+
+REASON-CODE DELTA DRIVER:
+    top_reason_code_delta_driver_* fields identify the simulated reason code with the largest
+    population-share movement versus baseline.
+
+    This helps explain not only what changed numerically, but why the strategy frontier point moved.
+
+READ-ONLY BOUNDARY:
+    This section reads from archive-derived temporary tables and archive reason-code counts only.
+
+    It does not mutate archive rows.
+    It does not recalculate applicant outcomes.
+    It does not reassign reason codes.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_baseline_deltas;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_baseline_deltas
+ON COMMIT PRESERVE ROWS
+AS
+WITH baseline_reference AS (
+    SELECT *
+    FROM tmp_m2_strategy_frontier_summary
+    WHERE strategy_name = 'BASELINE_STRATEGY'
+),
+
+reason_population_shares AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*)::NUMERIC
+            / NULLIF(
+                SUM(COUNT(*)) OVER (
+                    PARTITION BY
+                        strategy_set_name,
+                        strategy_name,
+                        strategy_version,
+                        module1_scenario_set_name,
+                        module1_scenario_name,
+                        population_id
+                ),
+                0
+            ) AS reason_population_share
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+),
+
+frontier_group_reason_universe AS (
+    SELECT DISTINCT
+        strategy_set_name,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+    FROM reason_population_shares
+),
+
+baseline_reason_population_shares AS (
+    SELECT
+        strategy_set_name,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code,
+        reason_population_share AS baseline_reason_population_share
+    FROM reason_population_shares
+    WHERE strategy_name = 'BASELINE_STRATEGY'
+),
+
+top_reason_code_delta_driver AS (
+    SELECT
+        s.strategy_set_name,
+        s.strategy_name,
+        s.strategy_version,
+        s.module1_scenario_set_name,
+        s.module1_scenario_name,
+        s.population_id,
+
+        u.primary_reason_family AS top_reason_code_delta_driver_family,
+        u.primary_reason_code AS top_reason_code_delta_driver_code,
+
+        COALESCE(br.baseline_reason_population_share, 0)
+            AS top_reason_code_delta_driver_baseline_share,
+
+        COALESCE(rs.reason_population_share, 0)
+            AS top_reason_code_delta_driver_strategy_share,
+
+        COALESCE(rs.reason_population_share, 0)
+          - COALESCE(br.baseline_reason_population_share, 0)
+            AS top_reason_code_delta_population_share,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                s.strategy_set_name,
+                s.strategy_name,
+                s.strategy_version,
+                s.module1_scenario_set_name,
+                s.module1_scenario_name,
+                s.population_id
+            ORDER BY
+                ABS(
+                    COALESCE(rs.reason_population_share, 0)
+                  - COALESCE(br.baseline_reason_population_share, 0)
+                ) DESC,
+                u.primary_reason_family,
+                u.primary_reason_code
+        ) AS reason_code_delta_rank
+
+    FROM tmp_m2_strategy_frontier_summary s
+
+    JOIN frontier_group_reason_universe u
+        ON u.strategy_set_name = s.strategy_set_name
+       AND u.module1_scenario_set_name = s.module1_scenario_set_name
+       AND u.module1_scenario_name = s.module1_scenario_name
+       AND u.population_id = s.population_id
+
+    LEFT JOIN reason_population_shares rs
+        ON rs.strategy_set_name = s.strategy_set_name
+       AND rs.strategy_name = s.strategy_name
+       AND rs.strategy_version = s.strategy_version
+       AND rs.module1_scenario_set_name = s.module1_scenario_set_name
+       AND rs.module1_scenario_name = s.module1_scenario_name
+       AND rs.population_id = s.population_id
+       AND rs.primary_reason_family = u.primary_reason_family
+       AND rs.primary_reason_code = u.primary_reason_code
+
+    LEFT JOIN baseline_reason_population_shares br
+        ON br.strategy_set_name = s.strategy_set_name
+       AND br.module1_scenario_set_name = s.module1_scenario_set_name
+       AND br.module1_scenario_name = s.module1_scenario_name
+       AND br.population_id = s.population_id
+       AND br.primary_reason_family = u.primary_reason_family
+       AND br.primary_reason_code = u.primary_reason_code
+
+    WHERE s.strategy_name <> 'BASELINE_STRATEGY'
+)
+
+SELECT
+    s.strategy_set_name,
+    s.strategy_name,
+    s.strategy_version,
+
+    s.module1_scenario_set_name,
+    s.module1_scenario_name,
+    s.population_id,
+
+    b.strategy_name AS baseline_strategy_name,
+    b.strategy_version AS baseline_strategy_version,
+
+    (b.strategy_name IS NOT NULL) AS baseline_available_flag,
+
+    s.applications,
+    b.applications AS baseline_applications,
+    s.applications - b.applications AS delta_applications,
+
+    s.approval_rate,
+    b.approval_rate AS baseline_approval_rate,
+    s.approval_rate - b.approval_rate AS delta_approval_rate,
+
+    s.counteroffer_rate,
+    b.counteroffer_rate AS baseline_counteroffer_rate,
+    s.counteroffer_rate - b.counteroffer_rate AS delta_counteroffer_rate,
+
+    s.manual_review_rate,
+    b.manual_review_rate AS baseline_manual_review_rate,
+    s.manual_review_rate - b.manual_review_rate AS delta_manual_review_rate,
+
+    s.decline_rate,
+    b.decline_rate AS baseline_decline_rate,
+    s.decline_rate - b.decline_rate AS delta_decline_rate,
+
+    s.simulated_offer_exposure_rate,
+    b.simulated_offer_exposure_rate AS baseline_simulated_offer_exposure_rate,
+    s.simulated_offer_exposure_rate - b.simulated_offer_exposure_rate
+        AS delta_simulated_offer_exposure_rate,
+
+    s.counteroffer_share_of_offers,
+    b.counteroffer_share_of_offers AS baseline_counteroffer_share_of_offers,
+    s.counteroffer_share_of_offers - b.counteroffer_share_of_offers
+        AS delta_counteroffer_share_of_offers,
+
+    s.total_approved_amount,
+    b.total_approved_amount AS baseline_total_approved_amount,
+    s.total_approved_amount - b.total_approved_amount AS delta_total_approved_amount,
+
+    s.avg_approved_amount_all_apps,
+    b.avg_approved_amount_all_apps AS baseline_avg_approved_amount_all_apps,
+    s.avg_approved_amount_all_apps - b.avg_approved_amount_all_apps
+        AS delta_avg_approved_amount_all_apps,
+
+    s.avg_approved_amount_offer_rows,
+    b.avg_approved_amount_offer_rows AS baseline_avg_approved_amount_offer_rows,
+    s.avg_approved_amount_offer_rows - b.avg_approved_amount_offer_rows
+        AS delta_avg_approved_amount_offer_rows,
+
+    s.avg_synthetic_estimated_pd_proxy_offer_rows,
+    b.avg_synthetic_estimated_pd_proxy_offer_rows
+        AS baseline_avg_synthetic_estimated_pd_proxy_offer_rows,
+    s.avg_synthetic_estimated_pd_proxy_offer_rows
+      - b.avg_synthetic_estimated_pd_proxy_offer_rows
+        AS delta_avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    s.avg_approved_payment_to_income_ratio_offer_rows,
+    b.avg_approved_payment_to_income_ratio_offer_rows
+        AS baseline_avg_approved_payment_to_income_ratio_offer_rows,
+    s.avg_approved_payment_to_income_ratio_offer_rows
+      - b.avg_approved_payment_to_income_ratio_offer_rows
+        AS delta_avg_approved_payment_to_income_ratio_offer_rows,
+
+    s.total_requested_expected_loss_amount,
+    b.total_requested_expected_loss_amount AS baseline_total_requested_expected_loss_amount,
+    s.total_requested_expected_loss_amount - b.total_requested_expected_loss_amount
+        AS delta_total_requested_expected_loss_amount,
+
+    s.total_approved_expected_loss_amount,
+    b.total_approved_expected_loss_amount AS baseline_total_approved_expected_loss_amount,
+    s.total_approved_expected_loss_amount - b.total_approved_expected_loss_amount
+        AS delta_total_approved_expected_loss_amount,
+
+    s.avg_approved_expected_loss_offer_rows,
+    b.avg_approved_expected_loss_offer_rows
+        AS baseline_avg_approved_expected_loss_offer_rows,
+    s.avg_approved_expected_loss_offer_rows
+      - b.avg_approved_expected_loss_offer_rows
+        AS delta_avg_approved_expected_loss_offer_rows,
+
+    s.approved_expected_loss_rate,
+    b.approved_expected_loss_rate AS baseline_approved_expected_loss_rate,
+    s.approved_expected_loss_rate - b.approved_expected_loss_rate
+        AS delta_approved_expected_loss_rate,
+
+    s.top_primary_reason_family,
+    s.top_primary_reason_code,
+    s.top_primary_reason_population_share,
+
+    s.top_non_approval_primary_reason_family,
+    s.top_non_approval_primary_reason_code,
+    s.top_non_approval_reason_population_share,
+
+    s.top_policy_stop_primary_reason_family,
+    s.top_policy_stop_primary_reason_code,
+    s.top_policy_stop_reason_population_share,
+
+    td.top_reason_code_delta_driver_family,
+    td.top_reason_code_delta_driver_code,
+    td.top_reason_code_delta_driver_baseline_share,
+    td.top_reason_code_delta_driver_strategy_share,
+    td.top_reason_code_delta_population_share
+
+FROM tmp_m2_strategy_frontier_summary s
+
+LEFT JOIN baseline_reference b
+    ON b.strategy_set_name = s.strategy_set_name
+   AND b.module1_scenario_set_name = s.module1_scenario_set_name
+   AND b.module1_scenario_name = s.module1_scenario_name
+   AND b.population_id = s.population_id
+
+LEFT JOIN top_reason_code_delta_driver td
+    ON td.strategy_set_name = s.strategy_set_name
+   AND td.strategy_name = s.strategy_name
+   AND td.strategy_version = s.strategy_version
+   AND td.module1_scenario_set_name = s.module1_scenario_set_name
+   AND td.module1_scenario_name = s.module1_scenario_name
+   AND td.population_id = s.population_id
+   AND td.reason_code_delta_rank = 1;
+
+
+/*-----------------------------------------------------------------------------------------------
+15.3A Baseline-relative frontier delta review output.
+
+Purpose:
+    Display baseline-relative strategy movement where a baseline reference exists.
+
+Interpretation:
+    NULL baseline-relative values mean no matching BASELINE_STRATEGY was archived for that scenario /
+    population / strategy set.
+
+    They should not be interpreted as zero movement.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_baseline_deltas
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.4 — STRATEGY EFFICIENCY METRICS
+****************************************************************************************************
+
+PURPOSE:
+    Convert frontier summary metrics into executive-readable efficiency indicators.
+
+BUSINESS PURPOSE:
+    Support strategy posture comparison by translating raw frontier metrics into compact efficiency
+    signals.
+
+    This section answers:
+
+        "How much simulated approved exposure, simulated offer access, and portfolio coverage is
+         produced relative to approved Expected Loss?"
+
+SQL PURPOSE:
+    1. Materialize tmp_m2_strategy_frontier_efficiency.
+    2. Calculate frontier_approved_expected_loss_rate.
+    3. Calculate approved_amount_per_approved_expected_loss_dollar.
+    4. Calculate offer_rate_per_approved_expected_loss_rate_unit.
+    5. Calculate applications_per_million_approved_expected_loss.
+    6. Carry positive_offer_access_rate.
+    7. Carry manual_review_burden_rate.
+    8. Carry no_offer_outcome_rate.
+    9. Assign frontier_efficiency_metric_status.
+
+BUSINESS INTERPRETATION:
+    These metrics help compare strategy posture.
+
+    Examples:
+        How much approved exposure is produced per unit of approved Expected Loss?
+        How many simulated positive offer outcomes are produced per million dollars of approved
+        Expected Loss?
+        What is the approved Expected Loss rate on simulated approved exposure?
+        How much manual-review burden does the strategy create?
+        What share of the population receives simulated positive offer exposure?
+
+IMPORTANT:
+    These are comparative synthetic strategy metrics.
+
+    They are not:
+        profitability,
+        capital,
+        pricing,
+        funding cost,
+        margin,
+        account performance,
+        or production risk-adjusted return metrics.
+
+    Those are intentionally deferred to future Module 3.
+
+BOUNDARY:
+    Efficiency metrics are calculated from already archived outputs.
+
+    Section 15.4 does not recalculate approved amount or approved Expected Loss.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_efficiency;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_efficiency
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    d.*,
+
+    d.total_approved_expected_loss_amount
+        / NULLIF(d.total_approved_amount, 0)
+        AS frontier_approved_expected_loss_rate,
+
+    d.total_approved_amount
+        / NULLIF(d.total_approved_expected_loss_amount, 0)
+        AS approved_amount_per_approved_expected_loss_dollar,
+
+    d.simulated_offer_exposure_rate
+        / NULLIF(d.approved_expected_loss_rate, 0)
+        AS offer_rate_per_approved_expected_loss_rate_unit,
+
+    d.applications::NUMERIC
+        / NULLIF(d.total_approved_expected_loss_amount / 1000000.0, 0)
+        AS applications_per_million_approved_expected_loss,
+
+    d.simulated_offer_exposure_rate AS positive_offer_access_rate,
+
+    d.manual_review_rate AS manual_review_burden_rate,
+
+    d.decline_rate AS no_offer_outcome_rate,
+
+    CASE
+        WHEN d.total_approved_amount IS NULL
+          OR d.total_approved_amount = 0
+            THEN 'NO_SIMULATED_OFFER_EXPOSURE_FOR_EFFICIENCY_REVIEW'
+
+        WHEN d.total_approved_expected_loss_amount IS NULL
+            THEN 'APPROVED_EXPECTED_LOSS_NOT_AVAILABLE_FOR_EFFICIENCY_REVIEW'
+
+        ELSE 'FRONTIER_EFFICIENCY_METRICS_AVAILABLE'
+    END AS frontier_efficiency_metric_status
+
+FROM tmp_m2_strategy_frontier_baseline_deltas d;
+
+
+/*-----------------------------------------------------------------------------------------------
+15.4A Strategy efficiency metrics review output.
+
+Purpose:
+    Display the strategy efficiency metrics most useful for executive interpretation.
+
+Interpretation:
+    These metrics support synthetic strategy comparison only.
+
+    They do not represent profitability, pricing performance, capital efficiency, or production
+    risk-adjusted return.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    applications,
+
+    approval_rate,
+    counteroffer_rate,
+    manual_review_rate,
+    decline_rate,
+    simulated_offer_exposure_rate,
+    counteroffer_share_of_offers,
+
+    total_approved_amount,
+    total_approved_expected_loss_amount,
+
+    frontier_approved_expected_loss_rate,
+    approved_amount_per_approved_expected_loss_dollar,
+    applications_per_million_approved_expected_loss,
+
+    avg_synthetic_estimated_pd_proxy_offer_rows,
+    avg_approved_payment_to_income_ratio_offer_rows,
+
+    top_primary_reason_family,
+    top_primary_reason_code,
+
+    top_non_approval_primary_reason_family,
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share,
+
+    top_policy_stop_primary_reason_family,
+    top_policy_stop_primary_reason_code,
+    top_policy_stop_reason_population_share,
+
+    top_reason_code_delta_driver_family,
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_driver_baseline_share,
+    top_reason_code_delta_driver_strategy_share,
+    top_reason_code_delta_population_share,
+
+    frontier_efficiency_metric_status
+
+FROM tmp_m2_strategy_frontier_efficiency
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.5 — FRONTIER CLASSIFICATION
+****************************************************************************************************
+
+PURPOSE:
+    Assign diagnostic strategy posture labels to each archived frontier point.
+
+BUSINESS PURPOSE:
+    Translate numeric frontier metrics into readable strategy posture labels that can support
+    executive discussion, README interpretation, and LinkedIn storytelling.
+
+    This section answers:
+
+        "What kind of tradeoff does this archived strategy point appear to represent?"
+
+SQL PURPOSE:
+    1. Materialize tmp_m2_strategy_frontier_classification.
+    2. Preserve efficiency metrics and baseline-relative deltas.
+    3. Assign frontier_position_type.
+    4. Assign frontier_interpretation_note.
+    5. Display classification output with relevant frontier metrics.
+
+FRONTIER POSITION TYPES:
+    BASELINE_REFERENCE_POINT:
+        Baseline strategy under the same scenario / population / strategy set.
+
+    NO_BASELINE_REFERENCE_AVAILABLE:
+        Strategy slice exists but baseline-relative deltas are unavailable.
+
+    RISK_DISCIPLINE_FRONTIER_POINT:
+        Strategy reduces simulated offer exposure and approved Expected Loss while improving the
+        offered-population synthetic estimated-risk profile.
+
+    GROWTH_ORIENTED_FRONTIER_POINT:
+        Strategy expands simulated offer exposure and approved amount with measurable approved
+        Expected Loss tradeoff.
+
+    EXPOSURE_EFFICIENT_FRONTIER_POINT:
+        Strategy improves approved Expected Loss while maintaining or expanding total approved amount.
+
+    COUNTEROFFER_MANAGEMENT_FRONTIER_POINT:
+        Strategy shifts outcomes toward reduced-exposure treatment rather than clean approval.
+
+    REVIEW_BURDEN_REDUCTION_FRONTIER_POINT:
+        Strategy reduces unresolved manual-review burden by routing more cases to final no-offer
+        outcomes.
+
+    BALANCED_OR_MIXED_FRONTIER_POINT:
+        Strategy shows mixed tradeoffs requiring segment-level and reason-code review.
+
+CLASSIFICATION BOUNDARY:
+    These labels are diagnostic summaries.
+
+    They do not declare a strategy "best."
+    They do not recommend production use.
+    They do not replace Section 13 matched comparison.
+    They do not replace Section 14 validation.
+    They do not represent model validation approval.
+
+DIAGNOSTIC THRESHOLD NOTE:
+    Small threshold values are used only to avoid labeling immaterial changes as strategic movement.
+
+    These thresholds are not:
+        credit policy thresholds,
+        underwriting cutoffs,
+        production acceptance thresholds,
+        calibrated empirical performance thresholds,
+        or regulatory standards.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_classification;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_classification
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    e.*,
+
+    CASE
+        WHEN e.strategy_name = 'BASELINE_STRATEGY'
+            THEN 'BASELINE_REFERENCE_POINT'
+
+        WHEN e.baseline_available_flag IS DISTINCT FROM TRUE
+            THEN 'NO_BASELINE_REFERENCE_AVAILABLE'
+
+        WHEN e.delta_simulated_offer_exposure_rate <= -0.010
+         AND e.delta_total_approved_expected_loss_amount < 0
+         AND e.delta_avg_synthetic_estimated_pd_proxy_offer_rows < 0
+            THEN 'RISK_DISCIPLINE_FRONTIER_POINT'
+
+        WHEN e.delta_simulated_offer_exposure_rate >= 0.010
+         AND e.delta_total_approved_amount > 0
+         AND e.delta_total_approved_expected_loss_amount >= 0
+            THEN 'GROWTH_ORIENTED_FRONTIER_POINT'
+
+        WHEN e.delta_total_approved_expected_loss_amount < 0
+         AND e.delta_total_approved_amount >= 0
+            THEN 'EXPOSURE_EFFICIENT_FRONTIER_POINT'
+
+        WHEN e.delta_counteroffer_rate >= 0.010
+         AND e.delta_approval_rate <= 0
+            THEN 'COUNTEROFFER_MANAGEMENT_FRONTIER_POINT'
+
+        WHEN e.delta_manual_review_rate <= -0.010
+         AND e.delta_decline_rate > 0
+            THEN 'REVIEW_BURDEN_REDUCTION_FRONTIER_POINT'
+
+        ELSE 'BALANCED_OR_MIXED_FRONTIER_POINT'
+    END AS frontier_position_type,
+
+    CASE
+        WHEN e.strategy_name = 'BASELINE_STRATEGY'
+            THEN 'Reference point for same Module 1 scenario / population / strategy set.'
+
+        WHEN e.baseline_available_flag IS DISTINCT FROM TRUE
+            THEN 'No baseline strategy slice exists for this Module 1 scenario / population / strategy set.'
+
+        WHEN e.delta_simulated_offer_exposure_rate <= -0.010
+         AND e.delta_total_approved_expected_loss_amount < 0
+         AND e.delta_avg_synthetic_estimated_pd_proxy_offer_rows < 0
+            THEN 'Strategy reduces simulated offer exposure and approved Expected Loss while improving offered-population synthetic estimated-risk profile.'
+
+        WHEN e.delta_simulated_offer_exposure_rate >= 0.010
+         AND e.delta_total_approved_amount > 0
+         AND e.delta_total_approved_expected_loss_amount >= 0
+            THEN 'Strategy expands simulated offer exposure and approved amount with measurable approved Expected Loss tradeoff.'
+
+        WHEN e.delta_total_approved_expected_loss_amount < 0
+         AND e.delta_total_approved_amount >= 0
+            THEN 'Strategy improves approved Expected Loss while maintaining or expanding total approved amount.'
+
+        WHEN e.delta_counteroffer_rate >= 0.010
+         AND e.delta_approval_rate <= 0
+            THEN 'Strategy shifts outcomes toward reduced-exposure treatment rather than clean approval.'
+
+        WHEN e.delta_manual_review_rate <= -0.010
+         AND e.delta_decline_rate > 0
+            THEN 'Strategy reduces unresolved manual-review burden by routing more cases to final no-offer outcomes.'
+
+        ELSE 'Strategy shows mixed tradeoffs requiring segment-level and reason-code review.'
+    END AS frontier_interpretation_note
+
+FROM tmp_m2_strategy_frontier_efficiency e;
+
+
+/*-----------------------------------------------------------------------------------------------
+15.5A Strategy frontier classification review output.
+
+Purpose:
+    Display each archived frontier point with diagnostic posture label, interpretation note, and
+    core supporting metrics.
+
+Interpretation:
+    Classification labels should be treated as review aids.
+
+    They support storytelling but do not replace evidence review.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    frontier_position_type,
+    frontier_interpretation_note,
+
+    approval_rate,
+    counteroffer_rate,
+    manual_review_rate,
+    decline_rate,
+    simulated_offer_exposure_rate,
+
+    delta_approval_rate,
+    delta_counteroffer_rate,
+    delta_manual_review_rate,
+    delta_decline_rate,
+    delta_simulated_offer_exposure_rate,
+
+    total_approved_amount,
+    delta_total_approved_amount,
+
+    total_approved_expected_loss_amount,
+    delta_total_approved_expected_loss_amount,
+
+    approved_expected_loss_rate,
+    delta_approved_expected_loss_rate,
+
+    avg_synthetic_estimated_pd_proxy_offer_rows,
+    delta_avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    top_primary_reason_family,
+    top_primary_reason_code,
+
+    top_non_approval_primary_reason_family,
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share,
+
+    top_policy_stop_primary_reason_family,
+    top_policy_stop_primary_reason_code,
+    top_policy_stop_reason_population_share,
+
+    top_reason_code_delta_driver_family,
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_driver_baseline_share,
+    top_reason_code_delta_driver_strategy_share,
+    top_reason_code_delta_population_share
+
+FROM tmp_m2_strategy_frontier_classification
+
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.6 — SEGMENT-LEVEL FRONTIER HIGHLIGHTS
+****************************************************************************************************
+
+PURPOSE:
+    Provide product, score-band, and product × score-band frontier summaries across archived slices.
+
+BUSINESS PURPOSE:
+    Identify where portfolio-level frontier movement is concentrated.
+
+    This section answers:
+
+        "Which products, score bands, and product × score intersections carry the most approved
+         exposure, approved Expected Loss, access movement, affordability pressure, or reason-code
+         concentration?"
+
+SQL PURPOSE:
+    1. Materialize tmp_m2_strategy_frontier_segment_highlights.
+    2. Create segment views at three levels:
+            PRODUCT
+            SCORE_BAND
+            PRODUCT_X_SCORE
+    3. Summarize applications, decision rates, simulated offer exposure, approved amount, approved
+       Expected Loss, approved Expected Loss rate, offered-population synthetic estimated-risk proxy,
+       and approved PTI.
+    4. Identify the top simulated reason code within each segment.
+    5. Display segment highlights, ordered toward higher approved Expected Loss exposure.
+
+BUSINESS INTERPRETATION:
+    Portfolio-level frontier metrics can hide concentrated segment movement.
+
+    Segment-level highlights help reviewers answer:
+        Which products carry the most approved exposure?
+        Which score bands dominate approved Expected Loss?
+        Which product × score combinations are most sensitive to strategy posture?
+        Which reason codes explain segment concentration?
+
+WHY PRODUCT × SCORE IS INCLUDED:
+    Product and score band are two of the most important strategy dimensions.
+
+    Product shapes structure, exposure, payment behavior, LGD, counteroffer feasibility, and product
+    guardrails.
+
+    Score band shapes borrower-quality segmentation and synthetic estimated-risk ordering.
+
+    Reviewing them jointly prevents high-level averages from hiding concentrated behavior.
+
+BOUNDARY:
+    This is a segment summary over archived outputs.
+
+    It does not recalculate decisions.
+    It does not recalculate approved exposure.
+    It does not recalculate approved Expected Loss.
+    It does not reassign reason codes.
+    It does not create a permanent reporting mart.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_segment_highlights;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_segment_highlights
+ON COMMIT PRESERVE ROWS
+AS
+WITH segment_base AS (
+    SELECT
+        'PRODUCT'::TEXT AS segment_level,
+        product_type_policy_key AS segment_key,
+        product_type_policy_key,
+        NULL::TEXT AS score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        decision_outcome,
+        simulated_offer_exposure_flag,
+        approved_amount,
+        approved_expected_loss_amount,
+        estimated_pd,
+        approved_payment_to_income_ratio,
+        primary_reason_family,
+        primary_reason_code
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    UNION ALL
+
+    SELECT
+        'SCORE_BAND'::TEXT AS segment_level,
+        score_band_policy_key AS segment_key,
+        NULL::TEXT AS product_type_policy_key,
+        score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        decision_outcome,
+        simulated_offer_exposure_flag,
+        approved_amount,
+        approved_expected_loss_amount,
+        estimated_pd,
+        approved_payment_to_income_ratio,
+        primary_reason_family,
+        primary_reason_code
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    UNION ALL
+
+    SELECT
+        'PRODUCT_X_SCORE'::TEXT AS segment_level,
+        product_type_policy_key || ' / ' || score_band_policy_key AS segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        decision_outcome,
+        simulated_offer_exposure_flag,
+        approved_amount,
+        approved_expected_loss_amount,
+        estimated_pd,
+        approved_payment_to_income_ratio,
+        primary_reason_family,
+        primary_reason_code
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+),
+
+segment_summary AS (
+    SELECT
+        segment_level,
+        segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        COUNT(*) AS applications,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'APPROVE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS approval_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'COUNTEROFFER')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS counteroffer_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'MANUAL_REVIEW')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS manual_review_rate,
+
+        COUNT(*) FILTER (WHERE decision_outcome = 'DECLINE')::NUMERIC
+            / NULLIF(COUNT(*), 0) AS decline_rate,
+
+        COUNT(*) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)::NUMERIC
+            / NULLIF(COUNT(*), 0) AS simulated_offer_exposure_rate,
+
+        SUM(COALESCE(approved_amount, 0)) AS total_approved_amount,
+
+        AVG(approved_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_amount_offer_rows,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            AS total_approved_expected_loss_amount,
+
+        AVG(approved_expected_loss_amount) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_expected_loss_offer_rows,
+
+        SUM(COALESCE(approved_expected_loss_amount, 0))
+            / NULLIF(SUM(COALESCE(approved_amount, 0)), 0)
+            AS approved_expected_loss_rate,
+
+        AVG(estimated_pd) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_synthetic_estimated_pd_proxy_offer_rows,
+
+        AVG(approved_payment_to_income_ratio) FILTER (WHERE simulated_offer_exposure_flag IS TRUE)
+            AS avg_approved_payment_to_income_ratio_offer_rows
+
+    FROM segment_base
+
+    GROUP BY
+        segment_level,
+        segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+),
+
+segment_reason_counts AS (
+    SELECT
+        segment_level,
+        segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS reason_row_count,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                segment_level,
+                segment_key,
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS reason_rank
+
+    FROM segment_base
+
+    GROUP BY
+        segment_level,
+        segment_key,
+        product_type_policy_key,
+        score_band_policy_key,
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+)
+
+SELECT
+    s.*,
+
+    r.primary_reason_family AS top_segment_reason_family,
+    r.primary_reason_code AS top_segment_reason_code,
+    r.reason_row_count AS top_segment_reason_row_count
+
+FROM segment_summary s
+
+LEFT JOIN segment_reason_counts r
+    ON r.segment_level = s.segment_level
+   AND r.segment_key = s.segment_key
+   AND r.strategy_set_name = s.strategy_set_name
+   AND r.strategy_name = s.strategy_name
+   AND r.strategy_version = s.strategy_version
+   AND r.module1_scenario_set_name = s.module1_scenario_set_name
+   AND r.module1_scenario_name = s.module1_scenario_name
+   AND r.population_id = s.population_id
+   AND r.reason_rank = 1;
+
+
+/*-----------------------------------------------------------------------------------------------
+15.6A Segment-level frontier highlights review output.
+
+Purpose:
+    Display product, score-band, and product × score-band frontier segment summaries.
+
+Interpretation:
+    This output can be large as the archive grows.
+
+    The ORDER BY prioritizes higher approved Expected Loss segments because those are usually the
+    most important for risk / exposure review.
+
+Boundary:
+    LIMIT 300 is a review ergonomics limit.
+
+    It does not change the temporary table content.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_segment_highlights
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    segment_level,
+    total_approved_expected_loss_amount DESC NULLS LAST,
+    segment_key
+LIMIT 300;
+
+
+
+/***************************************************************************************************
+SECTION 15.7 — EXECUTIVE-READY STRATEGY FRONTIER SUMMARY
+****************************************************************************************************
+
+PURPOSE:
+    Produce a compact strategy frontier table suitable for export into a README, executive review,
+    LinkedIn result summary, future presentation artifact, or Section 16 evidence capture.
+
+BUSINESS PURPOSE:
+    Convert the strategy frontier into one table that can tell the executive story of each archived
+    strategy / scenario point.
+
+    This section answers:
+
+        "What is the concise executive interpretation of each archived strategy frontier point?"
+
+SQL PURPOSE:
+    1. Materialize tmp_m2_strategy_frontier_executive_summary.
+    2. Rank strategies within each frontier group by:
+            simulated offer exposure,
+            total approved amount,
+            total approved Expected Loss,
+            approved Expected Loss rate,
+            offered-population synthetic estimated-risk proxy,
+            manual-review burden,
+            decline burden.
+    3. Carry core frontier metrics.
+    4. Carry baseline-relative deltas.
+    5. Carry top reason-code fields.
+    6. Assign executive_frontier_quadrant.
+
+BUSINESS INTERPRETATION:
+    This table intentionally combines:
+        decision distribution,
+        simulated offer exposure,
+        approved exposure,
+        approved Expected Loss,
+        efficiency metrics,
+        strategy posture classification,
+        reason-code concentration,
+        reason-code movement,
+        and frontier ranks.
+
+    It is designed to support a concise story:
+
+        "What tradeoff does each strategy / scenario point represent?"
+
+RANKING BOUNDARY:
+    Rankings are calculated within each:
+        strategy_set_name
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    These ranks support comparison.
+
+    They do not declare production suitability.
+    They do not identify a single approved strategy.
+    They do not replace Section 13 matched comparison or Section 14 validation.
+
+EXECUTIVE FRONTIER QUADRANT BOUNDARY:
+    executive_frontier_quadrant is a diagnostic storytelling label.
+
+    It is not a production recommendation.
+    It is not a risk appetite approval.
+    It is not a validation acceptance decision.
+
+***************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_strategy_frontier_executive_summary;
+
+CREATE TEMP TABLE tmp_m2_strategy_frontier_executive_summary
+ON COMMIT PRESERVE ROWS
+AS
+WITH ranked AS (
+    SELECT
+        c.*,
+
+        COUNT(*) OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+        ) AS strategy_count_within_frontier_group,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                simulated_offer_exposure_rate DESC NULLS LAST
+        ) AS offer_access_rank_desc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                total_approved_amount DESC NULLS LAST
+        ) AS approved_amount_rank_desc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                total_approved_expected_loss_amount ASC NULLS LAST
+        ) AS total_approved_expected_loss_rank_asc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                approved_expected_loss_rate ASC NULLS LAST
+        ) AS approved_expected_loss_rate_rank_asc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                avg_synthetic_estimated_pd_proxy_offer_rows ASC NULLS LAST
+        ) AS offer_risk_profile_rank_asc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                manual_review_rate ASC NULLS LAST
+        ) AS manual_review_burden_rank_asc,
+
+        RANK() OVER (
+            PARTITION BY
+                strategy_set_name,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                decline_rate ASC NULLS LAST
+        ) AS decline_burden_rank_asc
+
+    FROM tmp_m2_strategy_frontier_classification c
+)
+
+SELECT
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    frontier_position_type,
+    frontier_interpretation_note,
+
+    strategy_count_within_frontier_group,
+
+    applications,
+
+    approval_rate,
+    counteroffer_rate,
+    manual_review_rate,
+    decline_rate,
+    simulated_offer_exposure_rate,
+    counteroffer_share_of_offers,
+
+    total_approved_amount,
+    avg_approved_amount_offer_rows,
+
+    avg_synthetic_estimated_pd_proxy_offer_rows,
+    avg_approved_payment_to_income_ratio_offer_rows,
+
+    total_approved_expected_loss_amount,
+    avg_approved_expected_loss_offer_rows,
+    approved_expected_loss_rate,
+
+    approved_amount_per_approved_expected_loss_dollar,
+
+    top_primary_reason_family,
+    top_primary_reason_code,
+    top_primary_reason_population_share,
+
+    top_non_approval_primary_reason_family,
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share,
+
+    top_policy_stop_primary_reason_family,
+    top_policy_stop_primary_reason_code,
+    top_policy_stop_reason_population_share,
+
+    top_reason_code_delta_driver_family,
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_driver_baseline_share,
+    top_reason_code_delta_driver_strategy_share,
+    top_reason_code_delta_population_share,
+
+    baseline_available_flag,
+
+    delta_approval_rate,
+    delta_counteroffer_rate,
+    delta_manual_review_rate,
+    delta_decline_rate,
+    delta_simulated_offer_exposure_rate,
+
+    delta_total_approved_amount,
+    delta_total_approved_expected_loss_amount,
+    delta_approved_expected_loss_rate,
+    delta_avg_synthetic_estimated_pd_proxy_offer_rows,
+
+    offer_access_rank_desc,
+    approved_amount_rank_desc,
+    total_approved_expected_loss_rank_asc,
+    approved_expected_loss_rate_rank_asc,
+    offer_risk_profile_rank_asc,
+    manual_review_burden_rank_asc,
+    decline_burden_rank_asc,
+
+    CASE
+        WHEN strategy_name = 'BASELINE_STRATEGY'
+            THEN 'BASELINE_REFERENCE_QUADRANT'
+
+        WHEN strategy_count_within_frontier_group < 3
+         AND delta_simulated_offer_exposure_rate < 0
+         AND delta_approved_expected_loss_rate < 0
+            THEN 'LOWER_ACCESS_LOWER_APPROVED_EL_RATE'
+
+        WHEN strategy_count_within_frontier_group < 3
+         AND delta_simulated_offer_exposure_rate > 0
+         AND delta_approved_expected_loss_rate > 0
+            THEN 'HIGHER_ACCESS_HIGHER_APPROVED_EL_RATE'
+
+        WHEN strategy_count_within_frontier_group < 3
+         AND delta_simulated_offer_exposure_rate >= 0
+         AND delta_approved_expected_loss_rate <= 0
+            THEN 'HIGHER_ACCESS_LOWER_APPROVED_EL_RATE'
+
+        WHEN strategy_count_within_frontier_group < 3
+         AND delta_simulated_offer_exposure_rate <= 0
+         AND delta_approved_expected_loss_rate >= 0
+            THEN 'LOWER_ACCESS_HIGHER_APPROVED_EL_RATE'
+
+        WHEN strategy_count_within_frontier_group < 3
+            THEN 'TWO_STRATEGY_MIXED_FRONTIER_REVIEW'
+
+        WHEN offer_access_rank_desc <= 2
+         AND approved_expected_loss_rate_rank_asc <= 2
+            THEN 'HIGH_ACCESS_LOWER_APPROVED_EL_RATE'
+
+        WHEN offer_access_rank_desc <= 2
+         AND approved_expected_loss_rate_rank_asc > 2
+            THEN 'HIGH_ACCESS_HIGHER_APPROVED_EL_RATE'
+
+        WHEN offer_access_rank_desc > 2
+         AND approved_expected_loss_rate_rank_asc <= 2
+            THEN 'LOWER_ACCESS_LOWER_APPROVED_EL_RATE'
+
+        ELSE 'LOWER_ACCESS_HIGHER_APPROVED_EL_RATE'
+    END AS executive_frontier_quadrant
+
+FROM ranked;
+
+
+/*-----------------------------------------------------------------------------------------------
+15.7A Executive-ready strategy frontier summary review output.
+
+Purpose:
+    Display the primary Section 15 output for high-level strategy storytelling.
+
+Interpretation:
+    This is the table most likely to be exported later for:
+        README summaries,
+        LinkedIn posts,
+        executive review,
+        validation-summary support,
+        and strategy campaign evidence.
+
+Boundary:
+    It is still a temporary SQL output.
+
+    Section 16 is responsible for persistent evidence capture.
+-----------------------------------------------------------------------------------------------*/
+
+SELECT
+    *
+FROM tmp_m2_strategy_frontier_executive_summary
+ORDER BY
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    strategy_set_name,
+    CASE
+        WHEN strategy_name = 'BASELINE_STRATEGY' THEN 1
+        ELSE 2
+    END,
+    frontier_position_type,
+    strategy_name,
+    strategy_version;
+
+
+
+/***************************************************************************************************
+SECTION 15.8 — FRONTIER DIAGNOSTIC SUMMARY
+****************************************************************************************************
+
+PURPOSE:
+    Provide compact diagnostic outputs for the Section 15 temporary frontier layer.
+
+BUSINESS PURPOSE:
+    Give reviewers quick confirmation that frontier objects were created and that baseline-relative
+    and reason-code storytelling fields are interpretable.
+
+SQL PURPOSE:
+    1. Count rows in each Section 15 temporary frontier object.
+    2. Show baseline-reference availability.
+    3. Show compact reason-code storytelling fields for each executive frontier point.
+
+INTERPRETATION:
+    These checks are not full QA gatekeepers.
+
+    They confirm that the frontier layer produced populated temporary outputs and show whether
+    baseline-relative comparisons are available.
+
+    Full latest-run QA remains Section 14.
+
+    Archive persistence validation remains Section 12.
+
+    Matched baseline / challenger comparison remains Section 13.
+
+BOUNDARY:
+    These diagnostics are read-only.
+
+    They do not modify frontier objects.
+    They do not modify archive rows.
+    They do not recalculate decisions or reason codes.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 15.8A — FRONTIER OBJECT ROW-COUNT DIAGNOSTIC
+****************************************************************************************************
+
+PURPOSE:
+    Confirm that each Section 15 temporary frontier object exists and contains rows.
+
+INTERPRETATION:
+    Row counts help determine whether the frontier layer is populated.
+
+    A zero row count may indicate:
+        an empty archive,
+        missing baseline reference,
+        missing archived strategy slices,
+        or an upstream Section 15 dependency not yet run.
+
+BOUNDARY:
+    This diagnostic only counts temporary output rows.
+
+***************************************************************************************************/
+
+SELECT
+    'tmp_m2_strategy_frontier_inventory' AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_inventory
+
+UNION ALL
+
+SELECT
+    'tmp_m2_strategy_frontier_summary' AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_summary
+
+UNION ALL
+
+SELECT
+    'tmp_m2_strategy_frontier_baseline_deltas' AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_baseline_deltas
+
+UNION ALL
+
+SELECT
+    'tmp_m2_strategy_frontier_efficiency' AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_efficiency
+
+UNION ALL
+
+SELECT
+    'tmp_m2_strategy_frontier_classification' AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_classification
+
+UNION ALL
+
+SELECT
+    'tmp_m2_strategy_frontier_segment_highlights' AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_segment_highlights
+
+UNION ALL
+
+SELECT
+    'tmp_m2_strategy_frontier_executive_summary' AS frontier_object_name,
+    COUNT(*) AS row_count
+FROM tmp_m2_strategy_frontier_executive_summary;
+
+
+
+/***************************************************************************************************
+SECTION 15.8B — FRONTIER BASELINE AVAILABILITY DIAGNOSTIC
+****************************************************************************************************
+
+PURPOSE:
+    Confirm whether archived frontier rows have baseline references available.
+
+BUSINESS INTERPRETATION:
+    Baseline-relative deltas are most useful when every strategy frontier row has a matching
+    BASELINE_STRATEGY under the same Module 1 scenario / population / strategy set.
+
+INTERPRETATION:
+    If baseline_available_flag is FALSE, baseline-relative deltas for that archived strategy /
+    scenario slice should be interpreted as unavailable rather than zero.
+
+STATUS VALUES:
+    BASELINE_REFERENCES_AVAILABLE_FOR_ALL_FRONTIER_ROWS:
+        All frontier rows in the group have baseline references.
+
+    BASELINE_REFERENCE_MISSING_FOR_ONE_OR_MORE_FRONTIER_ROWS:
+        At least one frontier row lacks a baseline reference.
+
+BOUNDARY:
+    Missing baseline reference is not an archive failure by itself.
+
+    It is a comparison-readiness and storytelling limitation.
+
+***************************************************************************************************/
+
+SELECT
+    strategy_set_name,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS frontier_rows,
+    COUNT(*) FILTER (WHERE baseline_available_flag IS TRUE) AS rows_with_baseline_reference,
+    COUNT(*) FILTER (WHERE baseline_available_flag IS FALSE) AS rows_without_baseline_reference,
+
+    CASE
+        WHEN COUNT(*) FILTER (WHERE baseline_available_flag IS FALSE) = 0
+            THEN 'BASELINE_REFERENCES_AVAILABLE_FOR_ALL_FRONTIER_ROWS'
+        ELSE 'BASELINE_REFERENCE_MISSING_FOR_ONE_OR_MORE_FRONTIER_ROWS'
+    END AS baseline_reference_status
+
+FROM tmp_m2_strategy_frontier_baseline_deltas
+
+GROUP BY
+    strategy_set_name,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+
+ORDER BY
+    strategy_set_name,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+
+
+/***************************************************************************************************
+SECTION 15.8C — FRONTIER REASON-CODE STORYTELLING DIAGNOSTIC
+****************************************************************************************************
+
+PURPOSE:
+    Provide a compact reason-code interpretation view for the strategy frontier summary.
+
+BUSINESS PURPOSE:
+    Help explain each archived strategy frontier point by highlighting:
+        the top primary reason code overall,
+        the top non-approval reason code,
+        the top policy-stop reason code,
+        and the reason code with the largest population-share movement versus baseline.
+
+BUSINESS INTERPRETATION:
+    This diagnostic helps explain not just how the frontier moved, but why.
+
+    It is especially useful because:
+        top_primary_reason_code is often APPROVED_AS_REQUESTED,
+        which is technically correct but not always the most useful explanation of strategy movement.
+
+    The non-approval and policy-stop fields provide better visibility into risk tightening,
+    affordability constraints, exposure constraints, counteroffer management, or no-offer drivers.
+
+BOUNDARY:
+    This is a read-only storytelling diagnostic.
+
+    It does not recalculate decision outcomes.
+    It does not reassign simulated reason codes.
+    It does not modify latest-run rows.
+    It does not modify archive rows.
+    Reason codes remain simulated strategy explanation codes only.
+
+***************************************************************************************************/
+
+SELECT
+    strategy_name,
+    frontier_position_type,
+    executive_frontier_quadrant,
+
+    top_primary_reason_code,
+    top_primary_reason_population_share,
+
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share,
+
+    top_policy_stop_primary_reason_code,
+    top_policy_stop_reason_population_share,
+
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_driver_baseline_share,
+    top_reason_code_delta_driver_strategy_share,
+    top_reason_code_delta_population_share
+
+FROM tmp_m2_strategy_frontier_executive_summary
+
+ORDER BY
+    CASE
+        WHEN strategy_name = 'BASELINE_STRATEGY' THEN 1
+        ELSE 2
+    END,
+    strategy_name;
+
+
+
+/***************************************************************************************************
+END OF SECTION 15 — STRATEGY FRONTIER SUMMARY AND EXECUTIVE COMPARISON VIEW
+
+If execution reaches this point:
+    1. Section 15 remained read-only against latest-run and archive outputs.
+    2. Archive frontier scope was reviewed.
+    3. tmp_m2_strategy_frontier_inventory was created.
+    4. tmp_m2_strategy_frontier_summary was created.
+    5. tmp_m2_strategy_frontier_baseline_deltas was created.
+    6. tmp_m2_strategy_frontier_efficiency was created.
+    7. tmp_m2_strategy_frontier_classification was created.
+    8. tmp_m2_strategy_frontier_segment_highlights was created.
+    9. tmp_m2_strategy_frontier_executive_summary was created.
+    10. One-row-per-archived-slice frontier metrics are available.
+    11. Baseline-relative deltas are available where BASELINE_STRATEGY exists.
+    12. Approved Expected Loss rate and synthetic strategy efficiency metrics are available.
+    13. Frontier posture classifications are available.
+    14. Product, score-band, and product × score-band frontier highlights are available.
+    15. Executive-ready frontier quadrant labels are available.
+    16. Top primary reason-code, top non-approval reason-code, top policy-stop reason-code, and top
+        reason-code movement diagnostics are available.
+    17. Section 15 outputs are ready to support Section 16 evidence capture and later documentation.
+
+No archive rows have been inserted.
+No archive rows have been deleted.
+No archive rows have been updated.
+No latest-run rows have been modified.
+No strategy parameter rows have been modified.
+No product policy parameter rows have been modified.
+No decision outcomes have been recalculated.
+No simulated reason codes have been recalculated.
+No approved exposure has been recalculated.
+No approved Expected Loss has been recalculated.
+No BRD or Validation Summary documentation has been drafted.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M00796 -->
+
+
+---
+
+<a id="c038-m00798"></a>
+
+### C038-M00798
+
+**Andrew** · 2026-05-09T19:03:35.138000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00798 -->
+please give me the same elite commentary/header pass for section 16:
+<!-- END_MESSAGE C038-M00798 -->
+
+
+**Attachments in export:** `Pasted text(131).txt`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c038-m00812"></a>
+
+### C038-M00812
+
+**ChatGPT** · 2026-05-09T19:08:52.577353-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00812 -->
+I completed the elite commentary/header hardening pass for **Section 16 — Strategy Run Evidence Capture and Executive Story Register**, using your uploaded Section 16 as the base and preserving the existing SQL logic. fileciteturn57file0
+
+Because Section 16 is over 3,000 lines, I prepared it as a **copy-paste-ready SQL file** to avoid chat truncation and preserve the full integrated section cleanly.
+
+[Download the hardened Section 16 SQL](sandbox:/mnt/data/section16_elite_hardened_copy_paste.sql)
+
+Key updates applied:
+- Elevated the Section 16 top-level governance commentary to match Sections 0–15.
+- Hardened commentary for Sections 16.0 through 16.8.
+- Preserved the evidence capture boundary: Section 16 does not modify latest-run rows or archive rows.
+- Preserved the Module 3 boundary: readiness fields are captured, but no revenue / earnings / profitability logic is implemented.
+- Preserved the validation dependency: Section 16 requires `tmp_m2_validation_status_summary`.
+- Preserved the frontier dependency: Section 16 requires `tmp_m2_strategy_frontier_executive_summary`.
+- Preserved evidence replacement only at the current run key across the Section 16 evidence tables.
+<!-- END_MESSAGE C038-M00812 -->
+
+
+---
+
+<a id="c038-m00813"></a>
+
+### C038-M00813
+
+**Andrew** · 2026-05-09T19:11:58.986000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00813 -->
+This is not up to our elite commentary/header criteria.  let's break section 16 up into sections and try again.  here is thru section 16.4:  please remember that we need in line commentary to explain the sql logic too.
+<!-- END_MESSAGE C038-M00813 -->
+
+
+**Attachments in export:** `Pasted text(132).txt`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c038-m00821"></a>
+
+### C038-M00821
+
+**ChatGPT** · 2026-05-09T19:19:39.891141-04:00 · active path
+
+<!-- BEGIN_MESSAGE C038-M00821 -->
+Below is the updated **Section 16 header through Section 16.4** as a copy-paste replacement, with the same elite commentary/header standard and stronger inline SQL commentary throughout. I preserved the underlying SQL intent from your provided Section 16 chunk while making the logic more teachable, auditable, and documentation-ready. fileciteturn57file1
+
+```sql
+/***************************************************************************************************
+SECTION 16 — STRATEGY RUN EVIDENCE CAPTURE AND EXECUTIVE STORY REGISTER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Persist a compact, executive-ready evidence record for each completed Module 2 strategy run.
+
+    Section 16 answers:
+
+        "How do we capture the key evidence from this completed Module 2 run so the result can be
+         reviewed, validated, explained, compared, and later used in portfolio storytelling?"
+
+    The Module 2 latest-run table and archive table preserve row-level simulated strategy outputs.
+
+    Section 13 produces matched comparison diagnostics.
+    Section 14 produces validation status evidence.
+    Section 15 produces strategy frontier evidence.
+
+    Section 16 distills those outputs into persistent evidence tables so the project can support:
+        repeatable run tracking,
+        executive storytelling,
+        validation-summary drafting,
+        README / portfolio evidence,
+        LinkedIn campaign evidence,
+        parameter traceability,
+        product × score segment traceability,
+        and future Module 3 growth / economics design.
+
+SQL PURPOSE:
+    1. Identify the current completed latest-run Module 2 strategy slice.
+    2. Create current-run story metadata and fallback campaign labels.
+    3. Confirm required Section 14 and Section 15 temporary evidence outputs exist.
+    4. Confirm strategy and product-policy parameter tables exist for parameter snapshot capture.
+    5. Create persistent evidence tables if they do not already exist.
+    6. Delete prior evidence rows for the current run key only.
+    7. Persist Section 14 validation-status evidence for the current run.
+    8. Persist the exact active Module 2 strategy parameter card, product-policy card, and run-story
+       metadata as JSONB.
+    9. Preserve the current run key so later Section 16 blocks can insert executive and segment
+       evidence against the same grain.
+
+PRIMARY INPUTS:
+    credit_decisioning_sim.strategy_decisions
+        Current completed latest-run Module 2 strategy output.
+
+    tmp_m2_validation_status_summary
+        Temporary Section 14 validation status summary.
+
+    tmp_m2_strategy_frontier_executive_summary
+        Temporary Section 15 strategy frontier summary.
+
+    tmp_module2_strategy_params
+        Temporary active Module 2 strategy parameter card.
+
+    tmp_module2_product_policy_params
+        Temporary active product-policy parameter card.
+
+TEMPORARY OUTPUTS CREATED IN THIS CHUNK:
+    tmp_m2_current_run_key
+    tmp_m2_current_run_story_params
+
+PERSISTENT OUTPUT TABLES CREATED OR REUSED:
+    credit_decisioning_sim.strategy_run_evidence_summary
+    credit_decisioning_sim.strategy_run_validation_evidence
+    credit_decisioning_sim.strategy_run_parameter_snapshot
+    credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+EVIDENCE GRAIN:
+    The primary run-level evidence grain is:
+
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+    This is the same practical completed-run grain used for archive replacement and strategy
+    evidence interpretation.
+
+WHY SECTION 16 EXISTS:
+    During a multi-run scenario / strategy campaign, the user should not have to manually collect
+    key results from many separate QA grids after every run.
+
+    Section 16 captures the story in one governed evidence layer:
+        What Module 1 scenario was used?
+        What Module 2 strategy was applied?
+        What strategy family changed?
+        What was expected to happen?
+        What were the final simulated outcomes?
+        What was the simulated offer-exposure rate?
+        What was the approved exposure?
+        What was the approved Expected Loss?
+        What product and score segments drove the result?
+        Which simulated reason codes explain the result?
+        Which validation checks passed?
+        Which validation checks require interpretation?
+        Which validation checks were not applicable?
+        What parameter card produced the output?
+        What evidence will support later Module 3 growth / economics design?
+
+WHY SECTION 16 USES EVIDENCE TABLES INSTEAD OF THE LATEST-RUN TABLE:
+    credit_decisioning_sim.strategy_decisions is replaceable.
+
+    It represents only the current completed latest-run output.
+
+    Evidence tables persist the executive story, validation summary, parameter snapshot, and segment
+    profile for completed runs across the campaign.
+
+WHY SECTION 16 DOES NOT WRITE TO THE ARCHIVE:
+    Archive persistence is already governed by Section 12.
+
+    Section 16 does not insert, delete, update, or repair archive rows.
+
+    Evidence capture and archive persistence are separate governance functions.
+
+WHY DELETE / INSERT IS USED FOR EVIDENCE:
+    A strategy slice may be rerun under governed archive replacement behavior.
+
+    Evidence rows should reflect the current accepted version of that run key, not accumulate stale
+    duplicates for the same strategy / scenario / population evidence grain.
+
+    Therefore Section 16 deletes and replaces evidence rows only for the current run key in the
+    evidence tables.
+
+READ-ONLY / PERSISTENCE BOUNDARY:
+    Section 16 does not modify:
+        credit_decisioning_sim.strategy_decisions
+        credit_decisioning_sim.strategy_decisions_archive
+
+    Section 16 does create and maintain separate evidence tables:
+        credit_decisioning_sim.strategy_run_evidence_summary
+        credit_decisioning_sim.strategy_run_validation_evidence
+        credit_decisioning_sim.strategy_run_parameter_snapshot
+        credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+    Section 16 deletes and replaces evidence rows only for the current run key in these evidence
+    tables.
+
+MODELING BOUNDARY:
+    Section 16 does not recalculate decision_outcome.
+    Section 16 does not recalculate decision_path.
+    Section 16 does not recalculate approved_amount.
+    Section 16 does not recalculate approved_payment_to_income_ratio.
+    Section 16 does not recalculate approved_expected_loss_amount.
+    Section 16 does not reassign simulated reason codes.
+    Section 16 does not modify rule triggers.
+    Section 16 does not modify strategy thresholds.
+    Section 16 does not modify product-policy thresholds.
+
+MODULE 3 READINESS BOUNDARY:
+    Section 16 captures growth-readiness fields such as:
+        approved exposure,
+        requested exposure,
+        APR proxy,
+        term,
+        product mix,
+        score mix,
+        approved Expected Loss,
+        and simulated offer-exposure rate.
+
+    These fields will be useful for a future Module 3 economics layer.
+
+    Section 16 does not calculate:
+        revenue,
+        yield,
+        funding cost,
+        risk-adjusted margin,
+        profitability,
+        capital,
+        pricing optimization,
+        net income,
+        or lifetime value.
+
+INTERPRETATION BOUNDARIES:
+    estimated_pd remains the SQL field name from Module 1 and is interpreted as the synthetic
+    estimated-PD proxy.
+
+    requested_expected_loss_amount means requested-exposure Expected Loss from Module 1.
+
+    approved_expected_loss_amount means simulated approved-exposure Expected Loss after Module 2
+    exposure treatment.
+
+    simulated_offer_exposure_flag means the simulated strategy produced positive offer exposure
+    through APPROVE or COUNTEROFFER.
+
+    simulated_offer_exposure_flag does not imply:
+        operational account creation,
+        booked exposure,
+        funded exposure,
+        production approval,
+        customer treatment,
+        or real applicant treatment.
+
+    Reason codes remain simulated strategy explanation codes.
+
+    They are not:
+        customer communications,
+        regulatory notices,
+        adverse-action reasons,
+        fair-lending conclusions,
+        or production compliance determinations.
+
+VALIDATION STATUS INTERPRETATION:
+    PASS:
+        The validation expectation was satisfied.
+
+    REVIEW:
+        The pattern should be interpreted before documentation.
+        REVIEW does not automatically mean the strategy run is invalid.
+
+    NOT_APPLICABLE:
+        The validation test depends on conditions not present in the current run context.
+
+GOVERNANCE ROLE:
+    Section 16 turns SQL QA and comparison outputs into durable evidence.
+
+    It supports:
+        traceability,
+        validation-summary drafting,
+        executive review,
+        README results,
+        LinkedIn story development,
+        campaign-run auditability,
+        and future Module 3 design.
+
+COMMON MISUSE TO AVOID:
+    Do not treat evidence rows as replacement for the archive.
+    Do not treat evidence rows as raw applicant-level output.
+    Do not interpret Section 16 as recalculating strategy results.
+    Do not interpret simulated offer exposure as booked exposure.
+    Do not interpret reason-code evidence as customer communication language.
+    Do not interpret Module 3 readiness fields as revenue or profitability results.
+
+***************************************************************************************************/
+
+
+
+/***************************************************************************************************
+SECTION 16.0 — CURRENT RUN KEY, STORY METADATA, AND EVIDENCE CAPTURE GATEKEEPER
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Identify the current latest-run Module 2 strategy slice and confirm that evidence capture can be
+    performed safely.
+
+    Section 16.0 answers:
+
+        "Which completed strategy run is being captured, and are the upstream validation, frontier,
+         strategy-parameter, product-policy, and story-helper objects available?"
+
+SQL PURPOSE:
+    1. Create tmp_m2_current_run_key from credit_decisioning_sim.strategy_decisions.
+    2. Create tmp_m2_current_run_story_params as a temporary story-label helper.
+    3. Validate that credit_decisioning_sim.strategy_decisions exists and is populated.
+    4. Validate that the latest-run table resolves to exactly one run key.
+    5. Validate that tmp_m2_validation_status_summary exists.
+    6. Validate that tmp_m2_strategy_frontier_executive_summary exists.
+    7. Validate that tmp_module2_strategy_params exists.
+    8. Validate that tmp_module2_product_policy_params exists.
+    9. Validate that exactly one active story-parameter row exists.
+
+TEMPORARY OUTPUTS:
+    tmp_m2_current_run_key
+    tmp_m2_current_run_story_params
+
+CURRENT RUN KEY GRAIN:
+    One row representing the current completed latest-run strategy slice:
+
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+WHY CURRENT RUN KEY MUST HAVE EXACTLY ONE ROW:
+    Section 16 evidence tables are run-level evidence outputs.
+
+    A mixed latest-run table containing multiple strategies, multiple scenarios, or multiple
+    populations would make evidence capture ambiguous.
+
+    Section 16 therefore fails fast if tmp_m2_current_run_key does not contain exactly one row.
+
+WHY STORY METADATA IS TEMPORARY:
+    Story metadata is used to make evidence rows easier to interpret.
+
+    It links technical run keys to:
+        module1_run_id,
+        module2_run_id,
+        showcase_name,
+        parameter family labels,
+        expected storyline,
+        observed storyline,
+        and validation notes.
+
+    It does not alter decision logic or archive rows.
+
+WHY FALLBACK STORY LABELS EXIST:
+    Formal campaign registry metadata may not be available during ad hoc development.
+
+    Fallback labels allow evidence capture to proceed while still making the run interpretable.
+
+    For formal campaign documentation, registry-matched evidence is preferred.
+
+DEPENDENCY BOUNDARY:
+    Section 16 depends on Section 14 and Section 15 outputs.
+
+    Section 16 does not rebuild those outputs.
+
+    If tmp_m2_validation_status_summary or tmp_m2_strategy_frontier_executive_summary is missing,
+    Section 16 fails clearly rather than capturing incomplete evidence.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0A Reset current-run evidence helper objects.
+
+Business purpose:
+    Remove prior current-run helper objects so Section 16 captures the current latest-run output
+    rather than a stale helper table from an earlier session.
+
+SQL purpose:
+    Drop only temporary helper objects.
+
+Boundary:
+    This does not delete persistent evidence rows.
+    Evidence replacement is handled later by Section 16.2 using the current run key.
+-----------------------------------------------------------------------------------------------*/
+
+DROP TABLE IF EXISTS tmp_m2_current_run_key;
+DROP TABLE IF EXISTS tmp_m2_current_run_story_params;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0B Materialize the current latest-run key.
+
+Business purpose:
+    Convert the current latest-run output into a one-row run key that all Section 16 evidence inserts
+    can join against.
+
+SQL purpose:
+    Pull distinct strategy, Module 1 lineage, archive-control, source, and timestamp fields from the
+    latest-run output.
+
+Inline logic:
+    SELECT DISTINCT is used because the latest-run table is applicant-grain.
+
+    Every applicant row should carry the same strategy identity and Module 1 scenario lineage.
+
+    If more than one distinct run key exists, the gatekeeper below fails.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TEMP TABLE tmp_m2_current_run_key
+ON COMMIT PRESERVE ROWS
+AS
+SELECT DISTINCT
+    /***********************************************************************************************
+    Module 2 strategy identity.
+
+    These fields identify the downstream strategy being captured.
+    ***********************************************************************************************/
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    /***********************************************************************************************
+    Archive and final-resolution controls.
+
+    These fields explain how the run was persisted and how failed counteroffers were resolved.
+    ***********************************************************************************************/
+    archive_run_flag,
+    strategy_archive_reset_mode,
+    failed_counteroffer_resolution,
+
+    /***********************************************************************************************
+    Module 1 source mode.
+
+    These fields document whether Module 2 consumed latest-run Module 1 output or an archived Module
+    1 scenario slice.
+    ***********************************************************************************************/
+    module1_input_source,
+    module1_source_table_name,
+
+    /***********************************************************************************************
+    Module 1 lineage.
+
+    These fields identify the upstream synthetic population and scenario environment.
+    ***********************************************************************************************/
+    module1_model_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    anchor_date,
+
+    /***********************************************************************************************
+    Latest-run materialization timestamp.
+
+    Audit metadata only.
+    This is not a strategy-comparison key.
+    ***********************************************************************************************/
+    latest_output_created_ts
+
+FROM credit_decisioning_sim.strategy_decisions;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0C Build temporary current-run story metadata.
+
+Business purpose:
+    Attach human-readable campaign / story labels to the technical run key.
+
+SQL purpose:
+    Derive fallback run IDs, showcase labels, parameter-family labels, and expected storylines from
+    Module 1 scenario name and Module 2 strategy name.
+
+Why this is still temporary:
+    The purpose is evidence capture support.
+
+    It does not modify the archive.
+    It does not modify strategy decisions.
+    It does not change strategy thresholds.
+
+Manual edit guidance:
+    Users may edit the CASE outputs or replace this temporary helper with registry-derived metadata
+    when preparing formal campaign evidence.
+
+Design note:
+    Later registry matching can supersede these fallback labels, but this helper ensures the evidence
+    layer is still interpretable during development.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TEMP TABLE tmp_m2_current_run_story_params
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    /***********************************************************************************************
+    One active story row is expected.
+
+    The Section 16 gatekeeper validates this cardinality.
+    ***********************************************************************************************/
+    TRUE AS active_story_flag,
+
+    /***********************************************************************************************
+    Fallback run IDs.
+
+    These are readable fallback identifiers only.
+
+    Formal campaign IDs from the campaign registry are preferred for final validation artifacts.
+    ***********************************************************************************************/
+    module1_scenario_name AS module1_run_id,
+    module1_scenario_name || '__' || strategy_name AS module2_run_id,
+
+    /***********************************************************************************************
+    Showcase label.
+
+    This groups runs into higher-level story families such as rate sensitivity, credit-box
+    sensitivity, product mix, exposure intensity, or severity sensitivity.
+    ***********************************************************************************************/
+    CASE
+        WHEN module1_scenario_name IN (
+                'BASELINE_V2',
+                'CREDIT_BOX_BASELINE_REFERENCE',
+                'PRODUCT_MIX_BASELINE_REFERENCE',
+                'EXPOSURE_BASELINE_REFERENCE',
+                'LGD_BASELINE_REFERENCE'
+             )
+            THEN 'BASELINE_REFERENCE'
+
+        WHEN module1_scenario_name ILIKE '%RATE%'
+            THEN 'RATE_SENSITIVITY_SHOWCASE'
+
+        WHEN module1_scenario_name ILIKE '%SCORE%'
+          OR module1_scenario_name ILIKE '%PRIME%'
+          OR module1_scenario_name ILIKE '%CREDIT_STRESS%'
+            THEN 'CREDIT_BOX_SHOWCASE'
+
+        WHEN module1_scenario_name ILIKE '%MIX%'
+            THEN 'PORTFOLIO_MIX_SHOWCASE'
+
+        WHEN module1_scenario_name ILIKE '%BALANCE%'
+          OR module1_scenario_name ILIKE '%EXPOSURE%'
+            THEN 'EXPOSURE_INTENSITY_SHOWCASE'
+
+        WHEN module1_scenario_name ILIKE '%LGD%'
+          OR module1_scenario_name ILIKE '%SEVERITY%'
+            THEN 'SEVERITY_SENSITIVITY_SHOWCASE'
+
+        ELSE 'UNCLASSIFIED_SHOWCASE'
+    END AS showcase_name,
+
+    /***********************************************************************************************
+    Module 1 parameter family.
+
+    This classifies what changed upstream in Module 1.
+
+    It is used for evidence storytelling and does not change strategy outcomes.
+    ***********************************************************************************************/
+    CASE
+        WHEN module1_scenario_name ILIKE '%RATE_UP%'
+          OR module1_scenario_name ILIKE '%RATE_DOWN%'
+            THEN 'RATE_ENVIRONMENT'
+
+        WHEN module1_scenario_name ILIKE '%SCORE%'
+          OR module1_scenario_name ILIKE '%PRIME%'
+          OR module1_scenario_name ILIKE '%CREDIT_STRESS%'
+            THEN 'SCORE_MIX'
+
+        WHEN module1_scenario_name ILIKE '%PRODUCT%'
+          OR module1_scenario_name ILIKE '%UNSECURED%'
+          OR module1_scenario_name ILIKE '%REVOLVING%'
+          OR module1_scenario_name ILIKE '%SECURED%'
+            THEN 'PRODUCT_MIX'
+
+        WHEN module1_scenario_name ILIKE '%BALANCE%'
+          OR module1_scenario_name ILIKE '%EXPOSURE%'
+            THEN 'EXPOSURE_INTENSITY'
+
+        WHEN module1_scenario_name ILIKE '%LGD%'
+          OR module1_scenario_name ILIKE '%SEVERITY%'
+            THEN 'LGD_SEVERITY'
+
+        ELSE 'BASELINE_OR_UNCLASSIFIED'
+    END AS module1_parameter_family_changed,
+
+    /***********************************************************************************************
+    Module 1 parameter change summary.
+
+    This is a plain-English explanation of the upstream scenario family.
+    ***********************************************************************************************/
+    CASE
+        WHEN module1_scenario_name = 'BASELINE_V2'
+            THEN 'Module 1 baseline scenario using accepted V2.0 defaults.'
+
+        WHEN module1_scenario_name ILIKE '%RATE_UP%'
+            THEN 'Module 1 rate-up sensitivity scenario.'
+
+        WHEN module1_scenario_name ILIKE '%RATE_DOWN%'
+            THEN 'Module 1 rate-down sensitivity scenario.'
+
+        WHEN module1_scenario_name ILIKE '%PRIME%'
+            THEN 'Module 1 score-mix scenario emphasizing prime or near-prime composition.'
+
+        WHEN module1_scenario_name ILIKE '%UNSECURED%'
+            THEN 'Module 1 product-mix or severity scenario emphasizing unsecured exposure.'
+
+        WHEN module1_scenario_name ILIKE '%REVOLVING%'
+            THEN 'Module 1 product-mix scenario emphasizing revolving exposure.'
+
+        WHEN module1_scenario_name ILIKE '%SEVERITY%'
+          OR module1_scenario_name ILIKE '%LGD%'
+            THEN 'Module 1 LGD / severity sensitivity scenario.'
+
+        ELSE 'Module 1 scenario parameter change summary not manually specified.'
+    END AS module1_parameter_change_summary,
+
+    /***********************************************************************************************
+    Module 2 strategy family.
+
+    This classifies the downstream strategy posture being applied.
+    ***********************************************************************************************/
+    CASE
+        WHEN strategy_name = 'BASELINE_STRATEGY'
+            THEN 'BASELINE'
+
+        WHEN strategy_name = 'TIGHTER_SYNTHETIC_RISK_STRATEGY'
+            THEN 'RISK_TIGHTENING'
+
+        WHEN strategy_name = 'GROWTH_ORIENTED_STRATEGY'
+            THEN 'GROWTH'
+
+        WHEN strategy_name = 'TIGHTER_AFFORDABILITY_STRATEGY'
+            THEN 'AFFORDABILITY_TIGHTENING'
+
+        WHEN strategy_name = 'COUNTEROFFER_FIRST_EXPOSURE_STRATEGY'
+            THEN 'COUNTEROFFER_MANAGEMENT'
+
+        WHEN strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+            THEN 'PRODUCT_GUARDRAILS'
+
+        WHEN strategy_name = 'MANUAL_REVIEW_REDUCTION_STRATEGY'
+            THEN 'OPERATIONS_REVIEW_REDUCTION'
+
+        ELSE 'UNCLASSIFIED_STRATEGY'
+    END AS module2_strategy_family_changed,
+
+    /***********************************************************************************************
+    Module 2 strategy parameter change summary.
+
+    This describes the intended strategy lever in business language.
+    ***********************************************************************************************/
+    CASE
+        WHEN strategy_name = 'BASELINE_STRATEGY'
+            THEN 'Module 2 baseline strategy using accepted V1.0 defaults.'
+
+        WHEN strategy_name = 'TIGHTER_SYNTHETIC_RISK_STRATEGY'
+            THEN 'Module 2 strategy tightens synthetic estimated-PD proxy tolerance thresholds.'
+
+        WHEN strategy_name = 'GROWTH_ORIENTED_STRATEGY'
+            THEN 'Module 2 strategy loosens selected synthetic-risk, PTI, and DTI tolerances for growth-oriented comparison.'
+
+        WHEN strategy_name = 'TIGHTER_AFFORDABILITY_STRATEGY'
+            THEN 'Module 2 strategy tightens PTI thresholds and counteroffer target PTI.'
+
+        WHEN strategy_name = 'COUNTEROFFER_FIRST_EXPOSURE_STRATEGY'
+            THEN 'Module 2 strategy emphasizes reduced-exposure treatment through tighter approved amount, approved EL, and PTI constraints.'
+
+        WHEN strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+            THEN 'Module 2 strategy applies tighter guardrails to selected unsecured / revolving products.'
+
+        WHEN strategy_name = 'MANUAL_REVIEW_REDUCTION_STRATEGY'
+            THEN 'Module 2 strategy resolves failed counteroffers to final no-offer outcomes to reduce unresolved manual review.'
+
+        ELSE 'Module 2 strategy parameter change summary not manually specified.'
+    END AS module2_parameter_change_summary,
+
+    /***********************************************************************************************
+    Expected storyline.
+
+    This describes what the run is expected to demonstrate before reviewing observed evidence.
+
+    observed_storyline and validation_notes remain nullable so they can be filled later after QA
+    review.
+    ***********************************************************************************************/
+    CASE
+        WHEN strategy_name = 'BASELINE_STRATEGY'
+            THEN 'Establish reference strategy behavior for this Module 1 scenario.'
+
+        WHEN strategy_name = 'TIGHTER_SYNTHETIC_RISK_STRATEGY'
+            THEN 'Demonstrate risk-discipline tradeoff: lower simulated offer exposure and approved Expected Loss, with higher decline rate.'
+
+        WHEN strategy_name = 'GROWTH_ORIENTED_STRATEGY'
+            THEN 'Demonstrate growth tradeoff: higher simulated offer exposure and approved amount, with measurable risk impact.'
+
+        WHEN strategy_name = 'COUNTEROFFER_FIRST_EXPOSURE_STRATEGY'
+            THEN 'Demonstrate exposure-management tradeoff through reduced approved amount, improved PTI, and lower approved Expected Loss.'
+
+        ELSE 'Expected storyline not manually specified.'
+    END AS expected_storyline,
+
+    /***********************************************************************************************
+    Reviewer-populated narrative fields.
+
+    These intentionally start NULL.
+
+    They should be populated only after evidence review, not before.
+    ***********************************************************************************************/
+    NULL::TEXT AS observed_storyline,
+    NULL::TEXT AS validation_notes
+
+FROM tmp_m2_current_run_key
+LIMIT 1;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.0D Evidence capture fail-fast gatekeeper.
+
+Business purpose:
+    Prevent incomplete or ambiguous evidence capture.
+
+Why fail fast:
+    Evidence capture is persistent.
+
+    It is better to stop than to create evidence rows with:
+        no latest-run output,
+        multiple run keys,
+        missing validation summary,
+        missing frontier summary,
+        missing parameter tables,
+        or ambiguous story metadata.
+
+SQL logic:
+    This block validates object existence, row counts, run-key cardinality, and story-row
+    cardinality before Section 16 creates or replaces persistent evidence rows.
+-----------------------------------------------------------------------------------------------*/
+
+DO $$
+DECLARE
+    v_latest_table_exists BOOLEAN;
+    v_latest_row_count BIGINT;
+    v_current_key_count BIGINT;
+    v_validation_summary_exists BOOLEAN;
+    v_frontier_summary_exists BOOLEAN;
+    v_strategy_params_exists BOOLEAN;
+    v_product_policy_params_exists BOOLEAN;
+    v_story_param_count BIGINT;
+BEGIN
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run output table must exist.
+
+    Section 16 captures evidence from the completed latest-run output created in Section 11.
+    -------------------------------------------------------------------------------------------*/
+    SELECT TO_REGCLASS('credit_decisioning_sim.strategy_decisions') IS NOT NULL
+    INTO v_latest_table_exists;
+
+    IF v_latest_table_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 16 failure: credit_decisioning_sim.strategy_decisions does not exist.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: latest-run output must contain rows.
+
+    Evidence capture from an empty latest-run output would create misleading documentation artifacts.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_latest_row_count
+    FROM credit_decisioning_sim.strategy_decisions;
+
+    IF v_latest_row_count <= 0 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 16 failure: latest-run strategy_decisions table contains zero rows.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: current run key must resolve to exactly one strategy / scenario / population slice.
+
+    If this count is greater than one, the latest-run table is mixed and Section 16 cannot safely
+    create one evidence record.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_current_key_count
+    FROM tmp_m2_current_run_key;
+
+    IF v_current_key_count <> 1 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 16 failure: expected exactly one current latest-run strategy / Module 1 scenario / population key, found %.',
+            v_current_key_count;
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 14 validation summary must exist.
+
+    Section 16 does not rebuild validation evidence. It persists Section 14 output.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS('pg_temp.tmp_m2_validation_status_summary'),
+        TO_REGCLASS('tmp_m2_validation_status_summary')
+    ) IS NOT NULL
+    INTO v_validation_summary_exists;
+
+    IF v_validation_summary_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 16 failure: tmp_m2_validation_status_summary is required before evidence capture.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: Section 15 frontier executive summary must exist.
+
+    Section 16 later uses frontier fields for executive story capture. Failing here prevents partial
+    evidence capture without frontier context.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS('pg_temp.tmp_m2_strategy_frontier_executive_summary'),
+        TO_REGCLASS('tmp_m2_strategy_frontier_executive_summary')
+    ) IS NOT NULL
+    INTO v_frontier_summary_exists;
+
+    IF v_frontier_summary_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 16 failure: tmp_m2_strategy_frontier_executive_summary is required before evidence capture.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: active strategy parameter card must exist.
+
+    Section 16 snapshots the parameter card so future documentation can trace evidence back to the
+    exact strategy configuration.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS('pg_temp.tmp_module2_strategy_params'),
+        TO_REGCLASS('tmp_module2_strategy_params')
+    ) IS NOT NULL
+    INTO v_strategy_params_exists;
+
+    IF v_strategy_params_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 16 failure: tmp_module2_strategy_params is required for parameter snapshot capture.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: product-policy parameter card must exist.
+
+    Product-policy parameters are critical for explaining approved exposure, counteroffer feasibility,
+    approved Expected Loss, and product × score segment evidence.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COALESCE(
+        TO_REGCLASS('pg_temp.tmp_module2_product_policy_params'),
+        TO_REGCLASS('tmp_module2_product_policy_params')
+    ) IS NOT NULL
+    INTO v_product_policy_params_exists;
+
+    IF v_product_policy_params_exists IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION
+            'Module 2 Section 16 failure: tmp_module2_product_policy_params is required for product-policy parameter snapshot capture.';
+    END IF;
+
+
+    /*-------------------------------------------------------------------------------------------
+    Gatekeeper: exactly one active story-parameter row.
+
+    The story helper should produce one and only one evidence-story row for the current run key.
+    -------------------------------------------------------------------------------------------*/
+    SELECT COUNT(*)
+    INTO v_story_param_count
+    FROM tmp_m2_current_run_story_params
+    WHERE active_story_flag IS TRUE;
+
+    IF v_story_param_count <> 1 THEN
+        RAISE EXCEPTION
+            'Module 2 Section 16 failure: expected exactly one active story-parameter row, found %.',
+            v_story_param_count;
+    END IF;
+END $$;
+
+
+
+/***************************************************************************************************
+SECTION 16.1 — CREATE PERSISTENT EVIDENCE TABLES
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Create persistent tables that preserve run-level executive evidence, validation evidence,
+    parameter snapshots, and product × score segment evidence.
+
+    Section 16.1 answers:
+
+        "Where will the project store durable evidence for this completed strategy run?"
+
+SQL PURPOSE:
+    1. Create credit_decisioning_sim.strategy_run_evidence_summary if it does not exist.
+    2. Create credit_decisioning_sim.strategy_run_validation_evidence if it does not exist.
+    3. Create credit_decisioning_sim.strategy_run_parameter_snapshot if it does not exist.
+    4. Create credit_decisioning_sim.strategy_run_segment_evidence_summary if it does not exist.
+    5. Create practical evidence-table indexes.
+
+PERSISTENT TABLE PURPOSES:
+    strategy_run_evidence_summary:
+        One row per completed strategy / Module 1 scenario / population run.
+        Stores executive story, outcome metrics, exposure metrics, risk metrics, validation counts,
+        frontier classification, reason-code story fields, and Module 3 readiness flags.
+
+    strategy_run_validation_evidence:
+        One row per completed run × validation test.
+        Stores Section 14 validation status details.
+
+    strategy_run_parameter_snapshot:
+        One row per completed run.
+        Stores JSONB snapshots of active strategy parameters, product policy parameters, and run-story
+        metadata.
+
+    strategy_run_segment_evidence_summary:
+        One row per completed run × product_type_policy_key × score_band_policy_key.
+        Stores segment evidence for product × score storytelling and future strategy analysis.
+
+GRAIN:
+    Main executive evidence:
+        one row per Module 1 scenario × Module 2 strategy version
+
+    Validation evidence:
+        one row per run × validation test
+
+    Parameter snapshot:
+        one row per run
+
+    Segment evidence:
+        one row per run × product_type_policy_key × score_band_policy_key
+
+WHY CREATE TABLE IF NOT EXISTS IS USED:
+    Evidence tables should persist across the campaign.
+
+    They should not be dropped during ordinary reruns.
+
+SCHEMA EVOLUTION NOTE:
+    CREATE TABLE IF NOT EXISTS does not alter existing table schemas.
+
+    If evidence-table schemas change in a later development version, a controlled ALTER TABLE or
+    migration step may be required.
+
+BOUNDARY:
+    This section creates evidence tables only.
+
+    It does not insert evidence rows yet.
+    It does not modify latest-run output.
+    It does not modify archive output.
+    It does not calculate strategy metrics.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1A Create one-row executive evidence summary table.
+
+Business purpose:
+    Store the executive story and primary run-level metrics for each completed run.
+
+Column grouping:
+    Columns are intentionally grouped by evidence identity, story metadata, strategy identity,
+    Module 1 lineage, outcome metrics, exposure metrics, growth-readiness fields, risk / Expected
+    Loss metrics, reason-code fields, frontier fields, validation summary fields, segment driver
+    fields, and Module 3 readiness fields.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_run_evidence_summary (
+    /***********************************************************************************************
+    Evidence snapshot identity.
+
+    evidence_snapshot_id is generated at capture time.
+    It supports traceability but is not the run-key grain.
+    ***********************************************************************************************/
+    evidence_snapshot_ts TIMESTAMP,
+    evidence_snapshot_id TEXT,
+
+    /***********************************************************************************************
+    Campaign / story metadata.
+
+    These fields link SQL evidence to the run roadmap, README / LinkedIn storyline, and Validation
+    Summary structure.
+    ***********************************************************************************************/
+    module1_run_id TEXT,
+    module2_run_id TEXT,
+    showcase_name TEXT,
+
+    module1_parameter_family_changed TEXT,
+    module1_parameter_change_summary TEXT,
+    module2_strategy_family_changed TEXT,
+    module2_parameter_change_summary TEXT,
+    expected_storyline TEXT,
+    observed_storyline TEXT,
+    validation_notes TEXT,
+
+    /***********************************************************************************************
+    Module 2 strategy identity.
+    ***********************************************************************************************/
+    module2_model_version TEXT,
+    strategy_set_name TEXT,
+    strategy_name TEXT,
+    strategy_version TEXT,
+    strategy_run_id TEXT,
+    strategy_run_ts TIMESTAMP,
+
+    /***********************************************************************************************
+    Output / archive timestamp metadata.
+
+    These fields support traceability only.
+    They are not comparison keys and not business outcomes.
+    ***********************************************************************************************/
+    latest_output_created_ts TIMESTAMP,
+    archive_inserted_ts TIMESTAMP,
+
+    /***********************************************************************************************
+    Archive controls and final-resolution setting.
+    ***********************************************************************************************/
+    archive_run_flag BOOLEAN,
+    strategy_archive_reset_mode TEXT,
+    failed_counteroffer_resolution TEXT,
+
+    /***********************************************************************************************
+    Module 1 source mode and lineage.
+    ***********************************************************************************************/
+    module1_input_source TEXT,
+    module1_source_table_name TEXT,
+
+    module1_model_version TEXT,
+    module1_scenario_set_name TEXT,
+    module1_scenario_name TEXT,
+    population_id TEXT,
+    anchor_date DATE,
+
+    /***********************************************************************************************
+    Structural run counts.
+
+    duplicate_application_count should be zero for accepted evidence.
+    ***********************************************************************************************/
+    applications BIGINT,
+    distinct_application_id_count BIGINT,
+    duplicate_application_count BIGINT,
+
+    /***********************************************************************************************
+    Final decision outcome counts.
+    ***********************************************************************************************/
+    approval_count BIGINT,
+    counteroffer_count BIGINT,
+    manual_review_count BIGINT,
+    decline_count BIGINT,
+    offer_count BIGINT,
+
+    /***********************************************************************************************
+    Final decision outcome rates.
+
+    simulated_offer_exposure_rate = APPROVE + COUNTEROFFER share.
+    ***********************************************************************************************/
+    approval_rate NUMERIC,
+    counteroffer_rate NUMERIC,
+    manual_review_rate NUMERIC,
+    decline_rate NUMERIC,
+    simulated_offer_exposure_rate NUMERIC,
+    approval_share_of_offers NUMERIC,
+    counteroffer_share_of_offers NUMERIC,
+
+    /***********************************************************************************************
+    Requested and approved exposure metrics.
+    ***********************************************************************************************/
+    total_requested_amount NUMERIC,
+    total_approved_amount NUMERIC,
+    approved_amount_capture_rate NUMERIC,
+
+    avg_requested_amount NUMERIC,
+    avg_approved_amount_all_apps NUMERIC,
+    avg_approved_amount_offer_rows NUMERIC,
+
+    total_exposure_reduction_amount NUMERIC,
+
+    /***********************************************************************************************
+    Counteroffer, manual-review, and decline exposure context.
+    ***********************************************************************************************/
+    counteroffer_requested_amount NUMERIC,
+    counteroffer_approved_amount NUMERIC,
+    counteroffer_exposure_reduction_amount NUMERIC,
+    counteroffer_exposure_reduction_pct_avg NUMERIC,
+
+    manual_review_requested_amount NUMERIC,
+    manual_review_requested_expected_loss_amount NUMERIC,
+    decline_requested_amount NUMERIC,
+    decline_requested_expected_loss_amount NUMERIC,
+
+    /***********************************************************************************************
+    Requested and approved affordability metrics.
+    ***********************************************************************************************/
+    avg_requested_payment_to_income_ratio NUMERIC,
+    avg_approved_payment_to_income_ratio_offer_rows NUMERIC,
+
+    /***********************************************************************************************
+    Module 3 growth-readiness APR proxy metrics.
+
+    These fields preserve inputs useful for future economics design.
+
+    They are not revenue or profitability metrics.
+    ***********************************************************************************************/
+    avg_apr_proxy_all_apps NUMERIC,
+    avg_apr_proxy_offer_rows NUMERIC,
+    requested_amount_weighted_apr_proxy NUMERIC,
+    approved_amount_weighted_apr_proxy NUMERIC,
+    requested_amount_x_apr_proxy_sum NUMERIC,
+    approved_amount_x_apr_proxy_sum NUMERIC,
+
+    /***********************************************************************************************
+    Module 3 growth-readiness term metrics.
+
+    loan_term_months may be unavailable or not meaningful for some product types.
+    term_missing_or_revolving_count preserves that context.
+    ***********************************************************************************************/
+    avg_loan_term_months_offer_rows NUMERIC,
+    approved_amount_weighted_term_months NUMERIC,
+    term_missing_or_revolving_count BIGINT,
+
+    /***********************************************************************************************
+    Product mix / exposure composition metrics for future economics interpretation.
+    ***********************************************************************************************/
+    secured_approved_amount_share NUMERIC,
+    unsecured_approved_amount_share NUMERIC,
+    revolving_approved_amount_share NUMERIC,
+    installment_approved_amount_share NUMERIC,
+    mortgage_approved_amount_share NUMERIC,
+
+    product_approved_amount_mix_jsonb JSONB,
+    product_approved_expected_loss_mix_jsonb JSONB,
+    product_offer_rate_jsonb JSONB,
+
+    /***********************************************************************************************
+    Synthetic estimated-risk and LGD metrics.
+
+    estimated_pd remains the SQL field name and is interpreted as synthetic estimated-PD proxy.
+    ***********************************************************************************************/
+    avg_synthetic_estimated_pd_proxy_all_apps NUMERIC,
+    avg_synthetic_estimated_pd_proxy_offer_rows NUMERIC,
+    avg_synthetic_estimated_pd_proxy_declined_rows NUMERIC,
+
+    avg_estimated_lgd_all_apps NUMERIC,
+    avg_estimated_lgd_offer_rows NUMERIC,
+
+    /***********************************************************************************************
+    Requested and approved Expected Loss metrics.
+    ***********************************************************************************************/
+    total_requested_expected_loss_amount NUMERIC,
+    total_approved_expected_loss_amount NUMERIC,
+    avg_requested_expected_loss_amount NUMERIC,
+    avg_approved_expected_loss_all_apps NUMERIC,
+    avg_approved_expected_loss_offer_rows NUMERIC,
+
+    requested_expected_loss_rate NUMERIC,
+    approved_expected_loss_rate NUMERIC,
+    approved_amount_per_approved_expected_loss_dollar NUMERIC,
+
+    /***********************************************************************************************
+    Simulated reason-code story fields.
+    ***********************************************************************************************/
+    top_primary_reason_family TEXT,
+    top_primary_reason_code TEXT,
+    top_primary_reason_population_share NUMERIC,
+
+    top_non_approval_primary_reason_family TEXT,
+    top_non_approval_primary_reason_code TEXT,
+    top_non_approval_reason_population_share NUMERIC,
+
+    top_policy_stop_primary_reason_family TEXT,
+    top_policy_stop_primary_reason_code TEXT,
+    top_policy_stop_reason_population_share NUMERIC,
+
+    /***********************************************************************************************
+    Reason-code movement versus baseline.
+
+    These fields are populated from Section 15 when baseline-relative frontier evidence exists.
+    ***********************************************************************************************/
+    top_reason_code_delta_driver_family TEXT,
+    top_reason_code_delta_driver_code TEXT,
+    top_reason_code_delta_driver_baseline_share NUMERIC,
+    top_reason_code_delta_driver_strategy_share NUMERIC,
+    top_reason_code_delta_population_share NUMERIC,
+
+    /***********************************************************************************************
+    Outcome-family reason-code highlights.
+    ***********************************************************************************************/
+    top_counteroffer_reason_code TEXT,
+    top_manual_review_reason_code TEXT,
+    top_decline_reason_code TEXT,
+
+    /***********************************************************************************************
+    Strategy frontier classification fields from Section 15.
+    ***********************************************************************************************/
+    frontier_position_type TEXT,
+    executive_frontier_quadrant TEXT,
+    frontier_interpretation_note TEXT,
+
+    /***********************************************************************************************
+    Validation summary rollup fields from Section 14.
+    ***********************************************************************************************/
+    validation_pass_count BIGINT,
+    validation_review_count BIGINT,
+    validation_not_applicable_count BIGINT,
+    validation_review_items TEXT,
+    validation_status_summary_jsonb JSONB,
+
+    /***********************************************************************************************
+    Product-level driver fields.
+    ***********************************************************************************************/
+    top_approved_amount_product TEXT,
+    top_approved_amount_product_share NUMERIC,
+    top_approved_expected_loss_product TEXT,
+    top_approved_expected_loss_product_share NUMERIC,
+    top_counteroffer_product TEXT,
+    top_decline_product TEXT,
+    highest_offer_rate_product TEXT,
+    lowest_offer_rate_product TEXT,
+
+    /***********************************************************************************************
+    Score-band driver fields.
+    ***********************************************************************************************/
+    top_approved_amount_score_band TEXT,
+    top_approved_expected_loss_score_band TEXT,
+    top_counteroffer_score_band TEXT,
+    top_decline_score_band TEXT,
+    highest_offer_rate_score_band TEXT,
+    lowest_offer_rate_score_band TEXT,
+    highest_approved_el_rate_score_band TEXT,
+
+    /***********************************************************************************************
+    Product × score segment driver fields.
+    ***********************************************************************************************/
+    top_approved_amount_product_score_segment TEXT,
+    top_approved_el_product_score_segment TEXT,
+    top_counteroffer_product_score_segment TEXT,
+    top_decline_product_score_segment TEXT,
+    highest_approved_el_rate_product_score_segment TEXT,
+
+    /***********************************************************************************************
+    Baseline-relative segment movement fields.
+    ***********************************************************************************************/
+    largest_delta_approved_amount_product TEXT,
+    largest_delta_approved_el_product TEXT,
+    largest_delta_offer_rate_score_band TEXT,
+    largest_delta_decline_rate_score_band TEXT,
+    largest_delta_approved_el_product_score_segment TEXT,
+
+    /***********************************************************************************************
+    Module 3 readiness fields.
+
+    These fields explicitly signal readiness for future economics modeling while preserving the
+    boundary that Module 2 does not calculate profitability.
+    ***********************************************************************************************/
+    module3_growth_inputs_available_flag BOOLEAN,
+    module3_growth_input_gap_note TEXT,
+    module3_revenue_model_required_flag BOOLEAN,
+    module3_boundary_note TEXT
+);
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1B Create validation evidence detail table.
+
+Business purpose:
+    Persist each Section 14 validation summary row for the current run.
+
+Why this matters:
+    The Validation Summary should be traceable to individual SQL evidence rows, not only to a single
+    aggregate PASS / REVIEW count.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_run_validation_evidence (
+    evidence_snapshot_ts TIMESTAMP,
+
+    module2_model_version TEXT,
+    strategy_set_name TEXT,
+    strategy_name TEXT,
+    strategy_version TEXT,
+    strategy_run_id TEXT,
+    strategy_run_ts TIMESTAMP,
+
+    module1_scenario_set_name TEXT,
+    module1_scenario_name TEXT,
+    population_id TEXT,
+
+    validation_area TEXT,
+    validation_test_name TEXT,
+    validation_category TEXT,
+    validation_status TEXT,
+    observed_value TEXT,
+    expected_behavior TEXT,
+    interpretation TEXT
+);
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1C Create parameter snapshot table.
+
+Business purpose:
+    Persist the exact active parameter configuration that produced the current strategy evidence.
+
+Why JSONB:
+    Strategy and product-policy parameter tables are temporary and can change across runs.
+
+    JSONB preserves the full parameter payload without requiring one evidence column per parameter.
+
+parameter_snapshot_hash:
+    Provides a compact fingerprint of the strategy, product-policy, and story payload.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_run_parameter_snapshot (
+    evidence_snapshot_ts TIMESTAMP,
+    evidence_snapshot_id TEXT,
+
+    module2_model_version TEXT,
+    strategy_set_name TEXT,
+    strategy_name TEXT,
+    strategy_version TEXT,
+    strategy_run_id TEXT,
+    strategy_run_ts TIMESTAMP,
+
+    module1_scenario_set_name TEXT,
+    module1_scenario_name TEXT,
+    population_id TEXT,
+
+    strategy_params_jsonb JSONB,
+    product_policy_params_jsonb JSONB,
+    run_story_params_jsonb JSONB,
+    parameter_snapshot_hash TEXT
+);
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1D Create product × score segment evidence table.
+
+Business purpose:
+    Persist segment-level evidence so the executive story can identify which product × score
+    intersections drove access, approved exposure, approved Expected Loss, counteroffer behavior, and
+    no-offer behavior.
+
+GRAIN:
+    one row per current run key
+    × product_type_policy_key
+    × score_band_policy_key
+
+Boundary:
+    This is segment evidence, not a new scoring model and not production segmentation.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE TABLE IF NOT EXISTS credit_decisioning_sim.strategy_run_segment_evidence_summary (
+    evidence_snapshot_ts TIMESTAMP,
+
+    module2_model_version TEXT,
+    strategy_set_name TEXT,
+    strategy_name TEXT,
+    strategy_version TEXT,
+    strategy_run_id TEXT,
+    strategy_run_ts TIMESTAMP,
+
+    module1_scenario_set_name TEXT,
+    module1_scenario_name TEXT,
+    population_id TEXT,
+
+    product_type_policy_key TEXT,
+    score_band_policy_key TEXT,
+    product_score_policy_segment TEXT,
+
+    applications BIGINT,
+
+    approval_count BIGINT,
+    counteroffer_count BIGINT,
+    manual_review_count BIGINT,
+    decline_count BIGINT,
+    offer_count BIGINT,
+
+    approval_rate NUMERIC,
+    counteroffer_rate NUMERIC,
+    manual_review_rate NUMERIC,
+    decline_rate NUMERIC,
+    simulated_offer_exposure_rate NUMERIC,
+
+    total_requested_amount NUMERIC,
+    total_approved_amount NUMERIC,
+    approved_amount_capture_rate NUMERIC,
+
+    avg_requested_amount NUMERIC,
+    avg_approved_amount_all_apps NUMERIC,
+    avg_approved_amount_offer_rows NUMERIC,
+
+    avg_apr_proxy_all_apps NUMERIC,
+    avg_apr_proxy_offer_rows NUMERIC,
+    requested_amount_weighted_apr_proxy NUMERIC,
+    approved_amount_weighted_apr_proxy NUMERIC,
+
+    avg_loan_term_months_offer_rows NUMERIC,
+    approved_amount_weighted_term_months NUMERIC,
+
+    avg_synthetic_estimated_pd_proxy_all_apps NUMERIC,
+    avg_synthetic_estimated_pd_proxy_offer_rows NUMERIC,
+    avg_estimated_lgd_offer_rows NUMERIC,
+
+    total_requested_expected_loss_amount NUMERIC,
+    total_approved_expected_loss_amount NUMERIC,
+    approved_expected_loss_rate NUMERIC,
+
+    avg_requested_payment_to_income_ratio NUMERIC,
+    avg_approved_payment_to_income_ratio_offer_rows NUMERIC,
+
+    top_primary_reason_family TEXT,
+    top_primary_reason_code TEXT,
+    top_primary_reason_population_share NUMERIC,
+
+    top_non_approval_primary_reason_family TEXT,
+    top_non_approval_primary_reason_code TEXT,
+    top_non_approval_reason_population_share NUMERIC
+);
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.1E Create persistent evidence indexes.
+
+Business purpose:
+    Enforce one current evidence row per run key where appropriate and support fast lookup by run key.
+
+Index interpretation:
+    strategy_run_evidence_summary:
+        unique at the primary evidence run grain.
+
+    strategy_run_validation_evidence:
+        non-unique because each run has multiple validation tests.
+
+    strategy_run_parameter_snapshot:
+        unique at the primary evidence run grain.
+
+    strategy_run_segment_evidence_summary:
+        unique at run key × product × score segment.
+
+Boundary:
+    Indexes support evidence-table integrity and performance.
+    They do not change strategy outputs.
+-----------------------------------------------------------------------------------------------*/
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_run_evidence_summary_key
+ON credit_decisioning_sim.strategy_run_evidence_summary (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE INDEX IF NOT EXISTS idx_m2_strategy_run_validation_evidence_key
+ON credit_decisioning_sim.strategy_run_validation_evidence (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_run_parameter_snapshot_key
+ON credit_decisioning_sim.strategy_run_parameter_snapshot (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_m2_strategy_run_segment_evidence_key
+ON credit_decisioning_sim.strategy_run_segment_evidence_summary (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    product_type_policy_key,
+    score_band_policy_key
+);
+
+
+
+/***************************************************************************************************
+SECTION 16.2 — REPLACE CURRENT RUN EVIDENCE ROWS
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Maintain one current evidence record per strategy / Module 1 scenario / population key.
+
+    Section 16.2 answers:
+
+        "Before inserting evidence for the current run, should prior evidence for this same run key
+         be cleared so the evidence layer reflects the current accepted run?"
+
+SQL PURPOSE:
+    Delete prior evidence rows for the current run key from:
+        credit_decisioning_sim.strategy_run_evidence_summary
+        credit_decisioning_sim.strategy_run_validation_evidence
+        credit_decisioning_sim.strategy_run_parameter_snapshot
+        credit_decisioning_sim.strategy_run_segment_evidence_summary
+
+WHY DELETE / INSERT IS USED:
+    Strategy slices may be rerun under STRATEGY_SCENARIO_ONLY archive reset behavior.
+
+    Evidence rows should reflect the current accepted version of that strategy slice, not accumulate
+    duplicates or stale records for the same practical evidence grain.
+
+DELETE SCOPE:
+    Deletes are restricted to the current run key:
+
+        strategy_set_name
+        strategy_name
+        strategy_version
+        module1_scenario_set_name
+        module1_scenario_name
+        population_id
+
+BOUNDARY:
+    Section 16.2 deletes only evidence rows.
+
+    It does not delete latest-run rows.
+    It does not delete archive rows.
+    It does not delete campaign registry rows.
+    It does not delete strategy parameter rows.
+    It does not delete product policy parameter rows.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.2A Replace one-row executive evidence for current run key.
+
+Business purpose:
+    Remove any prior executive evidence row for the same strategy / scenario / population slice.
+
+SQL logic:
+    USING tmp_m2_current_run_key limits the delete to the current completed latest-run key.
+-----------------------------------------------------------------------------------------------*/
+
+DELETE FROM credit_decisioning_sim.strategy_run_evidence_summary e
+USING tmp_m2_current_run_key k
+WHERE e.strategy_set_name = k.strategy_set_name
+  AND e.strategy_name = k.strategy_name
+  AND e.strategy_version = k.strategy_version
+  AND e.module1_scenario_set_name = k.module1_scenario_set_name
+  AND e.module1_scenario_name = k.module1_scenario_name
+  AND e.population_id = k.population_id;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.2B Replace validation evidence detail for current run key.
+
+Business purpose:
+    Remove prior validation evidence rows so the current Section 14 validation status summary can be
+    captured cleanly.
+
+SQL logic:
+    This table is one-to-many by validation test, so multiple rows may be deleted for the current run.
+-----------------------------------------------------------------------------------------------*/
+
+DELETE FROM credit_decisioning_sim.strategy_run_validation_evidence e
+USING tmp_m2_current_run_key k
+WHERE e.strategy_set_name = k.strategy_set_name
+  AND e.strategy_name = k.strategy_name
+  AND e.strategy_version = k.strategy_version
+  AND e.module1_scenario_set_name = k.module1_scenario_set_name
+  AND e.module1_scenario_name = k.module1_scenario_name
+  AND e.population_id = k.population_id;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.2C Replace parameter snapshot for current run key.
+
+Business purpose:
+    Remove prior parameter snapshot so the evidence layer stores the current active strategy /
+    product-policy configuration for the rerun.
+
+SQL logic:
+    This table should contain one parameter snapshot per run key.
+-----------------------------------------------------------------------------------------------*/
+
+DELETE FROM credit_decisioning_sim.strategy_run_parameter_snapshot e
+USING tmp_m2_current_run_key k
+WHERE e.strategy_set_name = k.strategy_set_name
+  AND e.strategy_name = k.strategy_name
+  AND e.strategy_version = k.strategy_version
+  AND e.module1_scenario_set_name = k.module1_scenario_set_name
+  AND e.module1_scenario_name = k.module1_scenario_name
+  AND e.population_id = k.population_id;
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.2D Replace product × score segment evidence for current run key.
+
+Business purpose:
+    Remove prior segment evidence so the next Section 16 segment insert captures the current accepted
+    product × score result profile.
+
+SQL logic:
+    This table is one-to-many by product × score segment, so multiple rows may be deleted.
+-----------------------------------------------------------------------------------------------*/
+
+DELETE FROM credit_decisioning_sim.strategy_run_segment_evidence_summary e
+USING tmp_m2_current_run_key k
+WHERE e.strategy_set_name = k.strategy_set_name
+  AND e.strategy_name = k.strategy_name
+  AND e.strategy_version = k.strategy_version
+  AND e.module1_scenario_set_name = k.module1_scenario_set_name
+  AND e.module1_scenario_name = k.module1_scenario_name
+  AND e.population_id = k.population_id;
+
+
+
+/***************************************************************************************************
+SECTION 16.3 — CAPTURE CURRENT RUN VALIDATION EVIDENCE DETAIL
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Persist the Section 14 validation status summary for the current run.
+
+    Section 16.3 answers:
+
+        "Which validation checks passed, which require review, and which were not applicable for this
+         completed strategy run?"
+
+SQL PURPOSE:
+    Insert one row per Section 14 validation status summary row into:
+
+        credit_decisioning_sim.strategy_run_validation_evidence
+
+SOURCE:
+    tmp_m2_validation_status_summary
+
+TARGET:
+    credit_decisioning_sim.strategy_run_validation_evidence
+
+EVIDENCE GRAIN:
+    One row per:
+        current run key
+        × validation_area
+        × validation_test_name
+
+VALIDATION STATUS INTERPRETATION:
+    PASS:
+        The diagnostic expectation was satisfied.
+
+    REVIEW:
+        The pattern should be interpreted before documentation.
+        REVIEW is not automatically a fail-fast defect.
+
+    NOT_APPLICABLE:
+        The test depends on comparison conditions or population conditions not available for the
+        current run context.
+
+WHY CROSS JOIN IS USED:
+    tmp_m2_current_run_key contains exactly one row after the Section 16.0 gatekeeper.
+
+    CROSS JOIN attaches the current run identity to every validation status row.
+
+BOUNDARY:
+    Section 16.3 persists validation evidence only.
+
+    It does not recalculate validation.
+    It does not modify the latest-run output.
+    It does not modify archive rows.
+    It does not modify validation statuses.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.3A Insert Section 14 validation status rows for the current run.
+
+Business purpose:
+    Preserve the Section 14 validation evidence spine in a persistent table.
+
+SQL logic:
+    The single current run key is cross joined to all validation summary rows.
+
+    observed_value, expected_behavior, and interpretation are cast to TEXT so evidence storage is
+    stable even if upstream temporary output types vary.
+-----------------------------------------------------------------------------------------------*/
+
+INSERT INTO credit_decisioning_sim.strategy_run_validation_evidence (
+    evidence_snapshot_ts,
+
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    validation_area,
+    validation_test_name,
+    validation_category,
+    validation_status,
+    observed_value,
+    expected_behavior,
+    interpretation
+)
+SELECT
+    CURRENT_TIMESTAMP AS evidence_snapshot_ts,
+
+    /***********************************************************************************************
+    Current run identity.
+    ***********************************************************************************************/
+    k.module2_model_version,
+    k.strategy_set_name,
+    k.strategy_name,
+    k.strategy_version,
+    k.strategy_run_id,
+    k.strategy_run_ts,
+
+    /***********************************************************************************************
+    Module 1 scenario / population lineage.
+    ***********************************************************************************************/
+    k.module1_scenario_set_name,
+    k.module1_scenario_name,
+    k.population_id,
+
+    /***********************************************************************************************
+    Section 14 validation evidence fields.
+    ***********************************************************************************************/
+    v.validation_area,
+    v.validation_test_name,
+    v.validation_category,
+    v.validation_status,
+    v.observed_value::TEXT,
+    v.expected_behavior::TEXT,
+    v.interpretation::TEXT
+
+FROM tmp_m2_current_run_key k
+CROSS JOIN tmp_m2_validation_status_summary v;
+
+
+
+/***************************************************************************************************
+SECTION 16.4 — CAPTURE CURRENT RUN PARAMETER SNAPSHOT
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Persist the exact active Module 2 strategy parameter card, product-policy parameter card, and
+    run-story metadata for the current evidence row.
+
+    Section 16.4 answers:
+
+        "What parameter configuration produced this completed strategy run?"
+
+SQL PURPOSE:
+    1. Read the one-row current run key from tmp_m2_current_run_key.
+    2. Snapshot the active Module 2 strategy parameter row as JSONB.
+    3. Snapshot all product-policy parameter rows as ordered JSONB.
+    4. Snapshot the active run-story metadata row as JSONB.
+    5. Generate an evidence_snapshot_id.
+    6. Generate a parameter_snapshot_hash.
+    7. Insert the parameter snapshot into:
+            credit_decisioning_sim.strategy_run_parameter_snapshot
+
+WHY THIS MATTERS:
+    The active parameter tables are temporary.
+
+    Without a parameter snapshot, later documentation may know what happened but not exactly which
+    thresholds, policy caps, archive controls, counteroffer settings, and story labels were active.
+
+WHY JSONB IS USED:
+    JSONB preserves the full parameter card without forcing every parameter into a separate evidence
+    table column.
+
+    This makes the snapshot robust for review and future documentation while preserving detail.
+
+WHY PRODUCT POLICY SNAPSHOT IS ORDERED:
+    jsonb_agg(... ORDER BY product_type) makes the product-policy snapshot deterministic and easier
+    to compare across runs.
+
+PARAMETER SNAPSHOT HASH:
+    parameter_snapshot_hash is a fingerprint of:
+        active strategy parameters,
+        product policy parameters,
+        and run-story parameters.
+
+    It helps identify whether two evidence rows were created from the same parameter payload.
+
+    It is not a cryptographic governance control.
+    It is not a replacement for the full JSONB payload.
+
+EVIDENCE SNAPSHOT ID:
+    evidence_snapshot_id includes the current timestamp so each capture event receives a unique
+    identifier.
+
+    It is audit metadata.
+
+    It is not the run-key grain and should not replace the strategy / scenario / population key.
+
+MODULE 3 READINESS:
+    This snapshot preserves product policy values that may later support:
+        growth analysis,
+        economics design,
+        pricing proxy interpretation,
+        exposure strategy,
+        product mix review,
+        and profitability design in a future Module 3.
+
+    It does not calculate Module 3 economics.
+
+BOUNDARY:
+    Section 16.4 persists parameter evidence only.
+
+    It does not modify active parameters.
+    It does not modify latest-run output.
+    It does not modify archive output.
+    It does not recalculate decisions.
+    It does not recalculate approved exposure.
+    It does not recalculate approved Expected Loss.
+
+***************************************************************************************************/
+
+
+
+/*-----------------------------------------------------------------------------------------------
+16.4A Insert current run parameter snapshot.
+
+Business purpose:
+    Preserve the exact parameter payload that produced the current run evidence.
+
+SQL logic:
+    snapshot_payload builds a one-row payload containing:
+        current run key,
+        active strategy parameter JSON,
+        ordered product-policy parameter JSON,
+        active run-story metadata JSON.
+
+    The final SELECT inserts the payload and calculates:
+        evidence_snapshot_id,
+        parameter_snapshot_hash.
+
+Important:
+    CURRENT_TIMESTAMP is used for capture timing.
+
+    It should not be used as matched comparison grain.
+-----------------------------------------------------------------------------------------------*/
+
+INSERT INTO credit_decisioning_sim.strategy_run_parameter_snapshot (
+    evidence_snapshot_ts,
+    evidence_snapshot_id,
+
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_params_jsonb,
+    product_policy_params_jsonb,
+    run_story_params_jsonb,
+    parameter_snapshot_hash
+)
+WITH snapshot_payload AS (
+    SELECT
+        /*******************************************************************************************
+        Current run key.
+
+        tmp_m2_current_run_key must contain exactly one row due to the Section 16.0 gatekeeper.
+        *******************************************************************************************/
+        k.*,
+
+        /*******************************************************************************************
+        Active strategy parameter snapshot.
+
+        Captures the full active strategy card, including strategy identity, source selection,
+        archive controls, thresholds, rule controls, and decision conventions.
+        *******************************************************************************************/
+        (
+            SELECT to_jsonb(sp)
+            FROM tmp_module2_strategy_params sp
+            WHERE sp.active_strategy_flag IS TRUE
+            LIMIT 1
+        ) AS strategy_params_jsonb,
+
+        /*******************************************************************************************
+        Product policy parameter snapshot.
+
+        Captures all product-policy rows in stable product_type order.
+        *******************************************************************************************/
+        (
+            SELECT jsonb_agg(to_jsonb(pp) ORDER BY pp.product_type)
+            FROM tmp_module2_product_policy_params pp
+        ) AS product_policy_params_jsonb,
+
+        /*******************************************************************************************
+        Run-story metadata snapshot.
+
+        Captures the active story helper row used for current evidence capture.
+        *******************************************************************************************/
+        (
+            SELECT to_jsonb(rsp)
+            FROM tmp_m2_current_run_story_params rsp
+            WHERE rsp.active_story_flag IS TRUE
+            LIMIT 1
+        ) AS run_story_params_jsonb
+
+    FROM tmp_m2_current_run_key k
+)
+
+SELECT
+    CURRENT_TIMESTAMP AS evidence_snapshot_ts,
+
+    /***********************************************************************************************
+    Snapshot event ID.
+
+    Includes the current timestamp to distinguish separate evidence-capture events for the same run
+    key.
+
+    This is audit metadata, not the evidence grain.
+    ***********************************************************************************************/
+    MD5(
+        strategy_set_name || '|'
+        || strategy_name || '|'
+        || strategy_version || '|'
+        || module1_scenario_set_name || '|'
+        || module1_scenario_name || '|'
+        || population_id || '|'
+        || CURRENT_TIMESTAMP::TEXT
+    ) AS evidence_snapshot_id,
+
+    /***********************************************************************************************
+    Run identity and lineage.
+    ***********************************************************************************************/
+    module2_model_version,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    strategy_run_id,
+    strategy_run_ts,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    /***********************************************************************************************
+    Full parameter payloads.
+    ***********************************************************************************************/
+    strategy_params_jsonb,
+    product_policy_params_jsonb,
+    run_story_params_jsonb,
+
+    /***********************************************************************************************
+    Parameter payload fingerprint.
+
+    This fingerprint supports quick comparison of parameter snapshots across runs.
+
+    The full JSONB payload remains the authoritative evidence.
+    ***********************************************************************************************/
+    MD5(
+        COALESCE(strategy_params_jsonb::TEXT, '')
+        || '|'
+        || COALESCE(product_policy_params_jsonb::TEXT, '')
+        || '|'
+        || COALESCE(run_story_params_jsonb::TEXT, '')
+    ) AS parameter_snapshot_hash
+
+FROM snapshot_payload;
+
+
+
+/***************************************************************************************************
+END OF SECTION 16.4 — CURRENT RUN PARAMETER SNAPSHOT
+
+If execution reaches this point:
+    1. tmp_m2_current_run_key exists and contains exactly one run key.
+    2. tmp_m2_current_run_story_params exists and contains exactly one active story row.
+    3. Section 16 confirmed the latest-run output exists and is populated.
+    4. Section 16 confirmed Section 14 validation summary output is available.
+    5. Section 16 confirmed Section 15 frontier executive summary output is available.
+    6. Section 16 confirmed strategy and product-policy parameter tables are available.
+    7. Persistent evidence tables have been created or reused.
+    8. Prior evidence rows for the current run key have been deleted from evidence tables only.
+    9. Current Section 14 validation evidence detail has been inserted.
+    10. Current strategy / product-policy / story parameter snapshot has been inserted.
+
+No latest-run output rows have been modified.
+No archive rows have been modified.
+No strategy decision outcomes have been recalculated.
+No approved exposure values have been recalculated.
+No approved Expected Loss values have been recalculated.
+No simulated reason codes have been reassigned.
+No campaign registry rows have been modified.
+No Module 3 revenue, earnings, profitability, pricing, funding-cost, or capital logic has been built.
+
+Next Section 16 continuation:
+    Section 16.5+ should build current-run segment summaries and insert the one-row executive
+    evidence summary using the same current run key.
+
+***************************************************************************************************/
+```
+<!-- END_MESSAGE C038-M00821 -->
+
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_33.md) · [Next](Part_35.md)

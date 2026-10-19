@@ -1,0 +1,4797 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 1</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 01 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_02.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00001" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00001 · 2026-05-06T09:07:28.399000-04:00 · active path</p><div class="body"><p>Before proposing Module 2 architecture, read the attached Module 1 SQL, BRD, and Validation Summary sufficiently to understand the finalized Module 1 design.</p>
+<p>Treat Module 1 outputs, terminology, and boundaries as authoritative.</p>
+<p>Do not redesign Module 1 unless explicitly instructed.</p>
+<p>Do not reinterpret estimated_pd as a calibrated PD model. In commentary and documentation, estimated_pd should be interpreted as the synthetic estimated-PD proxy.</p>
+<p>Naming discipline:
+The SQL field name may remain estimated_pd because that is the finalized Module 1 output column.
+However, commentary, documentation, and interpretation should refer to it as the synthetic estimated-PD proxy.</p>
+<p>Do not treat Module 1 scenario outputs as forecasts.</p>
+<h1>================================================================================
+PROJECT CONTEXT</h1>
+<p>Project Name:
+Enterprise Credit Decisioning Strategy Simulator</p>
+<p>Completed Module:
+Module 1 — Synthetic Application &amp; Risk Modeling Engine V2.0</p>
+<p>Module 1 Status:
+FINALIZED, VALIDATED, AND DOCUMENTED.</p>
+<p>Attached Module 1 V2.0 artifacts:</p>
+<ol>
+<li>SQL implementation</li>
+<li>Business Requirements Document (BRD)</li>
+<li>Validation Summary</li>
+</ol>
+<p>These artifacts are authoritative.</p>
+<p>You are assisting me in designing and building the next module of an elite portfolio-grade credit analytics project.</p>
+<p>This is NOT a generic SQL exercise. This is a continuation of a governed, audit-ready, enterprise-style decisioning simulator. The quality bar is extremely high.</p>
+<h1>================================================================================
+MODULE 1 SUMMARY</h1>
+<p>Module 1 produces a governed synthetic application population and risk modeling layer.</p>
+<p>It generates:</p>
+<ul>
+<li>synthetic applications</li>
+<li>product type</li>
+<li>score band</li>
+<li>borrower profile variables</li>
+<li>requested amount</li>
+<li>APR proxy</li>
+<li>monthly payment proxy</li>
+<li>payment-to-income ratio (PTI)</li>
+<li>amount-to-income ratio</li>
+<li>estimated-PD proxy</li>
+<li>LGD</li>
+<li>Expected Loss</li>
+<li>scenario archive outputs</li>
+<li>matched scenario comparison outputs</li>
+</ul>
+<p>Module 1 is deterministic:</p>
+<ul>
+<li>same population_id + same parameters = same synthetic population</li>
+<li>this enables apples-to-apples scenario comparison</li>
+</ul>
+<p>Module 1 is NOT:</p>
+<ul>
+<li>a production underwriting model</li>
+<li>a pricing engine</li>
+<li>a real-customer decision system</li>
+<li>a calibrated PD model</li>
+<li>a credit card billing engine</li>
+<li>a macroeconomic forecasting system</li>
+<li>a fair lending or compliance adjudication framework</li>
+</ul>
+<p>Module 1 IS:</p>
+<ul>
+<li>a strategy simulation foundation</li>
+<li>an explainable synthetic risk framework</li>
+<li>a governed pre-production decisioning sandbox</li>
+<li>a portfolio-grade teaching and architecture artifact</li>
+</ul>
+<h1>================================================================================
+MODULE 1 V2.0 WORKSTREAMS COMPLETED</h1>
+<p>Workstream A — Mortgage Realism:</p>
+<ul>
+<li>Added mortgage A2 amount-to-income tail smoothing</li>
+<li>Added mortgage A3 provisional PTI-aware overlay</li>
+<li>Controlled upper-tail mortgage exposure without collapsing valid high-capacity borrower behavior</li>
+</ul>
+<p>Workstream B — Estimated-PD Proxy Dispersion:</p>
+<ul>
+<li>Added soft saturation before the hard estimated-PD proxy cap</li>
+<li>Iterated through B1, B2, and B3</li>
+<li>Reduced cap crowding while preserving monotonic score-band ordering and product-risk coherence</li>
+</ul>
+<p>Workstream C — Scenario Comparison Framework:</p>
+<ul>
+<li>Added scenario_set_name and scenario_name</li>
+<li>Added scenario archive persistence</li>
+<li>Added portfolio-level, product × score, and matched row-level scenario comparison</li>
+<li>Validated 50,000-row matched baseline vs rate-stress comparison</li>
+</ul>
+<p>Workstream D — Revolving Payment Sensitivity:</p>
+<ul>
+<li>Replaced static revolving payment proxy with APR-sensitive blended proxy</li>
+<li>Restored the transmission chain:
+APR → payment → PTI → estimated-PD proxy → Expected Loss</li>
+<li>Preserved the boundary that this is not a credit-card billing engine</li>
+</ul>
+<h1>================================================================================
+MODULE 2 OBJECTIVE</h1>
+<p>We are now beginning Module 2.</p>
+<p>Working title:
+Module 2 — Credit Policy Strategy &amp; Decision Outcome Simulation Engine</p>
+<p>The purpose of Module 2 is to consume Module 1 outputs and simulate credit strategy outcomes.</p>
+<p>Module 2 should answer:</p>
+<ul>
+<li>Given the synthetic applicant and risk profile from Module 1, what strategy outcome would this applicant trigger?</li>
+<li>Would the synthetic applicant be approved, declined, sent to manual review, or receive a simulated counteroffer / partial approval path?</li>
+<li>What simulated policy reason codes explain the outcome?</li>
+<li>What approved amount, counteroffer amount, or exposure treatment would be assigned?</li>
+<li>How do strategy changes affect approval rate, manual review rate, decline rate, counteroffer rate, estimated risk, and Expected Loss?</li>
+<li>Which products, score bands, PTI bands, and affordability segments drive strategy differences?</li>
+</ul>
+<h1>================================================================================
+MODULE 2 CORE DESIGN THESIS</h1>
+<p>Module 2 should demonstrate that credit strategy outcomes are not determined by one variable alone.</p>
+<p>Strategy outcomes should emerge from the interaction of:</p>
+<ul>
+<li>product type</li>
+<li>requested amount</li>
+<li>approved amount / exposure treatment</li>
+<li>score band</li>
+<li>borrower risk signals</li>
+<li>affordability stress</li>
+<li>estimated-PD proxy</li>
+<li>LGD</li>
+<li>Expected Loss</li>
+<li>product-specific policy rules</li>
+<li>strategy configuration</li>
+<li>upstream Module 1 scenario configuration</li>
+</ul>
+<p>Module 2 should preserve the Module 1 thesis:</p>
+<p>Credit outcomes are shaped by borrower profile, product structure, affordability, risk translation, and governed strategy rules.</p>
+<p>Module 2 adds the next layer:</p>
+<p>Given a synthetic applicant profile and estimated-risk framework, what simulated strategy outcome is triggered, and why?</p>
+<h1>================================================================================
+MODULE 2 INTERPRETATION BOUNDARY</h1>
+<p>Module 2 may use terms such as approve, decline, manual review, counteroffer, approved amount, and reason code.</p>
+<p>However, these terms must always be interpreted as SIMULATED STRATEGY OUTCOMES on synthetic applicants.</p>
+<p>They are NOT:</p>
+<ul>
+<li>production credit decisions</li>
+<li>adverse action notices</li>
+<li>compliance-approved reason codes</li>
+<li>real customer treatment logic</li>
+<li>fair lending conclusions</li>
+<li>regulatory model outputs</li>
+<li>production underwriting policy</li>
+<li>pricing or profitability optimization</li>
+<li>calibrated default forecasts</li>
+</ul>
+<p>Correct interpretation:
+&quot;Under this simulated strategy, this synthetic applicant would receive this strategy outcome.&quot;</p>
+<p>Incorrect interpretation:
+&quot;This real customer should be approved, declined, priced, or treated this way.&quot;</p>
+<p>Module 2 should preserve the same boundary discipline as Module 1:
+strategy simulation first, production decisioning never.</p>
+<p>Preferred language:</p>
+<ul>
+<li>“strategy outcome”</li>
+<li>“synthetic applicant”</li>
+<li>“policy simulation”</li>
+<li>“decision outcome proxy”</li>
+<li>“manual review trigger”</li>
+<li>“decline reason simulation”</li>
+<li>“approved amount proxy”</li>
+<li>“counteroffer simulation”</li>
+<li>“simulated strategy rule”</li>
+<li>“approved-book profile”</li>
+<li>“declined-book profile”</li>
+</ul>
+<p>Avoid language like:</p>
+<ul>
+<li>“this customer is declined”</li>
+<li>“production approval decision”</li>
+<li>“final underwriting decision”</li>
+<li>“regulatory compliant decision model”</li>
+<li>“adverse action reason”</li>
+<li>“approved production policy”</li>
+</ul>
+<p>Module 2 may expose segments for strategy QA, but it must not draw fair lending, disparate impact, or compliance conclusions.</p>
+<h1>================================================================================
+MODULE 1 SCENARIO VS MODULE 2 STRATEGY NAMING DISCIPLINE</h1>
+<p>Module 2 must distinguish between upstream Module 1 scenarios and downstream Module 2 strategies.</p>
+<p>Module 1 scenario fields describe the synthetic population and upstream risk environment:</p>
+<ul>
+<li>scenario_set_name</li>
+<li>scenario_name</li>
+<li>population_id</li>
+</ul>
+<p>Module 2 strategy fields should describe the decision strategy applied to that population:</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+</ul>
+<p>Do not overload scenario_name to mean both upstream Module 1 macro/rate scenario and downstream Module 2 decision strategy.</p>
+<p>Recommended architecture:</p>
+<ul>
+<li>preserve Module 1 scenario fields as input lineage</li>
+<li>add Module 2 strategy fields for decision strategy comparison</li>
+</ul>
+<p>Recommended naming approach:</p>
+<ul>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+</ul>
+<h1>================================================================================
+HOW MODULE 2 SHOULD RELATE TO MODULE 1</h1>
+<p>Module 2 should consume Module 1 outputs.</p>
+<p>Module 2 should not rewrite Module 1.</p>
+<p>Likely input source:
+credit_decisioning_sim.synthetic_applications
+or
+credit_decisioning_sim.synthetic_applications_scenario_archive</p>
+<p>Input source guidance:</p>
+<p>For single-strategy development and QA:</p>
+<ul>
+<li>use credit_decisioning_sim.synthetic_applications</li>
+</ul>
+<p>For strategy comparison across Module 1 baseline / stress scenarios:</p>
+<ul>
+<li>prefer credit_decisioning_sim.synthetic_applications_scenario_archive</li>
+</ul>
+<p>For strategy comparison across alternative Module 2 strategies:</p>
+<ul>
+<li>preserve the same population_id</li>
+<li>preserve Module 1 scenario lineage</li>
+<li>add Module 2 strategy identifiers</li>
+</ul>
+<p>Module 2 must preserve:</p>
+<ul>
+<li>Module 1 scenario lineage</li>
+<li>population_id</li>
+<li>application_id</li>
+<li>applicant_id</li>
+<li>product_type</li>
+<li>score_band</li>
+<li>requested_amount</li>
+<li>estimated_pd</li>
+<li>estimated_lgd</li>
+<li>expected_loss_amount</li>
+</ul>
+<p>This ensures that strategy outcomes can be traced back to the exact synthetic population and Module 1 scenario assumptions.</p>
+<p>If Module 2 appears to require a field not currently available from Module 1, do not assume a Module 1 change.</p>
+<p>First identify the missing field, explain why it is needed, and recommend whether it belongs in:</p>
+<ul>
+<li>Module 1 as a future enhancement</li>
+<li>Module 2 as a derived field</li>
+<li>or documentation only</li>
+</ul>
+<h1>================================================================================
+EXPECTED MODULE 2 SCOPE</h1>
+<p>Module 2 should likely include:</p>
+<ol>
+<li><p>Strategy parameter framework</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>source Module 1 scenario fields</li>
+<li>approval thresholds</li>
+<li>decline thresholds</li>
+<li>manual review thresholds</li>
+<li>counteroffer thresholds</li>
+<li>product-specific rules</li>
+<li>risk tolerance settings</li>
+<li>affordability tolerance settings</li>
+<li>exposure assignment rules</li>
+<li>archive controls</li>
+</ul>
+</li>
+<li><p>Decision outcome logic</p>
+<ul>
+<li>APPROVE</li>
+<li>DECLINE</li>
+<li>MANUAL_REVIEW</li>
+<li>COUNTEROFFER / PARTIAL_APPROVAL treatment, either as a separate outcome or as a decision path</li>
+</ul>
+</li>
+<li><p>Rule hierarchy</p>
+<ul>
+<li>hard decline checks</li>
+<li>bankruptcy / major derogatory rules</li>
+<li>score-band policy rules</li>
+<li>risk-based decline checks</li>
+<li>affordability-based decline or review checks</li>
+<li>exposure limit checks</li>
+<li>counteroffer / partial approval checks</li>
+<li>product-specific overrides</li>
+<li>approval logic</li>
+</ul>
+</li>
+<li><p>Reason code logic</p>
+<ul>
+<li>primary reason code</li>
+<li>secondary reason code</li>
+<li>tertiary reason code</li>
+<li>reason code family</li>
+<li>reason priority hierarchy</li>
+<li>stackable vs mutually exclusive reason logic</li>
+</ul>
+</li>
+<li><p>Approved exposure / counteroffer logic</p>
+<ul>
+<li>requested_amount from Module 1 remains the input request</li>
+<li>Module 2 may assign:<ul>
+<li>approved_amount</li>
+<li>counteroffer_amount</li>
+<li>exposure_reduction_flag</li>
+<li>exposure_reduction_amount</li>
+<li>exposure_reduction_pct</li>
+<li>line_assignment_tier</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>Approved Expected Loss logic</p>
+<ul>
+<li>Module 1 expected_loss_amount should remain available as requested-exposure Expected Loss</li>
+<li>Module 2 should calculate approved_expected_loss_amount using approved exposure</li>
+<li>Conceptual formula:
+approved_expected_loss_amount = approved_amount × estimated-PD proxy × LGD</li>
+<li>This distinction is important because requested exposure and approved exposure may differ</li>
+</ul>
+</li>
+<li><p>Strategy comparison framework</p>
+<ul>
+<li>compare baseline strategy vs tighter strategy</li>
+<li>compare baseline strategy vs growth-oriented strategy</li>
+<li>compare baseline strategy vs product-specific strategy</li>
+<li>compare approval rates</li>
+<li>compare manual review rates</li>
+<li>compare decline rates</li>
+<li>compare counteroffer rates</li>
+<li>compare approved-book estimated-PD proxy</li>
+<li>compare approved-book Expected Loss</li>
+<li>compare approved amount distribution</li>
+<li>compare outcomes by product, score band, and PTI bucket</li>
+</ul>
+</li>
+<li><p>Validation / QA framework</p>
+<ul>
+<li>decision distribution</li>
+<li>approval rate by score band</li>
+<li>approval rate by product</li>
+<li>manual review rate by risk tier</li>
+<li>decline reason distribution</li>
+<li>counteroffer reason distribution</li>
+<li>approved vs declined estimated-PD proxy comparison</li>
+<li>approved vs declined PTI comparison</li>
+<li>approved-book vs declined-book profile</li>
+<li>product × score strategy matrix</li>
+<li>edge-case review</li>
+<li>matched strategy comparison</li>
+</ul>
+</li>
+</ol>
+<h1>================================================================================
+MODULE 2 DECISION OUTCOME TAXONOMY</h1>
+<p>Module 2 should define a clear simulated decision outcome taxonomy.</p>
+<p>At minimum, consider:</p>
+<ol>
+<li><p>APPROVE
+Applicant passes simulated policy and affordability requirements.</p>
+</li>
+<li><p>DECLINE
+Applicant fails one or more simulated hard policy rules.</p>
+</li>
+<li><p>MANUAL_REVIEW
+Applicant falls into an intermediate or exception zone requiring simulated review.</p>
+</li>
+<li><p>COUNTEROFFER / PARTIAL_APPROVAL
+Applicant is not approved as requested, but a lower approved amount or alternative exposure treatment is assigned.</p>
+</li>
+</ol>
+<p>The architecture should recommend whether COUNTEROFFER is:</p>
+<ul>
+<li>a separate decision_outcome, or</li>
+<li>a decision_path under APPROVE / MANUAL_REVIEW</li>
+</ul>
+<p>Please explicitly recommend one approach and explain why.</p>
+<h1>================================================================================
+REASON CODE GOVERNANCE</h1>
+<p>Module 2 should include a simulated reason-code framework.</p>
+<p>Reason codes should explain strategy outcomes in a transparent and auditable way.</p>
+<p>However, reason codes are NOT regulatory adverse-action reason codes.</p>
+<p>They are simulated strategy explanation codes used for:</p>
+<ul>
+<li>strategy transparency</li>
+<li>QA review</li>
+<li>segmentation analysis</li>
+<li>decision-path traceability</li>
+<li>portfolio interpretation</li>
+</ul>
+<p>Reason code design should include:</p>
+<ul>
+<li>primary reason code</li>
+<li>secondary reason code</li>
+<li>tertiary reason code</li>
+<li>reason code family</li>
+<li>reason priority hierarchy</li>
+<li>mutually exclusive vs stackable reason logic</li>
+<li>product-specific reason applicability</li>
+<li>manual-review reason logic</li>
+<li>counteroffer reason logic</li>
+</ul>
+<p>Examples may include:</p>
+<ul>
+<li>LOW_SCORE_BAND</li>
+<li>HIGH_PTI</li>
+<li>HIGH_DTI</li>
+<li>HIGH_ESTIMATED_PD_PROXY</li>
+<li>HIGH_EXPECTED_LOSS</li>
+<li>HIGH_UTILIZATION</li>
+<li>RECENT_DELINQUENCY</li>
+<li>MAJOR_DEROGATORY</li>
+<li>BANKRUPTCY_FLAG</li>
+<li>REQUESTED_AMOUNT_EXCEEDS_POLICY_LIMIT</li>
+<li>PRODUCT_POLICY_LIMIT</li>
+<li>COUNTEROFFER_AFFORDABILITY_ADJUSTMENT</li>
+<li>MANUAL_REVIEW_MIXED_SIGNAL_PROFILE</li>
+<li>BORDERLINE_APPROVAL_PROFILE</li>
+<li>PRODUCT_SPECIFIC_EXPOSURE_LIMIT</li>
+<li>APPROVED_WITH_CONSTRAINTS</li>
+</ul>
+<p>The assistant should propose a reason-code taxonomy and priority hierarchy before coding.</p>
+<h1>================================================================================
+MODULE 2 STRATEGY COMPARISON REQUIREMENTS</h1>
+<p>Module 2 should support comparison of alternative strategy configurations.</p>
+<p>Examples:</p>
+<ul>
+<li>baseline strategy vs tighter affordability strategy</li>
+<li>baseline strategy vs tighter risk strategy</li>
+<li>baseline strategy vs growth-oriented approval strategy</li>
+<li>baseline strategy vs product-specific exposure strategy</li>
+</ul>
+<p>Strategy comparison should evaluate:</p>
+<ul>
+<li>approval rate</li>
+<li>decline rate</li>
+<li>manual review rate</li>
+<li>counteroffer rate</li>
+<li>approved amount distribution</li>
+<li>approved-book requested amount</li>
+<li>approved-book approved amount</li>
+<li>approved-book estimated-PD proxy</li>
+<li>approved-book LGD</li>
+<li>approved-book Expected Loss</li>
+<li>declined-book estimated-PD proxy</li>
+<li>declined-book PTI</li>
+<li>manual-review-book estimated-PD proxy</li>
+<li>manual-review-book PTI</li>
+<li>reason-code distribution</li>
+<li>product-level decision outcomes</li>
+<li>score-band decision outcomes</li>
+<li>PTI-bucket decision outcomes</li>
+<li>product × score-band strategy outcomes</li>
+<li>matched applicant-level strategy deltas</li>
+</ul>
+<p>The design should support matched comparison whenever the same Module 1 population_id is used.</p>
+<h1>================================================================================
+MODULE 2 VALIDATION EXPECTATIONS</h1>
+<p>Module 2 validation should prove that simulated strategy logic behaves as intended.</p>
+<p>Validation should include:</p>
+<ol>
+<li><p>Structural validation</p>
+<ul>
+<li>row count preserved from Module 1 input</li>
+<li>no unintended applicant loss</li>
+<li>all decisions assigned</li>
+<li>all flags internally consistent</li>
+<li>strategy parameters valid</li>
+<li>archive outputs traceable</li>
+</ul>
+</li>
+<li><p>Decision distribution validation</p>
+<ul>
+<li>approval / decline / manual review / counteroffer rates</li>
+<li>decision distribution by product</li>
+<li>decision distribution by score band</li>
+<li>decision distribution by PTI bucket</li>
+<li>decision distribution by risk tier</li>
+</ul>
+</li>
+<li><p>Risk ordering validation</p>
+<ul>
+<li>approved population should generally show lower estimated-PD proxy than declined population</li>
+<li>manual review population should show mixed or intermediate risk</li>
+<li>decline population should show higher policy-rule failure concentration</li>
+<li>counteroffer population should show elevated exposure or affordability pressure relative to clean approvals</li>
+</ul>
+</li>
+<li><p>Affordability validation</p>
+<ul>
+<li>higher PTI should generally reduce approval likelihood or increase review / counteroffer likelihood</li>
+<li>affordability reason codes should concentrate in high-PTI segments</li>
+<li>counteroffer cases should show improved approved PTI or approved exposure profile when applicable</li>
+</ul>
+</li>
+<li><p>Reason-code validation</p>
+<ul>
+<li>reason codes should be populated</li>
+<li>primary reason code should align to the first or most material failed rule</li>
+<li>reason-code distribution should be interpretable</li>
+<li>no unexplained null reason codes for declines or manual reviews</li>
+<li>clean approvals may have a standard approval reason or null decline reasons by design</li>
+</ul>
+</li>
+<li><p>Approved exposure validation</p>
+<ul>
+<li>approved amount should not exceed requested amount unless explicitly designed</li>
+<li>counteroffer amount should be lower than requested amount</li>
+<li>approved Expected Loss should use approved exposure, not requested exposure</li>
+<li>exposure reduction should be positive for counteroffer / partial approval cases</li>
+</ul>
+</li>
+<li><p>Strategy comparison validation</p>
+<ul>
+<li>tighter strategies should reduce approval rates or approved exposure</li>
+<li>growth strategies should increase approvals or exposure, but with measurable risk tradeoffs</li>
+<li>matched strategy comparison should isolate strategy effects from population changes</li>
+</ul>
+</li>
+<li><p>Edge-case validation</p>
+<ul>
+<li>strong-credit/high-PTI cases</li>
+<li>weak-credit/low-PTI cases</li>
+<li>high-risk/low-requested-amount cases</li>
+<li>large-exposure/low-risk cases</li>
+<li>manual-review borderline cases</li>
+<li>counteroffer borderline cases</li>
+</ul>
+</li>
+</ol>
+<h1>================================================================================
+MODULE 2 PARAMETER GATEKEEPER EXPECTATIONS</h1>
+<p>Module 2 should include fail-fast validation gatekeepers similar to Module 1.</p>
+<p>Gatekeepers should validate, at minimum:</p>
+<ul>
+<li>exactly one active strategy parameter row when running a single strategy</li>
+<li>non-null strategy_set_name</li>
+<li>non-null strategy_name</li>
+<li>non-null strategy_version</li>
+<li>valid source Module 1 scenario identifiers where applicable</li>
+<li>threshold ordering is coherent</li>
+<li>approval thresholds are not stricter than decline thresholds unless explicitly designed</li>
+<li>PTI thresholds are within governed ranges</li>
+<li>estimated-PD proxy thresholds are within 0 to 1</li>
+<li>LGD thresholds are within 0 to 1 where used</li>
+<li>approved amount rules do not create negative exposure</li>
+<li>counteroffer rules do not produce approved_amount greater than requested_amount</li>
+<li>archive reset mode is valid if archive persistence is used</li>
+</ul>
+<p>Gatekeepers should prevent invalid strategy configuration before decision outcomes are generated.</p>
+<h1>================================================================================
+DESIGN PRINCIPLES TO PRESERVE</h1>
+<p>Module 2 must preserve the same design principles as Module 1:</p>
+<ol>
+<li>Parameterized over hard-coded</li>
+<li>Explainable over opaque</li>
+<li>Deterministic over non-reproducible</li>
+<li>Product-aware over generic</li>
+<li>Scenario-comparable over isolated</li>
+<li>Governed over ad hoc</li>
+<li>Modular over monolithic</li>
+<li>Teaching-oriented and audit-ready</li>
+<li>Boundary-aware over production-claiming</li>
+<li>Validation-first over output-only</li>
+</ol>
+<h1>================================================================================
+SQL STYLE REQUIREMENTS</h1>
+<p>When we begin coding, the SQL must match the elite commentary level established in Module 1.</p>
+<p>Requirements:</p>
+<ul>
+<li>PostgreSQL</li>
+<li>highly structured sections</li>
+<li>clear headers and subheaders</li>
+<li>extensive teaching comments</li>
+<li>every hardcoded threshold must be explained</li>
+<li>every CASE block should explain business logic and SQL logic</li>
+<li>every output field should be interpretable</li>
+<li>validation gates should fail fast</li>
+<li>audit fields should preserve decision paths</li>
+<li>no unexplained magic numbers</li>
+<li>no opaque strategy rules</li>
+<li>no silent assumptions</li>
+<li>compact SQL names are acceptable, but interpretation boundaries must be documented</li>
+</ul>
+<p>When suggesting changes:</p>
+<ul>
+<li>provide exact BEFORE / AFTER blocks</li>
+<li>preserve existing valuable comments</li>
+<li>do not simplify commentary unless asked</li>
+<li>do not skip governance logic</li>
+<li>do not give vague recommendations</li>
+</ul>
+<h1>================================================================================
+DOCUMENTATION STYLE REQUIREMENTS</h1>
+<p>Eventually, Module 2 should have its own:</p>
+<ol>
+<li>BRD</li>
+<li>Validation Summary</li>
+</ol>
+<p>Both should match the Module 1 V2.0 artifact quality:</p>
+<ul>
+<li>board-ready</li>
+<li>audit-ready</li>
+<li>blue-theme professional style</li>
+<li>executive-readable</li>
+<li>technically precise</li>
+<li>evidence-driven</li>
+<li>explicit boundaries</li>
+<li>validation proof</li>
+<li>traceability</li>
+</ul>
+<p>But we should design the architecture and code first.</p>
+<p>Do not draft the Module 2 BRD or Validation Summary yet.</p>
+<p>First, help design and validate the Module 2 architecture and SQL implementation.
+Documentation will be produced later after the design and validation evidence are established.</p>
+<h1>================================================================================
+MODULE 2 OUTPUT CONSISTENCY REQUIREMENTS</h1>
+<p>Module 2 should enforce clear consistency between decision outcomes, decision paths,
+flags, approved amount, and approved Expected Loss.</p>
+<p>At minimum, the architecture should define:</p>
+<ol>
+<li><p>Decision outcome consistency</p>
+<ul>
+<li>exactly one primary decision_outcome should be assigned per application per strategy run</li>
+<li>decision_outcome should be one of the approved taxonomy values</li>
+<li>flags such as approval_flag, decline_flag, manual_review_flag, and counteroffer_flag
+must reconcile back to decision_outcome and decision_path</li>
+</ul>
+</li>
+<li><p>Approved amount consistency</p>
+<ul>
+<li>APPROVE outcomes should generally have approved_amount &gt; 0</li>
+<li>DECLINE outcomes should generally have approved_amount = 0 unless explicitly designed otherwise</li>
+<li>COUNTEROFFER / PARTIAL_APPROVAL outcomes should have approved_amount &lt; requested_amount</li>
+<li>MANUAL_REVIEW outcomes should have a clearly documented approved_amount treatment:
+  a. approved_amount = null pending review, or
+  b. approved_amount = proposed amount pending review
+The architecture should recommend one approach and explain why.</li>
+</ul>
+</li>
+<li><p>Approved Expected Loss consistency</p>
+<ul>
+<li>Module 1 expected_loss_amount should remain available as requested-exposure Expected Loss</li>
+<li>Module 2 approved_expected_loss_amount should be calculated from approved exposure</li>
+<li>Conceptual formula:
+  approved_expected_loss_amount = approved_amount × estimated-PD proxy × LGD</li>
+<li>declined or unresolved records should have a clearly documented approved_expected_loss_amount convention</li>
+</ul>
+</li>
+<li><p>Archive grain consistency</p>
+<ul>
+<li>latest-run table should contain the current strategy output for the selected Module 1 input population / scenario</li>
+<li>strategy archive table should preserve one row per application per Module 1 scenario per Module 2 strategy</li>
+<li>archive design should support matched comparison across strategies without losing Module 1 scenario lineage</li>
+</ul>
+</li>
+</ol>
+<h1>================================================================================
+PREFERRED MODULE 2 DEVELOPMENT APPROACH</h1>
+<p>Do not start coding immediately.</p>
+<p>Start by designing Module 2 architecture.</p>
+<p>First response should include:</p>
+<ol>
+<li>Recommended Module 2 name</li>
+<li>Strategic purpose</li>
+<li>What Module 2 includes</li>
+<li>What Module 2 excludes</li>
+<li>Relationship to Module 1</li>
+<li>Module 1 scenario vs Module 2 strategy naming recommendation</li>
+<li>Recommended latest-run table and archive-table architecture</li>
+<li>Proposed SQL section structure</li>
+<li>Proposed strategy output table design</li>
+<li>Proposed parameter framework</li>
+<li>Proposed decision outcome taxonomy</li>
+<li>Recommendation on counteroffer as outcome vs decision path</li>
+<li>Proposed decision hierarchy</li>
+<li>Proposed reason-code framework</li>
+<li>Proposed approved exposure / approved Expected Loss framework</li>
+<li>Proposed strategy comparison framework</li>
+<li>Proposed validation framework</li>
+<li>Recommended workstreams</li>
+<li>Key design tradeoffs</li>
+<li>Recommended first coding step</li>
+<li>Text-based architecture flow diagram showing:
+Module 1 output → Module 2 strategy parameter layer → decision logic → reason codes → approved exposure → strategy archive → QA</li>
+</ol>
+<p>Use clear recommendations. If there are options, rank them and recommend one.</p>
+<p>Do not provide generic advice. I want a serious, enterprise-grade architecture proposal.</p>
+<p>In the first response, explicitly address the following design decision:</p>
+<p>Should Module 2 use:
+A. one output row per application per strategy,
+B. one output row per application per strategy per Module 1 scenario,
+C. or a separate latest-run table plus strategy archive table?</p>
+<p>Please recommend one architecture.</p>
+<p>Preference:
+Use a latest-run strategy decision table plus a strategy decision archive table, mirroring Module 1’s latest-output plus scenario-archive pattern.</p>
+<h1>================================================================================
+FINAL GUARDRAILS BEFORE STARTING</h1>
+<p>Do not draft the Module 2 BRD or Validation Summary yet.
+First, help design and validate the Module 2 architecture and SQL implementation.
+Documentation will be produced later after the design and validation evidence are established.</p>
+<p>Naming discipline:
+The SQL field name may remain estimated_pd because that is the finalized Module 1 output column.
+However, commentary, documentation, and interpretation should refer to it as the synthetic estimated-PD proxy.</p>
+<p>Module 2 may expose segments for strategy QA, but it must not draw fair lending, disparate impact, or compliance conclusions.</p>
+<p>If Module 2 appears to require a field not currently available from Module 1, do not assume a Module 1 change.
+First identify the missing field, explain why it is needed, and recommend whether it belongs in:</p>
+<ul>
+<li>Module 1 as a future enhancement</li>
+<li>Module 2 as a derived field</li>
+<li>or documentation only</li>
+</ul>
+<p>In the first response, include a text-based architecture flow diagram showing:
+Module 1 output → Module 2 strategy parameter layer → decision logic → reason codes → approved exposure → strategy archive → QA.</p>
+<h1>================================================================================
+QUALITY BAR</h1>
+<p>The expected level is:</p>
+<ul>
+<li>senior credit strategy analytics</li>
+<li>enterprise SQL architecture</li>
+<li>model governance awareness</li>
+<li>audit-ready documentation</li>
+<li>portfolio-grade explainability</li>
+</ul>
+<p>This should look like something a Director / Principal-level analytics candidate could present in a portfolio, architecture walkthrough, or interview.</p>
+<h1>================================================================================
+START NOW</h1>
+<p>Please propose the Module 2 architecture and workstream plan.</p>
+<p>Do not write code yet.</p>
+<p>Focus on designing the module correctly before implementation.</p>
+<p>Critical design requirements to address:</p>
+<ul>
+<li>Distinguish Module 1 scenario metadata from Module 2 strategy metadata.</li>
+<li>Recommend whether Module 2 should have both a latest-run table and a strategy archive table.</li>
+<li>Define a decision outcome taxonomy before coding.</li>
+<li>Define whether counteroffer is a distinct decision outcome or a decision path.</li>
+<li>Define a simulated reason-code framework, while explicitly stating these are not regulatory adverse-action reason codes.</li>
+<li>Define how approved amount and approved Expected Loss should be calculated.</li>
+<li>Define approved-book, declined-book, manual-review-book, and counteroffer-book reporting.</li>
+<li>Define validation checks for decision distribution, risk ordering, affordability sensitivity, reason-code coverage, approved exposure, and matched strategy comparison.</li>
+<li>Preserve Module 1 boundaries: synthetic simulation only, no production underwriting, no calibrated PD, no pricing, no fair lending conclusions.</li>
+</ul>
+<p><strong>Attachments in export:</strong> <code>module1_synthetic_application_risk_engine_v2.0(21).sql</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v2.0(9).pdf</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Validation_Summary_v2.0(13).pdf</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00018" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00018 · 2026-05-06T09:14:43.706523-04:00 · active path</p><div class="body"><h2>Executive recommendation</h2>
+<p><strong>Build Module 2 as: <em>Module 2 — Credit Policy Strategy &amp; Decision Outcome Simulation Engine v1.0</em>.</strong></p>
+<p>The recommended architecture is <strong>Option C: a latest-run strategy decision table plus a strategy decision archive table</strong>, with the archive grain defined as:</p>
+<blockquote>
+<p><strong>one row per application × Module 1 scenario × Module 2 strategy version</strong></p>
+</blockquote>
+<p>This mirrors Module 1’s latest-output plus scenario-archive pattern while extending it cleanly into downstream strategy comparison. The latest table supports fast development, QA, and walkthroughs. The archive table supports governed matched comparison across alternative strategies and across upstream Module 1 scenarios.</p>
+<p>Module 1 should remain frozen. Module 2 should consume its finalized outputs, preserve its scenario lineage, and add a strategy layer on top. Module 1’s SQL output already preserves scenario metadata, applicant identifiers, product and score variables, affordability metrics, the <code>estimated_pd</code> SQL column, LGD, and requested-exposure Expected Loss; the Module 1 BRD separately establishes scenario comparison around <code>scenario_set_name</code>, <code>scenario_name</code>, and <code>population_id</code>; and the validation summary confirms deterministic matched comparison as a validated Module 1 capability. fileciteturn1file13 fileciteturn2file2 fileciteturn0file1</p>
+<hr>
+<h1>1. Recommended Module 2 name</h1>
+<p><strong>Module 2 — Credit Policy Strategy &amp; Decision Outcome Simulation Engine v1.0</strong></p>
+<p>This name is strong because it clearly signals:</p>
+<table>
+<thead>
+<tr>
+<th>Name Component</th>
+<th>Why It Matters</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Credit Policy Strategy</strong></td>
+<td>Establishes that this is a simulated policy layer, not a model rebuild.</td>
+</tr>
+<tr>
+<td><strong>Decision Outcome</strong></td>
+<td>Focuses on the strategy outcome: approve, decline, manual review, counteroffer.</td>
+</tr>
+<tr>
+<td><strong>Simulation Engine</strong></td>
+<td>Preserves the synthetic, pre-production boundary.</td>
+</tr>
+<tr>
+<td><strong>v1.0</strong></td>
+<td>Establishes this as the first governed release of the downstream strategy layer.</td>
+</tr>
+</tbody></table>
+<p>The shorter working table-family name should be:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions
+credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<hr>
+<h1>2. Strategic purpose</h1>
+<p>Module 2 should answer:</p>
+<blockquote>
+<p><strong>Under a governed simulated strategy, what strategy outcome would each synthetic applicant receive, why, and with what approved exposure treatment?</strong></p>
+</blockquote>
+<p>It extends the Module 1 chain:</p>
+<pre><code class="language-text">Application → Product Structure → APR → Payment → PTI → synthetic estimated-PD proxy → Expected Loss
+</code></pre>
+<p>into the Module 2 chain:</p>
+<pre><code class="language-text">Synthetic Applicant Profile
+→ Simulated Strategy Rules
+→ Decision Outcome Proxy
+→ Simulated Reason Codes
+→ Approved Exposure Proxy
+→ Approved Expected Loss
+→ Strategy Comparison
+</code></pre>
+<p>The key strategic thesis should be:</p>
+<blockquote>
+<p><strong>Strategy outcomes are not determined by one variable alone. They emerge from the interaction of product type, score band, borrower risk signals, affordability stress, requested exposure, the synthetic estimated-PD proxy, LGD, Expected Loss, and product-specific simulated policy rules.</strong></p>
+</blockquote>
+<hr>
+<h1>3. What Module 2 includes</h1>
+<p>Module 2 should include the following governed components:</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Strategy parameter framework</strong></td>
+<td>Defines strategy metadata, thresholds, product-specific limits, exposure treatment, and archive behavior.</td>
+</tr>
+<tr>
+<td><strong>Input lineage layer</strong></td>
+<td>Pulls Module 1 latest or archived outputs and renames Module 1 scenario fields for clarity.</td>
+</tr>
+<tr>
+<td><strong>Derived segmentation layer</strong></td>
+<td>Builds Module 2 risk tier, affordability tier, PTI bucket, exposure tier, and policy bands.</td>
+</tr>
+<tr>
+<td><strong>Decision rule layer</strong></td>
+<td>Applies hard decline, manual review, counteroffer, and approval logic.</td>
+</tr>
+<tr>
+<td><strong>Reason-code simulation layer</strong></td>
+<td>Assigns transparent simulated reason codes with priority hierarchy.</td>
+</tr>
+<tr>
+<td><strong>Approved exposure layer</strong></td>
+<td>Calculates approved amount, counteroffer amount, exposure reduction, and line assignment tier.</td>
+</tr>
+<tr>
+<td><strong>Approved Expected Loss layer</strong></td>
+<td>Calculates approved-exposure Expected Loss separately from Module 1 requested-exposure Expected Loss.</td>
+</tr>
+<tr>
+<td><strong>Latest output table</strong></td>
+<td>Stores the current strategy run.</td>
+</tr>
+<tr>
+<td><strong>Strategy archive table</strong></td>
+<td>Preserves completed strategy runs for matched comparison.</td>
+</tr>
+<tr>
+<td><strong>Validation and QA framework</strong></td>
+<td>Confirms structural integrity, decision distributions, risk ordering, reason-code coverage, exposure consistency, and matched strategy deltas.</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>4. What Module 2 excludes</h1>
+<p>Module 2 should explicitly exclude:</p>
+<table>
+<thead>
+<tr>
+<th>Exclusion</th>
+<th>Boundary</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Production underwriting</td>
+<td>No real customer decisions.</td>
+</tr>
+<tr>
+<td>Regulatory adverse-action logic</td>
+<td>Reason codes are simulated strategy explanation codes only.</td>
+</tr>
+<tr>
+<td>Pricing optimization</td>
+<td>APR remains a Module 1 burden-estimation proxy, not a price offer.</td>
+</tr>
+<tr>
+<td>Calibrated default modeling</td>
+<td><code>estimated_pd</code> remains the SQL column name, but interpretation is the <strong>synthetic estimated-PD proxy</strong>.</td>
+</tr>
+<tr>
+<td>Fair lending conclusions</td>
+<td>Segments may support QA, but no disparate-impact or compliance conclusions should be drawn.</td>
+</tr>
+<tr>
+<td>Real account booking</td>
+<td>Approved amount is an approved exposure proxy, not actual booked exposure.</td>
+</tr>
+<tr>
+<td>Macroeconomic forecasting</td>
+<td>Module 1 scenarios are controlled sensitivity assumptions, not forecasts.</td>
+</tr>
+<tr>
+<td>Collateral valuation policy</td>
+<td>Module 1 does not produce LTV or collateral value; Module 2 should not invent them.</td>
+</tr>
+</tbody></table>
+<p>This preserves the Module 1 BRD boundary that production underwriting, customer-level decisions, calibrated probability-of-default modeling, production pricing, regulatory validation, fair lending adjudication, and financial reporting are explicit non-uses. fileciteturn1file15</p>
+<hr>
+<h1>5. Relationship to Module 1</h1>
+<p>Module 2 should consume Module 1 outputs without rewriting Module 1.</p>
+<h2>Recommended input sources</h2>
+<table>
+<thead>
+<tr>
+<th>Use Case</th>
+<th>Recommended Source</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Single-strategy development and QA</td>
+<td><code>credit_decisioning_sim.synthetic_applications</code></td>
+</tr>
+<tr>
+<td>Strategy comparison across Module 1 baseline / stress scenarios</td>
+<td><code>credit_decisioning_sim.synthetic_applications_scenario_archive</code></td>
+</tr>
+<tr>
+<td>Matched strategy comparison under the same Module 1 scenario</td>
+<td>Either source is acceptable, but archive is preferred once strategy runs are persisted.</td>
+</tr>
+</tbody></table>
+<h2>Required Module 1 fields to preserve</h2>
+<p>Module 2 should carry forward at minimum:</p>
+<pre><code class="language-text">model_version                      → module1_model_version
+scenario_set_name                  → module1_scenario_set_name
+scenario_name                      → module1_scenario_name
+population_id
+anchor_date
+application_seq
+application_id
+applicant_id
+application_date
+product_type
+score_band
+credit_score
+annual_income
+debt_to_income_ratio
+utilization_rate
+tradeline_count
+months_since_oldest_trade
+recent_inquiry_count
+delinquency_count_12m
+major_derogatory_flag
+bankruptcy_flag
+requested_amount
+loan_term_months
+base_apr_for_payment_calc
+monthly_payment_proxy
+payment_to_income_ratio
+amount_to_income_ratio
+estimated_pd
+estimated_lgd
+expected_loss_amount
+</code></pre>
+<p>In Module 2 commentary, <code>estimated_pd</code> should always be described as the <strong>synthetic estimated-PD proxy</strong>, not a calibrated probability of default.</p>
+<hr>
+<h1>6. Module 1 scenario vs Module 2 strategy naming recommendation</h1>
+<p>Module 2 must not overload <code>scenario_name</code>.</p>
+<p>Module 1 scenario fields describe the upstream synthetic population and risk environment. Module 2 strategy fields describe the downstream simulated decision strategy.</p>
+<h2>Recommended naming</h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Module 1</td>
+<td><code>module1_scenario_set_name</code></td>
+<td>Upstream scenario family.</td>
+</tr>
+<tr>
+<td>Module 1</td>
+<td><code>module1_scenario_name</code></td>
+<td>Upstream scenario / assumption set.</td>
+</tr>
+<tr>
+<td>Module 1</td>
+<td><code>population_id</code></td>
+<td>Deterministic synthetic population anchor.</td>
+</tr>
+<tr>
+<td>Module 2</td>
+<td><code>strategy_set_name</code></td>
+<td>Downstream strategy comparison family.</td>
+</tr>
+<tr>
+<td>Module 2</td>
+<td><code>strategy_name</code></td>
+<td>Specific simulated decision strategy.</td>
+</tr>
+<tr>
+<td>Module 2</td>
+<td><code>strategy_version</code></td>
+<td>Versioned strategy configuration.</td>
+</tr>
+<tr>
+<td>Module 2</td>
+<td><code>strategy_run_id</code></td>
+<td>Optional deterministic or timestamped run identifier for traceability.</td>
+</tr>
+</tbody></table>
+<p>This gives clean lineage such as:</p>
+<pre><code class="language-text">module1_scenario_set_name = MODULE1_V2_BASELINE_SET
+module1_scenario_name     = BASELINE_V2
+population_id             = BASE_POPULATION_V1
+
+strategy_set_name         = MODULE2_BASELINE_POLICY_TESTS
+strategy_name             = BASELINE_STRATEGY
+strategy_version          = V1_0
+</code></pre>
+<hr>
+<h1>7. Recommended latest-run and archive-table architecture</h1>
+<h2>Explicit decision: Option C is the correct architecture</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Assessment</th>
+<th>Recommendation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>A. One output row per application per strategy</strong></td>
+<td>Insufficient because it can lose Module 1 scenario lineage or blur upstream scenario effects.</td>
+<td>Do not use as the main architecture.</td>
+</tr>
+<tr>
+<td><strong>B. One output row per application per strategy per Module 1 scenario</strong></td>
+<td>Correct archive grain, but incomplete because it lacks a clean latest-run working table.</td>
+<td>Use as the archive grain, not the whole architecture.</td>
+</tr>
+<tr>
+<td><strong>C. Latest-run table plus strategy archive table</strong></td>
+<td>Best balance of development usability, auditability, and matched comparison. Mirrors Module 1.</td>
+<td><strong>Recommended.</strong></td>
+</tr>
+</tbody></table>
+<h2>Recommended physical tables</h2>
+<h3>Latest-run table</h3>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions
+</code></pre>
+<p>Purpose:</p>
+<pre><code class="language-text">Current Module 2 strategy output for the selected Module 1 input and selected strategy.
+</code></pre>
+<p>Grain:</p>
+<pre><code class="language-text">one row per application for the current strategy run
+</code></pre>
+<p>Usage:</p>
+<pre><code class="language-text">single-run QA
+development validation
+portfolio walkthrough
+debugging
+</code></pre>
+<h3>Archive table</h3>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p>Purpose:</p>
+<pre><code class="language-text">Persistent strategy-decision archive for comparison across Module 2 strategies and Module 1 scenarios.
+</code></pre>
+<p>Recommended archive grain:</p>
+<pre><code class="language-text">one row per application
+per module1_scenario_set_name
+per module1_scenario_name
+per population_id
+per strategy_set_name
+per strategy_name
+per strategy_version
+</code></pre>
+<p>This archive grain supports:</p>
+<pre><code class="language-text">same Module 1 scenario + same population_id + different strategy_name
+→ isolates downstream strategy effect
+
+same Module 2 strategy + same population_id + different Module 1 scenario
+→ isolates upstream scenario sensitivity
+
+different Module 1 scenario + different Module 2 strategy
+→ combined scenario / strategy effect, useful but less clean
+</code></pre>
+<hr>
+<h1>8. Proposed SQL section structure</h1>
+<p>Module 2 SQL should follow a governed staged structure similar to Module 1.</p>
+<table>
+<thead>
+<tr>
+<th align="right">Section</th>
+<th>Name</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">0</td>
+<td>Executive purpose and boundary notes</td>
+<td>Establish synthetic strategy simulation boundary.</td>
+</tr>
+<tr>
+<td align="right">1</td>
+<td>Schema setup and latest-output reset</td>
+<td>Prepare latest-run output safely.</td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td>Strategy parameter framework</td>
+<td>Define one active strategy row and product policy matrix.</td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td>Strategy parameter gatekeeper</td>
+<td>Fail fast on invalid metadata, thresholds, source selectors, and exposure rules.</td>
+</tr>
+<tr>
+<td align="right">4</td>
+<td>Module 1 source selection</td>
+<td>Load latest or archived Module 1 outputs and rename scenario fields.</td>
+</tr>
+<tr>
+<td align="right">5</td>
+<td>Derived strategy segments</td>
+<td>Build risk tier, PTI bucket, DTI bucket, affordability tier, and exposure tier.</td>
+</tr>
+<tr>
+<td align="right">6</td>
+<td>Product-specific policy limits</td>
+<td>Attach product caps, minimum amounts, counteroffer limits, and threshold overrides.</td>
+</tr>
+<tr>
+<td align="right">7</td>
+<td>Rule flag construction</td>
+<td>Calculate all hard decline, review, counteroffer, and approval trigger flags.</td>
+</tr>
+<tr>
+<td align="right">8</td>
+<td>Decision hierarchy</td>
+<td>Assign exactly one <code>decision_outcome</code> and one <code>decision_path</code>.</td>
+</tr>
+<tr>
+<td align="right">9</td>
+<td>Simulated reason-code assignment</td>
+<td>Assign primary, secondary, tertiary reason codes and reason family.</td>
+</tr>
+<tr>
+<td align="right">10</td>
+<td>Approved exposure calculation</td>
+<td>Calculate approved amount, counteroffer amount, exposure reduction, approved PTI proxy.</td>
+</tr>
+<tr>
+<td align="right">11</td>
+<td>Approved Expected Loss calculation</td>
+<td>Calculate approved-exposure Expected Loss.</td>
+</tr>
+<tr>
+<td align="right">12</td>
+<td>Final latest-run table build</td>
+<td>Create <code>strategy_decisions</code>.</td>
+</tr>
+<tr>
+<td align="right">13</td>
+<td>Strategy archive persistence</td>
+<td>Insert into <code>strategy_decisions_archive</code> under governed reset mode.</td>
+</tr>
+<tr>
+<td align="right">14</td>
+<td>QA / validation queries</td>
+<td>Validate row counts, flags, distributions, risk ordering, reasons, exposure.</td>
+</tr>
+<tr>
+<td align="right">15</td>
+<td>Strategy comparison QA</td>
+<td>Matched strategy deltas by portfolio, product, score band, PTI bucket, and row.</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>9. Proposed strategy output table design</h1>
+<p>The latest and archive tables should expose both business-facing outputs and audit fields.</p>
+<h2>Core output fields</h2>
+<table>
+<thead>
+<tr>
+<th>Field Group</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Module 2 metadata</td>
+<td><code>module2_model_version</code>, <code>strategy_set_name</code>, <code>strategy_name</code>, <code>strategy_version</code>, <code>strategy_run_id</code>, <code>strategy_created_ts</code></td>
+</tr>
+<tr>
+<td>Module 1 lineage</td>
+<td><code>module1_model_version</code>, <code>module1_scenario_set_name</code>, <code>module1_scenario_name</code>, <code>population_id</code>, <code>anchor_date</code></td>
+</tr>
+<tr>
+<td>Applicant lineage</td>
+<td><code>application_seq</code>, <code>application_id</code>, <code>applicant_id</code>, <code>application_date</code></td>
+</tr>
+<tr>
+<td>Product / score</td>
+<td><code>product_type</code>, <code>score_band</code>, <code>credit_score</code></td>
+</tr>
+<tr>
+<td>Borrower signals</td>
+<td><code>annual_income</code>, <code>debt_to_income_ratio</code>, <code>utilization_rate</code>, <code>tradeline_count</code>, <code>months_since_oldest_trade</code>, <code>recent_inquiry_count</code>, <code>delinquency_count_12m</code>, <code>major_derogatory_flag</code>, <code>bankruptcy_flag</code></td>
+</tr>
+<tr>
+<td>Requested structure</td>
+<td><code>requested_amount</code>, <code>loan_term_months</code>, <code>base_apr_for_payment_calc</code>, <code>monthly_payment_proxy</code>, <code>payment_to_income_ratio</code>, <code>amount_to_income_ratio</code></td>
+</tr>
+<tr>
+<td>Module 1 risk economics</td>
+<td><code>estimated_pd</code>, <code>estimated_lgd</code>, <code>requested_expected_loss_amount</code></td>
+</tr>
+<tr>
+<td>Derived tiers</td>
+<td><code>strategy_risk_tier</code>, <code>affordability_tier</code>, <code>pti_bucket</code>, <code>dti_bucket</code>, <code>exposure_tier</code>, <code>policy_segment</code></td>
+</tr>
+<tr>
+<td>Rule flags</td>
+<td><code>hard_decline_trigger_flag</code>, <code>risk_decline_trigger_flag</code>, <code>affordability_decline_trigger_flag</code>, <code>exposure_limit_trigger_flag</code>, <code>manual_review_trigger_flag</code>, <code>counteroffer_eligible_flag</code></td>
+</tr>
+<tr>
+<td>Decision outputs</td>
+<td><code>decision_outcome</code>, <code>decision_path</code>, <code>approval_flag</code>, <code>decline_flag</code>, <code>manual_review_flag</code>, <code>counteroffer_flag</code>, <code>positive_offer_flag</code></td>
+</tr>
+<tr>
+<td>Reason codes</td>
+<td><code>primary_reason_code</code>, <code>secondary_reason_code</code>, <code>tertiary_reason_code</code>, <code>primary_reason_family</code>, <code>triggered_reason_code_list</code></td>
+</tr>
+<tr>
+<td>Approved exposure</td>
+<td><code>approved_amount</code>, <code>counteroffer_amount</code>, <code>exposure_reduction_flag</code>, <code>exposure_reduction_amount</code>, <code>exposure_reduction_pct</code>, <code>line_assignment_tier</code></td>
+</tr>
+<tr>
+<td>Approved affordability</td>
+<td><code>approved_monthly_payment_proxy</code>, <code>approved_payment_to_income_ratio</code></td>
+</tr>
+<tr>
+<td>Approved economics</td>
+<td><code>approved_expected_loss_amount</code>, <code>approved_el_reduction_amount</code>, <code>approved_el_reduction_pct</code></td>
+</tr>
+<tr>
+<td>Archive audit</td>
+<td><code>strategy_archived_ts</code> in archive only</td>
+</tr>
+</tbody></table>
+<p>Important naming recommendation:</p>
+<pre><code class="language-text">expected_loss_amount from Module 1 should be carried forward as requested_expected_loss_amount.
+</code></pre>
+<p>That avoids ambiguity once Module 2 calculates approved-exposure Expected Loss.</p>
+<hr>
+<h1>10. Proposed parameter framework</h1>
+<p>Module 2 should use a two-layer parameter design.</p>
+<h2>Layer 1 — Strategy run parameters</h2>
+<p>One active row per run:</p>
+<pre><code class="language-text">tmp_module2_strategy_params
+</code></pre>
+<p>Recommended fields:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>strategy_set_name</code></td>
+<td>Strategy comparison family.</td>
+</tr>
+<tr>
+<td><code>strategy_name</code></td>
+<td>Specific simulated strategy.</td>
+</tr>
+<tr>
+<td><code>strategy_version</code></td>
+<td>Version of the strategy rules.</td>
+</tr>
+<tr>
+<td><code>module1_input_source</code></td>
+<td><code>LATEST</code> or <code>ARCHIVE</code>.</td>
+</tr>
+<tr>
+<td><code>source_module1_scenario_set_name</code></td>
+<td>Required when using Module 1 archive.</td>
+</tr>
+<tr>
+<td><code>source_module1_scenario_name</code></td>
+<td>Required when using Module 1 archive.</td>
+</tr>
+<tr>
+<td><code>source_population_id</code></td>
+<td>Required for archive-based matched comparison.</td>
+</tr>
+<tr>
+<td><code>archive_run_flag</code></td>
+<td>Whether to persist strategy run.</td>
+</tr>
+<tr>
+<td><code>strategy_archive_reset_mode</code></td>
+<td>Archive reset behavior.</td>
+</tr>
+<tr>
+<td><code>global_approve_max_estimated_pd_proxy</code></td>
+<td>Clean approval synthetic estimated-PD proxy ceiling.</td>
+</tr>
+<tr>
+<td><code>global_review_max_estimated_pd_proxy</code></td>
+<td>Manual review synthetic estimated-PD proxy ceiling.</td>
+</tr>
+<tr>
+<td><code>global_decline_min_estimated_pd_proxy</code></td>
+<td>Hard decline synthetic estimated-PD proxy floor.</td>
+</tr>
+<tr>
+<td><code>global_approve_max_pti</code></td>
+<td>Clean approval PTI ceiling.</td>
+</tr>
+<tr>
+<td><code>global_review_max_pti</code></td>
+<td>Manual review PTI ceiling.</td>
+</tr>
+<tr>
+<td><code>global_decline_min_pti</code></td>
+<td>Hard affordability decline PTI threshold.</td>
+</tr>
+<tr>
+<td><code>global_approve_max_dti</code></td>
+<td>Clean approval DTI ceiling.</td>
+</tr>
+<tr>
+<td><code>global_decline_min_dti</code></td>
+<td>Hard DTI decline threshold.</td>
+</tr>
+<tr>
+<td><code>max_exposure_reduction_pct</code></td>
+<td>Counteroffer governance rail.</td>
+</tr>
+<tr>
+<td><code>min_counteroffer_amount_pct</code></td>
+<td>Prevents trivial partial approvals.</td>
+</tr>
+<tr>
+<td><code>manual_review_enabled_flag</code></td>
+<td>Allows review path to be switched on/off.</td>
+</tr>
+<tr>
+<td><code>counteroffer_enabled_flag</code></td>
+<td>Allows counteroffer path to be switched on/off.</td>
+</tr>
+</tbody></table>
+<h2>Layer 2 — Product policy matrix</h2>
+<p>One row per product:</p>
+<pre><code class="language-text">tmp_module2_product_policy_params
+</code></pre>
+<p>Recommended fields:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>product_type</code></td>
+<td>Product-specific rule join key.</td>
+</tr>
+<tr>
+<td><code>product_min_approved_amount</code></td>
+<td>Minimum viable approved exposure.</td>
+</tr>
+<tr>
+<td><code>product_max_approved_amount</code></td>
+<td>Product policy exposure cap.</td>
+</tr>
+<tr>
+<td><code>product_approve_max_pti</code></td>
+<td>Product-specific clean approval PTI ceiling.</td>
+</tr>
+<tr>
+<td><code>product_review_max_pti</code></td>
+<td>Product-specific review PTI ceiling.</td>
+</tr>
+<tr>
+<td><code>product_decline_min_pti</code></td>
+<td>Product-specific hard affordability decline threshold.</td>
+</tr>
+<tr>
+<td><code>product_approve_max_estimated_pd_proxy</code></td>
+<td>Product-specific clean approval risk ceiling.</td>
+</tr>
+<tr>
+<td><code>product_review_max_estimated_pd_proxy</code></td>
+<td>Product-specific review threshold.</td>
+</tr>
+<tr>
+<td><code>product_decline_min_estimated_pd_proxy</code></td>
+<td>Product-specific hard risk decline threshold.</td>
+</tr>
+<tr>
+<td><code>product_max_expected_loss</code></td>
+<td>Requested-exposure Expected Loss policy tolerance.</td>
+</tr>
+<tr>
+<td><code>counteroffer_allowed_flag</code></td>
+<td>Whether product supports partial approval simulation.</td>
+</tr>
+<tr>
+<td><code>manual_review_allowed_flag</code></td>
+<td>Whether product supports review path.</td>
+</tr>
+<tr>
+<td><code>exposure_assignment_method</code></td>
+<td><code>REQUESTED</code>, <code>CAP_BASED</code>, <code>AFFORDABILITY_BASED</code>, <code>RISK_TIER_BASED</code>, or blended.</td>
+</tr>
+</tbody></table>
+<h2>Gatekeeper expectations</h2>
+<p>The parameter gatekeeper should fail fast if:</p>
+<pre><code class="language-text">- strategy parameter row count &lt;&gt; 1
+- strategy_set_name, strategy_name, or strategy_version is null or blank
+- module1_input_source is not LATEST or ARCHIVE
+- archive selectors are missing when module1_input_source = ARCHIVE
+- input source returns zero rows
+- selected Module 1 source has duplicate application_id rows for the run grain
+- threshold ordering is incoherent
+- synthetic estimated-PD proxy thresholds are outside 0–1
+- PTI and DTI thresholds are outside governed ranges
+- approved amount caps are negative or below minimums
+- counteroffer settings can produce approved_amount &gt; requested_amount
+- archive reset mode is invalid
+</code></pre>
+<hr>
+<h1>11. Proposed decision outcome taxonomy</h1>
+<p>Module 2 should assign <strong>exactly one</strong> primary <code>decision_outcome</code> per application per strategy run.</p>
+<p>Recommended taxonomy:</p>
+<table>
+<thead>
+<tr>
+<th><code>decision_outcome</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td>Synthetic applicant passes simulated policy as requested.</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td>Synthetic applicant does not pass as requested, but receives a lower approved exposure proxy.</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Synthetic applicant falls into a governed exception or borderline zone requiring simulated review.</td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td>Synthetic applicant fails one or more hard simulated policy rules.</td>
+</tr>
+</tbody></table>
+<p>Recommended supporting field:</p>
+<pre><code class="language-text">decision_path
+</code></pre>
+<p>Example values:</p>
+<pre><code class="language-text">APPROVE_AS_REQUESTED
+DECLINE_HARD_POLICY
+DECLINE_RISK_POLICY
+DECLINE_AFFORDABILITY_POLICY
+DECLINE_EXPOSURE_POLICY
+MANUAL_REVIEW_RISK_BORDERLINE
+MANUAL_REVIEW_AFFORDABILITY_BORDERLINE
+MANUAL_REVIEW_MIXED_SIGNAL_PROFILE
+COUNTEROFFER_AFFORDABILITY_REDUCTION
+COUNTEROFFER_PRODUCT_LIMIT
+COUNTEROFFER_RISK_LIMIT
+</code></pre>
+<hr>
+<h1>12. Recommendation: counteroffer as outcome vs decision path</h1>
+<p><strong>Recommendation: Treat <code>COUNTEROFFER</code> as a distinct <code>decision_outcome</code>, with detailed counteroffer reason captured in <code>decision_path</code>.</strong></p>
+<p>Ranked options:</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>1. Counteroffer as distinct outcome</strong></td>
+<td>Best for reporting counteroffer rate, counteroffer-book risk, exposure reduction, and approved Expected Loss impact. Recommended.</td>
+</tr>
+<tr>
+<td><strong>2. Counteroffer as decision path under APPROVE</strong></td>
+<td>Blurs clean approvals with reduced-exposure offers and complicates approval-rate interpretation.</td>
+</tr>
+<tr>
+<td><strong>3. Counteroffer as decision path under MANUAL_REVIEW</strong></td>
+<td>Useful only if all partial approvals require review; too restrictive for this simulator.</td>
+</tr>
+</tbody></table>
+<p>Recommended flag convention:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Logic</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>approval_flag</code></td>
+<td><code>decision_outcome = &#39;APPROVE&#39;</code></td>
+</tr>
+<tr>
+<td><code>counteroffer_flag</code></td>
+<td><code>decision_outcome = &#39;COUNTEROFFER&#39;</code></td>
+</tr>
+<tr>
+<td><code>manual_review_flag</code></td>
+<td><code>decision_outcome = &#39;MANUAL_REVIEW&#39;</code></td>
+</tr>
+<tr>
+<td><code>decline_flag</code></td>
+<td><code>decision_outcome = &#39;DECLINE&#39;</code></td>
+</tr>
+<tr>
+<td><code>positive_offer_flag</code></td>
+<td><code>decision_outcome IN (&#39;APPROVE&#39;, &#39;COUNTEROFFER&#39;)</code></td>
+</tr>
+</tbody></table>
+<p>This avoids double-counting while still allowing “positive offer” reporting when needed.</p>
+<hr>
+<h1>13. Proposed decision hierarchy</h1>
+<p>The rule hierarchy should be deterministic and priority-based.</p>
+<h2>Recommended hierarchy</h2>
+<table>
+<thead>
+<tr>
+<th align="right">Priority</th>
+<th>Rule Family</th>
+<th>Treatment</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">1</td>
+<td>Input integrity failure</td>
+<td>Exclude only if structural source problem; otherwise fail gatekeeper before decisioning.</td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td>Hard adverse simulated policy rules</td>
+<td><code>DECLINE</code></td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td>Hard synthetic estimated-risk rules</td>
+<td><code>DECLINE</code></td>
+</tr>
+<tr>
+<td align="right">4</td>
+<td>Hard affordability rules</td>
+<td><code>DECLINE</code></td>
+</tr>
+<tr>
+<td align="right">5</td>
+<td>Non-negotiable product exposure limit failure</td>
+<td><code>DECLINE</code> if no valid lower exposure can be offered.</td>
+</tr>
+<tr>
+<td align="right">6</td>
+<td>Counteroffer eligibility</td>
+<td><code>COUNTEROFFER</code> if lower exposure resolves affordability or exposure pressure.</td>
+</tr>
+<tr>
+<td align="right">7</td>
+<td>Manual review borderline rules</td>
+<td><code>MANUAL_REVIEW</code></td>
+</tr>
+<tr>
+<td align="right">8</td>
+<td>Clean approval rules</td>
+<td><code>APPROVE</code></td>
+</tr>
+<tr>
+<td align="right">9</td>
+<td>Fallback</td>
+<td><code>MANUAL_REVIEW</code> with governance reason if no rule cleanly classifies.</td>
+</tr>
+</tbody></table>
+<h2>Hard decline examples</h2>
+<pre><code class="language-text">bankruptcy_flag = TRUE
+major_derogatory_flag = TRUE under configured strategy
+delinquency_count_12m above hard threshold
+score_band below product minimum
+synthetic estimated-PD proxy above hard risk threshold
+requested-exposure Expected Loss above hard threshold
+PTI above hard affordability threshold and no valid counteroffer
+DTI above hard capacity threshold
+requested amount exceeds product limit and counteroffer is not allowed or not viable
+</code></pre>
+<h2>Manual review examples</h2>
+<pre><code class="language-text">strong score band but high PTI
+weak score band but low PTI and low requested amount
+high requested amount but low synthetic estimated-PD proxy
+borderline synthetic estimated-PD proxy near threshold
+borderline PTI near threshold
+mixed signal profile
+</code></pre>
+<h2>Counteroffer examples</h2>
+<pre><code class="language-text">requested amount exceeds product cap but reduced amount is viable
+PTI exceeds clean approval threshold but lower exposure brings approved PTI within tolerance
+requested-exposure Expected Loss exceeds tolerance but reduced exposure brings approved Expected Loss within tolerance
+risk tier supports exposure, but not the full requested amount
+</code></pre>
+<hr>
+<h1>14. Proposed simulated reason-code framework</h1>
+<p>Reason codes should be explicitly framed as:</p>
+<blockquote>
+<p><strong>simulated strategy explanation codes for synthetic applicants, not regulatory adverse-action reason codes.</strong></p>
+</blockquote>
+<p>They are used for transparency, QA, segmentation, and decision-path traceability.</p>
+<h2>Recommended fields</h2>
+<pre><code class="language-text">primary_reason_code
+secondary_reason_code
+tertiary_reason_code
+primary_reason_family
+triggered_reason_code_list
+reason_priority_rank
+</code></pre>
+<h2>Reason-code taxonomy</h2>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Example Codes</th>
+<th>Typical Outcomes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hard policy</td>
+<td><code>BANKRUPTCY_FLAG</code>, <code>MAJOR_DEROGATORY</code>, <code>RECENT_DELINQUENCY</code>, <code>LOW_SCORE_BAND</code></td>
+<td>Decline</td>
+</tr>
+<tr>
+<td>Risk</td>
+<td><code>HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code>, <code>HIGH_EXPECTED_LOSS</code>, <code>HIGH_UTILIZATION</code></td>
+<td>Decline, review, counteroffer</td>
+</tr>
+<tr>
+<td>Affordability</td>
+<td><code>HIGH_PTI</code>, <code>HIGH_DTI</code>, <code>HIGH_AMOUNT_TO_INCOME</code></td>
+<td>Decline, review, counteroffer</td>
+</tr>
+<tr>
+<td>Exposure</td>
+<td><code>REQUESTED_AMOUNT_EXCEEDS_POLICY_LIMIT</code>, <code>PRODUCT_POLICY_LIMIT</code>, <code>PRODUCT_SPECIFIC_EXPOSURE_LIMIT</code></td>
+<td>Counteroffer, decline</td>
+</tr>
+<tr>
+<td>Counteroffer</td>
+<td><code>COUNTEROFFER_AFFORDABILITY_ADJUSTMENT</code>, <code>COUNTEROFFER_EXPOSURE_LIMIT</code>, <code>COUNTEROFFER_RISK_LIMIT</code></td>
+<td>Counteroffer</td>
+</tr>
+<tr>
+<td>Manual review</td>
+<td><code>MANUAL_REVIEW_MIXED_SIGNAL_PROFILE</code>, <code>BORDERLINE_APPROVAL_PROFILE</code>, <code>HIGH_EXPOSURE_LOW_RISK_REVIEW</code>, <code>WEAK_SCORE_LOW_PTI_REVIEW</code></td>
+<td>Manual review</td>
+</tr>
+<tr>
+<td>Approval</td>
+<td><code>APPROVED_AS_REQUESTED</code>, <code>APPROVED_CLEAN_PROFILE</code>, <code>APPROVED_WITH_MONITORING_FLAG</code></td>
+<td>Approve</td>
+</tr>
+</tbody></table>
+<h2>Recommended reason priority</h2>
+<table>
+<thead>
+<tr>
+<th align="right">Priority</th>
+<th>Reason Code</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">1</td>
+<td><code>BANKRUPTCY_FLAG</code></td>
+</tr>
+<tr>
+<td align="right">2</td>
+<td><code>MAJOR_DEROGATORY</code></td>
+</tr>
+<tr>
+<td align="right">3</td>
+<td><code>RECENT_DELINQUENCY</code></td>
+</tr>
+<tr>
+<td align="right">4</td>
+<td><code>LOW_SCORE_BAND</code></td>
+</tr>
+<tr>
+<td align="right">5</td>
+<td><code>HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code></td>
+</tr>
+<tr>
+<td align="right">6</td>
+<td><code>HIGH_EXPECTED_LOSS</code></td>
+</tr>
+<tr>
+<td align="right">7</td>
+<td><code>HIGH_PTI</code></td>
+</tr>
+<tr>
+<td align="right">8</td>
+<td><code>HIGH_DTI</code></td>
+</tr>
+<tr>
+<td align="right">9</td>
+<td><code>HIGH_AMOUNT_TO_INCOME</code></td>
+</tr>
+<tr>
+<td align="right">10</td>
+<td><code>REQUESTED_AMOUNT_EXCEEDS_POLICY_LIMIT</code></td>
+</tr>
+<tr>
+<td align="right">11</td>
+<td><code>PRODUCT_POLICY_LIMIT</code></td>
+</tr>
+<tr>
+<td align="right">12</td>
+<td><code>COUNTEROFFER_AFFORDABILITY_ADJUSTMENT</code></td>
+</tr>
+<tr>
+<td align="right">13</td>
+<td><code>COUNTEROFFER_EXPOSURE_LIMIT</code></td>
+</tr>
+<tr>
+<td align="right">14</td>
+<td><code>MANUAL_REVIEW_MIXED_SIGNAL_PROFILE</code></td>
+</tr>
+<tr>
+<td align="right">15</td>
+<td><code>BORDERLINE_APPROVAL_PROFILE</code></td>
+</tr>
+<tr>
+<td align="right">16</td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+</tr>
+</tbody></table>
+<p>Design principle:</p>
+<pre><code class="language-text">All triggered reasons may be stackable.
+The primary, secondary, and tertiary reason codes are selected by deterministic priority.
+The reason family is inherited from the primary reason code.
+</code></pre>
+<hr>
+<h1>15. Proposed approved exposure and approved Expected Loss framework</h1>
+<p>Module 2 should distinguish three exposure concepts:</p>
+<table>
+<thead>
+<tr>
+<th>Concept</th>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Requested exposure</td>
+<td><code>requested_amount</code></td>
+<td>Module 1 requested amount.</td>
+</tr>
+<tr>
+<td>Approved exposure proxy</td>
+<td><code>approved_amount</code></td>
+<td>Module 2 simulated approved exposure.</td>
+</tr>
+<tr>
+<td>Counteroffer exposure proxy</td>
+<td><code>counteroffer_amount</code></td>
+<td>Lower exposure assigned under counteroffer outcome.</td>
+</tr>
+</tbody></table>
+<h2>Recommended amount conventions</h2>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th align="right"><code>approved_amount</code></th>
+<th align="right"><code>counteroffer_amount</code></th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td align="right"><code>requested_amount</code></td>
+<td align="right"><code>NULL</code></td>
+<td>Approved as requested.</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">lower than <code>requested_amount</code></td>
+<td align="right">same as <code>approved_amount</code></td>
+<td>Partial approval / counteroffer simulation.</td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td align="right"><code>0</code></td>
+<td align="right"><code>NULL</code></td>
+<td>No approved exposure under simulated strategy.</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right"><code>NULL</code></td>
+<td align="right"><code>NULL</code></td>
+<td>Pending simulated review; do not treat as booked exposure.</td>
+</tr>
+</tbody></table>
+<h2>Manual review convention</h2>
+<p><strong>Recommendation: <code>approved_amount = NULL</code> for <code>MANUAL_REVIEW</code>.</strong></p>
+<p>Reason:</p>
+<pre><code class="language-text">Manual review is unresolved by design.
+Assigning approved_amount = 0 would make review look like decline.
+Assigning a proposed amount would make review look partially booked.
+NULL preserves the pending-review interpretation.
+</code></pre>
+<p>Optional future field:</p>
+<pre><code class="language-text">review_proposed_amount_proxy
+</code></pre>
+<p>This can be added later if the module needs to show a proposed amount pending review, but it should not be used in approved-book calculations.</p>
+<h2>Approved payment proxy</h2>
+<p>For counteroffers and approved exposure, Module 2 should derive:</p>
+<pre><code class="language-text">approved_monthly_payment_proxy
+</code></pre>
+<p>Recommended initial method:</p>
+<pre><code class="language-text">approved_monthly_payment_proxy
+=
+monthly_payment_proxy × approved_amount / requested_amount
+</code></pre>
+<p>This is appropriate because Module 1 payment formulas scale with exposure for the current product proxy design. It also avoids rewriting Module 1’s product payment mechanics.</p>
+<h2>Approved PTI proxy</h2>
+<pre><code class="language-text">approved_payment_to_income_ratio
+=
+approved_monthly_payment_proxy / (annual_income / 12)
+</code></pre>
+<h2>Approved Expected Loss</h2>
+<p>Module 1 requested-exposure Expected Loss remains available as:</p>
+<pre><code class="language-text">requested_expected_loss_amount
+</code></pre>
+<p>Module 2 calculates:</p>
+<pre><code class="language-text">approved_expected_loss_amount
+=
+approved_amount × estimated_pd × estimated_lgd
+</code></pre>
+<p>Interpretation note:</p>
+<pre><code class="language-text">estimated_pd is the SQL field name, but the business interpretation is the synthetic estimated-PD proxy.
+</code></pre>
+<p>Recommended approved Expected Loss conventions:</p>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th align="right"><code>approved_expected_loss_amount</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td align="right"><code>approved_amount × synthetic estimated-PD proxy × LGD</code></td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td align="right"><code>approved_amount × synthetic estimated-PD proxy × LGD</code></td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td align="right"><code>0</code></td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right"><code>NULL</code></td>
+</tr>
+</tbody></table>
+<p>This creates a clean distinction between:</p>
+<pre><code class="language-text">requested-exposure Expected Loss
+approved-exposure Expected Loss
+unresolved-review exposure
+</code></pre>
+<hr>
+<h1>16. Approved-book, declined-book, manual-review-book, and counteroffer-book reporting</h1>
+<p>Module 2 should define four mutually exclusive reporting books.</p>
+<table>
+<thead>
+<tr>
+<th>Book</th>
+<th>Definition</th>
+<th>Core Use</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approved-book profile</td>
+<td><code>decision_outcome = &#39;APPROVE&#39;</code></td>
+<td>Clean approvals as requested.</td>
+</tr>
+<tr>
+<td>Counteroffer-book profile</td>
+<td><code>decision_outcome = &#39;COUNTEROFFER&#39;</code></td>
+<td>Partial approval / reduced exposure strategy outcomes.</td>
+</tr>
+<tr>
+<td>Manual-review-book profile</td>
+<td><code>decision_outcome = &#39;MANUAL_REVIEW&#39;</code></td>
+<td>Borderline or mixed-signal synthetic applicants.</td>
+</tr>
+<tr>
+<td>Declined-book profile</td>
+<td><code>decision_outcome = &#39;DECLINE&#39;</code></td>
+<td>Hard simulated policy failures.</td>
+</tr>
+</tbody></table>
+<p>Also define:</p>
+<pre><code class="language-text">positive_offer_book = APPROVE + COUNTEROFFER
+</code></pre>
+<p>This supports executive reporting without contaminating clean approval-rate metrics.</p>
+<h2>Required reporting metrics by book</h2>
+<p>Each book should report:</p>
+<pre><code class="language-text">application count
+book share
+average requested amount
+average approved amount
+average exposure reduction amount
+average exposure reduction pct
+average PTI
+average approved PTI
+average synthetic estimated-PD proxy
+average LGD
+average requested-exposure Expected Loss
+average approved-exposure Expected Loss
+total approved amount
+total approved Expected Loss
+primary reason-code distribution
+product mix
+score-band mix
+PTI-bucket mix
+</code></pre>
+<hr>
+<h1>17. Proposed strategy comparison framework</h1>
+<p>Module 2 should support three comparison modes.</p>
+<h2>Mode 1 — Strategy-only comparison</h2>
+<pre><code class="language-text">same module1_scenario_set_name
+same module1_scenario_name
+same population_id
+different strategy_name / strategy_version
+</code></pre>
+<p>This is the cleanest comparison because the synthetic population and upstream Module 1 scenario are held constant.</p>
+<p>It answers:</p>
+<pre><code class="language-text">What changed because the strategy changed?
+</code></pre>
+<h2>Mode 2 — Module 1 scenario sensitivity under same strategy</h2>
+<pre><code class="language-text">same population_id
+same strategy_name / strategy_version
+different module1_scenario_name
+</code></pre>
+<p>This answers:</p>
+<pre><code class="language-text">How does the same strategy behave under different upstream Module 1 scenario assumptions?
+</code></pre>
+<p>Important boundary:</p>
+<pre><code class="language-text">These are controlled scenario assumptions, not forecasts.
+</code></pre>
+<h2>Mode 3 — Combined scenario and strategy comparison</h2>
+<pre><code class="language-text">different module1_scenario_name
+different strategy_name
+same population_id
+</code></pre>
+<p>This is useful but less analytically clean. It should be labeled as combined-effect analysis.</p>
+<h2>Required comparison outputs</h2>
+<table>
+<thead>
+<tr>
+<th>Comparison View</th>
+<th>Metrics</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Portfolio-level</td>
+<td>approval rate, counteroffer rate, manual review rate, decline rate, total approved amount, total approved Expected Loss</td>
+</tr>
+<tr>
+<td>Product-level</td>
+<td>outcome distribution, approved amount, approved Expected Loss by product</td>
+</tr>
+<tr>
+<td>Score-band-level</td>
+<td>approval / decline / review / counteroffer rates by score band</td>
+</tr>
+<tr>
+<td>PTI-bucket-level</td>
+<td>affordability sensitivity and counteroffer concentration</td>
+</tr>
+<tr>
+<td>Product × score matrix</td>
+<td>strategy effect concentrations</td>
+</tr>
+<tr>
+<td>Reason-code distribution</td>
+<td>primary reason and reason family shifts</td>
+</tr>
+<tr>
+<td>Matched row-level deltas</td>
+<td>outcome migration, approved amount delta, approved Expected Loss delta</td>
+</tr>
+<tr>
+<td>Outcome migration matrix</td>
+<td>e.g., <code>APPROVE → DECLINE</code>, <code>APPROVE → COUNTEROFFER</code>, <code>MANUAL_REVIEW → APPROVE</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h1>18. Proposed validation framework</h1>
+<p>Module 2 validation should be built before calibration is treated as complete.</p>
+<h2>A. Structural validation</h2>
+<p>Required checks:</p>
+<pre><code class="language-text">input row count = output row count
+one output row per application per strategy run
+no duplicate application_id within latest-run grain
+all decision_outcome values populated
+decision_outcome is in approved taxonomy
+all flags reconcile to decision_outcome
+Module 1 lineage preserved
+strategy metadata populated
+archive rows traceable
+</code></pre>
+<h2>B. Decision distribution validation</h2>
+<p>Report:</p>
+<pre><code class="language-text">approval rate
+counteroffer rate
+manual review rate
+decline rate
+outcome distribution by product
+outcome distribution by score band
+outcome distribution by PTI bucket
+outcome distribution by strategy risk tier
+</code></pre>
+<p>Expected behavior:</p>
+<pre><code class="language-text">stronger score bands should generally show higher approval rates
+weaker score bands should generally show higher decline or review rates
+higher PTI buckets should generally show lower approval rates and higher review / counteroffer / decline rates
+</code></pre>
+<h2>C. Risk ordering validation</h2>
+<p>Compare the synthetic estimated-PD proxy across books:</p>
+<pre><code class="language-text">approved-book average synthetic estimated-PD proxy
+counteroffer-book average synthetic estimated-PD proxy
+manual-review-book average synthetic estimated-PD proxy
+declined-book average synthetic estimated-PD proxy
+</code></pre>
+<p>Expected pattern:</p>
+<pre><code class="language-text">APPROVE generally lowest
+COUNTEROFFER elevated versus clean approvals
+MANUAL_REVIEW intermediate / mixed
+DECLINE generally highest
+</code></pre>
+<h2>D. Affordability validation</h2>
+<p>Required checks:</p>
+<pre><code class="language-text">approval rate by PTI bucket
+counteroffer rate by PTI bucket
+manual review rate by PTI bucket
+decline rate by PTI bucket
+primary affordability reason distribution by PTI bucket
+requested PTI versus approved PTI for counteroffers
+</code></pre>
+<p>Expected behavior:</p>
+<pre><code class="language-text">high-PTI synthetic applicants should concentrate in review, counteroffer, or decline outcomes
+counteroffers should reduce approved PTI versus requested PTI
+affordability reason codes should concentrate in high-PTI and high-DTI groups
+</code></pre>
+<h2>E. Reason-code validation</h2>
+<p>Required checks:</p>
+<pre><code class="language-text">declines have non-null primary reason code
+manual reviews have non-null primary reason code
+counteroffers have non-null primary reason code
+clean approvals either have APPROVED_AS_REQUESTED or documented null reason convention
+primary reason aligns with highest-priority triggered rule
+secondary and tertiary reasons do not duplicate primary reason
+reason-code family distribution is interpretable
+</code></pre>
+<h2>F. Approved exposure validation</h2>
+<p>Required checks:</p>
+<pre><code class="language-text">approved_amount &lt;= requested_amount
+APPROVE has approved_amount &gt; 0
+DECLINE has approved_amount = 0
+MANUAL_REVIEW has approved_amount IS NULL
+COUNTEROFFER has approved_amount &gt; 0 and approved_amount &lt; requested_amount
+exposure_reduction_flag = TRUE only when approved_amount &lt; requested_amount
+exposure_reduction_amount &gt; 0 for counteroffers
+approved_expected_loss_amount uses approved exposure
+requested_expected_loss_amount remains unchanged from Module 1
+</code></pre>
+<h2>G. Strategy comparison validation</h2>
+<p>Required checks:</p>
+<pre><code class="language-text">matched row count equals input application count when population_id and Module 1 scenario are held constant
+tighter risk strategy reduces approval rate or approved exposure
+tighter affordability strategy increases counteroffer / manual review / decline pressure in high-PTI buckets
+growth strategy increases approval or approved exposure with measurable risk tradeoff
+reason-code distribution shifts in expected direction
+approved-book synthetic estimated-PD proxy and approved Expected Loss tradeoffs are visible
+</code></pre>
+<h2>H. Edge-case validation</h2>
+<p>Review targeted populations:</p>
+<pre><code class="language-text">strong credit / high PTI
+weak credit / low PTI
+high synthetic estimated-PD proxy / low requested amount
+large requested amount / low synthetic estimated-PD proxy
+high utilization / otherwise strong profile
+bankruptcy flag cases
+major derogatory cases
+borderline counteroffer cases
+borderline manual review cases
+</code></pre>
+<hr>
+<h1>19. Recommended workstreams</h1>
+<h2>Workstream A — Strategy parameter and gatekeeper framework</h2>
+<p>Build the strategy parameter layer first.</p>
+<p>Deliverables:</p>
+<pre><code class="language-text">strategy metadata
+source selection controls
+threshold parameters
+product policy matrix
+archive controls
+fail-fast gatekeeper
+</code></pre>
+<p>Acceptance criteria:</p>
+<pre><code class="language-text">bad strategy metadata fails before output generation
+bad thresholds fail before output generation
+bad source selectors fail before output generation
+</code></pre>
+<h2>Workstream B — Input lineage and derived segmentation</h2>
+<p>Deliverables:</p>
+<pre><code class="language-text">Module 1 source selector
+renamed Module 1 scenario fields
+risk tier
+PTI bucket
+DTI bucket
+affordability tier
+exposure tier
+</code></pre>
+<p>Acceptance criteria:</p>
+<pre><code class="language-text">row count preserved
+Module 1 lineage preserved
+all derived tiers populated
+</code></pre>
+<h2>Workstream C — Decision hierarchy</h2>
+<p>Deliverables:</p>
+<pre><code class="language-text">hard decline flags
+risk flags
+affordability flags
+exposure flags
+manual review flags
+counteroffer eligibility flags
+single decision_outcome assignment
+decision_path assignment
+</code></pre>
+<p>Acceptance criteria:</p>
+<pre><code class="language-text">exactly one decision outcome per row
+flags reconcile to outcome
+outcome distribution is plausible
+</code></pre>
+<h2>Workstream D — Reason-code simulation framework</h2>
+<p>Deliverables:</p>
+<pre><code class="language-text">reason taxonomy
+reason priority hierarchy
+primary / secondary / tertiary reason assignment
+reason family
+triggered reason list
+</code></pre>
+<p>Acceptance criteria:</p>
+<pre><code class="language-text">no unexplained declines
+no unexplained manual reviews
+counteroffers have counteroffer-relevant reason codes
+reason priority behaves deterministically
+</code></pre>
+<h2>Workstream E — Approved exposure and approved Expected Loss</h2>
+<p>Deliverables:</p>
+<pre><code class="language-text">approved_amount
+counteroffer_amount
+approved monthly payment proxy
+approved PTI proxy
+approved_expected_loss_amount
+exposure reduction metrics
+line assignment tier
+</code></pre>
+<p>Acceptance criteria:</p>
+<pre><code class="language-text">approved amount rules are internally consistent
+counteroffer cases show lower approved amount than requested amount
+approved Expected Loss uses approved exposure
+</code></pre>
+<h2>Workstream F — Archive and strategy comparison</h2>
+<p>Deliverables:</p>
+<pre><code class="language-text">strategy_decisions_archive
+archive reset controls
+matched strategy comparison queries
+portfolio / segment / row-level deltas
+outcome migration matrix
+</code></pre>
+<p>Acceptance criteria:</p>
+<pre><code class="language-text">archive grain is correct
+matched rows equal source population when expected
+strategy deltas isolate strategy effects
+</code></pre>
+<h2>Workstream G — Validation and calibration pass</h2>
+<p>Deliverables:</p>
+<pre><code class="language-text">baseline strategy QA
+tighter affordability strategy QA
+tighter risk strategy QA
+growth strategy QA
+product-specific exposure strategy QA
+edge-case review
+</code></pre>
+<p>Acceptance criteria:</p>
+<pre><code class="language-text">strategy behavior is directional, explainable, and stable
+no structural validation failures
+no hidden Module 1 reinterpretation
+</code></pre>
+<hr>
+<h1>20. Key design tradeoffs</h1>
+<table>
+<thead>
+<tr>
+<th>Tradeoff</th>
+<th>Recommendation</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Latest table only vs archive</td>
+<td>Use both</td>
+<td>Latest is efficient for QA; archive is required for governed comparison.</td>
+</tr>
+<tr>
+<td>Counteroffer as outcome vs path</td>
+<td>Counteroffer as distinct outcome</td>
+<td>Clean counteroffer-rate and exposure-reduction reporting.</td>
+</tr>
+<tr>
+<td>Manual review approved amount</td>
+<td><code>NULL</code></td>
+<td>Preserves pending-review interpretation.</td>
+</tr>
+<tr>
+<td>Decline approved Expected Loss</td>
+<td><code>0</code></td>
+<td>No approved exposure under simulated strategy.</td>
+</tr>
+<tr>
+<td>Manual review approved Expected Loss</td>
+<td><code>NULL</code></td>
+<td>Unresolved outcome should not be treated as booked exposure.</td>
+</tr>
+<tr>
+<td>Product policy matrix vs global thresholds only</td>
+<td>Use both</td>
+<td>Global defaults plus product overrides preserve product-aware strategy behavior.</td>
+</tr>
+<tr>
+<td>Reason codes hard-coded in CASE only vs governed priority framework</td>
+<td>Use governed priority framework</td>
+<td>Improves auditability and deterministic explanation logic.</td>
+</tr>
+<tr>
+<td>Recalculate payment from scratch vs proportional approved payment proxy</td>
+<td>Use proportional approved payment proxy initially</td>
+<td>Avoids rewriting Module 1 product mechanics while allowing approved PTI simulation.</td>
+</tr>
+<tr>
+<td>Add new Module 1 fields now vs derive in Module 2</td>
+<td>Derive in Module 2 where possible</td>
+<td>Preserves finalized Module 1 boundary.</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>21. Missing-field assessment</h1>
+<p>No Module 1 redesign is required for the initial Module 2 build.</p>
+<table>
+<thead>
+<tr>
+<th>Potential Need</th>
+<th align="right">Available in Module 1?</th>
+<th>Recommendation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approved PTI</td>
+<td align="right">Not directly</td>
+<td>Derive in Module 2 using approved payment proxy.</td>
+</tr>
+<tr>
+<td>Approved monthly payment</td>
+<td align="right">Not directly</td>
+<td>Derive in Module 2 proportionally from Module 1 payment proxy.</td>
+</tr>
+<tr>
+<td>Risk tier</td>
+<td align="right">Not directly</td>
+<td>Derive in Module 2 from the synthetic estimated-PD proxy and strategy thresholds.</td>
+</tr>
+<tr>
+<td>Affordability tier</td>
+<td align="right">Not directly</td>
+<td>Derive in Module 2 from PTI / DTI.</td>
+</tr>
+<tr>
+<td>Product policy cap</td>
+<td align="right">Not directly</td>
+<td>Module 2 parameter field.</td>
+</tr>
+<tr>
+<td>Collateral value / LTV</td>
+<td align="right">No</td>
+<td>Future Module 1 enhancement only if secured-product collateral strategy becomes required.</td>
+</tr>
+<tr>
+<td>Employment / verification signals</td>
+<td align="right">No</td>
+<td>Future enhancement only; not needed for initial strategy simulator.</td>
+</tr>
+<tr>
+<td>Protected class attributes</td>
+<td align="right">No</td>
+<td>Do not add for Module 2; fair lending analysis is out of scope.</td>
+</tr>
+<tr>
+<td>Observed performance outcomes</td>
+<td align="right">No</td>
+<td>Not needed; Module 2 is not calibration or validation against real defaults.</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>22. Recommended first coding step</h1>
+<p>The first coding step should be:</p>
+<blockquote>
+<p><strong>Build the Module 2 parameter layer, source-selection layer, and fail-fast gatekeeper before writing any decision logic.</strong></p>
+</blockquote>
+<p>That means the first implementation should establish:</p>
+<pre><code class="language-text">tmp_module2_strategy_params
+tmp_module2_product_policy_params
+strategy metadata validation
+Module 1 source selector validation
+threshold-ordering validation
+archive-control validation
+input row-count validation
+Module 1 scenario lineage renaming
+</code></pre>
+<p>Only after that should we build the rule flags, reason-code hierarchy, approved exposure logic, and final output table.</p>
+<p>This sequencing prevents the most common architecture failure: building decision rules before the run grain, lineage, and governance controls are fixed.</p>
+<hr>
+<h1>23. Text-based architecture flow diagram</h1>
+<pre><code class="language-text">┌────────────────────────────────────────────────────────────────────┐
+│ MODULE 1 OUTPUT                                                     │
+│ credit_decisioning_sim.synthetic_applications                       │
+│ or                                                                 │
+│ credit_decisioning_sim.synthetic_applications_scenario_archive       │
+│                                                                    │
+│ Carries:                                                           │
+│ scenario_set_name, scenario_name, population_id, application_id,     │
+│ product_type, score_band, requested_amount, PTI, DTI, utilization,   │
+│ delinquency flags, bankruptcy flag, estimated_pd, LGD, Expected Loss │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ MODULE 2 STRATEGY PARAMETER LAYER                                  │
+│ tmp_module2_strategy_params                                         │
+│ tmp_module2_product_policy_params                                   │
+│                                                                    │
+│ Adds:                                                              │
+│ strategy_set_name, strategy_name, strategy_version, thresholds,      │
+│ product limits, counteroffer settings, archive controls             │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ SOURCE SELECTION + LINEAGE NORMALIZATION                           │
+│                                                                    │
+│ scenario_set_name → module1_scenario_set_name                       │
+│ scenario_name     → module1_scenario_name                           │
+│ population_id preserved                                             │
+│ application_id preserved                                            │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ DERIVED SEGMENTATION                                                │
+│                                                                    │
+│ strategy risk tier                                                  │
+│ PTI bucket                                                          │
+│ DTI bucket                                                          │
+│ affordability tier                                                  │
+│ exposure tier                                                       │
+│ product policy segment                                              │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ DECISION LOGIC                                                      │
+│                                                                    │
+│ hard decline checks                                                 │
+│ synthetic estimated-risk checks                                     │
+│ affordability checks                                                │
+│ exposure limit checks                                               │
+│ counteroffer eligibility                                            │
+│ manual review triggers                                              │
+│ approval assignment                                                 │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ SIMULATED REASON CODES                                              │
+│                                                                    │
+│ primary_reason_code                                                 │
+│ secondary_reason_code                                               │
+│ tertiary_reason_code                                                │
+│ primary_reason_family                                               │
+│ triggered_reason_code_list                                          │
+│                                                                    │
+│ Not regulatory adverse-action reason codes                          │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ APPROVED EXPOSURE + APPROVED EXPECTED LOSS                          │
+│                                                                    │
+│ approved_amount                                                     │
+│ counteroffer_amount                                                 │
+│ exposure_reduction_flag                                             │
+│ approved_monthly_payment_proxy                                      │
+│ approved_payment_to_income_ratio                                    │
+│ approved_expected_loss_amount                                       │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ LATEST-RUN STRATEGY OUTPUT                                          │
+│ credit_decisioning_sim.strategy_decisions                           │
+│                                                                    │
+│ One row per application for current Module 2 strategy run           │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ STRATEGY ARCHIVE                                                    │
+│ credit_decisioning_sim.strategy_decisions_archive                   │
+│                                                                    │
+│ One row per application × Module 1 scenario × strategy version      │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ QA + STRATEGY COMPARISON                                            │
+│                                                                    │
+│ decision distribution                                                │
+│ risk ordering                                                        │
+│ affordability sensitivity                                            │
+│ reason-code coverage                                                │
+│ approved exposure validation                                         │
+│ approved-book / declined-book / review-book / counteroffer-book QA   │
+│ matched applicant-level strategy deltas                              │
+└────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<p>This architecture preserves Module 1’s governed synthetic simulation foundation and adds a clean downstream layer for simulated strategy outcomes, reason-code traceability, exposure treatment, approved Expected Loss, and matched strategy comparison.</p>
+</div></article><article id="c038-m00019" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00019 · 2026-05-06T10:27:44.559000-04:00 · active path</p><div class="body"><p>I agree with the overall Module 2 architecture direction.</p>
+<p>Before we move to SQL, please lock the following design decisions and then restate the final Module 2 architecture briefly.</p>
+<p>Do not write full code yet.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>ARCHITECTURE</h1>
+</li>
+</ol>
+<p>Use the latest-run strategy decision table plus strategy decision archive table.</p>
+<p>This should mirror the Module 1 pattern:</p>
+<ul>
+<li>latest-run table for current strategy output and QA</li>
+<li>archive table for preserving completed strategy runs and enabling matched comparison</li>
+</ul>
+<p>Archive grain should be:</p>
+<p>one row per application × Module 1 scenario × Module 2 strategy version</p>
+<p>In practical terms, the archive grain should include:</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+<li>application_id</li>
+</ul>
+<p>Please also explicitly define the archive replacement / rerun key as:</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+</ul>
+<p>The row-level archive grain should additionally include application_id.</p>
+<p>================================================================================
+2. NAMING
+================================================================================</p>
+<p>Preserve Module 1 scenario fields as upstream lineage:</p>
+<ul>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+</ul>
+<p>Use Module 2 strategy fields for downstream strategy:</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+</ul>
+<p>Do not overload scenario_name.</p>
+<p>Module 1 scenario metadata describes the synthetic population and upstream risk environment.
+Module 2 strategy metadata describes the simulated decision strategy applied to that population.</p>
+<p>================================================================================
+3. ESTIMATED-PD PROXY BOUNDARY
+================================================================================</p>
+<p>Module 2 should not recalculate the synthetic estimated-PD proxy in the initial v1.0 build.</p>
+<p>Module 2 should consume the Module 1 field:</p>
+<ul>
+<li>estimated_pd</li>
+</ul>
+<p>as the finalized Module 1 synthetic estimated-PD proxy input.</p>
+<p>The SQL column name may remain estimated_pd because that is the finalized Module 1 output field. However, comments, documentation, and interpretation should refer to it as the synthetic estimated-PD proxy.</p>
+<p>Module 2 may calculate:</p>
+<ul>
+<li>approved_amount</li>
+<li>approved_monthly_payment_proxy</li>
+<li>approved_payment_to_income_ratio</li>
+<li>approved_expected_loss_amount</li>
+</ul>
+<p>But Module 2 should not create a new post-decision risk model unless we explicitly design a future post-decision risk adjustment layer.</p>
+<p>================================================================================
+4. DECISION OUTCOME TAXONOMY
+================================================================================</p>
+<p>Use exactly four primary decision_outcome values:</p>
+<ul>
+<li>APPROVE</li>
+<li>COUNTEROFFER</li>
+<li>MANUAL_REVIEW</li>
+<li>DECLINE</li>
+</ul>
+<p>Counteroffer should be a distinct decision_outcome.</p>
+<p>Detailed counteroffer type should be captured in decision_path.</p>
+<p>This allows reporting to separate:</p>
+<ul>
+<li>clean approvals</li>
+<li>counteroffers / partial approvals</li>
+<li>manual reviews</li>
+<li>declines</li>
+</ul>
+<p>Also include a simulated_offer_exposure_flag, where:</p>
+<ul>
+<li>APPROVE = TRUE</li>
+<li>COUNTEROFFER = TRUE</li>
+<li>MANUAL_REVIEW = FALSE / unresolved</li>
+<li>DECLINE = FALSE</li>
+</ul>
+<p>This flag should support approved-book / offer-exposure reporting while preserving the boundary that these are simulated strategy outcomes, not real booked accounts.</p>
+<p>================================================================================
+5. AMOUNT AND EXPECTED LOSS CONVENTIONS
+================================================================================</p>
+<p>Please explicitly define the amount and Expected Loss convention for each outcome.</p>
+<p>APPROVE:</p>
+<ul>
+<li>approved_amount = requested_amount</li>
+<li>counteroffer_amount = NULL</li>
+<li>approved_expected_loss_amount = approved_amount × estimated_pd × estimated_lgd</li>
+</ul>
+<p>COUNTEROFFER:</p>
+<ul>
+<li>approved_amount &lt; requested_amount</li>
+<li>counteroffer_amount = approved_amount</li>
+<li>approved_expected_loss_amount = approved_amount × estimated_pd × estimated_lgd</li>
+<li>exposure_reduction_flag = TRUE</li>
+<li>exposure_reduction_amount = requested_amount - approved_amount</li>
+<li>exposure_reduction_pct = exposure_reduction_amount / NULLIF(requested_amount, 0)</li>
+</ul>
+<p>DECLINE:</p>
+<ul>
+<li>approved_amount = 0</li>
+<li>counteroffer_amount = NULL</li>
+<li>approved_expected_loss_amount = 0</li>
+<li>do not treat decline as booked exposure</li>
+</ul>
+<p>MANUAL_REVIEW:</p>
+<ul>
+<li>approved_amount = NULL</li>
+<li>counteroffer_amount = NULL</li>
+<li>approved_expected_loss_amount = NULL</li>
+<li>do not treat manual review as booked or approved exposure</li>
+</ul>
+<p>Manual review is unresolved by design.</p>
+<p>================================================================================
+6. MANUAL REVIEW DIAGNOSTICS
+================================================================================</p>
+<p>If useful, propose optional diagnostic fields such as:</p>
+<ul>
+<li>review_path</li>
+<li>review_reason_family</li>
+<li>review_recommended_amount</li>
+<li>review_priority_tier</li>
+</ul>
+<p>But do not include them unless they add clear value to Module 2 v1.0.</p>
+<p>The default should be to keep Module 2 v1.0 focused and audit-readable.</p>
+<p>================================================================================
+7. APPROVED PAYMENT AND APPROVED PTI PROXY
+================================================================================</p>
+<p>If using proportional scaling, define:</p>
+<p>approved_monthly_payment_proxy =
+    monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)</p>
+<p>Document this as a strategy-simulation proxy, not a recalculated contractual payment schedule.</p>
+<p>Also define:</p>
+<p>approved_payment_to_income_ratio =
+    approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)</p>
+<p>where monthly income is derived from the Module 1 annual_income field.</p>
+<p>This is useful because counteroffers should reduce exposure and should generally improve approved-payment affordability relative to the original requested structure.</p>
+<p>Please explicitly preserve the distinction between:</p>
+<ul>
+<li>original requested PTI from Module 1</li>
+<li>approved payment-to-income ratio from Module 2 after exposure treatment</li>
+</ul>
+<p>Outcome-specific convention:</p>
+<p>APPROVE:</p>
+<ul>
+<li>approved_monthly_payment_proxy = monthly_payment_proxy</li>
+<li>approved_payment_to_income_ratio = payment_to_income_ratio</li>
+</ul>
+<p>COUNTEROFFER:</p>
+<ul>
+<li>approved_monthly_payment_proxy = monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)</li>
+<li>approved_payment_to_income_ratio = approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)</li>
+</ul>
+<p>DECLINE:</p>
+<ul>
+<li>approved_monthly_payment_proxy = 0</li>
+<li>approved_payment_to_income_ratio = 0</li>
+</ul>
+<p>MANUAL_REVIEW:</p>
+<ul>
+<li>approved_monthly_payment_proxy = NULL</li>
+<li>approved_payment_to_income_ratio = NULL</li>
+</ul>
+<p>================================================================================
+8. REASON-CODE CONVENTION
+================================================================================</p>
+<p>Use neutral simulation language.</p>
+<p>Do not use “adverse action” framing.</p>
+<p>Preferred language:</p>
+<ul>
+<li>simulated reason code</li>
+<li>simulated policy reason</li>
+<li>strategy explanation code</li>
+<li>decision-path reason</li>
+<li>policy stop reason</li>
+<li>review trigger reason</li>
+<li>counteroffer reason</li>
+</ul>
+<p>Reason codes are not regulatory adverse-action reason codes.</p>
+<p>Before coding, please define the convention for approvals.</p>
+<p>My preference:</p>
+<ul>
+<li>APPROVE rows receive primary_reason_code = APPROVED_AS_REQUESTED</li>
+<li>COUNTEROFFER rows receive a counteroffer-related reason code</li>
+<li>MANUAL_REVIEW rows receive a review-trigger reason code</li>
+<li>DECLINE rows receive a policy-stop reason code</li>
+</ul>
+<p>This keeps every row explainable and makes QA easier.</p>
+<p>Please confirm whether you agree with that convention.</p>
+<p>================================================================================
+9. THRESHOLD HIERARCHY
+================================================================================</p>
+<p>Before coding, define exact threshold-ordering rules and proposed default thresholds for:</p>
+<ul>
+<li>synthetic estimated-PD proxy thresholds</li>
+<li>PTI thresholds</li>
+<li>DTI thresholds</li>
+<li>Expected Loss thresholds</li>
+<li>product exposure caps</li>
+<li>counteroffer minimum viable amount</li>
+<li>manual review bands</li>
+<li>approval bands</li>
+<li>decline bands</li>
+</ul>
+<p>Please explain each threshold in business terms.</p>
+<p>For example:</p>
+<ul>
+<li>what behavior it is intended to capture</li>
+<li>why the value is plausible</li>
+<li>how it relates to approval / review / decline</li>
+<li>how it should be validated</li>
+</ul>
+<p>These thresholds should be treated as initial simulated strategy defaults, not production underwriting policy.</p>
+<p>Do not silently embed thresholds in SQL without a parameter dictionary and commentary.</p>
+<p>================================================================================
+10. PARAMETER DICTIONARY
+================================================================================</p>
+<p>Before coding, provide a compact strategy parameter dictionary with:</p>
+<ul>
+<li>parameter_name</li>
+<li>data_type</li>
+<li>default_value</li>
+<li>allowed_range</li>
+<li>parameter_scope</li>
+<li>product_applicability</li>
+<li>purpose</li>
+<li>gatekeeper_rule</li>
+<li>business_interpretation</li>
+</ul>
+<p>This should include parameters for:</p>
+<ul>
+<li>strategy identity</li>
+<li>source Module 1 scenario selection</li>
+<li>archive controls</li>
+<li>approval thresholds</li>
+<li>manual review thresholds</li>
+<li>decline thresholds</li>
+<li>counteroffer thresholds</li>
+<li>product-specific exposure rules</li>
+<li>approved amount rules</li>
+<li>approved Expected Loss rules</li>
+</ul>
+<p>================================================================================
+11. STRATEGY PARAMETER GATEKEEPER
+================================================================================</p>
+<p>Module 2 should include a fail-fast strategy parameter gatekeeper.</p>
+<p>At minimum, the gatekeeper should validate:</p>
+<ul>
+<li>exactly one active strategy parameter row for a single strategy run</li>
+<li>strategy_set_name is not null or blank</li>
+<li>strategy_name is not null or blank</li>
+<li>strategy_version is not null or blank</li>
+<li>source Module 1 scenario fields are valid</li>
+<li>archive reset mode is valid</li>
+<li>threshold values are inside governed ranges</li>
+<li>threshold ordering is coherent</li>
+<li>counteroffer rules cannot create approved_amount greater than requested_amount</li>
+<li>approved amount cannot be negative</li>
+<li>approved Expected Loss cannot be negative</li>
+<li>decision outcome conventions remain internally consistent</li>
+</ul>
+<p>================================================================================
+12. WORKSTREAM NAMING
+================================================================================</p>
+<p>Rename “Validation and calibration pass” to:</p>
+<p>Validation, QA, and Strategy Tuning Pass</p>
+<p>Avoid the word calibration unless we are explicitly discussing empirical calibration, which Module 2 is not doing.</p>
+<p>Module 2 should tune simulated strategy behavior, not calibrate real-world underwriting performance.</p>
+<p>================================================================================
+13. OUTPUT CONSISTENCY REQUIREMENTS
+================================================================================</p>
+<p>Before coding, lock the following output consistency rules:</p>
+<ul>
+<li>every row must have exactly one primary decision_outcome</li>
+<li>approval_flag, decline_flag, manual_review_flag, and counteroffer_flag must reconcile to decision_outcome</li>
+<li>APPROVE and COUNTEROFFER should be distinguishable but can both feed simulated_offer_exposure_flag</li>
+<li>approved_amount must not exceed requested_amount unless explicitly designed</li>
+<li>counteroffer_amount must equal approved_amount for COUNTEROFFER rows</li>
+<li>DECLINE rows should have approved_amount = 0</li>
+<li>MANUAL_REVIEW rows should have approved_amount = NULL</li>
+<li>approved_expected_loss_amount should use approved exposure, not requested exposure</li>
+<li>Module 1 expected_loss_amount should remain available as requested-exposure Expected Loss</li>
+<li>Module 1 expected_loss_amount should be renamed or aliased as requested_expected_loss_amount in Module 2 outputs to avoid ambiguity</li>
+</ul>
+<p>================================================================================
+14. ADDITIONAL OUTPUT AND SOURCE-CONTROL CONVENTIONS
+================================================================================</p>
+<p>Please also lock the following conventions before coding.</p>
+<ol>
+<li><p>Avoid recalibration language
+Module 2 should not create a new post-decision risk model unless we explicitly design a future post-decision risk adjustment layer.
+Avoid the phrase risk recalibration unless we are explicitly discussing empirical calibration, which Module 2 is not doing.</p>
+</li>
+<li><p>Strategy run audit metadata
+Include strategy_run_ts or strategy_run_id as audit metadata.
+This should support run traceability but should not replace the archive replacement / rerun key.</p>
+</li>
+<li><p>Approved-book / offer-exposure inclusion flag
+Include simulated_offer_exposure_flag:</p>
+<ul>
+<li>APPROVE = TRUE</li>
+<li>COUNTEROFFER = TRUE</li>
+<li>MANUAL_REVIEW = FALSE / unresolved</li>
+<li>DECLINE = FALSE</li>
+</ul>
+<p>This flag should be used for approved-book reporting and approved exposure summaries.
+It should not imply real account booking.</p>
+</li>
+<li><p>Source-input gatekeepers
+The strategy parameter gatekeeper should also validate:</p>
+<ul>
+<li>selected Module 1 source table contains rows</li>
+<li>selected Module 1 source has no duplicate application_id values for the selected population / scenario</li>
+<li>required Module 1 input fields are non-null where required</li>
+<li>if using the Module 1 scenario archive, exactly one Module 1 scenario is selected unless multi-scenario processing is explicitly designed</li>
+</ul>
+</li>
+</ol>
+<p>================================================================================
+15. NEXT STEP
+================================================================================</p>
+<p>After incorporating these clarifications, please:</p>
+<ol>
+<li>Briefly restate the locked Module 2 architecture.</li>
+<li>Provide the compact strategy parameter dictionary.</li>
+<li>Define the threshold hierarchy and default threshold recommendations.</li>
+<li>Propose the first SQL build step only.</li>
+</ol>
+<p>Do not write the full SQL module yet.</p>
+</div></article><article id="c038-m00037" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00037 · 2026-05-06T10:35:01.498260-04:00 · active path</p><div class="body"><h1>Locked Module 2 design decisions</h1>
+<p>Module 2 will be built as <strong>Module 2 — Credit Policy Strategy &amp; Decision Outcome Simulation Engine v1.0</strong>.</p>
+<p>It will consume finalized Module 1 outputs as authoritative, including the SQL field <code>estimated_pd</code>, interpreted only as the <strong>synthetic estimated-PD proxy</strong>. Module 2 will not recalculate that proxy, will not create a post-decision risk model in v1.0, and will not reinterpret Module 1 scenarios as forecasts. This is consistent with Module 1’s documented boundary as a governed synthetic strategy simulation foundation, not a production underwriting system, calibrated default model, pricing engine, or forecasting framework. fileciteturn4file0 The validation summary confirms that Module 1 is deterministic, scenario-capable, and accepted for controlled synthetic strategy simulation within documented boundaries. fileciteturn4file1</p>
+<hr>
+<h2>1. Final locked architecture</h2>
+<h3>Recommended physical architecture</h3>
+<p>Use both:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions
+credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<h3>Latest-run table</h3>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions
+</code></pre>
+<p>Purpose:</p>
+<pre><code class="language-text">Current Module 2 strategy output for the selected Module 1 input population / scenario.
+</code></pre>
+<p>Use cases:</p>
+<pre><code class="language-text">single-strategy QA
+development validation
+strategy walkthrough
+debugging
+</code></pre>
+<p>Grain:</p>
+<pre><code class="language-text">one row per application for the current strategy run
+</code></pre>
+<h3>Strategy archive table</h3>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p>Purpose:</p>
+<pre><code class="language-text">Persistent strategy-decision archive for completed Module 2 strategy runs.
+</code></pre>
+<p>Archive grain:</p>
+<pre><code class="language-text">one row per application
+× Module 1 scenario
+× Module 2 strategy version
+</code></pre>
+<p>Practical archive grain fields:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+application_id
+</code></pre>
+<h3>Archive replacement / rerun key</h3>
+<p>The locked archive replacement key is:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+</code></pre>
+<p>The row-level archive grain additionally includes:</p>
+<pre><code class="language-text">application_id
+</code></pre>
+<p>This means a rerun of the same strategy against the same Module 1 scenario and population should replace rows matching the replacement key, then insert one row per <code>application_id</code>.</p>
+<hr>
+<h2>2. Final naming convention</h2>
+<p>Do not overload <code>scenario_name</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Module 1 lineage</td>
+<td><code>module1_scenario_set_name</code></td>
+<td>Upstream synthetic population / risk-environment scenario family</td>
+</tr>
+<tr>
+<td>Module 1 lineage</td>
+<td><code>module1_scenario_name</code></td>
+<td>Upstream Module 1 scenario name</td>
+</tr>
+<tr>
+<td>Module 1 lineage</td>
+<td><code>population_id</code></td>
+<td>Deterministic synthetic population anchor</td>
+</tr>
+<tr>
+<td>Module 2 strategy</td>
+<td><code>strategy_set_name</code></td>
+<td>Downstream decision-strategy comparison family</td>
+</tr>
+<tr>
+<td>Module 2 strategy</td>
+<td><code>strategy_name</code></td>
+<td>Specific simulated decision strategy</td>
+</tr>
+<tr>
+<td>Module 2 strategy</td>
+<td><code>strategy_version</code></td>
+<td>Versioned strategy configuration</td>
+</tr>
+</tbody></table>
+<p>Locked interpretation:</p>
+<pre><code class="language-text">Module 1 scenario metadata describes the synthetic population and upstream risk environment.
+
+Module 2 strategy metadata describes the simulated decision strategy applied to that population.
+</code></pre>
+<hr>
+<h2>3. Locked decision outcome taxonomy</h2>
+<p>Use exactly four primary <code>decision_outcome</code> values:</p>
+<pre><code class="language-text">APPROVE
+COUNTEROFFER
+MANUAL_REVIEW
+DECLINE
+</code></pre>
+<p><code>COUNTEROFFER</code> is locked as a <strong>distinct decision outcome</strong>, not merely a path under <code>APPROVE</code>.</p>
+<p>Detailed counteroffer type will be captured in:</p>
+<pre><code class="language-text">decision_path
+</code></pre>
+<p>Examples:</p>
+<pre><code class="language-text">COUNTEROFFER_AFFORDABILITY_REDUCTION
+COUNTEROFFER_PRODUCT_LIMIT
+COUNTEROFFER_EXPECTED_LOSS_LIMIT
+COUNTEROFFER_RISK_EXPOSURE_LIMIT
+</code></pre>
+<h3>Locked flag convention</h3>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th align="right"><code>approval_flag</code></th>
+<th align="right"><code>counteroffer_flag</code></th>
+<th align="right"><code>manual_review_flag</code></th>
+<th align="right"><code>decline_flag</code></th>
+<th align="right"><code>simulated_offer_exposure_flag</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td align="right">TRUE</td>
+<td align="right">FALSE</td>
+<td align="right">FALSE</td>
+<td align="right">FALSE</td>
+<td align="right">TRUE</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td align="right">FALSE</td>
+<td align="right">TRUE</td>
+<td align="right">FALSE</td>
+<td align="right">FALSE</td>
+<td align="right">TRUE</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right">FALSE</td>
+<td align="right">FALSE</td>
+<td align="right">TRUE</td>
+<td align="right">FALSE</td>
+<td align="right">FALSE</td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td align="right">FALSE</td>
+<td align="right">FALSE</td>
+<td align="right">FALSE</td>
+<td align="right">TRUE</td>
+<td align="right">FALSE</td>
+</tr>
+</tbody></table>
+<p><code>simulated_offer_exposure_flag</code> supports offer-exposure and approved-book reporting. It does <strong>not</strong> imply real booked accounts.</p>
+<hr>
+<h2>4. Locked amount, payment, PTI, and Expected Loss conventions</h2>
+<p>Module 1 <code>expected_loss_amount</code> will be carried forward in Module 2 as:</p>
+<pre><code class="language-text">requested_expected_loss_amount
+</code></pre>
+<p>Module 2 will calculate:</p>
+<pre><code class="language-text">approved_expected_loss_amount
+=
+approved_amount × estimated_pd × estimated_lgd
+</code></pre>
+<p>Interpretation note:</p>
+<pre><code class="language-text">estimated_pd is the finalized Module 1 SQL field name.
+In Module 2 commentary and documentation, it means the synthetic estimated-PD proxy.
+</code></pre>
+<h3>Outcome-level conventions</h3>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th align="right"><code>approved_amount</code></th>
+<th align="right"><code>counteroffer_amount</code></th>
+<th align="right"><code>approved_expected_loss_amount</code></th>
+<th>Exposure interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td align="right"><code>requested_amount</code></td>
+<td align="right"><code>NULL</code></td>
+<td align="right"><code>approved_amount × estimated_pd × estimated_lgd</code></td>
+<td>Simulated approval as requested</td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td align="right"><code>&lt; requested_amount</code></td>
+<td align="right"><code>approved_amount</code></td>
+<td align="right"><code>approved_amount × estimated_pd × estimated_lgd</code></td>
+<td>Simulated reduced exposure</td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td align="right"><code>0</code></td>
+<td align="right"><code>NULL</code></td>
+<td align="right"><code>0</code></td>
+<td>Not booked / no offer exposure</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right"><code>NULL</code></td>
+<td align="right"><code>NULL</code></td>
+<td align="right"><code>NULL</code></td>
+<td>Unresolved by design</td>
+</tr>
+</tbody></table>
+<h3>Counteroffer exposure fields</h3>
+<p>For <code>COUNTEROFFER</code> rows:</p>
+<pre><code class="language-text">exposure_reduction_flag   = TRUE
+exposure_reduction_amount = requested_amount - approved_amount
+exposure_reduction_pct    = exposure_reduction_amount / NULLIF(requested_amount, 0)
+</code></pre>
+<p>For non-counteroffer rows, the exposure reduction fields should reconcile to the outcome convention.</p>
+<hr>
+<h2>5. Locked approved payment and approved PTI proxy convention</h2>
+<p>Module 2 will preserve the distinction between:</p>
+<pre><code class="language-text">Module 1 original requested PTI
+Module 2 approved payment-to-income ratio after exposure treatment
+</code></pre>
+<p>Module 1 field:</p>
+<pre><code class="language-text">payment_to_income_ratio
+</code></pre>
+<p>Module 2 field:</p>
+<pre><code class="language-text">approved_payment_to_income_ratio
+</code></pre>
+<h3>Formula</h3>
+<pre><code class="language-text">approved_monthly_payment_proxy =
+    monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)
+</code></pre>
+<p>This is a <strong>strategy-simulation proxy</strong>, not a recalculated contractual payment schedule.</p>
+<pre><code class="language-text">approved_payment_to_income_ratio =
+    approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)
+</code></pre>
+<h3>Outcome-level payment convention</h3>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th align="right"><code>approved_monthly_payment_proxy</code></th>
+<th align="right"><code>approved_payment_to_income_ratio</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td align="right"><code>monthly_payment_proxy</code></td>
+<td align="right"><code>payment_to_income_ratio</code></td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td align="right"><code>monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)</code></td>
+<td align="right"><code>approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)</code></td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td align="right"><code>0</code></td>
+<td align="right"><code>0</code></td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td align="right"><code>NULL</code></td>
+<td align="right"><code>NULL</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>6. Manual review diagnostics</h2>
+<p>For Module 2 v1.0, keep the final output focused and audit-readable.</p>
+<p>Recommended v1.0 approach:</p>
+<pre><code class="language-text">Do not add separate review_path, review_reason_family, review_recommended_amount,
+or review_priority_tier fields in the first final output design.
+</code></pre>
+<p>Reason:</p>
+<pre><code class="language-text">decision_path, primary_reason_code, primary_reason_family, and triggered_reason_code_list
+already explain manual review routing.
+</code></pre>
+<p>Optional future diagnostic if review outcomes become too heterogeneous:</p>
+<pre><code class="language-text">review_priority_tier
+</code></pre>
+<p>This could be added later if QA shows the manual-review book needs high / medium / low review severity segmentation.</p>
+<hr>
+<h2>7. Reason-code convention</h2>
+<p>I agree with your preferred convention.</p>
+<p>Every row should receive a populated <code>primary_reason_code</code>.</p>
+<p>These are <strong>simulated strategy explanation codes</strong>, not regulatory adverse-action reason codes.</p>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Primary reason-code convention</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>APPROVE</code></td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+</tr>
+<tr>
+<td><code>COUNTEROFFER</code></td>
+<td>Counteroffer-related reason code</td>
+</tr>
+<tr>
+<td><code>MANUAL_REVIEW</code></td>
+<td>Review-trigger reason code</td>
+</tr>
+<tr>
+<td><code>DECLINE</code></td>
+<td>Policy-stop reason code</td>
+</tr>
+</tbody></table>
+<p>Recommended examples:</p>
+<pre><code class="language-text">APPROVED_AS_REQUESTED
+
+COUNTEROFFER_AFFORDABILITY_ADJUSTMENT
+COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+COUNTEROFFER_EXPECTED_LOSS_LIMIT
+
+MANUAL_REVIEW_BORDERLINE_SYNTHETIC_RISK
+MANUAL_REVIEW_BORDERLINE_AFFORDABILITY
+MANUAL_REVIEW_MIXED_SIGNAL_PROFILE
+MANUAL_REVIEW_HIGH_EXPOSURE_LOW_RISK
+
+POLICY_STOP_BANKRUPTCY_FLAG
+POLICY_STOP_MAJOR_DEROGATORY
+POLICY_STOP_RECENT_DELINQUENCY
+POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+POLICY_STOP_HIGH_PTI_UNRESOLVED
+POLICY_STOP_HIGH_DTI
+POLICY_STOP_HIGH_EXPECTED_LOSS_UNRESOLVED
+POLICY_STOP_EXPOSURE_LIMIT_UNRESOLVED
+</code></pre>
+<p>Reason-code fields:</p>
+<pre><code class="language-text">primary_reason_code
+secondary_reason_code
+tertiary_reason_code
+primary_reason_family
+triggered_reason_code_list
+reason_priority_rank
+</code></pre>
+<hr>
+<h1>8. Threshold hierarchy and default recommendations</h1>
+<p>These are initial simulated strategy defaults only. They are not production underwriting policy.</p>
+<h2>8.1 Global threshold-ordering rules</h2>
+<h3>Synthetic estimated-PD proxy thresholds</h3>
+<p>For lower-is-better risk thresholds:</p>
+<pre><code class="language-text">approve_max_estimated_pd_proxy
+&lt;
+counteroffer_max_estimated_pd_proxy
+&lt;=
+review_max_estimated_pd_proxy
+&lt;=
+decline_min_estimated_pd_proxy
+</code></pre>
+<p>Locked default:</p>
+<table>
+<thead>
+<tr>
+<th>Threshold</th>
+<th align="right">Default</th>
+<th>Business behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>approve_max_estimated_pd_proxy</code></td>
+<td align="right"><code>0.1200</code></td>
+<td>Clean approval ceiling for low-to-moderate synthetic estimated-risk profiles</td>
+</tr>
+<tr>
+<td><code>counteroffer_max_estimated_pd_proxy</code></td>
+<td align="right"><code>0.3000</code></td>
+<td>Maximum synthetic estimated-risk level eligible for reduced-exposure treatment</td>
+</tr>
+<tr>
+<td><code>review_max_estimated_pd_proxy</code></td>
+<td align="right"><code>0.3500</code></td>
+<td>Upper boundary for simulated manual review</td>
+</tr>
+<tr>
+<td><code>decline_min_estimated_pd_proxy</code></td>
+<td align="right"><code>0.3500</code></td>
+<td>Hard simulated risk stop at or above this level</td>
+</tr>
+</tbody></table>
+<p>Business rationale:</p>
+<pre><code class="language-text">The 12% clean-approval ceiling keeps clean approvals concentrated in stronger and moderate-risk profiles.
+The 30% counteroffer ceiling allows reduced exposure for elevated but not severe synthetic estimated-risk profiles.
+The 35% hard-stop boundary creates a severe-risk region aligned to Module 1’s high-risk tail while preserving the synthetic proxy boundary.
+</code></pre>
+<p>Validation expectation:</p>
+<pre><code class="language-text">APPROVE book should have the lowest average synthetic estimated-PD proxy.
+COUNTEROFFER book should be elevated versus clean approvals.
+MANUAL_REVIEW should be intermediate / mixed.
+DECLINE should generally have the highest synthetic estimated-PD proxy.
+</code></pre>
+<hr>
+<h2>8.2 PTI thresholds</h2>
+<p>Product-specific PTI thresholds should override global defaults because Module 1 product behavior is intentionally product-aware.</p>
+<p>Global defaults:</p>
+<table>
+<thead>
+<tr>
+<th>Threshold</th>
+<th align="right">Default</th>
+<th>Business behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>global_approve_max_pti</code></td>
+<td align="right"><code>0.2000</code></td>
+<td>Clean approval affordability ceiling before product override</td>
+</tr>
+<tr>
+<td><code>global_review_max_pti</code></td>
+<td align="right"><code>0.5000</code></td>
+<td>Maximum review zone before hard unresolved affordability stop</td>
+</tr>
+<tr>
+<td><code>global_decline_min_pti</code></td>
+<td align="right"><code>0.5000</code></td>
+<td>Severe affordability stress threshold</td>
+</tr>
+<tr>
+<td><code>counteroffer_target_pti</code></td>
+<td align="right">Product-specific</td>
+<td>Target approved PTI after exposure reduction</td>
+</tr>
+</tbody></table>
+<p>Product-specific defaults:</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Approve max PTI</th>
+<th align="right">Review max PTI</th>
+<th align="right">Decline min PTI</th>
+<th align="right">Counteroffer target PTI</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right"><code>0.3600</code></td>
+<td align="right"><code>0.5500</code></td>
+<td align="right"><code>0.5500</code></td>
+<td align="right"><code>0.3600</code></td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right"><code>0.2500</code></td>
+<td align="right"><code>0.4500</code></td>
+<td align="right"><code>0.4500</code></td>
+<td align="right"><code>0.2500</code></td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right"><code>0.1800</code></td>
+<td align="right"><code>0.4000</code></td>
+<td align="right"><code>0.4000</code></td>
+<td align="right"><code>0.1800</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right"><code>0.1600</code></td>
+<td align="right"><code>0.3500</code></td>
+<td align="right"><code>0.3500</code></td>
+<td align="right"><code>0.1600</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right"><code>0.1200</code></td>
+<td align="right"><code>0.3000</code></td>
+<td align="right"><code>0.3000</code></td>
+<td align="right"><code>0.1200</code></td>
+</tr>
+</tbody></table>
+<p>Business rationale:</p>
+<pre><code class="language-text">Mortgage can support higher PTI than unsecured revolving because Module 1 mortgage structure uses long amortization and secured exposure.
+Revolving and personal-loan PTI thresholds are tighter because shorter-term or unsecured payment burden can create faster affordability pressure.
+HELOC sits between mortgage and revolving because it is secured but still line-like.
+</code></pre>
+<p>Validation expectation:</p>
+<pre><code class="language-text">High-PTI rows should show lower clean approval rates and higher review / counteroffer / decline rates.
+Counteroffer rows should show lower approved PTI than original requested PTI.
+Affordability reason codes should concentrate in high-PTI segments.
+</code></pre>
+<hr>
+<h2>8.3 DTI thresholds</h2>
+<p>DTI is treated as a borrower-capacity signal, not something corrected by reducing the requested exposure in Module 2 v1.0.</p>
+<p>Default:</p>
+<table>
+<thead>
+<tr>
+<th>Threshold</th>
+<th align="right">Default</th>
+<th>Business behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>approve_max_dti</code></td>
+<td align="right"><code>0.4300</code></td>
+<td>Clean approval existing-obligation capacity ceiling</td>
+</tr>
+<tr>
+<td><code>review_max_dti</code></td>
+<td align="right"><code>0.6000</code></td>
+<td>Manual review zone for elevated existing obligations</td>
+</tr>
+<tr>
+<td><code>decline_min_dti</code></td>
+<td align="right"><code>0.6000</code></td>
+<td>Hard capacity stop for severe DTI</td>
+</tr>
+</tbody></table>
+<p>Business rationale:</p>
+<pre><code class="language-text">DTI captures existing debt burden from Module 1.
+Unlike PTI, reducing the requested amount does not directly solve existing DTI in Module 2 v1.0.
+Therefore high DTI routes to review or decline, not counteroffer by default.
+</code></pre>
+<p>Validation expectation:</p>
+<pre><code class="language-text">High-DTI applicants should concentrate in manual review and decline outcomes.
+Clean approvals should show lower average DTI than declines.
+</code></pre>
+<hr>
+<h2>8.4 Requested Expected Loss thresholds</h2>
+<p>Module 1 <code>expected_loss_amount</code> should be aliased as:</p>
+<pre><code class="language-text">requested_expected_loss_amount
+</code></pre>
+<p>Product-specific requested-exposure Expected Loss thresholds:</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Clean approval max requested EL</th>
+<th align="right">Review / decline boundary</th>
+<th align="right">Approved EL cap</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right"><code>$15,000</code></td>
+<td align="right"><code>$35,000</code></td>
+<td align="right"><code>$15,000</code></td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right"><code>$10,000</code></td>
+<td align="right"><code>$22,000</code></td>
+<td align="right"><code>$10,000</code></td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right"><code>$6,000</code></td>
+<td align="right"><code>$12,000</code></td>
+<td align="right"><code>$6,000</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right"><code>$6,000</code></td>
+<td align="right"><code>$12,000</code></td>
+<td align="right"><code>$6,000</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right"><code>$4,500</code></td>
+<td align="right"><code>$9,000</code></td>
+<td align="right"><code>$4,500</code></td>
+</tr>
+</tbody></table>
+<p>Business rationale:</p>
+<pre><code class="language-text">Expected Loss is exposure × synthetic estimated-PD proxy × LGD.
+Large secured products can carry higher dollar EL tolerance because exposure is structurally larger.
+Unsecured and revolving products receive lower EL limits because LGD is higher and exposure should be more tightly governed.
+</code></pre>
+<p>Validation expectation:</p>
+<pre><code class="language-text">Clean approvals should generally have lower requested-exposure Expected Loss.
+Counteroffers should reduce approved-exposure Expected Loss versus requested-exposure Expected Loss.
+Declines should show concentration in high requested-exposure Expected Loss and unresolved risk/exposure pressure.
+</code></pre>
+<hr>
+<h2>8.5 Product exposure caps</h2>
+<p>Product-specific simulated approved exposure caps:</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Minimum approved amount</th>
+<th align="right">Maximum approved amount</th>
+<th align="right">Counteroffer minimum % of requested</th>
+<th align="right">Max exposure reduction %</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right"><code>$75,000</code></td>
+<td align="right"><code>$1,000,000</code></td>
+<td align="right"><code>80%</code></td>
+<td align="right"><code>20%</code></td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right"><code>$10,000</code></td>
+<td align="right"><code>$200,000</code></td>
+<td align="right"><code>50%</code></td>
+<td align="right"><code>50%</code></td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right"><code>$5,000</code></td>
+<td align="right"><code>$65,000</code></td>
+<td align="right"><code>75%</code></td>
+<td align="right"><code>25%</code></td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right"><code>$1,000</code></td>
+<td align="right"><code>$35,000</code></td>
+<td align="right"><code>50%</code></td>
+<td align="right"><code>50%</code></td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right"><code>$1,000</code></td>
+<td align="right"><code>$25,000</code></td>
+<td align="right"><code>50%</code></td>
+<td align="right"><code>50%</code></td>
+</tr>
+</tbody></table>
+<p>Business rationale:</p>
+<pre><code class="language-text">Mortgage and auto counteroffers are less flexible because the requested credit may be tied to a specific asset purchase.
+Revolving, HELOC, and personal-loan exposures are more naturally line / amount adjustable in a simulation.
+Product caps prevent approved exposure from simply mirroring requested amount when strategy appetite is lower.
+</code></pre>
+<p>Validation expectation:</p>
+<pre><code class="language-text">approved_amount must never exceed requested_amount.
+COUNTEROFFER rows must show approved_amount &lt; requested_amount.
+Counteroffer amounts must remain above minimum viable product amounts and minimum requested-percentage rules.
+</code></pre>
+<hr>
+<h2>8.6 Approval / review / decline bands</h2>
+<h3>Clean approval band</h3>
+<p>A row is eligible for <code>APPROVE</code> when:</p>
+<pre><code class="language-text">no hard policy stop
+synthetic estimated-PD proxy &lt;= product/global clean approval threshold
+PTI &lt;= product clean approval threshold
+DTI &lt;= clean approval threshold
+requested_expected_loss_amount &lt;= product clean approval EL threshold
+requested_amount &lt;= product max approved amount
+</code></pre>
+<h3>Counteroffer band</h3>
+<p>A row is eligible for <code>COUNTEROFFER</code> when:</p>
+<pre><code class="language-text">not hard decline
+counteroffer_allowed_flag = TRUE
+synthetic estimated-PD proxy &lt;= counteroffer_max_estimated_pd_proxy
+requested_amount, PTI, or requested_expected_loss_amount exceeds clean approval tolerance
+a lower approved_amount can satisfy:
+    product max approved amount
+    counteroffer target PTI
+    approved EL cap
+    product minimum approved amount
+    minimum viable counteroffer percentage
+</code></pre>
+<h3>Manual review band</h3>
+<p>A row is eligible for <code>MANUAL_REVIEW</code> when:</p>
+<pre><code class="language-text">not hard decline
+not clean approval
+not valid counteroffer
+profile falls into a borderline or mixed-signal zone
+</code></pre>
+<p>Examples:</p>
+<pre><code class="language-text">borderline synthetic estimated-risk profile
+borderline PTI
+elevated DTI
+large exposure but low synthetic estimated-risk profile
+weak score / low PTI mixed-signal profile
+strong score / high PTI mixed-signal profile
+</code></pre>
+<h3>Decline band</h3>
+<p>A row receives <code>DECLINE</code> when:</p>
+<pre><code class="language-text">hard policy stop exists
+or severe synthetic estimated-risk threshold is reached
+or severe affordability / DTI / EL / exposure issue is unresolved
+or no viable counteroffer exists where one would be required
+</code></pre>
+<hr>
+<h1>9. Compact strategy parameter dictionary</h1>
+<h2>9.1 Strategy identity, source selection, and archive controls</h2>
+<table>
+<thead>
+<tr>
+<th>parameter_name</th>
+<th>data_type</th>
+<th align="right">default_value</th>
+<th>allowed_range</th>
+<th>parameter_scope</th>
+<th>product_applicability</th>
+<th>purpose</th>
+<th>gatekeeper_rule</th>
+<th>business_interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>active_strategy_flag</code></td>
+<td>BOOLEAN</td>
+<td align="right">TRUE</td>
+<td>TRUE/FALSE</td>
+<td>Strategy run</td>
+<td>All</td>
+<td>Identifies active strategy row</td>
+<td>Exactly one TRUE row</td>
+<td>Ensures one governed strategy config drives the run</td>
+</tr>
+<tr>
+<td><code>module2_model_version</code></td>
+<td>TEXT</td>
+<td align="right"><code>V1.0</code></td>
+<td>Nonblank</td>
+<td>Strategy run</td>
+<td>All</td>
+<td>Output version label</td>
+<td>Non-null / nonblank</td>
+<td>Separates Module 2 releases</td>
+</tr>
+<tr>
+<td><code>strategy_set_name</code></td>
+<td>TEXT</td>
+<td align="right"><code>MODULE2_BASELINE_STRATEGY_SET</code></td>
+<td>Nonblank</td>
+<td>Strategy run</td>
+<td>All</td>
+<td>Strategy comparison family</td>
+<td>Non-null / nonblank</td>
+<td>Groups related downstream strategies</td>
+</tr>
+<tr>
+<td><code>strategy_name</code></td>
+<td>TEXT</td>
+<td align="right"><code>BASELINE_STRATEGY</code></td>
+<td>Nonblank</td>
+<td>Strategy run</td>
+<td>All</td>
+<td>Specific simulated strategy</td>
+<td>Non-null / nonblank</td>
+<td>Identifies the downstream decision strategy</td>
+</tr>
+<tr>
+<td><code>strategy_version</code></td>
+<td>TEXT</td>
+<td align="right"><code>V1_0</code></td>
+<td>Nonblank</td>
+<td>Strategy run</td>
+<td>All</td>
+<td>Versioned strategy config</td>
+<td>Non-null / nonblank</td>
+<td>Supports governed reruns and strategy comparison</td>
+</tr>
+<tr>
+<td><code>strategy_run_id</code></td>
+<td>TEXT</td>
+<td align="right">Generated</td>
+<td>Nonblank</td>
+<td>Audit</td>
+<td>All</td>
+<td>Run traceability</td>
+<td>Generated or nonblank</td>
+<td>Audit metadata; does not replace archive rerun key</td>
+</tr>
+<tr>
+<td><code>strategy_run_ts</code></td>
+<td>TIMESTAMP</td>
+<td align="right"><code>CURRENT_TIMESTAMP</code></td>
+<td>Valid timestamp</td>
+<td>Audit</td>
+<td>All</td>
+<td>Run timestamp</td>
+<td>Non-null in output</td>
+<td>Audit metadata only</td>
+</tr>
+<tr>
+<td><code>module1_input_source</code></td>
+<td>TEXT</td>
+<td align="right"><code>LATEST</code></td>
+<td><code>LATEST</code>, <code>ARCHIVE</code></td>
+<td>Source control</td>
+<td>All</td>
+<td>Selects Module 1 source table</td>
+<td>Must be valid enum</td>
+<td>Supports development from latest and comparison from archive</td>
+</tr>
+<tr>
+<td><code>source_module1_scenario_set_name</code></td>
+<td>TEXT</td>
+<td align="right">NULL</td>
+<td>Nonblank if archive</td>
+<td>Source control</td>
+<td>All</td>
+<td>Selects Module 1 scenario set</td>
+<td>Required if source = <code>ARCHIVE</code></td>
+<td>Preserves upstream scenario lineage</td>
+</tr>
+<tr>
+<td><code>source_module1_scenario_name</code></td>
+<td>TEXT</td>
+<td align="right">NULL</td>
+<td>Nonblank if archive</td>
+<td>Source control</td>
+<td>All</td>
+<td>Selects Module 1 scenario</td>
+<td>Required if source = <code>ARCHIVE</code></td>
+<td>Prevents scenario ambiguity</td>
+</tr>
+<tr>
+<td><code>source_population_id</code></td>
+<td>TEXT</td>
+<td align="right">NULL</td>
+<td>Nonblank if archive</td>
+<td>Source control</td>
+<td>All</td>
+<td>Selects deterministic population</td>
+<td>Required if source = <code>ARCHIVE</code></td>
+<td>Enables matched strategy comparison</td>
+</tr>
+<tr>
+<td><code>archive_run_flag</code></td>
+<td>BOOLEAN</td>
+<td align="right">TRUE</td>
+<td>TRUE/FALSE</td>
+<td>Archive control</td>
+<td>All</td>
+<td>Controls archive persistence</td>
+<td>Non-null</td>
+<td>Determines whether run is archived</td>
+</tr>
+<tr>
+<td><code>strategy_archive_reset_mode</code></td>
+<td>TEXT</td>
+<td align="right"><code>STRATEGY_SCENARIO_ONLY</code></td>
+<td><code>NONE</code>, <code>STRATEGY_SCENARIO_ONLY</code>, <code>STRATEGY_SET_ONLY</code>, <code>ALL</code></td>
+<td>Archive control</td>
+<td>All</td>
+<td>Controls archive replacement</td>
+<td>Must be valid enum</td>
+<td>Default replaces exact rerun key only</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>9.2 Risk, affordability, DTI, and Expected Loss thresholds</h2>
+<table>
+<thead>
+<tr>
+<th>parameter_name</th>
+<th>data_type</th>
+<th align="right">default_value</th>
+<th>allowed_range</th>
+<th>parameter_scope</th>
+<th>product_applicability</th>
+<th>purpose</th>
+<th>gatekeeper_rule</th>
+<th>business_interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>approve_max_estimated_pd_proxy</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.1200</code></td>
+<td><code>0</code>–<code>1</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Clean approval synthetic estimated-risk ceiling</td>
+<td><code>&lt; counteroffer_max_estimated_pd_proxy</code></td>
+<td>Low-to-moderate synthetic estimated-risk approval band</td>
+</tr>
+<tr>
+<td><code>counteroffer_max_estimated_pd_proxy</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.3000</code></td>
+<td><code>0</code>–<code>1</code></td>
+<td>Global</td>
+<td>Counteroffer-eligible products</td>
+<td>Maximum synthetic estimated-risk level for reduced exposure</td>
+<td><code>&gt;= approve_max</code> and <code>&lt;= review_max</code></td>
+<td>Allows partial approval only before severe-risk region</td>
+</tr>
+<tr>
+<td><code>review_max_estimated_pd_proxy</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.3500</code></td>
+<td><code>0</code>–<code>1</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Manual-review synthetic estimated-risk ceiling</td>
+<td><code>&lt;= decline_min</code></td>
+<td>Borderline risk review band</td>
+</tr>
+<tr>
+<td><code>decline_min_estimated_pd_proxy</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.3500</code></td>
+<td><code>0</code>–<code>1</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Hard simulated risk stop</td>
+<td><code>&gt;= review_max</code></td>
+<td>Severe synthetic estimated-risk region</td>
+</tr>
+<tr>
+<td><code>global_approve_max_pti</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.2000</code></td>
+<td><code>0</code>–<code>1.50</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Default clean approval PTI ceiling</td>
+<td><code>&lt; global_review_max_pti</code></td>
+<td>Default affordability approval limit</td>
+</tr>
+<tr>
+<td><code>global_review_max_pti</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.5000</code></td>
+<td><code>0</code>–<code>1.50</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Default PTI review ceiling</td>
+<td><code>&lt;= global_decline_min_pti</code></td>
+<td>Elevated but reviewable affordability stress</td>
+</tr>
+<tr>
+<td><code>global_decline_min_pti</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.5000</code></td>
+<td><code>0</code>–<code>1.50</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Severe unresolved PTI stop</td>
+<td><code>&gt;= global_review_max_pti</code></td>
+<td>Severe affordability stress</td>
+</tr>
+<tr>
+<td><code>approve_max_dti</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.4300</code></td>
+<td><code>0</code>–<code>1</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Clean approval DTI ceiling</td>
+<td><code>&lt; review_max_dti</code></td>
+<td>Existing-obligation capacity approval limit</td>
+</tr>
+<tr>
+<td><code>review_max_dti</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.6000</code></td>
+<td><code>0</code>–<code>1</code></td>
+<td>Global</td>
+<td>All</td>
+<td>DTI review ceiling</td>
+<td><code>&lt;= decline_min_dti</code></td>
+<td>Elevated DTI review band</td>
+</tr>
+<tr>
+<td><code>decline_min_dti</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>0.6000</code></td>
+<td><code>0</code>–<code>1</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Hard DTI stop</td>
+<td><code>&gt;= review_max_dti</code></td>
+<td>Severe existing-obligation pressure</td>
+</tr>
+<tr>
+<td><code>product_approve_max_requested_el</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>&gt;= 0</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Clean approval requested-exposure EL ceiling</td>
+<td><code>&lt; product_review_max_requested_el</code></td>
+<td>Caps requested-exposure loss tolerance</td>
+</tr>
+<tr>
+<td><code>product_review_max_requested_el</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>&gt;= 0</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Review / decline requested EL boundary</td>
+<td><code>&lt;= product_decline_min_requested_el</code></td>
+<td>High requested-exposure EL review zone</td>
+</tr>
+<tr>
+<td><code>product_decline_min_requested_el</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>&gt;= 0</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Hard unresolved requested EL stop</td>
+<td><code>&gt;= product_review_max_requested_el</code></td>
+<td>Severe loss proxy pressure</td>
+</tr>
+<tr>
+<td><code>product_approved_el_cap</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>&gt;= 0</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Approved-book EL cap after exposure treatment</td>
+<td>Nonnegative</td>
+<td>Ensures approved exposure respects simulated EL appetite</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>9.3 Product exposure and counteroffer rules</h2>
+<table>
+<thead>
+<tr>
+<th>parameter_name</th>
+<th>data_type</th>
+<th align="right">default_value</th>
+<th>allowed_range</th>
+<th>parameter_scope</th>
+<th>product_applicability</th>
+<th>purpose</th>
+<th>gatekeeper_rule</th>
+<th>business_interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>product_min_approved_amount</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>&gt; 0</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Minimum viable approved exposure</td>
+<td><code>&lt; product_max_approved_amount</code></td>
+<td>Prevents trivial or invalid approvals</td>
+</tr>
+<tr>
+<td><code>product_max_approved_amount</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>&gt; 0</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Product exposure cap</td>
+<td><code>&gt; product_min_approved_amount</code></td>
+<td>Simulated product-level exposure appetite</td>
+</tr>
+<tr>
+<td><code>counteroffer_allowed_flag</code></td>
+<td>BOOLEAN</td>
+<td align="right">TRUE</td>
+<td>TRUE/FALSE</td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Enables reduced-exposure treatment</td>
+<td>Non-null</td>
+<td>Allows product-aware partial approval simulation</td>
+</tr>
+<tr>
+<td><code>manual_review_allowed_flag</code></td>
+<td>BOOLEAN</td>
+<td align="right">TRUE</td>
+<td>TRUE/FALSE</td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Enables review routing</td>
+<td>Non-null</td>
+<td>Allows product-aware manual review</td>
+</tr>
+<tr>
+<td><code>product_min_counteroffer_pct</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>0</code>–<code>1</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Minimum counteroffer as % of request</td>
+<td><code>&gt; 0</code> and <code>&lt;= 1</code></td>
+<td>Prevents non-meaningful partial approvals</td>
+</tr>
+<tr>
+<td><code>product_max_exposure_reduction_pct</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>0</code>–<code>1</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Maximum allowed exposure reduction</td>
+<td><code>= 1 - min_counteroffer_pct</code> or coherent with it</td>
+<td>Prevents excessive simulated reductions</td>
+</tr>
+<tr>
+<td><code>counteroffer_target_pti</code></td>
+<td>NUMERIC</td>
+<td align="right">Product matrix</td>
+<td><code>0</code>–<code>1.50</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Target approved PTI after reduction</td>
+<td><code>&lt;= product_approve_max_pti</code></td>
+<td>Counteroffer should improve affordability</td>
+</tr>
+<tr>
+<td><code>exposure_assignment_method</code></td>
+<td>TEXT</td>
+<td align="right"><code>MIN_OF_CAPS</code></td>
+<td><code>MIN_OF_CAPS</code>, <code>AFFORDABILITY_BASED</code>, <code>EL_BASED</code>, <code>PRODUCT_CAP_ONLY</code></td>
+<td>Product</td>
+<td>Product-specific</td>
+<td>Chooses approved amount method</td>
+<td>Valid enum</td>
+<td>Keeps amount assignment explainable</td>
+</tr>
+<tr>
+<td><code>approved_amount_rounding_increment</code></td>
+<td>NUMERIC</td>
+<td align="right"><code>$100</code></td>
+<td><code>&gt;= 1</code></td>
+<td>Global/Product</td>
+<td>All</td>
+<td>Rounds approved amount</td>
+<td>Positive</td>
+<td>Avoids unnatural dollar precision</td>
+</tr>
+<tr>
+<td><code>allow_approved_amount_above_requested_flag</code></td>
+<td>BOOLEAN</td>
+<td align="right">FALSE</td>
+<td>FALSE for v1.0</td>
+<td>Global</td>
+<td>All</td>
+<td>Controls over-request approvals</td>
+<td>Must be FALSE in v1.0</td>
+<td>Preserves approved amount ≤ requested amount</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>9.4 Decision convention and output consistency controls</h2>
+<table>
+<thead>
+<tr>
+<th>parameter_name</th>
+<th>data_type</th>
+<th align="right">default_value</th>
+<th>allowed_range</th>
+<th>parameter_scope</th>
+<th>product_applicability</th>
+<th>purpose</th>
+<th>gatekeeper_rule</th>
+<th>business_interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>manual_review_approved_amount_convention</code></td>
+<td>TEXT</td>
+<td align="right"><code>NULL_UNRESOLVED</code></td>
+<td><code>NULL_UNRESOLVED</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Controls manual review amount treatment</td>
+<td>Must equal <code>NULL_UNRESOLVED</code> in v1.0</td>
+<td>Manual review is unresolved, not booked</td>
+</tr>
+<tr>
+<td><code>decline_approved_amount_convention</code></td>
+<td>TEXT</td>
+<td align="right"><code>ZERO</code></td>
+<td><code>ZERO</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Controls decline amount treatment</td>
+<td>Must equal <code>ZERO</code></td>
+<td>Declines have no approved exposure</td>
+</tr>
+<tr>
+<td><code>approve_reason_code</code></td>
+<td>TEXT</td>
+<td align="right"><code>APPROVED_AS_REQUESTED</code></td>
+<td>Nonblank</td>
+<td>Global</td>
+<td>All</td>
+<td>Approval reason convention</td>
+<td>Non-null</td>
+<td>Every row remains explainable</td>
+</tr>
+<tr>
+<td><code>reason_code_required_flag</code></td>
+<td>BOOLEAN</td>
+<td align="right">TRUE</td>
+<td>TRUE</td>
+<td>Global</td>
+<td>All</td>
+<td>Requires reason population</td>
+<td>Must be TRUE</td>
+<td>No unexplained outcomes</td>
+</tr>
+<tr>
+<td><code>simulated_offer_exposure_flag_enabled</code></td>
+<td>BOOLEAN</td>
+<td align="right">TRUE</td>
+<td>TRUE</td>
+<td>Global</td>
+<td>All</td>
+<td>Enables offer-exposure reporting</td>
+<td>Must be TRUE</td>
+<td>APPROVE + COUNTEROFFER exposure reporting</td>
+</tr>
+<tr>
+<td><code>approved_el_decline_convention</code></td>
+<td>TEXT</td>
+<td align="right"><code>ZERO</code></td>
+<td><code>ZERO</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Decline approved EL treatment</td>
+<td>Must equal <code>ZERO</code></td>
+<td>No approved exposure for declines</td>
+</tr>
+<tr>
+<td><code>approved_el_manual_review_convention</code></td>
+<td>TEXT</td>
+<td align="right"><code>NULL_UNRESOLVED</code></td>
+<td><code>NULL_UNRESOLVED</code></td>
+<td>Global</td>
+<td>All</td>
+<td>Manual review approved EL treatment</td>
+<td>Must equal <code>NULL_UNRESOLVED</code></td>
+<td>Unresolved exposure should not be treated as booked</td>
+</tr>
+</tbody></table>
+<hr>
+<h1>10. Strategy parameter gatekeeper requirements</h1>
+<p>The Module 2 SQL should fail fast before generating decision outcomes if any of the following fail.</p>
+<h2>Parameter-cardinality gatekeepers</h2>
+<pre><code class="language-text">exactly one active strategy parameter row
+strategy_set_name non-null and nonblank
+strategy_name non-null and nonblank
+strategy_version non-null and nonblank
+valid module2_model_version
+valid strategy_run_id / strategy_run_ts generation
+</code></pre>
+<h2>Source-input gatekeepers</h2>
+<pre><code class="language-text">module1_input_source in (&#39;LATEST&#39;, &#39;ARCHIVE&#39;)
+selected Module 1 source table contains rows
+selected Module 1 source has no duplicate application_id values for the selected population / scenario
+required Module 1 fields are present and non-null where required
+if using Module 1 archive, exactly one Module 1 scenario is selected unless multi-scenario processing is explicitly designed
+module1_scenario_set_name, module1_scenario_name, population_id are preserved in output
+</code></pre>
+<p>Required Module 1 input fields:</p>
+<pre><code class="language-text">application_id
+applicant_id
+product_type
+score_band
+requested_amount
+annual_income
+monthly_payment_proxy
+payment_to_income_ratio
+debt_to_income_ratio
+estimated_pd
+estimated_lgd
+expected_loss_amount
+population_id
+scenario_set_name or module1_scenario_set_name
+scenario_name or module1_scenario_name
+</code></pre>
+<h2>Threshold gatekeepers</h2>
+<pre><code class="language-text">all synthetic estimated-PD proxy thresholds between 0 and 1
+approve_max_estimated_pd_proxy &lt; counteroffer_max_estimated_pd_proxy
+counteroffer_max_estimated_pd_proxy &lt;= review_max_estimated_pd_proxy
+review_max_estimated_pd_proxy &lt;= decline_min_estimated_pd_proxy
+
+PTI thresholds within governed range
+approve_max_pti &lt; review_max_pti
+review_max_pti &lt;= decline_min_pti
+
+DTI thresholds between 0 and 1
+approve_max_dti &lt; review_max_dti
+review_max_dti &lt;= decline_min_dti
+
+Expected Loss thresholds nonnegative
+product_approve_max_requested_el &lt; product_review_max_requested_el
+product_review_max_requested_el &lt;= product_decline_min_requested_el
+product_approved_el_cap &lt;= product_approve_max_requested_el unless explicitly overridden
+</code></pre>
+<h2>Exposure and counteroffer gatekeepers</h2>
+<pre><code class="language-text">product_min_approved_amount &gt; 0
+product_max_approved_amount &gt; product_min_approved_amount
+product_min_counteroffer_pct &gt; 0 and &lt;= 1
+product_max_exposure_reduction_pct &gt;= 0 and &lt; 1
+approved_amount cannot be negative
+approved_amount cannot exceed requested_amount in v1.0
+counteroffer_amount must equal approved_amount for COUNTEROFFER rows
+counteroffer rows must have approved_amount &lt; requested_amount
+decline rows must have approved_amount = 0
+manual review rows must have approved_amount IS NULL
+approved_expected_loss_amount cannot be negative
+</code></pre>
+<h2>Archive gatekeepers</h2>
+<pre><code class="language-text">strategy_archive_reset_mode is valid
+archive replacement / rerun key is fully populated before archive insert
+archive replacement key does not include application_id
+row-level archive grain includes application_id
+archive insert creates one row per application_id for the selected replacement key
+</code></pre>
+<hr>
+<h1>11. Output consistency rules locked for v1.0</h1>
+<pre><code class="language-text">Every row must have exactly one decision_outcome.
+
+decision_outcome must be one of:
+APPROVE, COUNTEROFFER, MANUAL_REVIEW, DECLINE.
+
+approval_flag, decline_flag, manual_review_flag, and counteroffer_flag must reconcile to decision_outcome.
+
+APPROVE and COUNTEROFFER remain distinguishable outcomes.
+
+APPROVE and COUNTEROFFER both feed simulated_offer_exposure_flag = TRUE.
+
+MANUAL_REVIEW and DECLINE feed simulated_offer_exposure_flag = FALSE.
+
+approved_amount must not exceed requested_amount.
+
+counteroffer_amount must equal approved_amount for COUNTEROFFER rows.
+
+DECLINE rows must have approved_amount = 0.
+
+MANUAL_REVIEW rows must have approved_amount IS NULL.
+
+approved_expected_loss_amount must use approved exposure, not requested exposure.
+
+Module 1 expected_loss_amount must remain available as requested_expected_loss_amount.
+</code></pre>
+<hr>
+<h1>12. Reporting book definitions</h1>
+<table>
+<thead>
+<tr>
+<th>Reporting book</th>
+<th>Definition</th>
+<th>Main use</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approved-book profile</td>
+<td><code>decision_outcome = &#39;APPROVE&#39;</code></td>
+<td>Clean approvals as requested</td>
+</tr>
+<tr>
+<td>Counteroffer-book profile</td>
+<td><code>decision_outcome = &#39;COUNTEROFFER&#39;</code></td>
+<td>Reduced-exposure / partial approval simulation</td>
+</tr>
+<tr>
+<td>Manual-review-book profile</td>
+<td><code>decision_outcome = &#39;MANUAL_REVIEW&#39;</code></td>
+<td>Unresolved borderline profiles</td>
+</tr>
+<tr>
+<td>Declined-book profile</td>
+<td><code>decision_outcome = &#39;DECLINE&#39;</code></td>
+<td>Simulated policy-stop population</td>
+</tr>
+<tr>
+<td>Offer-exposure book</td>
+<td><code>simulated_offer_exposure_flag = TRUE</code></td>
+<td>APPROVE + COUNTEROFFER exposure summaries</td>
+</tr>
+</tbody></table>
+<p>Offer-exposure reporting must be described as simulated strategy exposure, not real account booking.</p>
+<hr>
+<h1>13. Renamed workstream</h1>
+<p>Use:</p>
+<pre><code class="language-text">Validation, QA, and Strategy Tuning Pass
+</code></pre>
+<p>Avoid:</p>
+<pre><code class="language-text">Validation and calibration pass
+risk recalibration
+</code></pre>
+<p>Module 2 v1.0 tunes simulated strategy behavior. It does not calibrate real-world underwriting performance.</p>
+<hr>
+<h1>14. First SQL build step only</h1>
+<p>The first SQL build step should be:</p>
+<pre><code class="language-text">Build Module 2 Sections 0–3 only:
+schema setup, clean latest-run reset, strategy parameter tables,
+product policy parameter table, and fail-fast gatekeeper.
+</code></pre>
+<p>Do not build decision logic yet.</p>
+<p>This first build should establish:</p>
+<pre><code class="language-text">credit_decisioning_sim schema reuse
+drop / recreate latest-run strategy_decisions placeholder only if appropriate
+tmp_module2_strategy_params
+tmp_module2_product_policy_params
+parameter-cardinality gatekeeper
+strategy identity gatekeeper
+source-selection gatekeeper
+threshold-ordering gatekeeper
+exposure-rule gatekeeper
+archive-control gatekeeper
+</code></pre>
+<p>Once that passes cleanly, the next step will be the Module 1 source-selection and lineage-normalization layer.</p>
+</div></article><article id="c038-m00039" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00039 · 2026-05-06T11:00:16.831000-04:00 · active path</p><div class="body"><p>This is directionally strong. I agree with the locked architecture, naming convention, decision outcome taxonomy, amount / Expected Loss conventions, reason-code framing, threshold hierarchy, parameter dictionary direction, and the recommendation that the first SQL build should be Sections 0–3 only.</p>
+<p>Let’s proceed to the first SQL build, but please follow the constraints below exactly.</p>
+<p>Do not build decision logic yet.</p>
+<p>================================================================================</p>
+<ol>
+<li><h1>CONFIRMED LOCKED DESIGN</h1>
+</li>
+</ol>
+<p>Please treat the following as locked for Module 2 v1.0:</p>
+<ol>
+<li><p>Physical architecture</p>
+<ul>
+<li><p>latest-run table:
+credit_decisioning_sim.strategy_decisions</p>
+</li>
+<li><p>archive table:
+credit_decisioning_sim.strategy_decisions_archive</p>
+</li>
+</ul>
+</li>
+<li><p>Archive grain
+one row per application × Module 1 scenario × Module 2 strategy version</p>
+</li>
+<li><p>Archive grain fields</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+<li>application_id</li>
+</ul>
+</li>
+<li><p>Archive replacement / rerun key</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+</ul>
+<p>The row-level archive grain additionally includes application_id.</p>
+</li>
+<li><p>Module 1 scenario metadata</p>
+<ul>
+<li>module1_scenario_set_name</li>
+<li>module1_scenario_name</li>
+<li>population_id</li>
+</ul>
+</li>
+<li><p>Module 2 strategy metadata</p>
+<ul>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>strategy_run_id</li>
+<li>strategy_run_ts</li>
+</ul>
+</li>
+<li><p>Decision outcome taxonomy
+Use exactly:</p>
+<ul>
+<li>APPROVE</li>
+<li>COUNTEROFFER</li>
+<li>MANUAL_REVIEW</li>
+<li>DECLINE</li>
+</ul>
+</li>
+<li><p>Counteroffer treatment
+COUNTEROFFER is a distinct decision_outcome.
+More detailed counteroffer type belongs in decision_path.</p>
+</li>
+<li><p>Manual review treatment
+MANUAL_REVIEW is unresolved by design:</p>
+<ul>
+<li>approved_amount = NULL</li>
+<li>approved_expected_loss_amount = NULL</li>
+<li>approved_monthly_payment_proxy = NULL</li>
+<li>approved_payment_to_income_ratio = NULL</li>
+</ul>
+</li>
+<li><p>Estimated-PD proxy boundary
+Module 2 consumes Module 1 estimated_pd as the finalized synthetic estimated-PD proxy.
+Module 2 does not recalculate estimated_pd and does not create a new post-decision risk model in v1.0.</p>
+</li>
+<li><p>Reason-code boundary
+Reason codes are simulated strategy explanation codes.
+They are not regulatory adverse-action reason codes.</p>
+</li>
+<li><p>Language boundary
+Use neutral simulation language:</p>
+<ul>
+<li>hard simulated policy stop rules</li>
+<li>simulated policy exclusion rules</li>
+<li>policy stop reason</li>
+<li>review trigger reason</li>
+<li>counteroffer reason</li>
+</ul>
+<p>Avoid:</p>
+<ul>
+<li>adverse-action terminology</li>
+<li>production underwriting language</li>
+<li>booked-account language</li>
+</ul>
+</li>
+</ol>
+<p>================================================================================
+2. FIRST SQL BUILD SCOPE
+================================================================================</p>
+<p>Build only Module 2 SQL Sections 0–3.</p>
+<p>The first SQL build should include:</p>
+<p>Section 0:</p>
+<ul>
+<li>Executive purpose header</li>
+<li>Module 2 boundary notes</li>
+<li>Estimated-PD proxy terminology note</li>
+<li>Relationship to Module 1</li>
+<li>High-level SQL section map</li>
+<li>Explicit note that Module 2 v1.0 does not recalculate estimated_pd</li>
+<li>Explicit note that reason codes are simulated strategy explanation codes, not regulatory adverse-action reasons</li>
+<li>Explicit note that approved exposure is simulated offer exposure, not booked exposure</li>
+</ul>
+<p>Section 1:</p>
+<ul>
+<li>Schema setup / schema reuse</li>
+<li>Clean reset of temporary Module 2 objects</li>
+<li>Drop latest-run output table only if appropriate for clean rerun</li>
+<li>Do not drop the archive table by default</li>
+<li>Do not create final decision output logic yet</li>
+</ul>
+<p>Section 2:</p>
+<ul>
+<li>Strategy parameter framework</li>
+<li>Product policy parameter framework</li>
+<li>Strategy identity parameters</li>
+<li>Module 1 source selection parameters</li>
+<li>Archive control parameters</li>
+<li>Threshold parameters</li>
+<li>Product exposure / counteroffer parameters</li>
+<li>Decision convention parameters</li>
+</ul>
+<p>Section 3:</p>
+<ul>
+<li>Fail-fast strategy parameter gatekeeper</li>
+<li>Parameter-cardinality validation</li>
+<li>Source-input validation</li>
+<li>Product-policy parameter validation</li>
+<li>Threshold-ordering validation</li>
+<li>Exposure / counteroffer validation</li>
+<li>Archive-control validation</li>
+<li>Output-convention validation</li>
+</ul>
+<p>Do not build:</p>
+<ul>
+<li>Module 1 source-selection staging table</li>
+<li>derived strategy segments</li>
+<li>rule flags</li>
+<li>decision hierarchy</li>
+<li>reason-code assignment</li>
+<li>approved exposure calculation</li>
+<li>approved Expected Loss calculation</li>
+<li>latest-run final output table</li>
+<li>archive insert logic</li>
+<li>QA queries</li>
+</ul>
+<p>Those come later.</p>
+<p>================================================================================
+3. PARAMETER TABLE DESIGN
+================================================================================</p>
+<p>Use temporary parameter tables for the first build.</p>
+<p>Recommended parameter tables:</p>
+<ol>
+<li><p>tmp_module2_strategy_params
+One active row for the selected strategy run.</p>
+</li>
+<li><p>tmp_module2_product_policy_params
+One row per supported product type.</p>
+</li>
+</ol>
+<p>Use Module 1’s product set:</p>
+<ul>
+<li>MORTGAGE</li>
+<li>HELOC</li>
+<li>AUTO_LOAN</li>
+<li>UNSECURED_PERSONAL_LOAN</li>
+<li>REVOLVING_LINE</li>
+</ul>
+<p>The first build should ensure the parameter structure is complete enough to support later strategy logic, even though decision logic is not built yet.</p>
+<p>================================================================================
+4. REQUIRED STRATEGY PARAMETER FIELDS
+================================================================================</p>
+<p>At minimum, tmp_module2_strategy_params should include:</p>
+<p>Strategy identity:</p>
+<ul>
+<li>active_strategy_flag</li>
+<li>module2_model_version</li>
+<li>strategy_set_name</li>
+<li>strategy_name</li>
+<li>strategy_version</li>
+<li>strategy_run_id</li>
+<li>strategy_run_ts</li>
+</ul>
+<p>Module 1 source selection:</p>
+<ul>
+<li>module1_input_source</li>
+<li>source_module1_scenario_set_name</li>
+<li>source_module1_scenario_name</li>
+<li>source_population_id</li>
+</ul>
+<p>Archive controls:</p>
+<ul>
+<li>archive_run_flag</li>
+<li>strategy_archive_reset_mode</li>
+</ul>
+<p>Global estimated-risk thresholds:</p>
+<ul>
+<li>approve_max_estimated_pd_proxy</li>
+<li>counteroffer_max_estimated_pd_proxy</li>
+<li>review_max_estimated_pd_proxy</li>
+<li>decline_min_estimated_pd_proxy</li>
+</ul>
+<p>Global PTI thresholds:</p>
+<ul>
+<li>global_approve_max_pti</li>
+<li>global_review_max_pti</li>
+<li>global_decline_min_pti</li>
+</ul>
+<p>DTI thresholds:</p>
+<ul>
+<li>approve_max_dti</li>
+<li>review_max_dti</li>
+<li>decline_min_dti</li>
+</ul>
+<p>Decision convention controls:</p>
+<ul>
+<li>approve_reason_code</li>
+<li>reason_code_required_flag</li>
+<li>simulated_offer_exposure_flag_enabled</li>
+<li>manual_review_approved_amount_convention</li>
+<li>decline_approved_amount_convention</li>
+<li>approved_el_decline_convention</li>
+<li>approved_el_manual_review_convention</li>
+<li>allow_approved_amount_above_requested_flag</li>
+</ul>
+<p>================================================================================
+5. REQUIRED PRODUCT POLICY PARAMETER FIELDS
+================================================================================</p>
+<p>At minimum, tmp_module2_product_policy_params should include:</p>
+<p>Product identity:</p>
+<ul>
+<li>product_type</li>
+</ul>
+<p>Product-specific PTI thresholds:</p>
+<ul>
+<li>product_approve_max_pti</li>
+<li>product_review_max_pti</li>
+<li>product_decline_min_pti</li>
+<li>counteroffer_target_pti</li>
+</ul>
+<p>Requested Expected Loss thresholds:</p>
+<ul>
+<li>product_approve_max_requested_el</li>
+<li>product_review_max_requested_el</li>
+<li>product_decline_min_requested_el</li>
+<li>product_approved_el_cap</li>
+</ul>
+<p>Approved exposure limits:</p>
+<ul>
+<li>product_min_approved_amount</li>
+<li>product_max_approved_amount</li>
+</ul>
+<p>Counteroffer controls:</p>
+<ul>
+<li>counteroffer_allowed_flag</li>
+<li>manual_review_allowed_flag</li>
+<li>product_min_counteroffer_pct</li>
+<li>product_max_exposure_reduction_pct</li>
+<li>exposure_assignment_method</li>
+</ul>
+<p>Other:</p>
+<ul>
+<li>approved_amount_rounding_increment</li>
+</ul>
+<p>================================================================================
+6. THRESHOLD EQUALITY RULES
+================================================================================</p>
+<p>Please explicitly document threshold equality handling in Section 3 comments.</p>
+<p>Use this convention unless you see a strong reason to recommend otherwise:</p>
+<p>Estimated-PD proxy:</p>
+<ul>
+<li>APPROVE if estimated_pd &lt;= approve_max_estimated_pd_proxy</li>
+<li>COUNTEROFFER eligibility if estimated_pd &gt; approve_max_estimated_pd_proxy
+and estimated_pd &lt;= counteroffer_max_estimated_pd_proxy</li>
+<li>MANUAL_REVIEW if estimated_pd &gt; counteroffer_max_estimated_pd_proxy
+and estimated_pd &lt; decline_min_estimated_pd_proxy</li>
+<li>DECLINE if estimated_pd &gt;= decline_min_estimated_pd_proxy</li>
+</ul>
+<p>PTI:</p>
+<ul>
+<li>APPROVE if PTI &lt;= product_approve_max_pti</li>
+<li>COUNTEROFFER eligibility if PTI &gt; product_approve_max_pti and counteroffer can reduce approved PTI to target</li>
+<li>MANUAL_REVIEW if PTI &gt; product_approve_max_pti and PTI &lt; product_decline_min_pti where counteroffer is not cleanly viable</li>
+<li>DECLINE if PTI &gt;= product_decline_min_pti and no viable counteroffer or review path is intended</li>
+</ul>
+<p>DTI:</p>
+<ul>
+<li>APPROVE if DTI &lt;= approve_max_dti</li>
+<li>MANUAL_REVIEW if DTI &gt; approve_max_dti and DTI &lt; decline_min_dti</li>
+<li>DECLINE if DTI &gt;= decline_min_dti</li>
+</ul>
+<p>Expected Loss:</p>
+<ul>
+<li>clean approval must satisfy product_approve_max_requested_el</li>
+<li>counteroffer may be considered when requested_expected_loss_amount exceeds clean approval tolerance but approved_expected_loss_amount can satisfy product_approved_el_cap</li>
+<li>decline / review boundary should use product_decline_min_requested_el and strategy hierarchy</li>
+</ul>
+<p>This equality convention should be documented now so later CASE logic is not ambiguous.</p>
+<p>================================================================================
+7. DEFAULT THRESHOLDS
+================================================================================</p>
+<p>Use the default thresholds you recommended as initial simulated strategy defaults, not production policy.</p>
+<p>Please include comments that these are:</p>
+<ul>
+<li>synthetic strategy defaults</li>
+<li>intended for simulation</li>
+<li>expected to be tuned through QA and validation</li>
+<li>not production underwriting policy</li>
+<li>not empirically calibrated cutoffs</li>
+</ul>
+<p>If you need to slightly adjust any recommended default for internal consistency, explain the adjustment before coding it.</p>
+<p>================================================================================
+8. SOURCE-INPUT GATEKEEPERS
+================================================================================</p>
+<p>Section 3 should validate source inputs before any decision logic is built.</p>
+<p>Gatekeepers should check:</p>
+<ul>
+<li>module1_input_source is one of:
+LATEST
+ARCHIVE</li>
+</ul>
+<p>If module1_input_source = LATEST:</p>
+<ul>
+<li>credit_decisioning_sim.synthetic_applications exists</li>
+<li>source table contains rows</li>
+<li>required Module 1 fields are present</li>
+<li>required Module 1 fields are non-null where required</li>
+<li>selected latest-run table represents exactly one Module 1 scenario / population unless multi-scenario processing is explicitly designed later</li>
+<li>no duplicate application_id values exist for the selected latest-run population / scenario</li>
+</ul>
+<p>If module1_input_source = ARCHIVE:</p>
+<ul>
+<li>credit_decisioning_sim.synthetic_applications_scenario_archive exists</li>
+<li>source_module1_scenario_set_name is non-null and nonblank</li>
+<li>source_module1_scenario_name is non-null and nonblank</li>
+<li>source_population_id is non-null and nonblank</li>
+<li>exactly one Module 1 scenario is selected unless multi-scenario processing is explicitly designed later</li>
+<li>selected archive slice contains rows</li>
+<li>selected archive slice has no duplicate application_id values</li>
+<li>required Module 1 fields are present</li>
+<li>required Module 1 fields are non-null where required</li>
+</ul>
+<p>Required Module 1 fields should include at least:</p>
+<ul>
+<li>application_id</li>
+<li>applicant_id</li>
+<li>product_type</li>
+<li>score_band</li>
+<li>credit_score</li>
+<li>requested_amount</li>
+<li>annual_income</li>
+<li>monthly_payment_proxy</li>
+<li>payment_to_income_ratio</li>
+<li>debt_to_income_ratio</li>
+<li>estimated_pd</li>
+<li>estimated_lgd</li>
+<li>expected_loss_amount</li>
+<li>population_id</li>
+<li>scenario_set_name or module1_scenario_set_name</li>
+<li>scenario_name or module1_scenario_name</li>
+</ul>
+<p>Important:
+For Module 2 output naming, source scenario_set_name should be aliased as module1_scenario_set_name, and source scenario_name should be aliased as module1_scenario_name in later source-selection logic.</p>
+<p>================================================================================
+9. PRODUCT-POLICY PARAMETER GATEKEEPERS
+================================================================================</p>
+<p>Section 3 should validate:</p>
+<ul>
+<li>exactly one product policy row per supported product type</li>
+<li>no unsupported product types</li>
+<li>no duplicate product_type rows</li>
+<li>all required product policy thresholds are non-null</li>
+<li>product_min_approved_amount &gt; 0</li>
+<li>product_max_approved_amount &gt; product_min_approved_amount</li>
+<li>product_min_counteroffer_pct between 0 and 1</li>
+<li>product_max_exposure_reduction_pct between 0 and 1</li>
+<li>counteroffer_target_pti between 0 and 1.5</li>
+<li>product_approve_max_pti &lt; product_review_max_pti</li>
+<li>product_review_max_pti &lt;= product_decline_min_pti</li>
+<li>requested Expected Loss thresholds are non-negative</li>
+<li>product_approve_max_requested_el &lt;= product_review_max_requested_el</li>
+<li>product_review_max_requested_el &lt;= product_decline_min_requested_el</li>
+<li>product_approved_el_cap is non-negative</li>
+<li>approved_amount_rounding_increment &gt; 0</li>
+</ul>
+<p>================================================================================
+10. STRATEGY PARAMETER GATEKEEPERS
+================================================================================</p>
+<p>Section 3 should validate:</p>
+<ul>
+<li>exactly one active strategy parameter row</li>
+<li>strategy_set_name is non-null and nonblank</li>
+<li>strategy_name is non-null and nonblank</li>
+<li>strategy_version is non-null and nonblank</li>
+<li>module2_model_version is non-null and nonblank</li>
+<li>strategy_run_id is non-null and nonblank</li>
+<li>strategy_run_ts is non-null</li>
+<li>archive_run_flag is not null</li>
+<li>strategy_archive_reset_mode is one of:
+NONE
+STRATEGY_SCENARIO_ONLY
+STRATEGY_SET_ONLY
+ALL</li>
+</ul>
+<p>Estimated-PD proxy thresholds:</p>
+<ul>
+<li>all values between 0 and 1</li>
+<li>approve_max_estimated_pd_proxy &lt; counteroffer_max_estimated_pd_proxy</li>
+<li>counteroffer_max_estimated_pd_proxy &lt;= review_max_estimated_pd_proxy</li>
+<li>review_max_estimated_pd_proxy &lt;= decline_min_estimated_pd_proxy</li>
+</ul>
+<p>PTI thresholds:</p>
+<ul>
+<li>all values between 0 and 1.5</li>
+<li>global_approve_max_pti &lt; global_review_max_pti</li>
+<li>global_review_max_pti &lt;= global_decline_min_pti</li>
+</ul>
+<p>DTI thresholds:</p>
+<ul>
+<li>all values between 0 and 1</li>
+<li>approve_max_dti &lt; review_max_dti</li>
+<li>review_max_dti &lt;= decline_min_dti</li>
+</ul>
+<p>Decision convention controls:</p>
+<ul>
+<li>allow_approved_amount_above_requested_flag = FALSE for Module 2 v1.0</li>
+<li>decline_approved_amount_convention = ZERO</li>
+<li>manual_review_approved_amount_convention = NULL_UNRESOLVED</li>
+<li>approved_el_decline_convention = ZERO</li>
+<li>approved_el_manual_review_convention = NULL_UNRESOLVED</li>
+<li>reason_code_required_flag = TRUE</li>
+</ul>
+<p>================================================================================
+11. OUTPUT TERMINOLOGY AND CONVENTIONS TO PRESERVE
+================================================================================</p>
+<p>Even though the final output table will be built later, Section 0 / comments should lock these terminology conventions:</p>
+<p>Module 1 expected_loss_amount should be carried into Module 2 as:</p>
+<ul>
+<li>requested_expected_loss_amount</li>
+</ul>
+<p>Module 2 calculated Expected Loss should be:</p>
+<ul>
+<li>approved_expected_loss_amount</li>
+</ul>
+<p>Module 1 payment_to_income_ratio should remain the original requested-structure PTI.</p>
+<p>Module 2 calculated payment-to-income ratio should be:</p>
+<ul>
+<li>approved_payment_to_income_ratio</li>
+</ul>
+<p>Do not introduce a separate approved_pti field unless explicitly used as a documented alias.
+Preferred output field:</p>
+<ul>
+<li>approved_payment_to_income_ratio</li>
+</ul>
+<p>Use:</p>
+<ul>
+<li>simulated_offer_exposure_flag</li>
+</ul>
+<p>Do not use:</p>
+<ul>
+<li>booked_exposure_flag</li>
+</ul>
+<p>Reason:
+“booked” can imply real account booking, which is outside the Module 2 simulation boundary.</p>
+<p>Outcome conventions to preserve for later Sections 4+:</p>
+<p>APPROVE:</p>
+<ul>
+<li>approved_amount = requested_amount</li>
+<li>counteroffer_amount = NULL</li>
+<li>approved_monthly_payment_proxy = monthly_payment_proxy</li>
+<li>approved_payment_to_income_ratio = payment_to_income_ratio</li>
+<li>approved_expected_loss_amount = approved_amount × estimated_pd × estimated_lgd</li>
+<li>simulated_offer_exposure_flag = TRUE</li>
+<li>primary_reason_code = APPROVED_AS_REQUESTED</li>
+</ul>
+<p>COUNTEROFFER:</p>
+<ul>
+<li>approved_amount &lt; requested_amount</li>
+<li>counteroffer_amount = approved_amount</li>
+<li>exposure_reduction_flag = TRUE</li>
+<li>exposure_reduction_amount = requested_amount - approved_amount</li>
+<li>exposure_reduction_pct = exposure_reduction_amount / NULLIF(requested_amount, 0)</li>
+<li>approved_monthly_payment_proxy = monthly_payment_proxy × approved_amount / NULLIF(requested_amount, 0)</li>
+<li>approved_payment_to_income_ratio = approved_monthly_payment_proxy / NULLIF((annual_income / 12.0), 0)</li>
+<li>approved_expected_loss_amount = approved_amount × estimated_pd × estimated_lgd</li>
+<li>simulated_offer_exposure_flag = TRUE</li>
+</ul>
+<p>DECLINE:</p>
+<ul>
+<li>approved_amount = 0</li>
+<li>counteroffer_amount = NULL</li>
+<li>approved_monthly_payment_proxy = 0</li>
+<li>approved_payment_to_income_ratio = 0</li>
+<li>approved_expected_loss_amount = 0</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+</ul>
+<p>MANUAL_REVIEW:</p>
+<ul>
+<li>approved_amount = NULL</li>
+<li>counteroffer_amount = NULL</li>
+<li>approved_monthly_payment_proxy = NULL</li>
+<li>approved_payment_to_income_ratio = NULL</li>
+<li>approved_expected_loss_amount = NULL</li>
+<li>simulated_offer_exposure_flag = FALSE</li>
+<li>unresolved by design</li>
+</ul>
+<p>================================================================================
+12. SQL COMMENTARY QUALITY
+================================================================================</p>
+<p>The SQL must match Module 1 commentary quality.</p>
+<p>Please include comments explaining:</p>
+<ul>
+<li>business purpose</li>
+<li>SQL purpose</li>
+<li>why each parameter family exists</li>
+<li>why each gatekeeper exists</li>
+<li>what each threshold family controls</li>
+<li>why Module 2 does not recalculate estimated_pd</li>
+<li>why reason codes are simulated strategy explanation codes, not adverse-action reasons</li>
+<li>why approved amount and approved Expected Loss are simulation outputs</li>
+<li>why source selection must preserve Module 1 lineage</li>
+<li>why simulated_offer_exposure_flag is used instead of booked_exposure_flag</li>
+</ul>
+<p>No silent assumptions.
+No unexplained magic numbers.
+No generic comments.</p>
+<p>================================================================================
+13. DELIVERABLE FOR THIS NEXT STEP
+================================================================================</p>
+<p>Please now write the first SQL build only:</p>
+<p>Module 2 Sections 0–3.</p>
+<p>Do not write Sections 4+ yet.</p>
+<p>The output should be a coherent SQL script section that can become the beginning of:</p>
+<p>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql</p>
+<p>After the SQL, briefly list:</p>
+<ul>
+<li>what this first build establishes</li>
+<li>what it intentionally does not yet build</li>
+<li>what the next build step should be</li>
+</ul>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

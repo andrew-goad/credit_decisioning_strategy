@@ -1,0 +1,4136 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Module 2 Decision Simulator Build — Part 23</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Module 2 Decision Simulator Build</h1><p>Part 23 · C038</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_22.html">Previous</a><a href="Part_24.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c038-m00513" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00513 · 2026-05-08T16:38:45.508463-04:00 · active path</p><div class="body"><h2>Section 15 QA review — Strategy Frontier Summary and Executive Comparison View</h2>
+<p><strong>Verdict: PASS, with one recommended display/classification patch before final code recapture.</strong></p>
+<p>Section 15 is working. It successfully converts the archived Module 2 strategy outputs into a portfolio-level strategy frontier view. The frontier summary correctly shows that <code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code> reduces simulated offer exposure, approved amount, approved Expected Loss, approved Expected Loss rate, and offered-population synthetic estimated-PD proxy, while increasing decline rate.</p>
+<p>The section is doing what it was designed to do:</p>
+<pre><code class="language-text">Archived Module 2 strategy slices
+→ frontier inventory
+→ portfolio frontier summary
+→ baseline-relative deltas
+→ strategy efficiency metrics
+→ frontier classification
+→ segment highlights
+→ executive-ready strategy frontier view
+</code></pre>
+<p>No decision logic, reason-code logic, approved exposure logic, or archive logic patch is needed.</p>
+<hr>
+<h2>15.0 — Frontier scope and archive readiness</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The archive contains:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Observed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Archived rows</td>
+<td align="right">100,000</td>
+</tr>
+<tr>
+<td>Distinct <code>application_id</code> values</td>
+<td align="right">50,000</td>
+</tr>
+<tr>
+<td>Archived strategy / scenario slices</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>Module 1 scenario / population slices</td>
+<td align="right">1</td>
+</tr>
+<tr>
+<td>Module 2 strategy versions</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>Frontier scope status</td>
+<td align="right"><code>FRONTIER_READY_FOR_MULTI_STRATEGY_REVIEW</code></td>
+</tr>
+</tbody></table>
+<p>This is exactly right for the current frontier stage.</p>
+<p>The archive currently contains two Module 2 strategy slices applied to the same Module 1 scenario / population:</p>
+<pre><code class="language-text">BASELINE_STRATEGY
+TIGHTER_SYNTHETIC_RISK_STRATEGY
+</code></pre>
+<p>That is enough for a two-point frontier. It will become more powerful once additional strategies such as <code>GROWTH_ORIENTED_STRATEGY</code>, <code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code>, and <code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code> are archived.</p>
+<hr>
+<h2>15.1 — Archived frontier inventory</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Both frontier slices are clean:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th align="right">Rows</th>
+<th align="right">Distinct applications</th>
+<th align="right">Duplicate application rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">0</td>
+</tr>
+</tbody></table>
+<p>Decision outcome inventory:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th align="right">Approve</th>
+<th align="right">Counteroffer</th>
+<th align="right">Manual review</th>
+<th align="right">Decline</th>
+<th align="right">Simulated offer exposure</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">11,291</td>
+<td align="right">19,067</td>
+<td align="right">6,939</td>
+<td align="right">12,703</td>
+<td align="right">30,358</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">10,649</td>
+<td align="right">18,452</td>
+<td align="right">6,017</td>
+<td align="right">14,882</td>
+<td align="right">29,101</td>
+</tr>
+</tbody></table>
+<p>This confirms that the frontier is comparing two clean, matched archived strategy slices.</p>
+<hr>
+<h2>15.2 — Strategy frontier summary</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The frontier summary captures the expected risk-discipline movement.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Baseline</th>
+<th align="right">Tighter synthetic-risk</th>
+<th align="right">Delta</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approval rate</td>
+<td align="right">22.58%</td>
+<td align="right">21.30%</td>
+<td align="right">-1.28 pts</td>
+</tr>
+<tr>
+<td>Counteroffer rate</td>
+<td align="right">38.13%</td>
+<td align="right">36.90%</td>
+<td align="right">-1.23 pts</td>
+</tr>
+<tr>
+<td>Manual review rate</td>
+<td align="right">13.88%</td>
+<td align="right">12.03%</td>
+<td align="right">-1.84 pts</td>
+</tr>
+<tr>
+<td>Decline rate</td>
+<td align="right">25.41%</td>
+<td align="right">29.76%</td>
+<td align="right">+4.36 pts</td>
+</tr>
+<tr>
+<td>Simulated offer-exposure rate</td>
+<td align="right">60.72%</td>
+<td align="right">58.20%</td>
+<td align="right">-2.51 pts</td>
+</tr>
+<tr>
+<td>Total requested amount</td>
+<td align="right">$6.666B</td>
+<td align="right">$6.666B</td>
+<td align="right">$0</td>
+</tr>
+<tr>
+<td>Total approved amount</td>
+<td align="right">$3.880B</td>
+<td align="right">$3.728B</td>
+<td align="right">-$151.3M</td>
+</tr>
+<tr>
+<td>Total requested Expected Loss</td>
+<td align="right">$239.43M</td>
+<td align="right">$239.43M</td>
+<td align="right">$0</td>
+</tr>
+<tr>
+<td>Total approved Expected Loss</td>
+<td align="right">$58.93M</td>
+<td align="right">$51.67M</td>
+<td align="right">-$7.26M</td>
+</tr>
+<tr>
+<td>Approved Expected Loss rate</td>
+<td align="right">1.519%</td>
+<td align="right">1.386%</td>
+<td align="right">-0.133 pts</td>
+</tr>
+<tr>
+<td>Avg synthetic estimated-PD proxy, offer rows</td>
+<td align="right">6.42%</td>
+<td align="right">5.64%</td>
+<td align="right">-0.79 pts</td>
+</tr>
+<tr>
+<td>Avg approved PTI, offer rows</td>
+<td align="right">12.21%</td>
+<td align="right">11.97%</td>
+<td align="right">-0.24 pts</td>
+</tr>
+</tbody></table>
+<p>This is strong. The strategy frontier shows that the tighter synthetic-risk strategy produces:</p>
+<pre><code class="language-text">less simulated offer exposure
+less total approved exposure
+lower approved Expected Loss
+lower approved Expected Loss rate
+lower average synthetic estimated-PD proxy among offer rows
+higher final decline rate
+</code></pre>
+<p>That is exactly the expected frontier profile for a risk-discipline strategy.</p>
+<hr>
+<h2>15.3 — Baseline-relative frontier deltas</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The baseline-relative delta table is working correctly.</p>
+<p>Important validation points:</p>
+<pre><code class="language-text">delta_applications = 0
+delta_total_requested_amount = 0
+delta_total_requested_expected_loss_amount = 0
+</code></pre>
+<p>That proves the frontier comparison is isolating downstream Module 2 strategy changes. The Module 1 source population and requested-exposure economics are unchanged.</p>
+<p>Key challenger deltas:</p>
+<pre><code class="language-text">delta_approval_rate                         = -0.01284
+delta_counteroffer_rate                     = -0.01230
+delta_manual_review_rate                    = -0.01844
+delta_decline_rate                          = +0.04358
+delta_simulated_offer_exposure_rate         = -0.02514
+delta_total_approved_amount                 = -$151.3M
+delta_total_approved_expected_loss_amount   = -$7.26M
+delta_approved_expected_loss_rate           = -0.00133
+delta_avg_synthetic_estimated_pd_proxy_offer_rows = -0.00785
+</code></pre>
+<p>This is clean and portfolio-grade. It gives you the exact “frontier movement” story.</p>
+<hr>
+<h2>15.4 — Strategy efficiency metrics</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>This is one of the best Section 15 outputs.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Baseline</th>
+<th align="right">Tighter synthetic-risk</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approved Expected Loss rate</td>
+<td align="right">1.519%</td>
+<td align="right">1.386%</td>
+</tr>
+<tr>
+<td>Approved amount per approved Expected Loss dollar</td>
+<td align="right">$65.83</td>
+<td align="right">$72.15</td>
+</tr>
+<tr>
+<td>Applications per $1M approved Expected Loss</td>
+<td align="right">848.47</td>
+<td align="right">967.64</td>
+</tr>
+<tr>
+<td>Avg synthetic estimated-PD proxy, offer rows</td>
+<td align="right">6.42%</td>
+<td align="right">5.64%</td>
+</tr>
+<tr>
+<td>Avg approved PTI, offer rows</td>
+<td align="right">12.21%</td>
+<td align="right">11.97%</td>
+</tr>
+</tbody></table>
+<p>This confirms that the tighter strategy is more efficient on approved Expected Loss:</p>
+<pre><code class="language-text">Baseline: $65.83 approved amount per $1 approved Expected Loss
+Tighter:  $72.15 approved amount per $1 approved Expected Loss
+</code></pre>
+<p>That is a strong senior-level strategy analytics metric.</p>
+<p>It supports the story:</p>
+<pre><code class="language-text">The tighter strategy sacrifices offer access and approved volume, but improves approved-exposure risk efficiency.
+</code></pre>
+<hr>
+<h2>15.5 — Frontier classification</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The classification is correct:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Frontier position type</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>BASELINE_REFERENCE_POINT</code></td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>RISK_DISCIPLINE_FRONTIER_POINT</code></td>
+</tr>
+</tbody></table>
+<p>The interpretation note for the tighter strategy is accurate:</p>
+<pre><code class="language-text">Strategy reduces simulated offer exposure and approved Expected Loss while improving offered-population synthetic estimated-risk profile.
+</code></pre>
+<p>This is exactly the correct strategic label for the current challenger.</p>
+<hr>
+<h2>15.6 — Segment-level frontier highlights</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The segment-level frontier table produced 70 rows, which is exactly right:</p>
+<pre><code class="language-text">2 strategies × 5 product segments = 10
+2 strategies × 5 score-band segments = 10
+2 strategies × 25 product × score segments = 50
+Total = 70
+</code></pre>
+<p>That confirms the segment frontier is complete.</p>
+<p>Key segment highlights:</p>
+<h3>Product level</h3>
+<p>Mortgage dominates approved exposure and approved Expected Loss in both strategies:</p>
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th align="right">Baseline approved EL</th>
+<th align="right">Tighter approved EL</th>
+<th>Direction</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MORTGAGE</code></td>
+<td align="right">$37.87M</td>
+<td align="right">$32.62M</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>AUTO_LOAN</code></td>
+<td align="right">$6.03M</td>
+<td align="right">$5.52M</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>HELOC</code></td>
+<td align="right">$6.01M</td>
+<td align="right">$5.07M</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>REVOLVING_LINE</code></td>
+<td align="right">$5.08M</td>
+<td align="right">$4.79M</td>
+<td>Down</td>
+</tr>
+<tr>
+<td><code>UNSECURED_PERSONAL_LOAN</code></td>
+<td align="right">$3.94M</td>
+<td align="right">$3.67M</td>
+<td>Down</td>
+</tr>
+</tbody></table>
+<p>This confirms that the tighter strategy reduces approved Expected Loss across all products.</p>
+<h3>Score-band level</h3>
+<p>The score-band frontier movement is especially strong:</p>
+<table>
+<thead>
+<tr>
+<th>Score band</th>
+<th align="right">Baseline offer rate</th>
+<th align="right">Tighter offer rate</th>
+<th>Main interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SUPER_PRIME</code></td>
+<td align="right">95.26%</td>
+<td align="right">95.26%</td>
+<td>unaffected</td>
+</tr>
+<tr>
+<td><code>PRIME</code></td>
+<td align="right">81.80%</td>
+<td align="right">82.26%</td>
+<td>nearly stable / slight offer increase</td>
+</tr>
+<tr>
+<td><code>NEAR_PRIME</code></td>
+<td align="right">77.68%</td>
+<td align="right">71.54%</td>
+<td>materially tightened</td>
+</tr>
+<tr>
+<td><code>SUBPRIME</code></td>
+<td align="right">11.01%</td>
+<td align="right">4.50%</td>
+<td>sharply tightened</td>
+</tr>
+<tr>
+<td><code>DEEP_SUBPRIME</code></td>
+<td align="right">0.02%</td>
+<td align="right">0.00%</td>
+<td>effectively no offer exposure</td>
+</tr>
+</tbody></table>
+<p>This is highly marketable. The tighter strategy does not meaningfully disturb Super Prime, but it materially tightens Near Prime and Subprime exposure.</p>
+<h3>Product × score level</h3>
+<p>The top product × score approved Expected Loss concentrations are intuitive:</p>
+<pre><code class="language-text">MORTGAGE / NEAR_PRIME
+MORTGAGE / PRIME
+MORTGAGE / SUPER_PRIME
+HELOC / NEAR_PRIME
+AUTO_LOAN / NEAR_PRIME
+</code></pre>
+<p>This gives you a strong segment story: approved Expected Loss is concentrated where product exposure and middle-risk credit quality interact.</p>
+<hr>
+<h2>15.7 — Executive-ready strategy frontier summary</h2>
+<p><strong>Assessment: PASS for core metrics; PATCH RECOMMENDED for <code>executive_frontier_quadrant</code>.</strong></p>
+<p>The executive summary table is populated and useful. It correctly carries:</p>
+<pre><code class="language-text">frontier_position_type
+frontier_interpretation_note
+decision rates
+offer-exposure metrics
+approved amount
+approved Expected Loss
+approved Expected Loss rate
+baseline-relative deltas
+strategy ranks
+</code></pre>
+<p>However, this field is currently misleading:</p>
+<pre><code class="language-text">executive_frontier_quadrant
+</code></pre>
+<p>Both strategies are labeled:</p>
+<pre><code class="language-text">HIGH_ACCESS_LOWER_APPROVED_EL_RATE
+</code></pre>
+<p>That happens because the current quadrant logic uses rank thresholds such as:</p>
+<pre><code class="language-text">offer_access_rank_desc &lt;= 2
+approved_expected_loss_rate_rank_asc &lt;= 2
+</code></pre>
+<p>With only two strategies in the frontier group, both strategies satisfy <code>&lt;= 2</code>. So the quadrant logic is too permissive for a two-strategy frontier.</p>
+<h3>Why this matters</h3>
+<p>The core frontier classification is correct:</p>
+<pre><code class="language-text">BASELINE_REFERENCE_POINT
+RISK_DISCIPLINE_FRONTIER_POINT
+</code></pre>
+<p>But the executive quadrant label weakens the story because it implies both points occupy the same quadrant, even though the tighter strategy clearly moved to:</p>
+<pre><code class="language-text">lower offer access
+lower approved Expected Loss rate
+</code></pre>
+<h3>Recommended targeted patch</h3>
+<p>Patch only the <code>executive_frontier_quadrant</code> CASE logic in Section 15.7.</p>
+<p>Recommended behavior:</p>
+<pre><code class="language-text">BASELINE_STRATEGY
+→ BASELINE_REFERENCE_QUADRANT
+
+If only two strategies exist:
+    classify challenger by baseline-relative deltas
+
+If three or more strategies exist:
+    use rank-based frontier quadrant logic
+</code></pre>
+<p>Suggested replacement logic:</p>
+<pre><code class="language-sql">CASE
+    WHEN strategy_name = &#39;BASELINE_STRATEGY&#39;
+        THEN &#39;BASELINE_REFERENCE_QUADRANT&#39;
+
+    WHEN strategy_count_within_frontier_group &lt; 3
+     AND delta_simulated_offer_exposure_rate &lt; 0
+     AND delta_approved_expected_loss_rate &lt; 0
+        THEN &#39;LOWER_ACCESS_LOWER_APPROVED_EL_RATE&#39;
+
+    WHEN strategy_count_within_frontier_group &lt; 3
+     AND delta_simulated_offer_exposure_rate &gt; 0
+     AND delta_approved_expected_loss_rate &gt; 0
+        THEN &#39;HIGHER_ACCESS_HIGHER_APPROVED_EL_RATE&#39;
+
+    WHEN strategy_count_within_frontier_group &lt; 3
+     AND delta_simulated_offer_exposure_rate &gt;= 0
+     AND delta_approved_expected_loss_rate &lt;= 0
+        THEN &#39;HIGHER_ACCESS_LOWER_APPROVED_EL_RATE&#39;
+
+    WHEN strategy_count_within_frontier_group &lt; 3
+     AND delta_simulated_offer_exposure_rate &lt;= 0
+     AND delta_approved_expected_loss_rate &gt;= 0
+        THEN &#39;LOWER_ACCESS_HIGHER_APPROVED_EL_RATE&#39;
+
+    WHEN strategy_count_within_frontier_group &lt; 3
+        THEN &#39;TWO_STRATEGY_MIXED_FRONTIER_REVIEW&#39;
+
+    WHEN offer_access_rank_desc &lt;= 2
+     AND approved_expected_loss_rate_rank_asc &lt;= 2
+        THEN &#39;HIGH_ACCESS_LOWER_APPROVED_EL_RATE&#39;
+
+    WHEN offer_access_rank_desc &lt;= 2
+     AND approved_expected_loss_rate_rank_asc &gt; 2
+        THEN &#39;HIGH_ACCESS_HIGHER_APPROVED_EL_RATE&#39;
+
+    WHEN offer_access_rank_desc &gt; 2
+     AND approved_expected_loss_rate_rank_asc &lt;= 2
+        THEN &#39;LOWER_ACCESS_LOWER_APPROVED_EL_RATE&#39;
+
+    ELSE &#39;LOWER_ACCESS_HIGHER_APPROVED_EL_RATE&#39;
+END AS executive_frontier_quadrant
+</code></pre>
+<p>Expected result after patch:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Expected quadrant</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>BASELINE_REFERENCE_QUADRANT</code></td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>LOWER_ACCESS_LOWER_APPROVED_EL_RATE</code></td>
+</tr>
+</tbody></table>
+<p>This patch does not change any strategy output. It only improves executive interpretation.</p>
+<hr>
+<h2>15.8 — Frontier diagnostic summary</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>All expected Section 15 temporary outputs are populated:</p>
+<table>
+<thead>
+<tr>
+<th>Frontier object</th>
+<th align="right">Row count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>tmp_m2_strategy_frontier_inventory</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_summary</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_baseline_deltas</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_efficiency</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_classification</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_segment_highlights</code></td>
+<td align="right">70</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_executive_summary</code></td>
+<td align="right">2</td>
+</tr>
+</tbody></table>
+<p>Baseline availability is also clean:</p>
+<pre><code class="language-text">frontier_rows = 2
+rows_with_baseline_reference = 2
+rows_without_baseline_reference = 0
+baseline_reference_status = BASELINE_REFERENCES_AVAILABLE_FOR_ALL_FRONTIER_ROWS
+</code></pre>
+<p>This confirms the Section 15 object pipeline is structurally complete.</p>
+<hr>
+<h2>Additional recommendation — add top non-approval reason later</h2>
+<p>This is not required now, but it would improve the executive frontier view.</p>
+<p>Currently, both strategies have:</p>
+<pre><code class="language-text">top_primary_reason_code = APPROVED_AS_REQUESTED
+</code></pre>
+<p>That is technically correct because approval remains the single largest primary reason code. But it is not always the most interesting strategy explanation.</p>
+<p>For storytelling, add optional fields later:</p>
+<pre><code class="language-text">top_non_approval_primary_reason_family
+top_non_approval_primary_reason_code
+top_non_approval_reason_population_share
+</code></pre>
+<p>For this comparison, that would likely make the frontier story more useful because the non-approval reason movement explains the risk-control strategy more directly.</p>
+<p>This is an enhancement, not a Section 15 acceptance blocker.</p>
+<hr>
+<h1>Section 15 acceptance conclusion</h1>
+<p>Section 15 passes.</p>
+<p>Accepted evidence:</p>
+<ul>
+<li>Archive frontier scope is ready for multi-strategy review.</li>
+<li>Two archived strategy / scenario slices are available.</li>
+<li>Both slices have 50,000 rows and 50,000 distinct <code>application_id</code> values.</li>
+<li>Duplicate application row counts are zero.</li>
+<li>Frontier summary correctly compares baseline and tighter synthetic-risk strategy.</li>
+<li>Requested amount and requested Expected Loss are unchanged across strategies.</li>
+<li>Tighter strategy reduces simulated offer-exposure rate by 2.51 percentage points.</li>
+<li>Tighter strategy reduces total approved amount by approximately $151.3M.</li>
+<li>Tighter strategy reduces total approved Expected Loss by approximately $7.26M.</li>
+<li>Tighter strategy reduces approved Expected Loss rate from 1.519% to 1.386%.</li>
+<li>Tighter strategy improves offered-population synthetic estimated-PD proxy from 6.42% to 5.64%.</li>
+<li>Tighter strategy improves approved PTI among offer rows from 12.21% to 11.97%.</li>
+<li>Strategy efficiency metrics are populated and interpretable.</li>
+<li>Tighter strategy is correctly classified as <code>RISK_DISCIPLINE_FRONTIER_POINT</code>.</li>
+<li>Segment-level frontier highlights produce the expected 70 rows.</li>
+<li>Baseline availability is confirmed for all frontier rows.</li>
+<li>No latest-run rows or archive rows are modified by Section 15.</li>
+<li>No decisions, reason codes, approved exposure, or approved Expected Loss values are recalculated by Section 15.</li>
+</ul>
+<h2>Patch recommendation</h2>
+<p>One targeted Section 15 patch is recommended before final code recapture:</p>
+<pre><code class="language-text">Patch Section 15.7 executive_frontier_quadrant logic so two-strategy frontier groups use baseline-relative delta classification instead of rank-based &lt;= 2 logic.
+</code></pre>
+<p>This is not a business-logic patch. It is an executive-display / interpretation patch.</p>
+<h2>Strategic interpretation</h2>
+<p>The current two-point frontier already tells a strong story:</p>
+<pre><code class="language-text">The tighter synthetic-risk strategy trades 2.51 percentage points of simulated offer exposure
+and $151.3M of approved amount for a $7.26M reduction in approved Expected Loss,
+a lower approved Expected Loss rate,
+a lower offered-population synthetic estimated-PD proxy,
+and a higher final decline rate.
+</code></pre>
+<p>That is exactly the kind of senior credit strategy frontier result worth preserving for the README / LinkedIn story.</p>
+</div></article><article id="c038-m00514" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00514 · 2026-05-08T16:46:34.209000-04:00 · active path</p><div class="body"><p>please review section 15.7-15.8 QA following that updated 15.7 case when.  then incorporate these additional storytelling fields into section 15: top_non_approval_primary_reason_family
+top_non_approval_primary_reason_code
+top_non_approval_reason_population_share</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8_QA_frontier_diagnostic_summary(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8_QA_frontier_baseline_availability_diagnostic(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.7_QA_executive_ready_strategy_frontier_summary(1).csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00518" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00518 · 2026-05-08T16:49:17.246999-04:00 · active path</p><div class="body"><h2>Section 15.7–15.8 QA review after updated <code>executive_frontier_quadrant</code></h2>
+<p><strong>Verdict: PASS.</strong></p>
+<p>The updated Section 15.7 logic is now behaving correctly.</p>
+<h3>15.7 executive frontier quadrant</h3>
+<p>The updated output now shows:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th><code>frontier_position_type</code></th>
+<th><code>executive_frontier_quadrant</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>BASELINE_REFERENCE_POINT</code></td>
+<td><code>BASELINE_REFERENCE_QUADRANT</code></td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>RISK_DISCIPLINE_FRONTIER_POINT</code></td>
+<td><code>LOWER_ACCESS_LOWER_APPROVED_EL_RATE</code></td>
+</tr>
+</tbody></table>
+<p>That is the correct interpretation.</p>
+<p>The baseline is now explicitly treated as the reference point, and the tighter synthetic-risk strategy is correctly classified as lower access / lower approved Expected Loss rate. This fixes the prior issue where both strategies fell into the same quadrant because the rank-based logic was too permissive for a two-strategy frontier.</p>
+<h3>15.8 diagnostic summary</h3>
+<p>Section 15.8 remains clean:</p>
+<table>
+<thead>
+<tr>
+<th>Frontier object</th>
+<th align="right">Row count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>tmp_m2_strategy_frontier_inventory</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_summary</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_baseline_deltas</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_efficiency</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_classification</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_segment_highlights</code></td>
+<td align="right">70</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_executive_summary</code></td>
+<td align="right">2</td>
+</tr>
+</tbody></table>
+<p>Baseline availability is also correct:</p>
+<pre><code class="language-text">frontier_rows = 2
+rows_with_baseline_reference = 2
+rows_without_baseline_reference = 0
+baseline_reference_status = BASELINE_REFERENCES_AVAILABLE_FOR_ALL_FRONTIER_ROWS
+</code></pre>
+<p>So Section 15 remains accepted, and the updated quadrant logic should be retained.</p>
+<hr>
+<h1>Targeted Section 15 patch — add top non-approval reason fields</h1>
+<p>This patch adds:</p>
+<pre><code class="language-text">top_non_approval_primary_reason_family
+top_non_approval_primary_reason_code
+top_non_approval_reason_population_share
+</code></pre>
+<p>These are storytelling fields. They do not change any decision logic, reason-code assignment, archive persistence, approved exposure logic, approved Expected Loss logic, or validation logic.</p>
+<p>Purpose:</p>
+<pre><code class="language-text">top_primary_reason_code
+</code></pre>
+<p>is often <code>APPROVED_AS_REQUESTED</code>, which is technically correct but less useful for frontier storytelling.</p>
+<p>The new fields identify the most common non-approval explanation for each archived frontier slice, making the strategy frontier more interpretable for README / LinkedIn / executive review.</p>
+<hr>
+<h2>Patch 1 — Section 15.2 reason-code CTEs and final SELECT</h2>
+<p>In <strong>Section 15.2</strong>, replace the existing <code>reason_counts</code> CTE and final <code>SELECT</code> with the following expanded version.</p>
+<pre><code class="language-sql">reason_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS primary_reason_row_count,
+
+        COUNT(*)::NUMERIC
+            / NULLIF(
+                SUM(COUNT(*)) OVER (
+                    PARTITION BY
+                        strategy_set_name,
+                        strategy_name,
+                        strategy_version,
+                        module1_scenario_set_name,
+                        module1_scenario_name,
+                        population_id
+                ),
+                0
+            ) AS primary_reason_population_share,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS reason_rank
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+),
+
+non_approval_reason_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS non_approval_reason_row_count,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS non_approval_reason_rank
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    WHERE decision_outcome &lt;&gt; &#39;APPROVE&#39;
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+)
+
+SELECT
+    s.*,
+
+    r.primary_reason_family AS top_primary_reason_family,
+    r.primary_reason_code AS top_primary_reason_code,
+    r.primary_reason_row_count AS top_primary_reason_row_count,
+    r.primary_reason_population_share AS top_primary_reason_population_share,
+
+    /*
+    Storytelling enhancement:
+        top_primary_reason_code is often APPROVED_AS_REQUESTED, which is technically
+        correct but not always the most useful executive explanation of strategy movement.
+
+        The top non-approval reason fields identify the most common non-approval
+        simulated strategy explanation code within the archived strategy slice.
+
+        These fields support frontier interpretation without changing any decision,
+        exposure, Expected Loss, archive, or reason-code assignment logic.
+    */
+    nr.primary_reason_family AS top_non_approval_primary_reason_family,
+    nr.primary_reason_code AS top_non_approval_primary_reason_code,
+    nr.non_approval_reason_row_count::NUMERIC
+        / NULLIF(s.applications, 0) AS top_non_approval_reason_population_share
+
+FROM slice_summary s
+LEFT JOIN reason_counts r
+    ON r.strategy_set_name = s.strategy_set_name
+   AND r.strategy_name = s.strategy_name
+   AND r.strategy_version = s.strategy_version
+   AND r.module1_scenario_set_name = s.module1_scenario_set_name
+   AND r.module1_scenario_name = s.module1_scenario_name
+   AND r.population_id = s.population_id
+   AND r.reason_rank = 1
+LEFT JOIN non_approval_reason_counts nr
+    ON nr.strategy_set_name = s.strategy_set_name
+   AND nr.strategy_name = s.strategy_name
+   AND nr.strategy_version = s.strategy_version
+   AND nr.module1_scenario_set_name = s.module1_scenario_set_name
+   AND nr.module1_scenario_name = s.module1_scenario_name
+   AND nr.population_id = s.population_id
+   AND nr.non_approval_reason_rank = 1;
+</code></pre>
+<p>Expected for the current two-strategy frontier:</p>
+<pre><code class="language-text">BASELINE_STRATEGY:
+top_non_approval_primary_reason_code = COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+
+TIGHTER_SYNTHETIC_RISK_STRATEGY:
+top_non_approval_primary_reason_code = COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+</code></pre>
+<p><code>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code> is likely close behind for the tighter strategy, but <code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code> should still be the top non-approval reason based on the current archived reason-code distribution.</p>
+<hr>
+<h2>Patch 2 — Section 15.3 baseline-relative deltas</h2>
+<p>In <strong>Section 15.3</strong>, add these fields after the existing top primary reason fields:</p>
+<pre><code class="language-sql">    s.top_non_approval_primary_reason_family,
+    s.top_non_approval_primary_reason_code,
+    s.top_non_approval_reason_population_share
+</code></pre>
+<p>So the ending portion of the <code>SELECT</code> should become:</p>
+<pre><code class="language-sql">    s.top_primary_reason_family,
+    s.top_primary_reason_code,
+    s.top_primary_reason_population_share,
+
+    s.top_non_approval_primary_reason_family,
+    s.top_non_approval_primary_reason_code,
+    s.top_non_approval_reason_population_share
+
+FROM tmp_m2_strategy_frontier_summary s
+LEFT JOIN baseline_reference b
+    ON b.strategy_set_name = s.strategy_set_name
+   AND b.module1_scenario_set_name = s.module1_scenario_set_name
+   AND b.module1_scenario_name = s.module1_scenario_name
+   AND b.population_id = s.population_id;
+</code></pre>
+<p>Because Section 15.4 uses:</p>
+<pre><code class="language-sql">SELECT d.*
+</code></pre>
+<p>and Section 15.5 uses:</p>
+<pre><code class="language-sql">SELECT e.*
+</code></pre>
+<p>these fields will then automatically flow into:</p>
+<pre><code class="language-text">tmp_m2_strategy_frontier_efficiency
+tmp_m2_strategy_frontier_classification
+</code></pre>
+<hr>
+<h2>Patch 3 — Section 15.4 strategy efficiency review output</h2>
+<p>In the <strong>Section 15.4 review output SELECT</strong>, add the new fields after the existing top primary reason fields.</p>
+<pre><code class="language-sql">    top_primary_reason_family,
+    top_primary_reason_code,
+
+    top_non_approval_primary_reason_family,
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share,
+
+    frontier_efficiency_metric_status
+</code></pre>
+<p>This makes the efficiency output more useful for storytelling because users can see the primary overall reason and the primary non-approval reason in the same view.</p>
+<hr>
+<h2>Patch 4 — Section 15.5 frontier classification review output</h2>
+<p>In the <strong>Section 15.5 review output SELECT</strong>, add the new fields after the existing top primary reason fields.</p>
+<pre><code class="language-sql">    top_primary_reason_family,
+    top_primary_reason_code,
+
+    top_non_approval_primary_reason_family,
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share
+</code></pre>
+<p>This improves the classification table because a <code>RISK_DISCIPLINE_FRONTIER_POINT</code> can now show both:</p>
+<pre><code class="language-text">top_primary_reason_code = APPROVED_AS_REQUESTED
+top_non_approval_primary_reason_code = COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+</code></pre>
+<p>or whatever non-approval driver dominates after additional strategies are archived.</p>
+<hr>
+<h2>Patch 5 — Section 15.7 executive-ready summary table</h2>
+<p>In the <strong>Section 15.7 <code>CREATE TEMP TABLE tmp_m2_strategy_frontier_executive_summary AS</code> SELECT</strong>, add the new fields after:</p>
+<pre><code class="language-sql">top_primary_reason_family,
+top_primary_reason_code,
+top_primary_reason_population_share,
+</code></pre>
+<p>Add:</p>
+<pre><code class="language-sql">    top_non_approval_primary_reason_family,
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share,
+</code></pre>
+<p>The patched section should look like this around the reason-code fields:</p>
+<pre><code class="language-sql">    top_primary_reason_family,
+    top_primary_reason_code,
+    top_primary_reason_population_share,
+
+    top_non_approval_primary_reason_family,
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share,
+
+    baseline_available_flag,
+</code></pre>
+<p>This ensures the final export-ready frontier summary includes both the overall top reason and the top non-approval reason.</p>
+<hr>
+<h1>Expected post-patch Section 15 behavior</h1>
+<p>After the patch, Section 15.2, 15.3, 15.4, 15.5, and 15.7 should all expose:</p>
+<pre><code class="language-text">top_non_approval_primary_reason_family
+top_non_approval_primary_reason_code
+top_non_approval_reason_population_share
+</code></pre>
+<p>Section 15.8 row counts should remain unchanged:</p>
+<pre><code class="language-text">tmp_m2_strategy_frontier_inventory             2
+tmp_m2_strategy_frontier_summary               2
+tmp_m2_strategy_frontier_baseline_deltas       2
+tmp_m2_strategy_frontier_efficiency            2
+tmp_m2_strategy_frontier_classification        2
+tmp_m2_strategy_frontier_segment_highlights    70
+tmp_m2_strategy_frontier_executive_summary     2
+</code></pre>
+<p>No business-output values should change except the addition of the new storytelling columns.</p>
+<hr>
+<h2>Section 15 status after patch</h2>
+<p>Section 15 remains accepted.</p>
+<p>The updated <code>executive_frontier_quadrant</code> logic now passes, and the new top non-approval fields are a good enhancement for executive interpretation.</p>
+<p>The key final Section 15 story becomes:</p>
+<pre><code class="language-text">BASELINE_STRATEGY:
+reference frontier point with 60.72% simulated offer-exposure rate,
+$3.88B total approved amount,
+$58.93M approved Expected Loss,
+and 1.519% approved Expected Loss rate.
+
+TIGHTER_SYNTHETIC_RISK_STRATEGY:
+risk-discipline frontier point with lower simulated offer exposure,
+lower total approved amount,
+lower approved Expected Loss,
+lower approved Expected Loss rate,
+and lower offered-population synthetic estimated-PD proxy.
+</code></pre>
+<p>The new non-approval reason fields will make this story more readable because they show the leading non-approval explanation behind each frontier point instead of letting <code>APPROVED_AS_REQUESTED</code> dominate the reason-code summary.</p>
+</div></article><article id="c038-m00519" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00519 · 2026-05-08T17:00:02.183000-04:00 · active path</p><div class="body"><p>review updated section 15 QA:</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.3_QA_baseline_relative_frontier_deltas(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.4_QA_strategy_efficiency_metrics(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.5_QA_frontier_classification(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.6_QA_segment_level_frontier_highlights(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.7_QA_executive_ready_strategy_frontier_summary(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8_QA_frontier_diagnostic_summary(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8_QA_frontier_baseline_availability_diagnostic(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.0_QA_frontier_scope_and_archive_readiness_snapshot(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.1_QA_archived_frontier_inventory(1).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.2_QA_strategy_frontier_summary(1).csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00526" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00526 · 2026-05-08T17:03:01.425552-04:00 · active path</p><div class="body"><h2>Section 15 QA review — updated Strategy Frontier Summary</h2>
+<p><strong>Verdict: PASS.</strong></p>
+<p>The updated Section 15 QA confirms that the <code>executive_frontier_quadrant</code> patch is working and that the new storytelling fields are now correctly flowing through the frontier summary outputs:</p>
+<pre><code class="language-text">top_non_approval_primary_reason_family
+top_non_approval_primary_reason_code
+top_non_approval_reason_population_share
+</code></pre>
+<p>No further Section 15 logic patch is recommended.</p>
+<hr>
+<h2>1. Section 15.0 — Frontier scope</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Observed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Archived rows</td>
+<td align="right">100,000</td>
+</tr>
+<tr>
+<td>Distinct archived <code>application_id</code> values</td>
+<td align="right">50,000</td>
+</tr>
+<tr>
+<td>Archived strategy / scenario slices</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>Module 1 scenario / population slices</td>
+<td align="right">1</td>
+</tr>
+<tr>
+<td>Module 2 strategy versions</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>Frontier status</td>
+<td align="right"><code>FRONTIER_READY_FOR_MULTI_STRATEGY_REVIEW</code></td>
+</tr>
+</tbody></table>
+<p>This is correct. The frontier currently contains two archived Module 2 strategies on the same Module 1 scenario and population:</p>
+<pre><code class="language-text">BASELINE_STRATEGY
+TIGHTER_SYNTHETIC_RISK_STRATEGY
+</code></pre>
+<p>applied to:</p>
+<pre><code class="language-text">MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+</code></pre>
+<hr>
+<h2>2. Section 15.1 — Archived frontier inventory</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th align="right">Rows</th>
+<th align="right">Distinct applications</th>
+<th align="right">Duplicate application rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">0</td>
+</tr>
+</tbody></table>
+<p>Outcome counts remain correct:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th align="right">Approve</th>
+<th align="right">Counteroffer</th>
+<th align="right">Manual review</th>
+<th align="right">Decline</th>
+<th align="right">Simulated offer exposure</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">11,291</td>
+<td align="right">19,067</td>
+<td align="right">6,939</td>
+<td align="right">12,703</td>
+<td align="right">30,358</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">10,649</td>
+<td align="right">18,452</td>
+<td align="right">6,017</td>
+<td align="right">14,882</td>
+<td align="right">29,101</td>
+</tr>
+</tbody></table>
+<p>The archive frontier inventory is clean.</p>
+<hr>
+<h2>3. Section 15.2 — Strategy frontier summary</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The new non-approval fields are present and populated.</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Top primary reason</th>
+<th align="right">Share</th>
+<th>Top non-approval reason</th>
+<th align="right">Share</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+<td align="right">22.58%</td>
+<td><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+<td align="right">17.81%</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+<td align="right">21.30%</td>
+<td><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+<td align="right">17.81%</td>
+</tr>
+</tbody></table>
+<p>This is working as designed.</p>
+<p>The top primary reason remains approval because approvals are still the largest single primary reason code. The new non-approval fields correctly surface the most common non-approval driver, which is more useful for strategy storytelling.</p>
+<p>The fact that the top non-approval reason is the same in both strategies is <strong>not a defect</strong>. It means <code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code> remains the largest non-approval reason in both slices. The tighter synthetic-risk strategy still shows its effect through the frontier deltas, lower offer exposure, lower approved Expected Loss, lower offered-population synthetic estimated-PD proxy, and higher decline rate.</p>
+<hr>
+<h2>4. Frontier movement remains directionally correct</h2>
+<p>The updated outputs preserve the expected risk-discipline story.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Baseline</th>
+<th align="right">Tighter synthetic-risk</th>
+<th align="right">Delta</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approval rate</td>
+<td align="right">22.58%</td>
+<td align="right">21.30%</td>
+<td align="right">-1.28 pts</td>
+</tr>
+<tr>
+<td>Counteroffer rate</td>
+<td align="right">38.13%</td>
+<td align="right">36.90%</td>
+<td align="right">-1.23 pts</td>
+</tr>
+<tr>
+<td>Manual review rate</td>
+<td align="right">13.88%</td>
+<td align="right">12.03%</td>
+<td align="right">-1.84 pts</td>
+</tr>
+<tr>
+<td>Decline rate</td>
+<td align="right">25.41%</td>
+<td align="right">29.76%</td>
+<td align="right">+4.36 pts</td>
+</tr>
+<tr>
+<td>Simulated offer-exposure rate</td>
+<td align="right">60.72%</td>
+<td align="right">58.20%</td>
+<td align="right">-2.51 pts</td>
+</tr>
+<tr>
+<td>Total approved amount</td>
+<td align="right">$3.880B</td>
+<td align="right">$3.728B</td>
+<td align="right">-$151.3M</td>
+</tr>
+<tr>
+<td>Total approved Expected Loss</td>
+<td align="right">$58.93M</td>
+<td align="right">$51.67M</td>
+<td align="right">-$7.26M</td>
+</tr>
+<tr>
+<td>Approved Expected Loss rate</td>
+<td align="right">1.519%</td>
+<td align="right">1.386%</td>
+<td align="right">-0.133 pts</td>
+</tr>
+<tr>
+<td>Avg synthetic estimated-PD proxy, offer rows</td>
+<td align="right">6.42%</td>
+<td align="right">5.64%</td>
+<td align="right">-0.79 pts</td>
+</tr>
+</tbody></table>
+<p>This remains a strong frontier result.</p>
+<p>The tighter strategy sacrifices simulated offer exposure and approved amount, but improves approved Expected Loss efficiency and lowers the synthetic estimated-PD proxy profile of offer rows.</p>
+<hr>
+<h2>5. Section 15.3 — Baseline-relative frontier deltas</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The new fields flow correctly into the baseline-relative delta table:</p>
+<pre><code class="language-text">top_non_approval_primary_reason_family
+top_non_approval_primary_reason_code
+top_non_approval_reason_population_share
+</code></pre>
+<p>Baseline-relative deltas remain correct:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Tighter strategy delta</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>delta_applications</code></td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td><code>delta_simulated_offer_exposure_rate</code></td>
+<td align="right">-2.514 pts</td>
+</tr>
+<tr>
+<td><code>delta_total_approved_amount</code></td>
+<td align="right">-$151.3M</td>
+</tr>
+<tr>
+<td><code>delta_total_approved_expected_loss_amount</code></td>
+<td align="right">-$7.26M</td>
+</tr>
+<tr>
+<td><code>delta_approved_expected_loss_rate</code></td>
+<td align="right">-0.133 pts</td>
+</tr>
+<tr>
+<td><code>delta_avg_synthetic_estimated_pd_proxy_offer_rows</code></td>
+<td align="right">-0.785 pts</td>
+</tr>
+</tbody></table>
+<p>The zero deltas on applications, requested amount, and requested Expected Loss remain important. They confirm this is a clean downstream Module 2 strategy comparison on the same Module 1 source slice.</p>
+<hr>
+<h2>6. Section 15.4 — Strategy efficiency metrics</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The efficiency output now includes the non-approval fields and remains analytically strong.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Baseline</th>
+<th align="right">Tighter synthetic-risk</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Approved Expected Loss rate</td>
+<td align="right">1.519%</td>
+<td align="right">1.386%</td>
+</tr>
+<tr>
+<td>Approved amount per approved Expected Loss dollar</td>
+<td align="right">$65.83</td>
+<td align="right">$72.15</td>
+</tr>
+<tr>
+<td>Simulated offer-exposure rate</td>
+<td align="right">60.72%</td>
+<td align="right">58.20%</td>
+</tr>
+<tr>
+<td>Avg synthetic estimated-PD proxy, offer rows</td>
+<td align="right">6.42%</td>
+<td align="right">5.64%</td>
+</tr>
+<tr>
+<td>Top non-approval reason</td>
+<td align="right"><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+<td align="right"><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+</tr>
+</tbody></table>
+<p>This is a strong executive strategy metric:</p>
+<pre><code class="language-text">The tighter strategy improves approved exposure efficiency from $65.83 to $72.15 of approved amount per $1 of approved Expected Loss.
+</code></pre>
+<p>That is exactly the kind of senior-level frontier metric worth retaining.</p>
+<hr>
+<h2>7. Section 15.5 — Frontier classification</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>Classification remains correct:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th><code>frontier_position_type</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>BASELINE_REFERENCE_POINT</code></td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>RISK_DISCIPLINE_FRONTIER_POINT</code></td>
+</tr>
+</tbody></table>
+<p>The new non-approval fields are present here as well.</p>
+<p>The tighter strategy interpretation remains valid:</p>
+<pre><code class="language-text">Strategy reduces simulated offer exposure and approved Expected Loss while improving offered-population synthetic estimated-risk profile.
+</code></pre>
+<p>No issue indicated.</p>
+<hr>
+<h2>8. Section 15.6 — Segment-level frontier highlights</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>The segment table still contains the expected 70 rows:</p>
+<pre><code class="language-text">2 strategies × 5 product segments = 10
+2 strategies × 5 score-band segments = 10
+2 strategies × 25 product × score segments = 50
+Total = 70
+</code></pre>
+<p>This confirms the segment-level frontier is still complete after the storytelling-field patch.</p>
+<p>Product-level, score-band, and product × score outputs remain interpretable. Mortgage continues to dominate approved exposure and approved Expected Loss concentration, while tighter synthetic-risk effects are most visible in middle and weaker score bands.</p>
+<hr>
+<h2>9. Section 15.7 — Executive-ready frontier summary</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>This is the main updated QA confirmation.</p>
+<p>The executive quadrant is now correct:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th><code>frontier_position_type</code></th>
+<th><code>executive_frontier_quadrant</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>BASELINE_REFERENCE_POINT</code></td>
+<td><code>BASELINE_REFERENCE_QUADRANT</code></td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>RISK_DISCIPLINE_FRONTIER_POINT</code></td>
+<td><code>LOWER_ACCESS_LOWER_APPROVED_EL_RATE</code></td>
+</tr>
+</tbody></table>
+<p>The new storytelling fields are present:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Top primary reason</th>
+<th>Top non-approval reason</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+<td><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+<td><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+</tr>
+</tbody></table>
+<p>This is now suitable for executive / README / LinkedIn use.</p>
+<p>The frontier story is concise and correct:</p>
+<pre><code class="language-text">Baseline is the reference point.
+
+Tighter synthetic-risk strategy moves to a lower-access / lower-approved-Expected-Loss-rate quadrant.
+</code></pre>
+<hr>
+<h2>10. Section 15.8 — Frontier diagnostics</h2>
+<p><strong>Assessment: PASS.</strong></p>
+<p>All expected Section 15 objects are populated:</p>
+<table>
+<thead>
+<tr>
+<th>Frontier object</th>
+<th align="right">Row count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>tmp_m2_strategy_frontier_inventory</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_summary</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_baseline_deltas</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_efficiency</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_classification</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_segment_highlights</code></td>
+<td align="right">70</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_executive_summary</code></td>
+<td align="right">2</td>
+</tr>
+</tbody></table>
+<p>Baseline availability is clean:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Observed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Frontier rows</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>Rows with baseline reference</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>Rows without baseline reference</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td>Baseline reference status</td>
+<td align="right"><code>BASELINE_REFERENCES_AVAILABLE_FOR_ALL_FRONTIER_ROWS</code></td>
+</tr>
+</tbody></table>
+<p>No issue indicated.</p>
+<hr>
+<h2>Section 15 final acceptance</h2>
+<p>Section 15 is accepted.</p>
+<p>Accepted evidence:</p>
+<ul>
+<li>Frontier scope is ready for multi-strategy review.</li>
+<li>Archive contains two strategy slices and one Module 1 scenario / population slice.</li>
+<li>Both strategy slices contain 50,000 rows and 50,000 distinct applications.</li>
+<li>Duplicate application rows are zero.</li>
+<li>Strategy frontier summary is populated.</li>
+<li>Baseline-relative deltas are populated.</li>
+<li>Efficiency metrics are populated.</li>
+<li>Classification correctly labels baseline and tighter synthetic-risk strategy.</li>
+<li>Executive quadrant now correctly distinguishes baseline from lower-access / lower-approved-Expected-Loss-rate strategy.</li>
+<li>New non-approval reason fields are present and populated.</li>
+<li>Segment-level frontier highlights produce the expected 70 rows.</li>
+<li>Baseline references are available for all frontier rows.</li>
+<li>Section 15 remains read-only.</li>
+<li>No decisions, reason codes, approved exposure, approved Expected Loss, latest-run rows, or archive rows are modified.</li>
+</ul>
+<h2>Patch recommendation</h2>
+<p>No further Section 15 patch is required.</p>
+<p>Optional future enhancement only:</p>
+<pre><code class="language-text">Add top_policy_stop_reason or top_reason_code_delta fields later if we want the frontier summary to emphasize risk-tightening movement more directly.
+</code></pre>
+<p>That is not needed for acceptance. The current <code>top_non_approval_*</code> fields are correctly incorporated and useful.</p>
+</div></article><article id="c038-m00528" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00528 · 2026-05-08T17:06:20.039000-04:00 · active path</p><div class="body"><p>let&#39;s add: Add top_policy_stop_reason or top_reason_code_delta fields later if we want the frontier summary to emphasize risk-tightening movement more directly.  also, it seems curious that the top_non_approval_reason_population_share is 17.81% in both.  is that just a coincidence or do we have an issue?  how can I confirm?</p>
+</div></article><article id="c038-m00536" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00536 · 2026-05-08T17:10:48.341033-04:00 · active path</p><div class="body"><p>Yes, let’s add both:</p>
+<pre><code class="language-text">top_policy_stop_primary_reason_family
+top_policy_stop_primary_reason_code
+top_policy_stop_reason_population_share
+
+top_reason_code_delta_driver_family
+top_reason_code_delta_driver_code
+top_reason_code_delta_driver_baseline_share
+top_reason_code_delta_driver_strategy_share
+top_reason_code_delta_population_share
+</code></pre>
+<h2>About the identical 17.81% top non-approval share</h2>
+<p>That is <strong>probably not an issue</strong>.</p>
+<p>It means this reason stayed the largest non-approval explanation in both archived slices:</p>
+<pre><code class="language-text">COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+</code></pre>
+<p>and it appears to have the same row count in both:</p>
+<pre><code class="language-text">8,905 / 50,000 = 17.81%
+</code></pre>
+<p>That is plausible because the tighter synthetic-risk strategy mostly moved risk-threshold-sensitive rows. Product-cap-driven counteroffers may be unaffected.</p>
+<p>However, confirm whether it is the <strong>same rows</strong> or just the <strong>same count</strong>.</p>
+<h3>Confirmation query 1 — independent reason count</h3>
+<pre><code class="language-sql">SELECT
+    strategy_name,
+    primary_reason_family,
+    primary_reason_code,
+    COUNT(*) AS row_count,
+    COUNT(*)::NUMERIC / NULLIF(
+        SUM(COUNT(*)) OVER (PARTITION BY strategy_name),
+        0
+    ) AS population_share
+FROM credit_decisioning_sim.strategy_decisions_archive
+WHERE strategy_set_name = &#39;MODULE2_BASELINE_STRATEGY_SET&#39;
+  AND strategy_name IN (&#39;BASELINE_STRATEGY&#39;, &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;)
+  AND strategy_version = &#39;V1_0&#39;
+  AND module1_scenario_set_name = &#39;MODULE1_V2_BASELINE_SET&#39;
+  AND module1_scenario_name = &#39;BASELINE_V2&#39;
+  AND population_id = &#39;BASE_POPULATION_V1&#39;
+  AND decision_outcome &lt;&gt; &#39;APPROVE&#39;
+GROUP BY
+    strategy_name,
+    primary_reason_family,
+    primary_reason_code
+ORDER BY
+    strategy_name,
+    row_count DESC;
+</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT = 8,905 in both strategies
+</code></pre>
+<h3>Confirmation query 2 — same applications or same count only</h3>
+<pre><code class="language-sql">WITH baseline_reason AS (
+    SELECT application_id
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    WHERE strategy_set_name = &#39;MODULE2_BASELINE_STRATEGY_SET&#39;
+      AND strategy_name = &#39;BASELINE_STRATEGY&#39;
+      AND strategy_version = &#39;V1_0&#39;
+      AND module1_scenario_set_name = &#39;MODULE1_V2_BASELINE_SET&#39;
+      AND module1_scenario_name = &#39;BASELINE_V2&#39;
+      AND population_id = &#39;BASE_POPULATION_V1&#39;
+      AND primary_reason_code = &#39;COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT&#39;
+),
+
+challenger_reason AS (
+    SELECT application_id
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    WHERE strategy_set_name = &#39;MODULE2_BASELINE_STRATEGY_SET&#39;
+      AND strategy_name = &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;
+      AND strategy_version = &#39;V1_0&#39;
+      AND module1_scenario_set_name = &#39;MODULE1_V2_BASELINE_SET&#39;
+      AND module1_scenario_name = &#39;BASELINE_V2&#39;
+      AND population_id = &#39;BASE_POPULATION_V1&#39;
+      AND primary_reason_code = &#39;COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT&#39;
+)
+
+SELECT
+    (SELECT COUNT(*) FROM baseline_reason) AS baseline_reason_rows,
+    (SELECT COUNT(*) FROM challenger_reason) AS challenger_reason_rows,
+
+    COUNT(*) FILTER (
+        WHERE b.application_id IS NOT NULL
+          AND c.application_id IS NOT NULL
+    ) AS matched_reason_application_rows,
+
+    COUNT(*) FILTER (
+        WHERE b.application_id IS NOT NULL
+          AND c.application_id IS NULL
+    ) AS baseline_only_reason_application_rows,
+
+    COUNT(*) FILTER (
+        WHERE b.application_id IS NULL
+          AND c.application_id IS NOT NULL
+    ) AS challenger_only_reason_application_rows
+FROM baseline_reason b
+FULL OUTER JOIN challenger_reason c
+    ON c.application_id = b.application_id;
+</code></pre>
+<p>Interpretation:</p>
+<pre><code class="language-text">If matched_reason_application_rows = 8,905:
+    same applications retained the same top non-approval reason.
+
+If baseline_reason_rows = challenger_reason_rows = 8,905
+but matched_reason_application_rows &lt; 8,905:
+    same count, different composition. Still not automatically a defect.
+
+If the independent counts do not match Section 15:
+    then Section 15 top non-approval logic needs review.
+</code></pre>
+<p>Given your prior Section 13 and Section 15 evidence, I expect this to confirm no issue.</p>
+<hr>
+<h1>Targeted Section 15 patch</h1>
+<h2>Patch 1 — Section 15.2: add top policy-stop reason fields</h2>
+<p>In Section 15.2, add this CTE after <code>non_approval_reason_counts</code>.</p>
+<pre><code class="language-sql">policy_stop_reason_counts AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*) AS policy_stop_reason_row_count,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                strategy_set_name,
+                strategy_name,
+                strategy_version,
+                module1_scenario_set_name,
+                module1_scenario_name,
+                population_id
+            ORDER BY
+                COUNT(*) DESC,
+                primary_reason_family,
+                primary_reason_code
+        ) AS policy_stop_reason_rank
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    WHERE primary_reason_family = &#39;POLICY_STOP&#39;
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+)
+</code></pre>
+<p>Then add this <code>LEFT JOIN</code> to the final Section 15.2 <code>SELECT</code>.</p>
+<pre><code class="language-sql">LEFT JOIN policy_stop_reason_counts ps
+    ON ps.strategy_set_name = s.strategy_set_name
+   AND ps.strategy_name = s.strategy_name
+   AND ps.strategy_version = s.strategy_version
+   AND ps.module1_scenario_set_name = s.module1_scenario_set_name
+   AND ps.module1_scenario_name = s.module1_scenario_name
+   AND ps.population_id = s.population_id
+   AND ps.policy_stop_reason_rank = 1
+</code></pre>
+<p>Then add these selected fields after the existing top non-approval fields.</p>
+<pre><code class="language-sql">    ps.primary_reason_family AS top_policy_stop_primary_reason_family,
+    ps.primary_reason_code AS top_policy_stop_primary_reason_code,
+    ps.policy_stop_reason_row_count::NUMERIC
+        / NULLIF(s.applications, 0) AS top_policy_stop_reason_population_share
+</code></pre>
+<p>Expected current result:</p>
+<pre><code class="language-text">BASELINE_STRATEGY:
+top_policy_stop_primary_reason_code = POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+share ≈ 12.74%
+
+TIGHTER_SYNTHETIC_RISK_STRATEGY:
+top_policy_stop_primary_reason_code = POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+share ≈ 17.25%
+</code></pre>
+<hr>
+<h2>Patch 2 — Section 15.3: add top reason-code delta driver</h2>
+<p>In Section 15.3, add these CTEs after <code>baseline_reference</code>.</p>
+<pre><code class="language-sql">reason_population_shares AS (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        primary_reason_family,
+        primary_reason_code,
+
+        COUNT(*)::NUMERIC
+            / NULLIF(
+                SUM(COUNT(*)) OVER (
+                    PARTITION BY
+                        strategy_set_name,
+                        strategy_name,
+                        strategy_version,
+                        module1_scenario_set_name,
+                        module1_scenario_name,
+                        population_id
+                ),
+                0
+            ) AS reason_population_share
+    FROM credit_decisioning_sim.strategy_decisions_archive
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+),
+
+frontier_group_reason_universe AS (
+    SELECT DISTINCT
+        strategy_set_name,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code
+    FROM reason_population_shares
+),
+
+baseline_reason_population_shares AS (
+    SELECT
+        strategy_set_name,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        primary_reason_family,
+        primary_reason_code,
+        reason_population_share AS baseline_reason_population_share
+    FROM reason_population_shares
+    WHERE strategy_name = &#39;BASELINE_STRATEGY&#39;
+),
+
+top_reason_code_delta_driver AS (
+    SELECT
+        s.strategy_set_name,
+        s.strategy_name,
+        s.strategy_version,
+        s.module1_scenario_set_name,
+        s.module1_scenario_name,
+        s.population_id,
+
+        u.primary_reason_family AS top_reason_code_delta_driver_family,
+        u.primary_reason_code AS top_reason_code_delta_driver_code,
+
+        COALESCE(br.baseline_reason_population_share, 0)
+            AS top_reason_code_delta_driver_baseline_share,
+
+        COALESCE(rs.reason_population_share, 0)
+            AS top_reason_code_delta_driver_strategy_share,
+
+        COALESCE(rs.reason_population_share, 0)
+          - COALESCE(br.baseline_reason_population_share, 0)
+            AS top_reason_code_delta_population_share,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                s.strategy_set_name,
+                s.strategy_name,
+                s.strategy_version,
+                s.module1_scenario_set_name,
+                s.module1_scenario_name,
+                s.population_id
+            ORDER BY
+                ABS(
+                    COALESCE(rs.reason_population_share, 0)
+                  - COALESCE(br.baseline_reason_population_share, 0)
+                ) DESC,
+                u.primary_reason_family,
+                u.primary_reason_code
+        ) AS reason_code_delta_rank
+
+    FROM tmp_m2_strategy_frontier_summary s
+    JOIN frontier_group_reason_universe u
+        ON u.strategy_set_name = s.strategy_set_name
+       AND u.module1_scenario_set_name = s.module1_scenario_set_name
+       AND u.module1_scenario_name = s.module1_scenario_name
+       AND u.population_id = s.population_id
+
+    LEFT JOIN reason_population_shares rs
+        ON rs.strategy_set_name = s.strategy_set_name
+       AND rs.strategy_name = s.strategy_name
+       AND rs.strategy_version = s.strategy_version
+       AND rs.module1_scenario_set_name = s.module1_scenario_set_name
+       AND rs.module1_scenario_name = s.module1_scenario_name
+       AND rs.population_id = s.population_id
+       AND rs.primary_reason_family = u.primary_reason_family
+       AND rs.primary_reason_code = u.primary_reason_code
+
+    LEFT JOIN baseline_reason_population_shares br
+        ON br.strategy_set_name = s.strategy_set_name
+       AND br.module1_scenario_set_name = s.module1_scenario_set_name
+       AND br.module1_scenario_name = s.module1_scenario_name
+       AND br.population_id = s.population_id
+       AND br.primary_reason_family = u.primary_reason_family
+       AND br.primary_reason_code = u.primary_reason_code
+
+    WHERE s.strategy_name &lt;&gt; &#39;BASELINE_STRATEGY&#39;
+)
+</code></pre>
+<p>Then add this <code>LEFT JOIN</code> to the final Section 15.3 <code>SELECT</code>.</p>
+<pre><code class="language-sql">LEFT JOIN top_reason_code_delta_driver td
+    ON td.strategy_set_name = s.strategy_set_name
+   AND td.strategy_name = s.strategy_name
+   AND td.strategy_version = s.strategy_version
+   AND td.module1_scenario_set_name = s.module1_scenario_set_name
+   AND td.module1_scenario_name = s.module1_scenario_name
+   AND td.population_id = s.population_id
+   AND td.reason_code_delta_rank = 1
+</code></pre>
+<p>Then add these fields near the end of the Section 15.3 final <code>SELECT</code>.</p>
+<pre><code class="language-sql">    s.top_policy_stop_primary_reason_family,
+    s.top_policy_stop_primary_reason_code,
+    s.top_policy_stop_reason_population_share,
+
+    td.top_reason_code_delta_driver_family,
+    td.top_reason_code_delta_driver_code,
+    td.top_reason_code_delta_driver_baseline_share,
+    td.top_reason_code_delta_driver_strategy_share,
+    td.top_reason_code_delta_population_share
+</code></pre>
+<p>Expected current result for the tighter strategy:</p>
+<pre><code class="language-text">top_reason_code_delta_driver_code = POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+top_reason_code_delta_population_share ≈ +4.51 percentage points
+</code></pre>
+<p>That field will make the risk-tightening story much clearer than the top non-approval reason alone.</p>
+<hr>
+<h2>Patch 3 — Section 15.4 review output</h2>
+<p>Add these fields to the Section 15.4 output <code>SELECT</code>.</p>
+<pre><code class="language-sql">    top_policy_stop_primary_reason_family,
+    top_policy_stop_primary_reason_code,
+    top_policy_stop_reason_population_share,
+
+    top_reason_code_delta_driver_family,
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_driver_baseline_share,
+    top_reason_code_delta_driver_strategy_share,
+    top_reason_code_delta_population_share,
+</code></pre>
+<hr>
+<h2>Patch 4 — Section 15.5 review output</h2>
+<p>Add these fields to the Section 15.5 output <code>SELECT</code>.</p>
+<pre><code class="language-sql">    top_policy_stop_primary_reason_family,
+    top_policy_stop_primary_reason_code,
+    top_policy_stop_reason_population_share,
+
+    top_reason_code_delta_driver_family,
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_driver_baseline_share,
+    top_reason_code_delta_driver_strategy_share,
+    top_reason_code_delta_population_share
+</code></pre>
+<hr>
+<h2>Patch 5 — Section 15.7 executive summary table</h2>
+<p>In the Section 15.7 <code>CREATE TEMP TABLE tmp_m2_strategy_frontier_executive_summary AS</code> select list, add these fields after the non-approval reason fields.</p>
+<pre><code class="language-sql">    top_policy_stop_primary_reason_family,
+    top_policy_stop_primary_reason_code,
+    top_policy_stop_reason_population_share,
+
+    top_reason_code_delta_driver_family,
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_driver_baseline_share,
+    top_reason_code_delta_driver_strategy_share,
+    top_reason_code_delta_population_share,
+</code></pre>
+<p>These fields should also appear in the final Section 15.7 review output.</p>
+<hr>
+<h2>Patch 6 — Optional Section 15.8 diagnostic check</h2>
+<p>Add this lightweight diagnostic after the existing Section 15.8 row-count diagnostics.</p>
+<pre><code class="language-sql">SELECT
+    strategy_name,
+    frontier_position_type,
+    executive_frontier_quadrant,
+
+    top_primary_reason_code,
+    top_primary_reason_population_share,
+
+    top_non_approval_primary_reason_code,
+    top_non_approval_reason_population_share,
+
+    top_policy_stop_primary_reason_code,
+    top_policy_stop_reason_population_share,
+
+    top_reason_code_delta_driver_code,
+    top_reason_code_delta_driver_baseline_share,
+    top_reason_code_delta_driver_strategy_share,
+    top_reason_code_delta_population_share
+FROM tmp_m2_strategy_frontier_executive_summary
+ORDER BY
+    CASE
+        WHEN strategy_name = &#39;BASELINE_STRATEGY&#39; THEN 1
+        ELSE 2
+    END,
+    strategy_name;
+</code></pre>
+<hr>
+<h2>What this adds to the frontier story</h2>
+<p>After this patch, Section 15 will tell three reason-code stories:</p>
+<pre><code class="language-text">1. Top primary reason:
+   What is the most common reason overall?
+
+2. Top non-approval reason:
+   What is the most common strategy explanation excluding clean approvals?
+
+3. Top reason-code delta driver:
+   Which reason code changed the most versus baseline?
+</code></pre>
+<p>For the current tighter synthetic-risk strategy, the most important storytelling field should be:</p>
+<pre><code class="language-text">top_reason_code_delta_driver_code =
+POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+</code></pre>
+<p>That is the field that will directly explain the tighter risk strategy movement.</p>
+</div></article><article id="c038-m00538" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00538 · 2026-05-08T22:07:56.855000-04:00 · active path</p><div class="body"><p>what do we call the patch 6 15.8 lightweight diagnostic check?</p>
+</div></article><article id="c038-m00540" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00540 · 2026-05-08T22:08:51.217627-04:00 · active path</p><div class="body"><p>Call it:</p>
+<pre><code class="language-sql">SECTION 15.8C — FRONTIER REASON-CODE STORYTELLING DIAGNOSTIC
+</code></pre>
+<p>Recommended full header:</p>
+<pre><code class="language-sql">/***************************************************************************************************
+SECTION 15.8C — FRONTIER REASON-CODE STORYTELLING DIAGNOSTIC
+****************************************************************************************************
+
+PURPOSE:
+    Provide a compact reason-code interpretation view for the strategy frontier summary.
+
+BUSINESS INTERPRETATION:
+    This diagnostic helps explain each archived strategy frontier point by showing:
+        1. the top primary reason code overall,
+        2. the top non-approval reason code,
+        3. the top policy-stop reason code,
+        4. and the reason code with the largest population-share movement versus baseline.
+
+WHY THIS EXISTS:
+    top_primary_reason_code is often APPROVED_AS_REQUESTED, which is technically correct
+    but not always the most useful explanation of strategy movement.
+
+    This diagnostic surfaces the non-approval and policy-stop drivers that make the frontier
+    easier to interpret for QA, executive review, README storytelling, and LinkedIn summaries.
+
+BOUNDARY:
+    This is a read-only storytelling diagnostic.
+    It does not recalculate decision outcomes.
+    It does not reassign simulated reason codes.
+    It does not modify latest-run or archive rows.
+    Reason codes remain simulated strategy explanation codes only.
+
+***************************************************************************************************/
+</code></pre>
+<p>So Section 15.8 would now have three clean subblocks:</p>
+<pre><code class="language-text">15.8A — Frontier Object Row-Count Diagnostic
+15.8B — Frontier Baseline Availability Diagnostic
+15.8C — Frontier Reason-Code Storytelling Diagnostic
+</code></pre>
+<p>That naming is precise, audit-readable, and explains why the diagnostic exists without overstating it as a validation gatekeeper.</p>
+</div></article><article id="c038-m00542" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00542 · 2026-05-08T22:18:13.173000-04:00 · active path</p><div class="body"><p>review updated section 15 QA:</p>
+<p><strong>Attachments in export:</strong> <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.3_QA_baseline_relative_frontier_deltas(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.4_QA_strategy_efficiency_metrics(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.5_QA_frontier_classification(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.6_QA_segment_level_frontier_highlights(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.7_QA_executive_ready_strategy_frontier_summary(3).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8A_QA_frontier_object_row_diagnostic.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8B_QA_frontier_baseline_availability_diagnostic.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.8C_QA_frontier_reason_code_storytelling_diagnostic.csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.0_QA_frontier_scope_and_archive_readiness_snapshot(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.1_QA_archived_frontier_inventory(2).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.2_QA_strategy_frontier_summary(2).csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c038-m00547" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00547 · 2026-05-08T22:23:01.139777-04:00 · active path</p><div class="body"><h2>Updated Section 15 QA review — Strategy Frontier Summary</h2>
+<p><strong>Verdict: PASS.</strong></p>
+<p>The latest Section 15 QA confirms that the added storytelling fields are working correctly and flowing through the frontier pipeline:</p>
+<pre><code class="language-text">top_policy_stop_primary_reason_family
+top_policy_stop_primary_reason_code
+top_policy_stop_reason_population_share
+
+top_reason_code_delta_driver_family
+top_reason_code_delta_driver_code
+top_reason_code_delta_driver_baseline_share
+top_reason_code_delta_driver_strategy_share
+top_reason_code_delta_population_share
+</code></pre>
+<p>No further Section 15 patch is recommended.</p>
+<hr>
+<h2>1. Frontier scope remains clean</h2>
+<p>Section 15.0 still confirms the frontier is ready for multi-strategy review:</p>
+<pre><code class="language-text">archived_rows = 100,000
+distinct_archived_application_ids = 50,000
+archived_strategy_scenario_slice_count = 2
+module1_scenario_population_slice_count = 1
+module2_strategy_version_count = 2
+frontier_scope_status = FRONTIER_READY_FOR_MULTI_STRATEGY_REVIEW
+</code></pre>
+<p>This remains the correct frontier setup:</p>
+<pre><code class="language-text">BASELINE_STRATEGY
+vs
+TIGHTER_SYNTHETIC_RISK_STRATEGY
+
+on
+
+MODULE1_V2_BASELINE_SET / BASELINE_V2 / BASE_POPULATION_V1
+</code></pre>
+<hr>
+<h2>2. Archive inventory remains clean</h2>
+<p>Section 15.1 still shows two valid archived slices:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th align="right">Rows</th>
+<th align="right">Distinct applications</th>
+<th align="right">Duplicate application rows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">0</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">50,000</td>
+<td align="right">50,000</td>
+<td align="right">0</td>
+</tr>
+</tbody></table>
+<p>Outcome movement remains unchanged:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th align="right">Approve</th>
+<th align="right">Counteroffer</th>
+<th align="right">Manual review</th>
+<th align="right">Decline</th>
+<th align="right">Simulated offer exposure</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">11,291</td>
+<td align="right">19,067</td>
+<td align="right">6,939</td>
+<td align="right">12,703</td>
+<td align="right">30,358</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">10,649</td>
+<td align="right">18,452</td>
+<td align="right">6,017</td>
+<td align="right">14,882</td>
+<td align="right">29,101</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>3. New policy-stop fields are working</h2>
+<p>Section 15.2 now correctly surfaces the top policy-stop reason for each strategy:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Top policy-stop reason</th>
+<th align="right">Population share</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code></td>
+<td align="right">12.738%</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code></td>
+<td align="right">17.246%</td>
+</tr>
+</tbody></table>
+<p>This is exactly the right storytelling field for the tighter synthetic-risk strategy.</p>
+<p>The key movement is:</p>
+<pre><code class="language-text">POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+12.738% → 17.246%
+delta = +4.508 percentage points
+</code></pre>
+<p>That directly explains the risk-tightening story.</p>
+<hr>
+<h2>4. New reason-code delta driver fields are working</h2>
+<p>For the challenger strategy, the top reason-code delta driver is:</p>
+<pre><code class="language-text">top_reason_code_delta_driver_family = POLICY_STOP
+top_reason_code_delta_driver_code = POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY
+top_reason_code_delta_driver_baseline_share = 0.12738
+top_reason_code_delta_driver_strategy_share = 0.17246
+top_reason_code_delta_population_share = 0.04508
+</code></pre>
+<p>That is correct.</p>
+<p>Interpretation:</p>
+<pre><code class="language-text">The largest reason-code population-share movement from baseline to tighter strategy
+is the increase in synthetic-risk policy-stop explanations.
+</code></pre>
+<p>This field materially improves Section 15 because it explains <strong>why</strong> the frontier point moved, not just how the metrics moved.</p>
+<p>For the baseline row, the reason-code delta driver fields are null. That is correct because the baseline is the reference point and has no baseline-relative reason-code movement.</p>
+<hr>
+<h2>5. Top non-approval reason still has the same 17.81% share — not an issue</h2>
+<p>The repeated value remains:</p>
+<pre><code class="language-text">top_non_approval_primary_reason_code = COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT
+top_non_approval_reason_population_share = 0.17810
+</code></pre>
+<p>for both strategies.</p>
+<p>That is not a defect. It means the largest non-approval reason is unchanged and has the same row count in both archived slices:</p>
+<pre><code class="language-text">8,905 / 50,000 = 17.81%
+</code></pre>
+<p>This is plausible because the tighter synthetic-risk strategy changed the risk-threshold-sensitive parts of the strategy, while product-cap-driven counteroffers remained stable.</p>
+<p>The important confirmation is that the new delta-driver field is <strong>not</strong> the same as the top non-approval field. The delta-driver correctly identifies the actual movement:</p>
+<pre><code class="language-text">POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY increased by 4.508 percentage points.
+</code></pre>
+<p>So the story is now clear:</p>
+<pre><code class="language-text">The most common non-approval reason stayed product exposure limit.
+The biggest reason-code movement was synthetic-risk policy stop.
+</code></pre>
+<p>That is a strong result, not a problem.</p>
+<hr>
+<h2>6. Frontier movement remains correct</h2>
+<p>The baseline-relative frontier deltas remain unchanged and coherent:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th align="right">Tighter strategy delta</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>delta_approval_rate</code></td>
+<td align="right">-1.284 pts</td>
+</tr>
+<tr>
+<td><code>delta_counteroffer_rate</code></td>
+<td align="right">-1.230 pts</td>
+</tr>
+<tr>
+<td><code>delta_manual_review_rate</code></td>
+<td align="right">-1.844 pts</td>
+</tr>
+<tr>
+<td><code>delta_decline_rate</code></td>
+<td align="right">+4.358 pts</td>
+</tr>
+<tr>
+<td><code>delta_simulated_offer_exposure_rate</code></td>
+<td align="right">-2.514 pts</td>
+</tr>
+<tr>
+<td><code>delta_total_approved_amount</code></td>
+<td align="right">-$151.3M</td>
+</tr>
+<tr>
+<td><code>delta_total_approved_expected_loss_amount</code></td>
+<td align="right">-$7.26M</td>
+</tr>
+<tr>
+<td><code>delta_approved_expected_loss_rate</code></td>
+<td align="right">-0.133 pts</td>
+</tr>
+<tr>
+<td><code>delta_avg_synthetic_estimated_pd_proxy_offer_rows</code></td>
+<td align="right">-0.785 pts</td>
+</tr>
+</tbody></table>
+<p>This remains the core frontier story:</p>
+<pre><code class="language-text">Tighter synthetic-risk strategy reduces access and approved exposure,
+but improves approved Expected Loss efficiency and offer-row synthetic risk profile.
+</code></pre>
+<hr>
+<h2>7. Executive quadrant remains correct</h2>
+<p>Section 15.7 remains correct:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Frontier type</th>
+<th>Executive quadrant</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>BASELINE_REFERENCE_POINT</code></td>
+<td><code>BASELINE_REFERENCE_QUADRANT</code></td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>RISK_DISCIPLINE_FRONTIER_POINT</code></td>
+<td><code>LOWER_ACCESS_LOWER_APPROVED_EL_RATE</code></td>
+</tr>
+</tbody></table>
+<p>This is the correct executive interpretation.</p>
+<hr>
+<h2>8. Section 15.8 diagnostics pass</h2>
+<p>Section 15.8A object row counts remain correct:</p>
+<table>
+<thead>
+<tr>
+<th>Object</th>
+<th align="right">Row count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>tmp_m2_strategy_frontier_inventory</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_summary</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_baseline_deltas</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_efficiency</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_classification</code></td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_segment_highlights</code></td>
+<td align="right">70</td>
+</tr>
+<tr>
+<td><code>tmp_m2_strategy_frontier_executive_summary</code></td>
+<td align="right">2</td>
+</tr>
+</tbody></table>
+<p>Section 15.8B baseline availability remains clean:</p>
+<pre><code class="language-text">frontier_rows = 2
+rows_with_baseline_reference = 2
+rows_without_baseline_reference = 0
+baseline_reference_status = BASELINE_REFERENCES_AVAILABLE_FOR_ALL_FRONTIER_ROWS
+</code></pre>
+<p>Section 15.8C is now especially useful:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Top primary</th>
+<th>Top non-approval</th>
+<th>Top policy stop</th>
+<th>Delta driver</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BASELINE_STRATEGY</code></td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+<td><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+<td><code>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code></td>
+<td>null</td>
+</tr>
+<tr>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td><code>APPROVED_AS_REQUESTED</code></td>
+<td><code>COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT</code></td>
+<td><code>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code></td>
+<td><code>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code></td>
+</tr>
+</tbody></table>
+<p>This is the right compact storytelling diagnostic.</p>
+<hr>
+<h2>Section 15 final acceptance</h2>
+<p>Section 15 is accepted.</p>
+<p>Accepted evidence:</p>
+<pre><code class="language-text">frontier scope ready
+archive slices clean
+two strategies available
+same Module 1 scenario / population
+frontier summary populated
+baseline-relative deltas populated
+efficiency metrics populated
+classification correct
+executive quadrant correct
+top non-approval reason populated
+top policy-stop reason populated
+top reason-code delta driver populated
+segment highlights complete
+baseline availability clean
+reason-code storytelling diagnostic working
+</code></pre>
+<p>No further Section 15 patch is needed.</p>
+<p>The current Section 15 story is now excellent:</p>
+<blockquote>
+<p>The tighter synthetic-risk strategy moves from the baseline reference point to a lower-access / lower-approved-Expected-Loss-rate frontier position. It reduces simulated offer exposure by 2.51 percentage points and total approved amount by about $151.3M, while reducing approved Expected Loss by about $7.26M. The top reason-code movement is a 4.51 percentage-point increase in <code>POLICY_STOP_HIGH_SYNTHETIC_ESTIMATED_PD_PROXY</code>, which directly explains the risk-discipline posture.</p>
+</blockquote>
+</div></article><article id="c038-m00549" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00549 · 2026-05-08T22:25:36.629000-04:00 · active path</p><div class="body"><p>Within credit risk analytics is it always a focus on expected loss?  what about earnings/growth?</p>
+</div></article><article id="c038-m00551" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00551 · 2026-05-08T22:26:55.926893-04:00 · active path</p><div class="body"><p>No — <strong>credit risk analytics is not always focused only on Expected Loss.</strong> Expected Loss is foundational, but senior credit risk / credit strategy work is usually about the <strong>tradeoff between growth, risk, earnings, capital, affordability, and operations</strong>.</p>
+<p>Expected Loss answers:</p>
+<pre><code class="language-text">How much credit loss exposure does this strategy create?
+</code></pre>
+<p>But strategy leaders also care about:</p>
+<pre><code class="language-text">How much profitable volume does this strategy generate?
+How much approved exposure or line growth does it create?
+What yield or revenue does that exposure produce?
+How much loss does it consume?
+How much manual review burden does it create?
+What is the risk-adjusted return?
+Which segments drive the tradeoff?
+</code></pre>
+<p>Your instinct is right: if the project only talks about Expected Loss, it will look like a risk-control simulator. If it also talks about <strong>growth and earnings discipline</strong>, it becomes a much stronger senior credit strategy analytics artifact.</p>
+<p>Module 1 already frames Expected Loss as a <strong>comparative simulation metric</strong>, not a production loss forecast, and explicitly excludes pricing optimization / profitability maximization from Module 1 scope. It also identifies pricing / profitability as a future enhancement area rather than something already built into the current engine. fileciteturn8file3 The Module 1 Validation Summary similarly positions Expected Loss as validated for comparative strategy testing, while treating profitability / pricing layers as future scope requiring separate design and validation. fileciteturn8file4</p>
+<h2>How credit risk analytics usually thinks about this</h2>
+<p>A practical senior-level framing is:</p>
+<pre><code class="language-text">Growth:
+    applications approved
+    offer rate
+    approved exposure
+    line / loan amount
+    booked or simulated offer volume
+
+Risk:
+    synthetic estimated-PD proxy
+    LGD
+    Expected Loss
+    high-risk concentration
+    affordability stress
+    adverse / severe risk signals
+
+Earnings:
+    interest income
+    fee income
+    interchange or utilization-driven revenue
+    spread over funding cost
+    risk-adjusted margin
+
+Efficiency:
+    approved exposure per dollar of Expected Loss
+    earnings per dollar of Expected Loss
+    approval growth per incremental Expected Loss
+    manual review burden
+    operational cost
+
+Capital / governance:
+    capital consumption
+    loss-rate tolerance
+    risk-adjusted return
+    segment concentration
+    policy explainability
+</code></pre>
+<p>Your current Section 15 is strong because it already introduces a <strong>frontier</strong> concept. But right now it is primarily a <strong>risk / exposure frontier</strong>:</p>
+<pre><code class="language-text">simulated offer-exposure rate
+total approved amount
+approved Expected Loss
+approved Expected Loss rate
+synthetic estimated-PD proxy among offer rows
+approved PTI
+reason-code movement
+</code></pre>
+<p>That is good. The next level is an <strong>earnings / growth / risk-adjusted frontier</strong>.</p>
+<h2>What I would add conceptually</h2>
+<p>I would not replace Expected Loss. I would add an earnings layer beside it.</p>
+<p>The framework should become:</p>
+<pre><code class="language-text">Growth frontier:
+    How much simulated offer exposure and approved amount does the strategy create?
+
+Risk frontier:
+    How much approved Expected Loss and affordability stress does the strategy carry?
+
+Earnings frontier:
+    What simulated revenue or margin could the approved exposure generate?
+
+Risk-adjusted frontier:
+    How much simulated earnings or approved amount is created per unit of Expected Loss?
+</code></pre>
+<p>That produces much more marketable strategy language:</p>
+<pre><code class="language-text">Strategy A produces more growth but higher approved Expected Loss.
+Strategy B produces less growth but better risk-adjusted efficiency.
+Strategy C preserves offer access through counteroffers while improving approved PTI and reducing loss intensity.
+Strategy D improves risk-adjusted margin but increases decline rate.
+</code></pre>
+<h2>The metrics I would add later</h2>
+<p>For this project, I would keep the language synthetic and proxy-based.</p>
+<p>Potential fields:</p>
+<pre><code class="language-text">approved_apr_proxy
+simulated_interest_income_proxy
+simulated_fee_income_proxy
+simulated_gross_revenue_proxy
+simulated_funding_cost_proxy
+simulated_net_revenue_proxy
+simulated_net_credit_margin_proxy
+simulated_risk_adjusted_margin_proxy
+</code></pre>
+<p>Conceptual formulas could be:</p>
+<pre><code class="language-text">simulated_interest_income_proxy
+    = approved_amount × base_apr_for_payment_calc × income_recognition_factor
+
+simulated_funding_cost_proxy
+    = approved_amount × funding_cost_rate
+
+simulated_gross_revenue_proxy
+    = simulated_interest_income_proxy + simulated_fee_income_proxy
+
+simulated_net_revenue_proxy
+    = simulated_gross_revenue_proxy - simulated_funding_cost_proxy
+
+simulated_risk_adjusted_margin_proxy
+    = simulated_net_revenue_proxy - approved_expected_loss_amount
+
+risk_adjusted_margin_rate
+    = simulated_risk_adjusted_margin_proxy / NULLIF(approved_amount, 0)
+
+revenue_to_expected_loss_ratio
+    = simulated_net_revenue_proxy / NULLIF(approved_expected_loss_amount, 0)
+</code></pre>
+<p>These would let you show:</p>
+<pre><code class="language-text">total approved amount
+total approved Expected Loss
+total simulated revenue proxy
+total simulated risk-adjusted margin proxy
+risk-adjusted margin rate
+approved amount per dollar of Expected Loss
+simulated revenue per dollar of Expected Loss
+</code></pre>
+<p>That is much closer to how a strategy committee would evaluate a credit policy change.</p>
+<h2>Important boundary</h2>
+<p>We should <strong>not</strong> retrofit this into Module 2 casually.</p>
+<p>Module 2’s current boundary is decision outcome simulation:</p>
+<pre><code class="language-text">approve
+counteroffer
+manual review
+decline
+approved amount
+approved Expected Loss
+reason codes
+archive comparison
+QA
+frontier summary
+</code></pre>
+<p>Earnings / profitability is a new analytical layer. I would treat it as either:</p>
+<pre><code class="language-text">Section 16 — Simulated Growth, Earnings, and Risk-Adjusted Strategy Frontier
+</code></pre>
+<p>or a new module:</p>
+<pre><code class="language-text">Module 3 — Credit Strategy Economics &amp; Risk-Adjusted Performance Simulation
+</code></pre>
+<p>My recommendation: make it <strong>Module 3</strong> if you want the project to feel enterprise-grade.</p>
+<p>Why? Because pricing, revenue, funding cost, utilization, fee income, capital, and profitability introduce a different assumption family. Keeping it modular preserves governance and avoids contaminating Module 2’s accepted decisioning boundary.</p>
+<h2>Best positioning for senior credit risk analytics</h2>
+<p>A senior credit risk analytics story should not be:</p>
+<pre><code class="language-text">I minimized Expected Loss.
+</code></pre>
+<p>It should be:</p>
+<pre><code class="language-text">I quantified the tradeoff between approval growth, counteroffer strategy, approved exposure, affordability, Expected Loss, reason-code movement, and risk-adjusted economics under governed scenario controls.
+</code></pre>
+<p>That is the elite version.</p>
+<p>For your roadmap, I would frame the next evolution as:</p>
+<pre><code class="language-text">Module 1:
+Synthetic applicant / product / affordability / risk environment
+
+Module 2:
+Strategy outcomes, approved exposure, reason codes, approved Expected Loss
+
+Module 3:
+Simulated earnings, funding cost, risk-adjusted margin, and growth / risk frontier
+</code></pre>
+<p>That gives you a very strong portfolio progression:</p>
+<pre><code class="language-text">Can we create a governed synthetic credit population?
+Can we simulate credit policy outcomes?
+Can we compare strategies on risk and access?
+Can we evaluate growth and earnings tradeoffs?
+</code></pre>
+<h2>Bottom line</h2>
+<p>Expected Loss is central, but it is not the whole story.</p>
+<p>For credit risk analytics, especially senior strategy roles, the best artifact should balance:</p>
+<pre><code class="language-text">growth
+risk
+earnings
+affordability
+operational burden
+explainability
+</code></pre>
+<p>Your current Section 15 is a strong risk frontier. The next marketable leap is a <strong>risk-adjusted growth / earnings frontier</strong>.</p>
+</div></article><article id="c038-m00553" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00553 · 2026-05-08T22:32:42.043000-04:00 · active path</p><div class="body"><p>I agree, that can be a module 3.  let&#39;s table that for now.  before we begin performing our full module 1 and module 2 scenario/strategy runs - are there any other module 2 changes you&#39;d suggest?  if no changes, I would like to get back to the discuss about simple tables that expressly lays out the parameters for each module 1 scenario run and a simple table that expressly lays out the parameters for each module 2 strategy run. </p>
+</div></article><article id="c038-m00556" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00556 · 2026-05-08T22:34:41.450703-04:00 · active path</p><div class="body"><p>I would <strong>not make additional Module 2 logic changes before the full scenario / strategy run campaign</strong>.</p>
+<p>Module 2 is now in a good stopping point:</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Latest-run output</td>
+<td>Accepted</td>
+</tr>
+<tr>
+<td>Archive persistence</td>
+<td>Accepted</td>
+</tr>
+<tr>
+<td>Matched strategy comparison</td>
+<td>Accepted after Section 13.0 registry patch</td>
+</tr>
+<tr>
+<td>Section 14 QA</td>
+<td>Accepted</td>
+</tr>
+<tr>
+<td>Section 15 strategy frontier</td>
+<td>Accepted</td>
+</tr>
+<tr>
+<td>Reason-code storytelling fields</td>
+<td>Accepted</td>
+</tr>
+<tr>
+<td>Module 3 economics / earnings layer</td>
+<td>Correctly deferred</td>
+</tr>
+</tbody></table>
+<p>The only thing I would do now is <strong>control the run plan tightly</strong>. Do not add more logic. Run the governed scenario / strategy library, capture outputs, then decide whether results are interesting enough for README / LinkedIn storytelling.</p>
+<p>Module 1 already established the governance pattern for scenario metadata, <code>population_id</code>, archive persistence, and matched scenario comparison, and its validation confirmed that matched scenario runs can isolate controlled parameter effects without population drift. fileciteturn8file3 fileciteturn8file4</p>
+<hr>
+<h2>Table 1 — Module 1 scenario archive run parameter table</h2>
+<p>Shared settings for all Module 1 runs unless overridden:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>archive_run_flag</code></td>
+<td><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>archive_reset_mode</code></td>
+<td><code>SCENARIO_ONLY</code></td>
+</tr>
+<tr>
+<td><code>population_id</code></td>
+<td><code>BASE_POPULATION_V1</code></td>
+</tr>
+<tr>
+<td><code>application_count</code></td>
+<td><code>50000</code></td>
+</tr>
+<tr>
+<td><code>portfolio_start_date</code></td>
+<td><code>2025-01-01</code></td>
+</tr>
+<tr>
+<td><code>portfolio_end_date</code></td>
+<td><code>2025-12-31</code></td>
+</tr>
+<tr>
+<td><code>anchor_date</code></td>
+<td><code>2025-12-31</code></td>
+</tr>
+</tbody></table>
+<table>
+<thead>
+<tr>
+<th align="right">Run ID</th>
+<th><code>scenario_set_name</code></th>
+<th><code>scenario_name</code></th>
+<th>Parameter family changed</th>
+<th>Exact parameter changes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">M1-01</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td>Baseline</td>
+<td>Keep all Module 1 V2.0 defaults</td>
+</tr>
+<tr>
+<td align="right">M1-02</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_200BP</code></td>
+<td>Rate environment</td>
+<td><code>rate_shift_bps = 200</code></td>
+</tr>
+<tr>
+<td align="right">M1-03</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td>Rate environment</td>
+<td><code>rate_shift_bps = -200</code></td>
+</tr>
+<tr>
+<td align="right">M1-04</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_300BP</code></td>
+<td>Rate environment</td>
+<td><code>rate_shift_bps = 300</code></td>
+</tr>
+<tr>
+<td align="right">M1-05</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_BOX_BASELINE_REFERENCE</code></td>
+<td>Baseline reference</td>
+<td>Same as <code>BASELINE_V2</code>; only scenario labels change</td>
+</tr>
+<tr>
+<td align="right">M1-06</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>PRIME_GROWTH_SCORE_MIX</code></td>
+<td>Score mix</td>
+<td>Super Prime <code>22%</code>; Prime <code>34%</code>; Near Prime <code>24%</code>; Subprime <code>12%</code>; Deep Subprime <code>8%</code></td>
+</tr>
+<tr>
+<td align="right">M1-07</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td>Score mix</td>
+<td>Super Prime <code>14%</code>; Prime <code>24%</code>; Near Prime <code>34%</code>; Subprime <code>18%</code>; Deep Subprime <code>10%</code></td>
+</tr>
+<tr>
+<td align="right">M1-08</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td>Score mix</td>
+<td>Super Prime <code>12%</code>; Prime <code>22%</code>; Near Prime <code>26%</code>; Subprime <code>24%</code>; Deep Subprime <code>16%</code></td>
+</tr>
+<tr>
+<td align="right">M1-09</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>PRODUCT_MIX_BASELINE_REFERENCE</code></td>
+<td>Baseline reference</td>
+<td>Same as <code>BASELINE_V2</code>; only scenario labels change</td>
+</tr>
+<tr>
+<td align="right">M1-10</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td>Product mix</td>
+<td>Mortgage <code>20%</code>; Revolving Line <code>35%</code>; Auto Loan <code>15%</code>; Unsecured Personal Loan <code>20%</code>; HELOC <code>10%</code></td>
+</tr>
+<tr>
+<td align="right">M1-11</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>SECURED_BALANCE_GROWTH_MIX</code></td>
+<td>Product mix</td>
+<td>Mortgage <code>40%</code>; Revolving Line <code>15%</code>; Auto Loan <code>15%</code>; Unsecured Personal Loan <code>10%</code>; HELOC <code>20%</code></td>
+</tr>
+<tr>
+<td align="right">M1-12</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td>Product mix</td>
+<td>Mortgage <code>20%</code>; Revolving Line <code>45%</code>; Auto Loan <code>15%</code>; Unsecured Personal Loan <code>10%</code>; HELOC <code>10%</code></td>
+</tr>
+<tr>
+<td align="right">M1-13</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>EXPOSURE_BASELINE_REFERENCE</code></td>
+<td>Baseline reference</td>
+<td>Same as <code>BASELINE_V2</code>; only scenario labels change</td>
+</tr>
+<tr>
+<td align="right">M1-14</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td>Product amount maximums</td>
+<td>Mortgage max <code>$1,800,000</code>; Revolving Line max <code>$36,000</code>; Auto Loan max <code>$96,000</code>; Unsecured Personal Loan max <code>$60,000</code>; HELOC max <code>$300,000</code></td>
+</tr>
+<tr>
+<td align="right">M1-15</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td>Product amount maximums</td>
+<td>Mortgage max <code>$1,200,000</code>; Revolving Line max <code>$24,000</code>; Auto Loan max <code>$64,000</code>; Unsecured Personal Loan max <code>$40,000</code>; HELOC max <code>$200,000</code></td>
+</tr>
+<tr>
+<td align="right">M1-16</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>LGD_BASELINE_REFERENCE</code></td>
+<td>Baseline reference</td>
+<td>Same as <code>BASELINE_V2</code>; only scenario labels change</td>
+</tr>
+<tr>
+<td align="right">M1-17</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>SECURED_SEVERITY_STRESS</code></td>
+<td>LGD</td>
+<td>Mortgage <code>0.30</code>; HELOC <code>0.35</code>; Auto Loan <code>0.55</code>; Unsecured Personal Loan <code>0.70</code>; Revolving Line <code>0.85</code></td>
+</tr>
+<tr>
+<td align="right">M1-18</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td>LGD</td>
+<td>Mortgage <code>0.20</code>; HELOC <code>0.25</code>; Auto Loan <code>0.45</code>; Unsecured Personal Loan <code>0.80</code>; Revolving Line <code>0.90</code></td>
+</tr>
+<tr>
+<td align="right">M1-19</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td>LGD</td>
+<td>Mortgage <code>0.30</code>; HELOC <code>0.35</code>; Auto Loan <code>0.55</code>; Unsecured Personal Loan <code>0.80</code>; Revolving Line <code>0.90</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Table 2 — Module 2 strategy parameter table</h2>
+<p>Shared settings for all Module 2 strategy runs unless overridden:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>module1_input_source</code></td>
+<td><code>ARCHIVE</code></td>
+</tr>
+<tr>
+<td><code>source_population_id</code></td>
+<td><code>BASE_POPULATION_V1</code></td>
+</tr>
+<tr>
+<td><code>archive_run_flag</code></td>
+<td><code>TRUE</code></td>
+</tr>
+<tr>
+<td><code>strategy_archive_reset_mode</code></td>
+<td><code>STRATEGY_SCENARIO_ONLY</code></td>
+</tr>
+<tr>
+<td><code>module2_model_version</code></td>
+<td><code>MODULE2_V1_0</code></td>
+</tr>
+<tr>
+<td><code>strategy_set_name</code></td>
+<td><code>MODULE2_POLICY_STRATEGY_SHOWCASE_SET</code></td>
+</tr>
+<tr>
+<td><code>strategy_version</code></td>
+<td><code>V1_0</code></td>
+</tr>
+<tr>
+<td><code>allow_approved_amount_above_requested_flag</code></td>
+<td><code>FALSE</code></td>
+</tr>
+</tbody></table>
+<table>
+<thead>
+<tr>
+<th align="right">Strategy ID</th>
+<th><code>strategy_name</code></th>
+<th>Parameter family changed</th>
+<th>Exact Module 2 parameter changes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">S0</td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td>Baseline</td>
+<td>Keep all accepted Module 2 v1.0 defaults</td>
+</tr>
+<tr>
+<td align="right">S1</td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td>Synthetic estimated-PD proxy thresholds</td>
+<td><code>approve_max_estimated_pd_proxy = 0.06</code>; <code>counteroffer_max_estimated_pd_proxy = 0.12</code>; <code>review_max_estimated_pd_proxy = 0.25</code>; <code>decline_min_estimated_pd_proxy = 0.30</code></td>
+</tr>
+<tr>
+<td align="right">S2</td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td>Synthetic estimated-PD proxy thresholds, PTI, DTI</td>
+<td><code>approve_max_estimated_pd_proxy = 0.10</code>; <code>counteroffer_max_estimated_pd_proxy = 0.20</code>; <code>review_max_estimated_pd_proxy = 0.35</code>; <code>decline_min_estimated_pd_proxy = 0.40</code>; <code>global_approve_max_pti = 0.28</code>; <code>global_review_max_pti = 0.45</code>; <code>global_decline_min_pti = 0.60</code>; <code>approve_max_dti = 0.45</code>; <code>review_max_dti = 0.65</code>; <code>decline_min_dti = 0.65</code></td>
+</tr>
+<tr>
+<td align="right">S3</td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td>PTI thresholds</td>
+<td><code>global_approve_max_pti = 0.22</code>; <code>global_review_max_pti = 0.35</code>; <code>global_decline_min_pti = 0.50</code>; for each product row: <code>product_approve_max_pti = baseline * 0.90</code>; <code>product_review_max_pti = baseline * 0.90</code>; <code>product_decline_min_pti = baseline * 0.90</code>; <code>counteroffer_target_pti = baseline * 0.90</code></td>
+</tr>
+<tr>
+<td align="right">S4</td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td>Counteroffer and exposure treatment</td>
+<td>For each product row: <code>product_max_approved_amount = baseline * 0.90</code>; <code>product_approved_el_cap = baseline * 0.90</code>; <code>counteroffer_target_pti = baseline * 0.90</code>; <code>product_max_exposure_reduction_pct = LEAST(baseline + 0.10, 0.50)</code></td>
+</tr>
+<tr>
+<td align="right">S5</td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td>Revolving and unsecured product guardrails</td>
+<td>For <code>REVOLVING_LINE</code> and <code>UNSECURED_PERSONAL_LOAN</code> only: <code>product_max_approved_amount = baseline * 0.80</code>; <code>product_approved_el_cap = baseline * 0.80</code>; <code>counteroffer_target_pti = baseline * 0.90</code>; all other product rows unchanged</td>
+</tr>
+<tr>
+<td align="right">S6</td>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td>Failed counteroffer resolution</td>
+<td><code>failed_counteroffer_resolution = &#39;DECLINE&#39;</code>; all other parameters unchanged</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Table 3 — Recommended Module 2 archive run queue</h2>
+<p>Use this as the practical run table. Each row means: select the Module 1 archive slice, apply the Module 2 strategy, archive the Module 2 output.</p>
+<table>
+<thead>
+<tr>
+<th align="right">Run ID</th>
+<th>Module 1 <code>scenario_set_name</code></th>
+<th>Module 1 <code>scenario_name</code></th>
+<th>Module 2 <code>strategy_name</code></th>
+<th align="right">Strategy ID</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">M2-01</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Baseline reference</td>
+</tr>
+<tr>
+<td align="right">M2-02</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">S1</td>
+<td>Risk discipline comparison</td>
+</tr>
+<tr>
+<td align="right">M2-03</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td align="right">S2</td>
+<td>Growth comparison</td>
+</tr>
+<tr>
+<td align="right">M2-04</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td align="right">S3</td>
+<td>Affordability tightening comparison</td>
+</tr>
+<tr>
+<td align="right">M2-05</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td align="right">S4</td>
+<td>Counteroffer / exposure-management comparison</td>
+</tr>
+<tr>
+<td align="right">M2-06</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td align="right">S5</td>
+<td>Product guardrail comparison</td>
+</tr>
+<tr>
+<td align="right">M2-07</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>BASELINE_V2</code></td>
+<td><code>MANUAL_REVIEW_REDUCTION_STRATEGY</code></td>
+<td align="right">S6</td>
+<td>Operational review-burden comparison</td>
+</tr>
+<tr>
+<td align="right">M2-08</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_200BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Baseline strategy under rate stress</td>
+</tr>
+<tr>
+<td align="right">M2-09</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Baseline strategy under rate relief</td>
+</tr>
+<tr>
+<td align="right">M2-10</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_300BP</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Baseline strategy under stronger rate stress</td>
+</tr>
+<tr>
+<td align="right">M2-11</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_200BP</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td align="right">S3</td>
+<td>Rate stress with affordability guardrail</td>
+</tr>
+<tr>
+<td align="right">M2-12</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_UP_300BP</code></td>
+<td><code>TIGHTER_AFFORDABILITY_STRATEGY</code></td>
+<td align="right">S3</td>
+<td>Stronger rate stress with affordability guardrail</td>
+</tr>
+<tr>
+<td align="right">M2-13</td>
+<td><code>MODULE1_V2_BASELINE_SET</code></td>
+<td><code>RATE_DOWN_200BP</code></td>
+<td><code>GROWTH_ORIENTED_STRATEGY</code></td>
+<td align="right">S2</td>
+<td>Rate relief with growth posture</td>
+</tr>
+<tr>
+<td align="right">M2-14</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_BOX_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Credit-box reference</td>
+</tr>
+<tr>
+<td align="right">M2-15</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>PRIME_GROWTH_SCORE_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Prime-growth applicant mix</td>
+</tr>
+<tr>
+<td align="right">M2-16</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Near-prime expansion baseline</td>
+</tr>
+<tr>
+<td align="right">M2-17</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">S1</td>
+<td>Near-prime expansion with risk discipline</td>
+</tr>
+<tr>
+<td align="right">M2-18</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>NEAR_PRIME_EXPANSION_MIX</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td align="right">S4</td>
+<td>Near-prime expansion with counteroffer management</td>
+</tr>
+<tr>
+<td align="right">M2-19</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Credit-stress applicant mix</td>
+</tr>
+<tr>
+<td align="right">M2-20</td>
+<td><code>MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET</code></td>
+<td><code>CREDIT_STRESS_SCORE_MIX</code></td>
+<td><code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code></td>
+<td align="right">S1</td>
+<td>Credit-stress applicant mix with risk discipline</td>
+</tr>
+<tr>
+<td align="right">M2-21</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>PRODUCT_MIX_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Product-mix reference</td>
+</tr>
+<tr>
+<td align="right">M2-22</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Unsecured-growth baseline</td>
+</tr>
+<tr>
+<td align="right">M2-23</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_GROWTH_MIX</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td align="right">S5</td>
+<td>Unsecured-growth with product guardrails</td>
+</tr>
+<tr>
+<td align="right">M2-24</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>SECURED_BALANCE_GROWTH_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Secured-balance growth baseline</td>
+</tr>
+<tr>
+<td align="right">M2-25</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Revolving expansion baseline</td>
+</tr>
+<tr>
+<td align="right">M2-26</td>
+<td><code>MODULE1_V2_PORTFOLIO_MIX_SENSITIVITY_SET</code></td>
+<td><code>REVOLVING_LINE_EXPANSION_MIX</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td align="right">S5</td>
+<td>Revolving expansion with product guardrails</td>
+</tr>
+<tr>
+<td align="right">M2-27</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>EXPOSURE_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Exposure-intensity reference</td>
+</tr>
+<tr>
+<td align="right">M2-28</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>High-balance baseline</td>
+</tr>
+<tr>
+<td align="right">M2-29</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>HIGH_BALANCE_APPETITE</code></td>
+<td><code>COUNTEROFFER_FIRST_EXPOSURE_STRATEGY</code></td>
+<td align="right">S4</td>
+<td>High-balance with counteroffer management</td>
+</tr>
+<tr>
+<td align="right">M2-30</td>
+<td><code>MODULE1_V2_EXPOSURE_INTENSITY_SET</code></td>
+<td><code>LOW_BALANCE_CONSERVATIVE_REQUESTS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Low-balance conservative baseline</td>
+</tr>
+<tr>
+<td align="right">M2-31</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>LGD_BASELINE_REFERENCE</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>LGD reference</td>
+</tr>
+<tr>
+<td align="right">M2-32</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>SECURED_SEVERITY_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Secured severity stress baseline</td>
+</tr>
+<tr>
+<td align="right">M2-33</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Unsecured severity stress baseline</td>
+</tr>
+<tr>
+<td align="right">M2-34</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>UNSECURED_SEVERITY_STRESS</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td align="right">S5</td>
+<td>Unsecured severity stress with product guardrails</td>
+</tr>
+<tr>
+<td align="right">M2-35</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td><code>BASELINE_STRATEGY</code></td>
+<td align="right">S0</td>
+<td>Broad severity stress baseline</td>
+</tr>
+<tr>
+<td align="right">M2-36</td>
+<td><code>MODULE1_V2_LGD_SEVERITY_SENSITIVITY_SET</code></td>
+<td><code>BROAD_LGD_STRESS</code></td>
+<td><code>PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY</code></td>
+<td align="right">S5</td>
+<td>Broad severity stress with product guardrails</td>
+</tr>
+</tbody></table>
+<p>My suggested execution order is exactly the table order above: finish all <code>BASELINE_V2</code> strategies first, then rate scenarios, then credit-box scenarios, product-mix scenarios, exposure-intensity scenarios, and severity scenarios.</p>
+</div></article><article id="c038-m00557" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00557 · 2026-05-08T22:39:57.696000-04:00 · active path</p><div class="body"><p>when running the module 2 order is there anything I should capture or will it all be captured in the module 2 archive outputs?</p>
+</div></article><article id="c038-m00560" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00560 · 2026-05-08T22:41:30.286335-04:00 · active path</p><div class="body"><p>Not everything is captured automatically in the Module 2 archive.</p>
+<p>The <strong>Module 2 archive captures the final per-application strategy output</strong>, which is the most important thing. It should preserve:</p>
+<pre><code class="language-text">Module 1 scenario lineage
+Module 2 strategy metadata
+application_id / applicant_id
+product / score / borrower fields
+requested structure
+estimated_pd as the synthetic estimated-PD proxy
+requested_expected_loss_amount
+decision_outcome
+decision_path
+flags
+approved_amount
+approved_payment_to_income_ratio
+approved_expected_loss_amount
+reason codes
+archive timestamps
+</code></pre>
+<p>That is enough to regenerate most portfolio summaries, Section 13 matched comparisons, and Section 15 frontier summaries later.</p>
+<p>But you should still capture a few things outside the archive because <strong>temporary parameter tables and QA query outputs are not permanently stored unless you export them or create additional audit tables</strong>.</p>
+<h2>What you should capture for each Module 2 run</h2>
+<p>Use a simple run-control tracker. Minimum fields:</p>
+<table>
+<thead>
+<tr>
+<th>Capture item</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Module 2 run ID from your run queue</td>
+<td>Lets you map the run back to the roadmap</td>
+</tr>
+<tr>
+<td><code>module1_scenario_set_name</code></td>
+<td>Preserves upstream Module 1 scenario family</td>
+</tr>
+<tr>
+<td><code>module1_scenario_name</code></td>
+<td>Identifies the exact Module 1 scenario used</td>
+</tr>
+<tr>
+<td><code>population_id</code></td>
+<td>Confirms matched population control</td>
+</tr>
+<tr>
+<td><code>strategy_set_name</code></td>
+<td>Groups Module 2 strategy family</td>
+</tr>
+<tr>
+<td><code>strategy_name</code></td>
+<td>Identifies downstream strategy</td>
+</tr>
+<tr>
+<td><code>strategy_version</code></td>
+<td>Preserves strategy version</td>
+</tr>
+<tr>
+<td>Parameter family changed</td>
+<td>Explains what changed from baseline</td>
+</tr>
+<tr>
+<td>Exact parameter changes</td>
+<td>Critical because temp parameter tables disappear</td>
+</tr>
+<tr>
+<td><code>archive_run_flag</code></td>
+<td>Should be <code>TRUE</code> for campaign runs</td>
+</tr>
+<tr>
+<td><code>strategy_archive_reset_mode</code></td>
+<td>Usually <code>STRATEGY_SCENARIO_ONLY</code></td>
+</tr>
+<tr>
+<td>Run completed?</td>
+<td>Basic execution status</td>
+</tr>
+<tr>
+<td>Latest-run row count</td>
+<td>Should usually be 50,000</td>
+</tr>
+<tr>
+<td>Archived slice row count</td>
+<td>Should match latest-run row count</td>
+</tr>
+<tr>
+<td>Duplicate archive grain count</td>
+<td>Should be 0</td>
+</tr>
+<tr>
+<td>Notes / anomalies</td>
+<td>Capture unexpected but explainable behavior</td>
+</tr>
+</tbody></table>
+<h2>What the archive captures well</h2>
+<p>You do <strong>not</strong> need to manually capture every Section 13 or Section 15 output after every single run. Those can be regenerated from:</p>
+<pre><code class="language-sql">credit_decisioning_sim.strategy_decisions_archive
+</code></pre>
+<p>once the archive contains the relevant slices.</p>
+<p>This is especially true for:</p>
+<pre><code class="language-text">archive inventory
+matched strategy comparison
+decision migration
+reason-code movement
+simulated offer-exposure comparison
+strategy frontier summary
+segment-level frontier highlights
+</code></pre>
+<p>The whole point of the archive is to preserve completed strategy outputs for later comparison, much like Module 1’s scenario archive supports matched scenario comparison and controlled attribution using scenario metadata and <code>population_id</code>. fileciteturn8file3 Module 1’s validation also emphasizes that archive-backed matched comparison is what allows controlled differences to be attributed to scenario changes rather than population drift. fileciteturn8file4</p>
+<h2>What you should still export or record</h2>
+<p>I recommend capturing these <strong>once per run</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Evidence</th>
+<th>Capture method</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Section 12 archive persistence confirmation</td>
+<td>Export or screenshot the archive diagnostic showing latest rows = archived rows</td>
+</tr>
+<tr>
+<td>Section 12 archive deleted / inserted rows</td>
+<td>Useful when rerunning same slice</td>
+</tr>
+<tr>
+<td>Section 14.1 structural integrity summary</td>
+<td>Confirms latest-run output integrity</td>
+</tr>
+<tr>
+<td>Section 14.17 final output convention validation</td>
+<td>Confirms amount / flag / Expected Loss conventions</td>
+</tr>
+<tr>
+<td>Section 15.0 / 15.1 after major batches</td>
+<td>Confirms frontier inventory growth</td>
+</tr>
+<tr>
+<td>Parameter changes used for the run</td>
+<td>Manual tracker or exported parameter table</td>
+</tr>
+<tr>
+<td>Any runtime errors</td>
+<td>Error text and section number</td>
+</tr>
+</tbody></table>
+<h2>Most important gap: parameter snapshots</h2>
+<p>The biggest thing the archive may <strong>not fully preserve</strong> is the exact active parameter card if those fields are not all included in the final <code>strategy_decisions</code> output.</p>
+<p>So for every strategy run, you should capture the active parameter setup:</p>
+<pre><code class="language-text">tmp_module2_strategy_params
+tmp_module2_product_policy_params
+</code></pre>
+<p>At minimum, export or manually record the rows when they differ from baseline.</p>
+<p>This matters because later, when you show that <code>TIGHTER_SYNTHETIC_RISK_STRATEGY</code> reduced approved Expected Loss, you want to prove exactly which thresholds changed.</p>
+<h2>Practical recommendation</h2>
+<p>For the full Module 2 run campaign, do this:</p>
+<ol>
+<li><strong>Before each run:</strong> confirm and record the Module 1 scenario and Module 2 strategy parameters.</li>
+<li><strong>Run full Module 2 SQL.</strong></li>
+<li><strong>Confirm Section 12 archive success.</strong></li>
+<li><strong>Record row count, archived row count, duplicate grain count, and any notes.</strong></li>
+<li><strong>Do not export all QA every time.</strong></li>
+<li><strong>After a batch is complete, run Section 13 and Section 15 to generate comparison outputs.</strong></li>
+</ol>
+<h2>Bottom line</h2>
+<p>The archive captures the <strong>strategy results</strong>.</p>
+<p>You should separately capture the <strong>run-control evidence and parameter changes</strong>.</p>
+<p>For each run, the minimum proof package is:</p>
+<pre><code class="language-text">run ID
+Module 1 scenario
+Module 2 strategy
+exact parameter changes
+latest-run row count
+archived slice row count
+archive duplicate grain = 0
+Section 12 persistence success
+notes
+</code></pre>
+<p>Then Section 13 and Section 15 can regenerate the comparison story from the archive after the run batch is complete.</p>
+</div></article><article id="c038-m00561" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00561 · 2026-05-08T22:46:30.204000-04:00 · active path</p><div class="body"><p>I will review the QA each time.  What I do not want to lose here is the executive story.  the key statistics and data from each run + any key validation (to later record in our validation summary artifact). I want to be able to speak confidently to our results.  This should not be something where i have to go to 20 places to record this detail.  If we need to add to the code to make recording such items easier for these runs, let&#39;s do that.</p>
+</div></article><article id="c038-m00566" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00566 · 2026-05-08T22:49:48.977720-04:00 · active path</p><div class="body"><p>Yes — I recommend adding one more section before the large run campaign.</p>
+<p>Not another decisioning section. Not another model layer. A <strong>run evidence capture layer</strong>.</p>
+<p>Your concern is exactly right: the archive preserves the per-application outputs, and Section 13 / 14 / 15 can regenerate analysis, but the <strong>executive story and validation evidence are not yet persisted in one convenient place</strong>. If you run 30+ scenario / strategy combinations, you should not have to reconstruct the key narrative from scattered QA exports later.</p>
+<p>Module 1 treated QA outputs as validation evidence, not decorative reports, and its implementation guidance explicitly says QA outputs are the evidence layer supporting the Validation Summary. fileciteturn8file3 Module 1’s Validation Summary also shows the value of turning QA evidence into a concise validation narrative with key statistics, acceptance signals, and interpretation boundaries. fileciteturn8file4</p>
+<h2>Recommendation</h2>
+<p>Add:</p>
+<pre><code class="language-text">SECTION 16 — STRATEGY RUN EVIDENCE CAPTURE AND EXECUTIVE STORY REGISTER
+</code></pre>
+<p>This should be the final section after Section 15.</p>
+<p>It should create persistent, easy-to-export evidence tables that summarize each completed Module 2 archived run.</p>
+<hr>
+<h1>What Section 16 should do</h1>
+<p>Section 16 should capture one row per:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+</code></pre>
+<p>That is the same practical archive slice grain used throughout Module 2.</p>
+<p>It should preserve:</p>
+<ol>
+<li><strong>Run identity</strong></li>
+<li><strong>Module 1 scenario lineage</strong></li>
+<li><strong>Module 2 strategy lineage</strong></li>
+<li><strong>Parameter snapshot</strong></li>
+<li><strong>Executive outcome metrics</strong></li>
+<li><strong>Growth / exposure metrics</strong></li>
+<li><strong>Risk and Expected Loss metrics</strong></li>
+<li><strong>Affordability metrics</strong></li>
+<li><strong>Reason-code story</strong></li>
+<li><strong>Validation status summary</strong></li>
+<li><strong>Frontier classification</strong></li>
+<li><strong>Review notes / flags</strong></li>
+</ol>
+<p>This becomes the single table you export after each run or after each batch.</p>
+<hr>
+<h1>Proposed permanent tables</h1>
+<h2>1. <code>credit_decisioning_sim.strategy_run_evidence_summary</code></h2>
+<p>This is the main executive story table.</p>
+<p>One row per archived strategy / scenario slice.</p>
+<p>Recommended fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field family</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Run identity</td>
+<td><code>evidence_snapshot_ts</code>, <code>strategy_run_id</code>, <code>strategy_run_ts</code>, <code>latest_output_created_ts</code>, <code>archive_inserted_ts</code></td>
+</tr>
+<tr>
+<td>Module 1 lineage</td>
+<td><code>module1_scenario_set_name</code>, <code>module1_scenario_name</code>, <code>population_id</code></td>
+</tr>
+<tr>
+<td>Module 2 strategy</td>
+<td><code>strategy_set_name</code>, <code>strategy_name</code>, <code>strategy_version</code></td>
+</tr>
+<tr>
+<td>Row integrity</td>
+<td><code>applications</code>, <code>distinct_application_id_count</code>, <code>duplicate_application_count</code></td>
+</tr>
+<tr>
+<td>Decision outcomes</td>
+<td><code>approval_rate</code>, <code>counteroffer_rate</code>, <code>manual_review_rate</code>, <code>decline_rate</code></td>
+</tr>
+<tr>
+<td>Simulated offer exposure</td>
+<td><code>simulated_offer_exposure_rate</code>, <code>offer_count</code>, <code>counteroffer_share_of_offers</code></td>
+</tr>
+<tr>
+<td>Growth / exposure</td>
+<td><code>total_requested_amount</code>, <code>total_approved_amount</code>, <code>avg_approved_amount_offer_rows</code></td>
+</tr>
+<tr>
+<td>Affordability</td>
+<td><code>avg_requested_payment_to_income_ratio</code>, <code>avg_approved_payment_to_income_ratio_offer_rows</code></td>
+</tr>
+<tr>
+<td>Risk</td>
+<td><code>avg_synthetic_estimated_pd_proxy_all_apps</code>, <code>avg_synthetic_estimated_pd_proxy_offer_rows</code>, <code>avg_synthetic_estimated_pd_proxy_declined_rows</code></td>
+</tr>
+<tr>
+<td>Expected Loss</td>
+<td><code>total_requested_expected_loss_amount</code>, <code>total_approved_expected_loss_amount</code>, <code>approved_expected_loss_rate</code></td>
+</tr>
+<tr>
+<td>Efficiency</td>
+<td><code>approved_amount_per_approved_expected_loss_dollar</code></td>
+</tr>
+<tr>
+<td>Reason-code story</td>
+<td><code>top_primary_reason_code</code>, <code>top_non_approval_primary_reason_code</code>, <code>top_policy_stop_primary_reason_code</code>, <code>top_reason_code_delta_driver_code</code></td>
+</tr>
+<tr>
+<td>Validation summary</td>
+<td><code>validation_pass_count</code>, <code>validation_review_count</code>, <code>validation_not_applicable_count</code>, <code>validation_review_items</code></td>
+</tr>
+<tr>
+<td>Frontier story</td>
+<td><code>frontier_position_type</code>, <code>executive_frontier_quadrant</code>, <code>frontier_interpretation_note</code></td>
+</tr>
+</tbody></table>
+<p>This table becomes your <strong>one-stop executive evidence register</strong>.</p>
+<hr>
+<h2>2. <code>credit_decisioning_sim.strategy_run_validation_evidence</code></h2>
+<p>This stores the Section 14 validation status table in persistent form.</p>
+<p>One row per run × validation test.</p>
+<p>Fields:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+validation_area
+validation_test_name
+validation_category
+validation_status
+observed_value
+expected_behavior
+interpretation
+evidence_snapshot_ts
+</code></pre>
+<p>This table supports the future Validation Summary.</p>
+<p>The executive summary table can show only counts and review items, while this table preserves the detail.</p>
+<hr>
+<h2>3. <code>credit_decisioning_sim.strategy_run_parameter_snapshot</code></h2>
+<p>This is important because the active parameter temp tables disappear after the session.</p>
+<p>Fields:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+strategy_params_jsonb
+product_policy_params_jsonb
+evidence_snapshot_ts
+</code></pre>
+<p>Why JSONB is useful here:</p>
+<pre><code class="language-text">tmp_module2_strategy_params
+tmp_module2_product_policy_params
+</code></pre>
+<p>contain many fields, and some product-policy strategies change product-level values. A JSONB snapshot lets us preserve the exact parameter card without widening the evidence table endlessly.</p>
+<p>This is critical for later claims like:</p>
+<pre><code class="language-text">TIGHTER_SYNTHETIC_RISK_STRATEGY reduced approved Expected Loss by $7.26M
+because approve / counteroffer / review / decline synthetic-risk thresholds changed to X / Y / Z / W.
+</code></pre>
+<hr>
+<h1>Why this is better than relying only on the archive</h1>
+<p>The archive contains the full row-level strategy output. That is the source of truth.</p>
+<p>But it does <strong>not</strong> conveniently preserve the story.</p>
+<p>Without Section 16, you would later need to pull from:</p>
+<pre><code class="language-text">Section 12 archive diagnostics
+Section 13 comparison outputs
+Section 14 validation outputs
+Section 15 frontier outputs
+manual parameter notes
+CSV exports
+screenshots
+</code></pre>
+<p>With Section 16, each run creates an evidence record that says:</p>
+<pre><code class="language-text">Here is the scenario.
+Here is the strategy.
+Here are the parameter changes.
+Here are the final outcomes.
+Here is the approved exposure.
+Here is the approved Expected Loss.
+Here is the reason-code story.
+Here is the validation status.
+Here is the frontier classification.
+</code></pre>
+<p>That is exactly what you need for the future Validation Summary, README, and LinkedIn posts.</p>
+<hr>
+<h1>What Section 16 should not do</h1>
+<p>Section 16 should not:</p>
+<pre><code class="language-text">change decision logic
+change approved amount logic
+change reason-code logic
+change archive logic
+recalculate decisions
+recalculate approved Expected Loss
+alter strategy_decisions_archive
+draw production underwriting conclusions
+draw fair-lending conclusions
+claim calibrated PD behavior
+</code></pre>
+<p>It should only summarize and persist evidence.</p>
+<hr>
+<h1>Recommended Section 16 structure</h1>
+<pre><code class="language-text">16.0 Evidence capture purpose and boundary
+16.1 Create evidence summary table
+16.2 Create validation evidence detail table
+16.3 Create parameter snapshot table
+16.4 Capture current run executive evidence summary
+16.5 Capture current run validation evidence detail
+16.6 Capture current run parameter snapshot
+16.7 Evidence capture diagnostics
+16.8 Export-ready run evidence view
+</code></pre>
+<hr>
+<h1>What you should review after every run</h1>
+<p>After Section 16, you only need to check a compact set.</p>
+<p>For each run, capture or export:</p>
+<pre><code class="language-sql">SELECT *
+FROM credit_decisioning_sim.strategy_run_evidence_summary
+ORDER BY evidence_snapshot_ts DESC
+LIMIT 1;
+</code></pre>
+<p>And for validation detail:</p>
+<pre><code class="language-sql">SELECT *
+FROM credit_decisioning_sim.strategy_run_validation_evidence
+WHERE validation_status IN (&#39;REVIEW&#39;, &#39;NOT_APPLICABLE&#39;)
+ORDER BY validation_area, validation_test_name;
+</code></pre>
+<p>That gives you the story and the validation caveats in two places, not twenty.</p>
+<hr>
+<h1>Recommended next build step</h1>
+<p>Yes, add code.</p>
+<p>The next SQL build should be:</p>
+<pre><code class="language-text">SECTION 16 ONLY — STRATEGY RUN EVIDENCE CAPTURE AND EXECUTIVE STORY REGISTER
+</code></pre>
+<p>This should come after Section 15 and should consume:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_decisions
+credit_decisioning_sim.strategy_decisions_archive
+tmp_m2_validation_status_summary
+tmp_m2_strategy_frontier_executive_summary
+tmp_module2_strategy_params
+tmp_module2_product_policy_params
+</code></pre>
+<p>It should persist the distilled evidence into the three permanent evidence tables above.</p>
+<p>Once Section 16 is in place, your full run campaign becomes much cleaner: run Module 2, review QA, and let Section 16 capture the executive evidence pack automatically.</p>
+</div></article><article id="c038-m00567" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00567 · 2026-05-08T22:54:47.059000-04:00 · active path</p><div class="body"><p>i agree with the above. i have one question before we build section 16.  are there any other details we should include in this executive storytelling table that would make performing our later module 3 growth logic easier?</p>
+</div></article><article id="c038-m00570" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00570 · 2026-05-08T22:57:04.582690-04:00 · active path</p><div class="body"><p>Yes. Before we build Section 16, I would add a few <strong>Module 3 readiness fields</strong> to the executive storytelling capture layer.</p>
+<p>The goal is <strong>not</strong> to calculate earnings yet. That belongs in Module 3. But we should preserve the <strong>inputs and summary measures</strong> that will make future growth / earnings / risk-adjusted margin logic easier.</p>
+<p>Module 1 already identifies profitability / pricing as a future module opportunity, not part of the current validated scope, and it explicitly separates simulation outputs from production pricing or profitability optimization. fileciteturn8file3 Its validation roadmap also treats profitability / pricing as future scope requiring separate design and validation. fileciteturn8file4 So Section 16 should capture <strong>readiness fields</strong>, not perform Module 3 economics.</p>
+<h2>Recommendation</h2>
+<p>Add the following field families to the Section 16 executive evidence table.</p>
+<h2>1. Growth / exposure capture fields</h2>
+<p>These help answer: “How much simulated growth did the strategy create?”</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Why it helps Module 3</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>total_requested_amount</code></td>
+<td>Total demand / request pool</td>
+</tr>
+<tr>
+<td><code>total_approved_amount</code></td>
+<td>Simulated approved exposure</td>
+</tr>
+<tr>
+<td><code>approved_amount_capture_rate</code></td>
+<td><code>total_approved_amount / total_requested_amount</code></td>
+</tr>
+<tr>
+<td><code>offer_count</code></td>
+<td>Number of positive simulated offer outcomes</td>
+</tr>
+<tr>
+<td><code>simulated_offer_exposure_rate</code></td>
+<td>Positive offer exposure rate</td>
+</tr>
+<tr>
+<td><code>approval_count</code></td>
+<td>Clean approval volume</td>
+</tr>
+<tr>
+<td><code>counteroffer_count</code></td>
+<td>Reduced-exposure offer volume</td>
+</tr>
+<tr>
+<td><code>manual_review_count</code></td>
+<td>Unresolved volume</td>
+</tr>
+<tr>
+<td><code>decline_count</code></td>
+<td>No-offer volume</td>
+</tr>
+<tr>
+<td><code>total_exposure_reduction_amount</code></td>
+<td>Amount reduced through counteroffers / no-offer conventions</td>
+</tr>
+<tr>
+<td><code>avg_approved_amount_offer_rows</code></td>
+<td>Average simulated offer exposure</td>
+</tr>
+</tbody></table>
+<p>These are already mostly available from Sections 11, 14, and 15. Section 16 should persist them in one place.</p>
+<h2>2. Opportunity / unresolved-pipeline fields</h2>
+<p>These help later Module 3 logic evaluate where growth is being constrained.</p>
+<p>Use neutral language; do <strong>not</strong> call these “lost revenue” yet.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Why it helps Module 3</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>manual_review_requested_amount</code></td>
+<td>Requested exposure sitting in unresolved review</td>
+</tr>
+<tr>
+<td><code>manual_review_requested_expected_loss_amount</code></td>
+<td>Risk profile of unresolved review exposure</td>
+</tr>
+<tr>
+<td><code>decline_requested_amount</code></td>
+<td>Requested exposure in no-offer outcomes</td>
+</tr>
+<tr>
+<td><code>decline_requested_expected_loss_amount</code></td>
+<td>Risk profile of no-offer exposure</td>
+</tr>
+<tr>
+<td><code>counteroffer_requested_amount</code></td>
+<td>Original request amount for counteroffer rows</td>
+</tr>
+<tr>
+<td><code>counteroffer_approved_amount</code></td>
+<td>Reduced exposure actually offered</td>
+</tr>
+<tr>
+<td><code>counteroffer_exposure_reduction_amount</code></td>
+<td>Constrained exposure amount</td>
+</tr>
+<tr>
+<td><code>counteroffer_exposure_reduction_pct_avg</code></td>
+<td>Average reduction depth</td>
+</tr>
+</tbody></table>
+<p>These fields will be useful when Module 3 asks: “What growth was approved, constrained, unresolved, or excluded?”</p>
+<h2>3. APR / yield-basis fields</h2>
+<p>These are the most important Module 3 readiness fields.</p>
+<p>Do <strong>not</strong> call them revenue yet. Call them <strong>yield-basis</strong> or <strong>APR proxy basis</strong> fields.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Formula / definition</th>
+<th>Why it helps Module 3</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>avg_apr_proxy_all_apps</code></td>
+<td><code>AVG(base_apr_for_payment_calc)</code></td>
+<td>Overall pricing-proxy profile</td>
+</tr>
+<tr>
+<td><code>avg_apr_proxy_offer_rows</code></td>
+<td>offer rows only</td>
+<td>Offer-population APR profile</td>
+</tr>
+<tr>
+<td><code>approved_amount_weighted_apr_proxy</code></td>
+<td><code>SUM(approved_amount * base_apr_for_payment_calc) / SUM(approved_amount)</code></td>
+<td>Best future revenue-basis metric</td>
+</tr>
+<tr>
+<td><code>requested_amount_weighted_apr_proxy</code></td>
+<td><code>SUM(requested_amount * base_apr_for_payment_calc) / SUM(requested_amount)</code></td>
+<td>Demand pool APR profile</td>
+</tr>
+<tr>
+<td><code>approved_amount_x_apr_proxy_sum</code></td>
+<td><code>SUM(approved_amount * base_apr_for_payment_calc)</code></td>
+<td>Future gross interest proxy basis</td>
+</tr>
+<tr>
+<td><code>requested_amount_x_apr_proxy_sum</code></td>
+<td><code>SUM(requested_amount * base_apr_for_payment_calc)</code></td>
+<td>Future requested exposure yield basis</td>
+</tr>
+</tbody></table>
+<p>This lets Module 3 later calculate simulated interest income proxy without needing to reconstruct everything from scratch.</p>
+<h2>4. Term / duration-basis fields</h2>
+<p>These will matter for future earnings, because earnings potential differs by term and product.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Why it helps Module 3</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>avg_loan_term_months_offer_rows</code></td>
+<td>Average term for offered rows</td>
+</tr>
+<tr>
+<td><code>approved_amount_weighted_term_months</code></td>
+<td>Exposure-weighted term profile</td>
+</tr>
+<tr>
+<td><code>avg_loan_term_months_by_product_jsonb</code></td>
+<td>Compact product-level term profile</td>
+</tr>
+<tr>
+<td><code>term_missing_or_revolving_count</code></td>
+<td>Helps separate revolving products from term products</td>
+</tr>
+</tbody></table>
+<p>For revolving products, term may be null or not applicable. That is fine. Section 16 should preserve that distinction rather than forcing a fake term.</p>
+<h2>5. Product economics basis fields</h2>
+<p>Module 3 will almost certainly need product-level assumptions. A single aggregate row can hide product differences.</p>
+<p>At the executive summary level, include:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Why it helps Module 3</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>secured_approved_amount_share</code></td>
+<td>Secured exposure mix</td>
+</tr>
+<tr>
+<td><code>unsecured_approved_amount_share</code></td>
+<td>Unsecured exposure mix</td>
+</tr>
+<tr>
+<td><code>revolving_approved_amount_share</code></td>
+<td>Revolving exposure mix</td>
+</tr>
+<tr>
+<td><code>installment_approved_amount_share</code></td>
+<td>Installment exposure mix</td>
+</tr>
+<tr>
+<td><code>mortgage_approved_amount_share</code></td>
+<td>High-balance secured exposure</td>
+</tr>
+<tr>
+<td><code>product_approved_amount_mix_jsonb</code></td>
+<td>Product-level approved amount distribution</td>
+</tr>
+<tr>
+<td><code>product_approved_expected_loss_mix_jsonb</code></td>
+<td>Product-level approved Expected Loss distribution</td>
+</tr>
+<tr>
+<td><code>product_offer_rate_jsonb</code></td>
+<td>Product-level offer-rate profile</td>
+</tr>
+</tbody></table>
+<p>This avoids having to go back to many product-level QA exports later.</p>
+<h2>6. Risk-adjusted frontier fields</h2>
+<p>These are already central to Section 15, and they should be persisted in Section 16.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>total_approved_expected_loss_amount</code></td>
+<td>Core approved-risk cost proxy</td>
+</tr>
+<tr>
+<td><code>approved_expected_loss_rate</code></td>
+<td><code>approved EL / approved amount</code></td>
+</tr>
+<tr>
+<td><code>approved_amount_per_approved_expected_loss_dollar</code></td>
+<td>Simple risk-efficiency metric</td>
+</tr>
+<tr>
+<td><code>avg_synthetic_estimated_pd_proxy_offer_rows</code></td>
+<td>Offer-population synthetic risk profile</td>
+</tr>
+<tr>
+<td><code>avg_estimated_lgd_offer_rows</code></td>
+<td>Offer-population severity profile</td>
+</tr>
+<tr>
+<td><code>avg_approved_payment_to_income_ratio_offer_rows</code></td>
+<td>Offer-population affordability quality</td>
+</tr>
+<tr>
+<td><code>frontier_position_type</code></td>
+<td>Strategy posture</td>
+</tr>
+<tr>
+<td><code>executive_frontier_quadrant</code></td>
+<td>Executive tradeoff label</td>
+</tr>
+</tbody></table>
+<p>These fields become the bridge between Module 2 and Module 3.</p>
+<h2>7. Reason-code storytelling fields</h2>
+<p>Keep all current Section 15 reason-code story fields, and add outcome-specific top reasons.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Why it helps</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>top_primary_reason_code</code></td>
+<td>Most common explanation overall</td>
+</tr>
+<tr>
+<td><code>top_non_approval_primary_reason_code</code></td>
+<td>Best non-approval storytelling field</td>
+</tr>
+<tr>
+<td><code>top_policy_stop_primary_reason_code</code></td>
+<td>Explains no-offer risk driver</td>
+</tr>
+<tr>
+<td><code>top_reason_code_delta_driver_code</code></td>
+<td>Explains biggest strategy movement</td>
+</tr>
+<tr>
+<td><code>top_counteroffer_reason_code</code></td>
+<td>Explains constrained-offer driver</td>
+</tr>
+<tr>
+<td><code>top_manual_review_reason_code</code></td>
+<td>Explains unresolved driver</td>
+</tr>
+<tr>
+<td><code>top_decline_reason_code</code></td>
+<td>Explains no-offer driver</td>
+</tr>
+</tbody></table>
+<p>For Module 3, this helps explain not just where earnings may change, but <strong>why growth was constrained</strong>.</p>
+<h2>8. Parameter / run-story fields</h2>
+<p>These are critical. They are not always derivable from the archive.</p>
+<p>Add these to the Section 16 executive evidence table:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>module1_run_id</code></td>
+<td>Links to the Module 1 run roadmap</td>
+</tr>
+<tr>
+<td><code>module2_run_id</code></td>
+<td>Links to the Module 2 run roadmap</td>
+</tr>
+<tr>
+<td><code>showcase_name</code></td>
+<td>LinkedIn / README storyline grouping</td>
+</tr>
+<tr>
+<td><code>module1_parameter_family_changed</code></td>
+<td>Example: <code>RATE_ENVIRONMENT</code>, <code>SCORE_MIX</code>, <code>PRODUCT_MIX</code>, <code>LGD_STRESS</code></td>
+</tr>
+<tr>
+<td><code>module1_parameter_change_summary</code></td>
+<td>Plain-English description</td>
+</tr>
+<tr>
+<td><code>module2_strategy_family_changed</code></td>
+<td>Example: <code>RISK_TIGHTENING</code>, <code>GROWTH</code>, <code>COUNTEROFFER_MANAGEMENT</code></td>
+</tr>
+<tr>
+<td><code>module2_parameter_change_summary</code></td>
+<td>Plain-English description</td>
+</tr>
+<tr>
+<td><code>expected_storyline</code></td>
+<td>What the run was intended to demonstrate</td>
+</tr>
+<tr>
+<td><code>observed_storyline</code></td>
+<td>What actually happened after QA review</td>
+</tr>
+<tr>
+<td><code>validation_notes</code></td>
+<td>Review notes / caveats</td>
+</tr>
+</tbody></table>
+<p>These fields will make the future Validation Summary and README much easier.</p>
+<h2>9. Module 3 readiness fields</h2>
+<p>Add a small status family:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>module3_growth_inputs_available_flag</code></td>
+<td>TRUE if approved amount, APR proxy, product, term, and approved EL are populated enough for future economics</td>
+</tr>
+<tr>
+<td><code>module3_growth_input_gap_note</code></td>
+<td>Notes missing fields, such as no utilization assumption or no funding cost assumption</td>
+</tr>
+<tr>
+<td><code>module3_revenue_model_required_flag</code></td>
+<td>TRUE by default; reminds us Section 16 does not calculate revenue</td>
+</tr>
+<tr>
+<td><code>module3_boundary_note</code></td>
+<td>“Earnings logic deferred to Module 3”</td>
+</tr>
+</tbody></table>
+<p>This will prevent future confusion between Section 16 evidence capture and Module 3 profitability logic.</p>
+<hr>
+<h2>I would also add one companion table</h2>
+<p>The executive table should stay one row per run. But Module 3 will likely need product/score-level detail.</p>
+<p>So I recommend adding a second persistent table in Section 16:</p>
+<pre><code class="language-text">credit_decisioning_sim.strategy_run_segment_evidence_summary
+</code></pre>
+<p>Recommended grain:</p>
+<pre><code class="language-text">strategy_set_name
+strategy_name
+strategy_version
+module1_scenario_set_name
+module1_scenario_name
+population_id
+product_type_policy_key
+score_band_policy_key
+</code></pre>
+<p>Include:</p>
+<pre><code class="language-text">applications
+offer_count
+approval_count
+counteroffer_count
+manual_review_count
+decline_count
+total_requested_amount
+total_approved_amount
+approved_amount_weighted_apr_proxy
+avg_approved_amount_offer_rows
+avg_synthetic_estimated_pd_proxy_offer_rows
+avg_estimated_lgd_offer_rows
+total_approved_expected_loss_amount
+approved_expected_loss_rate
+top_primary_reason_code
+top_non_approval_primary_reason_code
+</code></pre>
+<p>This will make Module 3 much easier because revenue / funding / margin assumptions are likely to be product-sensitive and maybe score-sensitive.</p>
+<h2>Bottom line</h2>
+<p>Yes — add more details now, but only as <strong>Module 3 readiness inputs</strong>, not Module 3 calculations.</p>
+<p>My final recommendation for Section 16:</p>
+<ol>
+<li>Keep the main table:</li>
+</ol>
+<pre><code class="language-text">credit_decisioning_sim.strategy_run_evidence_summary
+</code></pre>
+<ol start="2">
+<li>Add fields for:</li>
+</ol>
+<pre><code class="language-text">growth / exposure capture
+unresolved and no-offer requested exposure
+APR proxy / yield-basis
+term / product mix
+risk-adjusted frontier metrics
+reason-code storytelling
+run roadmap labels
+Module 3 readiness flags
+</code></pre>
+<ol start="3">
+<li>Add one companion table:</li>
+</ol>
+<pre><code class="language-text">credit_decisioning_sim.strategy_run_segment_evidence_summary
+</code></pre>
+<p>That gives us a clean bridge:</p>
+<pre><code class="language-text">Module 2 = strategy outcomes and evidence
+Module 3 = growth, earnings, funding cost, and risk-adjusted economics
+</code></pre>
+</div></article><article id="c038-m00571" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00571 · 2026-05-08T23:00:20.885000-04:00 · active path</p><div class="body"><p>should product/score_band/etc be more a part of the executive narrative?  i think you added some of that to the companion table.</p>
+</div></article><article id="c038-m00573" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C038-M00573 · 2026-05-08T23:01:39.332914-04:00 · active path</p><div class="body"><p>Yes. <strong>Product, score band, and product × score segment should be more explicitly part of the executive narrative.</strong> For senior credit risk analytics, a portfolio-level result is not enough. Reviewers will want to know <strong>where the result came from</strong>:</p>
+<pre><code class="language-text">Which products drove approved exposure?
+Which score bands drove risk movement?
+Which product × score segments drove the strategy tradeoff?
+Which segments explain the change in approved Expected Loss, offer rate, or decline rate?
+</code></pre>
+<p>Module 1 already frames product as a structural driver of requested amount, term, payment behavior, PTI, LGD, and Expected Loss, and it explicitly treats product × score analysis as a core validation and reporting layer. fileciteturn8file3 Module 1 validation also emphasized product-level behavior, score-band behavior, product × score segmentation, and mixed-signal behavior as evidence that the simulator is portfolio-realistic rather than a flat aggregate model. fileciteturn8file4</p>
+<h2>My recommendation</h2>
+<p>Keep the <strong>main executive evidence table</strong> one row per run, but add a small set of <strong>segment driver fields</strong> to it.</p>
+<p>Then keep the companion table for the detailed product × score breakdown.</p>
+<p>That gives you:</p>
+<pre><code class="language-text">Executive table = one-row story
+Companion segment table = detailed evidence behind the story
+</code></pre>
+<h2>Add these fields to the executive evidence table</h2>
+<h3>1. Product driver fields</h3>
+<p>These answer: “Which product drove the run?”</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>top_approved_amount_product</code></td>
+<td>Product with the largest total approved amount</td>
+</tr>
+<tr>
+<td><code>top_approved_amount_product_share</code></td>
+<td>Share of total approved amount from that product</td>
+</tr>
+<tr>
+<td><code>top_approved_expected_loss_product</code></td>
+<td>Product with the largest approved Expected Loss</td>
+</tr>
+<tr>
+<td><code>top_approved_expected_loss_product_share</code></td>
+<td>Share of approved Expected Loss from that product</td>
+</tr>
+<tr>
+<td><code>top_counteroffer_product</code></td>
+<td>Product with the largest counteroffer count</td>
+</tr>
+<tr>
+<td><code>top_decline_product</code></td>
+<td>Product with the largest decline count</td>
+</tr>
+<tr>
+<td><code>largest_product_offer_rate</code></td>
+<td>Highest product-level simulated offer-exposure rate</td>
+</tr>
+<tr>
+<td><code>lowest_product_offer_rate</code></td>
+<td>Lowest product-level simulated offer-exposure rate</td>
+</tr>
+</tbody></table>
+<p>These are strong for executive storytelling because they show whether the strategy is mortgage-driven, revolving-driven, unsecured-driven, or broadly distributed.</p>
+<hr>
+<h3>2. Score-band driver fields</h3>
+<p>These answer: “Which credit quality segments drove the run?”</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>top_approved_amount_score_band</code></td>
+<td>Score band with largest approved amount</td>
+</tr>
+<tr>
+<td><code>top_approved_expected_loss_score_band</code></td>
+<td>Score band with largest approved Expected Loss</td>
+</tr>
+<tr>
+<td><code>top_decline_score_band</code></td>
+<td>Score band with largest decline count</td>
+</tr>
+<tr>
+<td><code>top_counteroffer_score_band</code></td>
+<td>Score band with largest counteroffer count</td>
+</tr>
+<tr>
+<td><code>highest_offer_rate_score_band</code></td>
+<td>Score band with highest simulated offer-exposure rate</td>
+</tr>
+<tr>
+<td><code>lowest_offer_rate_score_band</code></td>
+<td>Score band with lowest simulated offer-exposure rate</td>
+</tr>
+<tr>
+<td><code>highest_approved_el_rate_score_band</code></td>
+<td>Score band with highest approved Expected Loss rate</td>
+</tr>
+</tbody></table>
+<p>This is especially important for explaining risk-tightening strategies. For example, your tighter synthetic-risk strategy’s story is not just “approved Expected Loss declined.” It is likely more like:</p>
+<pre><code class="language-text">The strategy concentrated tightening in Near Prime and Subprime while leaving Super Prime largely stable.
+</code></pre>
+<p>That is a much stronger executive point.</p>
+<hr>
+<h3>3. Product × score driver fields</h3>
+<p>These answer: “Where exactly did the strategy frontier move?”</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>top_approved_amount_product_score_segment</code></td>
+<td>Product × score segment with largest approved amount</td>
+</tr>
+<tr>
+<td><code>top_approved_el_product_score_segment</code></td>
+<td>Product × score segment with largest approved Expected Loss</td>
+</tr>
+<tr>
+<td><code>top_decline_product_score_segment</code></td>
+<td>Product × score segment with largest decline count</td>
+</tr>
+<tr>
+<td><code>top_counteroffer_product_score_segment</code></td>
+<td>Product × score segment with largest counteroffer count</td>
+</tr>
+<tr>
+<td><code>highest_approved_el_rate_product_score_segment</code></td>
+<td>Segment with highest approved Expected Loss rate</td>
+</tr>
+<tr>
+<td><code>largest_offer_exposure_product_score_segment</code></td>
+<td>Segment with largest simulated offer-exposure count</td>
+</tr>
+</tbody></table>
+<p>These fields are very marketable because they turn a generic strategy result into a portfolio management insight.</p>
+<p>Example executive narrative:</p>
+<pre><code class="language-text">The tighter synthetic-risk strategy reduced approved Expected Loss primarily through Subprime and Near Prime exposure movement, with the largest approved-loss concentration remaining in Mortgage / Near Prime.
+</code></pre>
+<p>That sounds much more senior than:</p>
+<pre><code class="language-text">Approved Expected Loss went down.
+</code></pre>
+<hr>
+<h3>4. Baseline-relative segment movement fields</h3>
+<p>For challenger strategy runs, add fields that explain <strong>what changed most versus baseline</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>largest_delta_approved_amount_product</code></td>
+<td>Product with largest approved amount movement</td>
+</tr>
+<tr>
+<td><code>largest_delta_approved_el_product</code></td>
+<td>Product with largest approved Expected Loss movement</td>
+</tr>
+<tr>
+<td><code>largest_delta_offer_rate_score_band</code></td>
+<td>Score band with largest offer-rate movement</td>
+</tr>
+<tr>
+<td><code>largest_delta_decline_rate_score_band</code></td>
+<td>Score band with largest decline-rate movement</td>
+</tr>
+<tr>
+<td><code>largest_delta_approved_el_product_score_segment</code></td>
+<td>Product × score segment with largest approved Expected Loss movement</td>
+</tr>
+<tr>
+<td><code>largest_delta_decision_migration_segment</code></td>
+<td>Product × score segment with largest outcome migration</td>
+</tr>
+</tbody></table>
+<p>These are the highest-value storytelling fields for strategy comparison.</p>
+<p>For the current tighter synthetic-risk strategy, I would expect fields like these to identify:</p>
+<pre><code class="language-text">SUBPRIME
+NEAR_PRIME
+MORTGAGE / SUBPRIME
+MORTGAGE / NEAR_PRIME
+</code></pre>
+<p>as important movement segments.</p>
+<hr>
+<h2>How to structure Section 16</h2>
+<p>I would use this design:</p>
+<h3>Main table</h3>
+<pre><code class="language-text">credit_decisioning_sim.strategy_run_evidence_summary
+</code></pre>
+<p>Grain:</p>
+<pre><code class="language-text">one row per Module 1 scenario × Module 2 strategy version
+</code></pre>
+<p>Include portfolio metrics, validation status, frontier classification, reason-code story, and <strong>top segment driver fields</strong>.</p>
+<h3>Companion table</h3>
+<pre><code class="language-text">credit_decisioning_sim.strategy_run_segment_evidence_summary
+</code></pre>
+<p>Grain:</p>
+<pre><code class="language-text">one row per product_type_policy_key × score_band_policy_key per run
+</code></pre>
+<p>Include detailed segment metrics:</p>
+<pre><code class="language-text">applications
+approval_rate
+counteroffer_rate
+manual_review_rate
+decline_rate
+simulated_offer_exposure_rate
+total_approved_amount
+total_approved_expected_loss_amount
+approved_expected_loss_rate
+avg synthetic estimated-PD proxy for offer rows
+avg approved PTI for offer rows
+top primary reason code
+top non-approval reason code
+</code></pre>
+<p>That companion table becomes the source for the executive driver fields.</p>
+<h2>Bottom line</h2>
+<p>Yes — product, score band, and product × score should be part of the executive narrative.</p>
+<p>But not as a giant matrix in the executive table.</p>
+<p>Use this structure:</p>
+<pre><code class="language-text">Executive table:
+    top product / score / product × score drivers
+
+Companion segment table:
+    full detailed product × score evidence
+</code></pre>
+<p>That will make your later README, LinkedIn posts, and Validation Summary much stronger because you will be able to say not only:</p>
+<pre><code class="language-text">The strategy reduced approved Expected Loss.
+</code></pre>
+<p>but also:</p>
+<pre><code class="language-text">The strategy reduced approved Expected Loss primarily through identifiable product and score segments, while preserving stronger-score offer exposure and making risk movement explainable through reason-code and segment diagnostics.
+</code></pre>
+</div></article><article id="c038-m00575" class="message user"><div class="role">Andrew</div><p class="meta">C038-M00575 · 2026-05-08T23:04:20.602000-04:00 · active path</p><div class="body"><p>i agree.  let&#39;s proceed to build section 16.</p>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>
