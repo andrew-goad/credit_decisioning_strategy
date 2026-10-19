@@ -1,0 +1,1801 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Review and Summary — Part 1</title><link rel="stylesheet" href="../../Reader/style.css"><header><p>ANDREW R. GOAD / CDS DEVELOPMENT HISTORY</p><h1>Project Review and Summary</h1><p>Part 01 · C051</p><nav><a href="../../Reader/index.html">Archive home</a><a href="README.md">Conversation guide</a><a href="Part_02.html">Next</a></nav></header><main><label>Find within this part<input type="search" id="search" placeholder="Search wording or message ID"></label><article id="c051-m00001" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00001 · 2026-06-02T13:43:56.845000-04:00 · active path</p><div class="body"><p>Please take a moment to review my latest project we built in other projects.  to start, let&#39;s begin understanding what we have done so far.  first, here is module 1 code, brd, and validation summary.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(229).txt</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Synthetic_Application_Risk_Engine_BRD_v2.0(10).pdf</code>, <code>Enterprise_Credit_Decisioning_Simulator_Module1_Validation_Summary_v2.0(14).pdf</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c051-m00006" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00006 · 2026-06-02T13:46:56.448383-04:00 · active path</p><div class="body"><p>According to a document from 2026-06-02, and the companion SQL and validation artifacts uploaded with it, Module 1 is the validated foundation of your <strong>Enterprise Credit Decisioning Strategy Simulator</strong>: a governed, deterministic, PostgreSQL-based synthetic application and risk modeling engine for pre-production credit strategy testing without exposing PII. The BRD frames it as a portfolio-grade decision-system design artifact, not merely a synthetic data generator. fileciteturn1file18</p>
+<h2>What you have built so far</h2>
+<p>You have built <strong>Module 1: Synthetic Application &amp; Risk Modeling Engine v2.0</strong>. Its core purpose is to generate a realistic synthetic credit application population and translate each application through the chain:</p>
+<p><strong>Application → Product Structure → APR → Payment → PTI → estimated-PD proxy → LGD → Expected Loss</strong></p>
+<p>That chain is the organizing thesis of the module: risk is not assigned arbitrarily from score alone; it emerges from borrower profile, product structure, affordability, and severity assumptions. fileciteturn1file14</p>
+<p>On the implementation side, the SQL is a full PostgreSQL simulation engine. It creates the <code>credit_decisioning_sim</code> schema, produces the latest-run output table <code>credit_decisioning_sim.synthetic_applications</code>, and uses staged temporary tables to keep the build auditable, debuggable, and execution-stable. The staged architecture separates population generation, borrower profile creation, product structuring, and risk/loss translation. fileciteturn2file4 fileciteturn2file5</p>
+<h2>The major components are already in place</h2>
+<p>The engine has a <strong>centralized parameter layer</strong> through <code>tmp_module1_params</code>. That layer controls scenario identity, population identity, application count, product mix, score mix, rate-shift assumptions, product amount bounds, APR anchors, revolving payment assumptions, and LGD assumptions. The design intent is clear: users should adjust governed assumptions first, then rerun QA, rather than rewriting downstream logic prematurely. fileciteturn2file7</p>
+<p>You also implemented a <strong>deterministic generation framework</strong>. Instead of using session-level randomness, the engine creates synthetic application IDs and derives deterministic pseudo-random values from stable MD5 logic tied to <code>application_id</code>, <code>population_id</code>, and deterministic suffixes. This is what allows the same population to be regenerated and compared across scenarios. fileciteturn2file1</p>
+<p>The portfolio itself supports five product families: <strong>Mortgage, Revolving Line, Auto Loan, Unsecured Personal Loan, and HELOC</strong>. Product type drives requested amount ranges, term behavior, APR behavior, payment mechanics, PTI, LGD, and Expected Loss behavior. This is one of the strongest architectural elements: the system is explicitly product-aware rather than applying one generic credit formula to every account. fileciteturn2file19</p>
+<h2>V2.0 added four important maturity workstreams</h2>
+<p>The BRD and validation summary agree that V2.0 was not a rewrite. It was a governed maturity step from V1.0 into a more complete scenario-capable decisioning simulator. The four workstreams are:</p>
+<p><strong>Workstream A — Mortgage Realism.</strong> You added mortgage amount-to-income tail smoothing and a PTI-aware affordability overlay. The validation shows this reduced upper-tail exposure and payment burden while preserving the core mortgage distribution. Maximum requested amount declined from about <strong>$1.15M to $1.05M</strong>, while median mortgage requested amount stayed around <strong>$293K</strong>. fileciteturn1file2</p>
+<p><strong>Workstream B — Estimated-PD Proxy Dispersion.</strong> You added soft-saturation logic before the final governance cap to reduce excessive high-risk clustering. Validation shows capped estimated-PD proxy observations declined from <strong>8,861 rows / 17.72%</strong> to <strong>6,428 rows / 12.86%</strong>, while preserving directional score-band ordering. fileciteturn1file2</p>
+<p><strong>Workstream C — Scenario Framework.</strong> You introduced <code>scenario_set_name</code>, <code>scenario_name</code>, <code>population_id</code>, archive persistence, archive reset controls, and matched row-level comparison. The scenario archive allows multiple completed runs to be preserved and compared without losing the latest-run output table. fileciteturn2file6</p>
+<p><strong>Workstream D — Revolving Sensitivity.</strong> You enhanced revolving payment behavior so APR changes now flow into payment burden, PTI, estimated-PD proxy, and Expected Loss. The validation confirms that in the final rate-up scenario, revolving payment deltas became positive across score bands. fileciteturn1file2</p>
+<h2>The validation package says Module 1 is accepted within its boundary</h2>
+<p>The validation summary concludes that Module 1 v2.0 has been successfully validated as a <strong>portfolio-grade, deterministic, scenario-capable simulation framework</strong>. The evidence includes product mix alignment, score-band stability, deterministic reproducibility, realistic borrower profile behavior, coherent affordability-to-risk relationships, scenario comparability, and bounded edge-case behavior. fileciteturn1file2</p>
+<p>Key validation outcomes include:</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>What validation confirmed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Portfolio construction</td>
+<td>50,000 applications generated with product and score mix aligned to configured assumptions</td>
+</tr>
+<tr>
+<td>Determinism</td>
+<td>Repeated runs produced 100% identical outputs under identical population/configuration controls</td>
+</tr>
+<tr>
+<td>Scenario comparison</td>
+<td>Baseline and rate-stress scenarios retained 50,000 matched rows using the same <code>population_id</code></td>
+</tr>
+<tr>
+<td>Mortgage realism</td>
+<td>Upper-tail mortgage amount/payment reduced while median behavior stayed stable</td>
+</tr>
+<tr>
+<td>Tail governance</td>
+<td>PTI &gt; 50% declined from 1.77% to 1.20%</td>
+</tr>
+<tr>
+<td>Estimated-risk dispersion</td>
+<td>Capped estimated-PD proxy observations declined from 17.72% to 12.86%</td>
+</tr>
+<tr>
+<td>Revolving sensitivity</td>
+<td>APR-sensitive revolving payment response restored across score bands</td>
+</tr>
+</tbody></table>
+<h2>The most important boundary is also clearly documented</h2>
+<p>Module 1 is <strong>not</strong> a production underwriting engine, not a production pricing model, not a calibrated PD model, not a credit-card billing engine, and not a regulatory validation substitute. The BRD states that its outputs are synthetic, scenario-comparable, and intended for controlled analytical use. <code>estimated_pd</code> is a governed estimated-PD proxy, APR is a burden-estimation proxy, Expected Loss is a comparative simulation metric, and scenario outputs are sensitivity results rather than forecasts. fileciteturn1file8</p>
+<p>That boundary discipline is a strength, not a limitation. It keeps the artifact credible: you are showing a governed simulation framework and a decision-system architecture foundation, not overclaiming production readiness.</p>
+<h2>My read on the current state</h2>
+<p>Module 1 is complete as a validated foundation. It gives you:</p>
+<p>A deterministic synthetic application population.</p>
+<p>A product-aware structure-to-affordability engine.</p>
+<p>A transparent estimated-risk proxy framework.</p>
+<p>Product-level LGD and Expected Loss calculation.</p>
+<p>Scenario archive and matched comparison capability.</p>
+<p>Embedded QA and validation diagnostics.</p>
+<p>A BRD, implementation artifact, and board-ready validation summary that align with each other.</p>
+<p>The next natural extension is exactly what the roadmap identifies: a downstream <strong>decision strategy module</strong> that consumes Module 1 outputs and simulates approval, decline, review, affordability cutoffs, exposure assignment, line assignment, counteroffers, and strategy comparison. The roadmap is explicit that these are future additive modules, not unresolved V2.0 defects. fileciteturn1file13</p>
+</div></article><article id="c051-m00007" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00007 · 2026-06-02T13:51:18.917000-04:00 · active path</p><div class="body"><p>We then created module 2 code and ran a comprehensive campaign. we uploaded all project artifacts to github and created this github project readme.</p>
+<p><strong>Attachments in export:</strong> <code>Pasted text(230).txt</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.7A_QA_executive_ready_strategy_frontier_summary_review_output_campaign(3).csv</code>, <code>module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_17.20_QA_final_module_2_campaign_acceptance_rollup_campaign(4).csv</code>, <code>Pasted markdown (2).md</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c051-m00015" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00015 · 2026-06-02T13:56:28.098429-04:00 · active path</p><div class="body"><p>According to the Module 2 SQL and README artifacts uploaded on <strong>2026-06-02</strong>, the project has now advanced from a validated synthetic risk foundation into a full <strong>two-module governed credit decisioning strategy simulator</strong>.</p>
+<h2>What changed after Module 1</h2>
+<p>Module 1 built the upstream synthetic application and risk engine. Module 2 now consumes that completed Module 1 output and applies a downstream credit strategy layer. The SQL explicitly preserves the boundary: Module 2 does <strong>not</strong> rewrite Module 1, does <strong>not</strong> recalculate the Module 1 synthetic estimated-PD proxy, and does <strong>not</strong> create a post-decision risk model in V1.0. Instead, it keeps Module 1 lineage separate through <code>module1_scenario_set_name</code>, <code>module1_scenario_name</code>, and <code>population_id</code>, while Module 2 strategy identity is tracked separately through <code>strategy_set_name</code>, <code>strategy_name</code>, <code>strategy_version</code>, <code>strategy_run_id</code>, and <code>strategy_run_ts</code>. fileciteturn6file13</p>
+<p>The new end-to-end chain is now:</p>
+<pre><code class="language-text">Module 1 Applicant / Product / Risk Profile
+→ Module 2 Strategy Controls
+→ Product Policy Controls
+→ Diagnostic Segmentation
+→ Rule Triggers
+→ Ordinary vs Aggressive Counteroffer Path Evidence
+→ Preliminary Routing
+→ Approved Exposure and Counteroffer Feasibility
+→ Final Simulated Outcome
+→ Simulated Strategy Explanation Codes
+→ Latest-Run Output
+→ Archive Persistence
+→ Matched Strategy Comparison
+→ Validation / QA Evidence
+→ Strategy Frontier Summary
+→ Executive Evidence Capture
+→ Post-Campaign Acceptance
+</code></pre>
+<p>That is a major architectural step. You moved from <strong>risk foundation</strong> into <strong>policy simulation, outcome assignment, exposure treatment, evidence capture, and campaign governance</strong>. fileciteturn7file15</p>
+<h2>What Module 2 is</h2>
+<p>Module 2 is the <strong>Credit Policy Strategy &amp; Decision Outcome Simulation Engine v1.0</strong>. The SQL marks it as the canonical PostgreSQL file and a “FINAL VALIDATED RELEASE” for a portfolio-grade governed credit strategy simulation artifact. Its purpose is pre-production credit strategy outcome simulation on synthetic applicants without exposing PII. fileciteturn7file15</p>
+<p>Functionally, it does several things:</p>
+<p>It applies configurable strategy and product-policy controls.</p>
+<p>It assigns simulated outcomes: <code>APPROVE</code>, <code>COUNTEROFFER</code>, <code>MANUAL_REVIEW</code>, and <code>DECLINE</code>.</p>
+<p>It calculates simulated approved exposure economics.</p>
+<p>It assigns simulated strategy explanation codes.</p>
+<p>It persists latest-run and archive outputs.</p>
+<p>It supports archive-backed matched comparisons.</p>
+<p>It summarizes strategy frontier tradeoffs.</p>
+<p>It captures validation, parameter, segment, and executive evidence.</p>
+<p>It supports post-campaign frontier synchronization and final campaign acceptance. fileciteturn6file10</p>
+<p>The strongest design principle is that Module 2 treats credit strategy as a governed tradeoff rather than a score cutoff: access, approval rate, counteroffer usage, manual-review burden, decline concentration, affordability, approved exposure, synthetic risk profile, requested Expected Loss, approved Expected Loss, product guardrails, explanation-code transparency, parameter traceability, and post-campaign evidence readiness are all visible. fileciteturn7file15</p>
+<h2>What the campaign added</h2>
+<p>The formal campaign is now substantial. The SQL defines <strong>seven scenario families</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario family</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>SC01</td>
+<td>Baseline strategy frontier</td>
+</tr>
+<tr>
+<td>SC02</td>
+<td>Rate environment sensitivity</td>
+</tr>
+<tr>
+<td>SC03</td>
+<td>Credit box sensitivity</td>
+</tr>
+<tr>
+<td>SC04</td>
+<td>Portfolio mix sensitivity</td>
+</tr>
+<tr>
+<td>SC05</td>
+<td>Exposure intensity sensitivity</td>
+</tr>
+<tr>
+<td>SC06</td>
+<td>LGD severity sensitivity</td>
+</tr>
+<tr>
+<td>SC07</td>
+<td>Option C counteroffer strategy split</td>
+</tr>
+</tbody></table>
+<p>The formal campaign contains <strong>39 Module 2 runs</strong>: M2-01 through M2-36 as the original formal campaign foundation, plus M2-37 through M2-39 as the Option C aggressive counteroffer expansion addendum. The comparison registry contains <strong>20 comparison groups</strong>. fileciteturn7file10</p>
+<p>The README presents the campaign scope as:</p>
+<pre><code class="language-text">39 governed strategy runs
+50,000 applicants each
+1.95M archived strategy decisions
+20 matched comparison groups
+7 scenario families
+</code></pre>
+<p>That is the right executive framing for GitHub: compact, quantitative, and immediately understandable. fileciteturn6file15</p>
+<h2>Option C is an important design maturity point</h2>
+<p>The Option C counteroffer split is one of the most valuable additions. You moved away from a broad legacy “Counteroffer First” label and formalized two distinct counteroffer strategies:</p>
+<pre><code class="language-text">SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+</code></pre>
+<p>The selective posture preserves a safer, feasibility-first, review-oriented approach. The aggressive posture routes more severe requested-structure rows into governed counteroffer feasibility testing, while still preserving hard policy stops, severe synthetic-risk controls, severe DTI logic, and feasibility constraints. fileciteturn7file10</p>
+<p>That matters because it makes the counteroffer story much more credible. You are not saying “counteroffers are good.” You are showing two governed counteroffer operating postures and preserving the evidence needed to compare them.</p>
+<h2>Campaign acceptance appears complete</h2>
+<p>I inspected the uploaded <strong>17.20 final Module 2 campaign acceptance rollup CSV</strong>. The final campaign status row shows:</p>
+<pre><code class="language-text">MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+ALL_FINAL_ACCEPTANCE_GATES_PASSED
+</code></pre>
+<p>The rollup also shows:</p>
+<pre><code class="language-text">expected_campaign_runs = 39
+expected_comparison_groups = 20
+expected_total_active_campaign_source_rows = 1,950,000
+active_campaign_registry_rows = 39
+active_comparison_registry_rows = 20
+active_runs_with_archive_rows = 39
+active_runs_missing_archive_rows = 0
+total_active_campaign_archived_rows = 1,950,000
+comparison_ready_count = 20
+source_consistency_pass_count = 20
+executive_evidence_rows = 39
+parameter_snapshot_rows = 39
+validation_evidence_complete_run_count = 39
+total_validation_evidence_rows = 858
+segment_evidence_complete_run_count = 39
+total_segment_evidence_rows = 975
+critical_convention_violation_count = 0
+option_c_evidence_run_count = 39
+product_guardrail_policy_ready_rows = 10
+</code></pre>
+<p>That is strong evidence that the campaign did not merely “run”; it completed with registry coverage, archive completeness, comparison readiness, source consistency, evidence coverage, parameter snapshots, convention checks, Option C evidence readiness, and product-guardrail policy audit readiness.</p>
+<p>This aligns with Section 17’s purpose: it is the final read-only campaign control tower that asks whether the completed campaign is structurally complete, registry-aligned, evidence-complete, convention-clean, comparison-ready, source-consistent, parameter-traceable, product-policy-audited, and analytically ready for final interpretation. fileciteturn5file1</p>
+<h2>Strategy frontier evidence is now executive-ready</h2>
+<p>I also inspected the uploaded <strong>15.7A executive-ready strategy frontier summary CSV</strong>. It contains 39 rows, one per campaign run, and gives you an executive-level view of strategy tradeoffs.</p>
+<p>For example, within the <code>BASELINE_V2</code> population:</p>
+<table>
+<thead>
+<tr>
+<th>Run</th>
+<th align="right">Strategy</th>
+<th align="right">Offer exposure rate</th>
+<th align="right">Approved amount</th>
+<th align="right">Approved EL</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M2-01</td>
+<td align="right">Baseline</td>
+<td align="right">59.52%</td>
+<td align="right">~$3.83B</td>
+<td align="right">~$58.55M</td>
+<td>Reference point</td>
+</tr>
+<tr>
+<td>M2-02</td>
+<td align="right">Tighter synthetic risk</td>
+<td align="right">57.08%</td>
+<td align="right">~$3.68B</td>
+<td align="right">~$51.33M</td>
+<td>Lower access, lower approved EL</td>
+</tr>
+<tr>
+<td>M2-03</td>
+<td align="right">Growth oriented</td>
+<td align="right">62.25%</td>
+<td align="right">~$4.07B</td>
+<td align="right">~$67.23M</td>
+<td>Higher access, higher approved EL</td>
+</tr>
+<tr>
+<td>M2-05</td>
+<td align="right">Selective counteroffer feasibility</td>
+<td align="right">52.58%</td>
+<td align="right">~$3.46B</td>
+<td align="right">~$50.53M</td>
+<td>Conservative counteroffer posture</td>
+</tr>
+<tr>
+<td>M2-37</td>
+<td align="right">Aggressive counteroffer expansion</td>
+<td align="right">60.70%</td>
+<td align="right">~$3.64B</td>
+<td align="right">~$54.37M</td>
+<td>Counteroffer expansion with lower approved EL rate than baseline</td>
+</tr>
+</tbody></table>
+<p>The frontier output supports the README’s claim that Module 2 makes access, approved exposure, approved Expected Loss, counteroffer usage, manual review, decline routing, and reason-code movement visible in one governed framework. fileciteturn6file12</p>
+<h2>The GitHub README is doing the right job</h2>
+<p>The README now frames the project as a two-module simulator rather than a single SQL script. It explains the system intent, module purposes, dashboard evidence, repository map, reviewer paths, sample-data policy, artifact status, and interpretation boundaries. It also clearly states that full archives are not uploaded in full and that included CSVs are compact synthetic samples for GitHub review. fileciteturn6file7</p>
+<p>The README also keeps the right boundaries:</p>
+<p><code>estimated_pd</code> is a synthetic estimated-PD proxy, not a calibrated production default model.</p>
+<p>Scenario outputs are synthetic sensitivities, not forecasts.</p>
+<p>Module 2 outcomes are simulated strategy outcomes, not real underwriting decisions.</p>
+<p>Reason codes are simulated strategy explanation codes, not adverse-action notices.</p>
+<p>Approved exposure and approved Expected Loss are simulation artifacts, not booked loans or funded accounts. fileciteturn6file11</p>
+<p>That boundary language is important because it protects the credibility of the project.</p>
+<h2>Current artifact status</h2>
+<p>The repository is currently positioned as:</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Module 1 v2.0 BRD</td>
+<td>Complete</td>
+</tr>
+<tr>
+<td>Module 1 v2.0 SQL</td>
+<td>Complete</td>
+</tr>
+<tr>
+<td>Module 1 v2.0 Validation Summary</td>
+<td>Complete</td>
+</tr>
+<tr>
+<td>Module 1 Executive Dashboard</td>
+<td>Complete</td>
+</tr>
+<tr>
+<td>Module 2 v1.0 SQL</td>
+<td>Complete</td>
+</tr>
+<tr>
+<td>Module 2 Executive Dashboard</td>
+<td>Complete</td>
+</tr>
+<tr>
+<td>Module 2 BRD</td>
+<td>Coming soon</td>
+</tr>
+<tr>
+<td>Module 2 Validation Summary</td>
+<td>Coming soon</td>
+</tr>
+</tbody></table>
+<p>The README explicitly marks the Module 2 BRD and Validation Summary as planned design and validation anchors. fileciteturn6file11</p>
+<h2>My read on where the project stands now</h2>
+<p>You now have a coherent portfolio-grade system with three layers of credibility:</p>
+<p><strong>First</strong>, the technical architecture is strong: staged SQL, parameterized strategy profiles, product-policy controls, latest-run/archive separation, matched comparison, evidence capture, and post-campaign acceptance.</p>
+<p><strong>Second</strong>, the campaign evidence is strong: 39 governed runs, 1.95M archived decisions, 20 matched comparison groups, and a final acceptance rollup showing all gates passed.</p>
+<p><strong>Third</strong>, the GitHub presentation is strong: README, artifact map, dashboards, sample outputs, boundaries, and reviewer paths make it reviewable by both technical and executive audiences.</p>
+<p>The main remaining gap is not the engine. It is documentation parity for Module 2. The natural next deliverable is a <strong>Module 2 BRD</strong> and <strong>Module 2 Validation Summary</strong> that mirror the quality of Module 1 and convert the SQL/campaign evidence into a formal narrative.</p>
+</div></article><article id="c051-m00016" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00016 · 2026-06-02T14:03:21.029000-04:00 · active path</p><div class="body"><p>we are tabling the work on the module 2 brd / module 2 validation summary for now.  the current task is an 8 part linkedin marketing.  here are the first 5 completed posts as well as ideas for posts 6-8. i do have some feedback on post 6.  I think it is too similar to post 5. I think a better story for post 6 would be a micro dive into 1 or 2 applicants and how the results vary across the campaign.  attached are 3 potential applicants.  let&#39;s begin by working on this post 6.</p>
+<p><strong>Attachments in export:</strong> <code>post5(1).txt</code>, <code>post4.txt</code>, <code>post3.txt</code>, <code>post2.txt</code>, <code>post1.txt</code>, <code>last_prompt_ideas_for_posts_6_thru_8.txt</code>, <code>strategy_decisions_archive_202606021316(1).csv</code>, <code>strategy_decisions_archive_202606021313(1).csv</code>, <code>strategy_decisions_archive_202606021311(1).csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c051-m00032" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00032 · 2026-06-02T14:11:51.536562-04:00 · active path</p><div class="body"><p>I agree with your read: the original Post 6 idea is too close to Post 5 because it is still a portfolio-level tradeoff ledger. Post 5 already told the “strategy frontier” story, and the proposed Post 6 was another baseline-relative access / approved amount / approved EL comparison. fileciteturn7file0 fileciteturn9file8</p>
+<p>A stronger Post 6 is the <strong>row-level traceability story</strong>: take one or two synthetic applicants and show how the outcome changes as strategy posture and source scenario change. That lines up directly with the Module 2 design principle that a strategy outcome should not be treated as a black-box label; it should be traceable through applicant profile, strategy controls, product policy, rule triggers, routing, exposure treatment, final outcome, and simulated reason codes. fileciteturn9file13</p>
+<h2>Recommended Post 6 angle</h2>
+<p><strong>Title thesis:</strong><br><strong>One Synthetic Applicant. Many Strategy Paths.</strong></p>
+<p>I would use <strong>two applicants</strong>, not all three.</p>
+<p>Use:</p>
+<p><strong>Synthetic Applicant A — boundary / movement case</strong><br>HELOC, Near Prime, score 682, $35.4K requested, 4.35% PTI, 7.45% synthetic estimated-PD proxy.</p>
+<p>This applicant is useful because the outcome moves across strategy and scenario posture: approve, counteroffer, and manual review.</p>
+<p><strong>Synthetic Applicant B — governance / constraint case</strong><br>Auto loan, Subprime, score 594, $53.9K requested, 49.13% PTI, 32.56% synthetic estimated-PD proxy.</p>
+<p>This applicant is useful because the engine does <strong>not</strong> force a positive offer. Growth does not erase constraints, and aggressive counteroffer expansion does not bypass feasibility.</p>
+<p>I would keep the third applicant as backup. It is a cleaner “mostly stable approval” case, but it is less dramatic and the extract has fewer campaign rows than the other two.</p>
+<hr>
+<h2>Recommended image</h2>
+<p><strong>Image thesis:</strong><br><strong>Applicant-Level Strategy Trace</strong></p>
+<p>Use a dark, clean two-card image.</p>
+<p>Left card:</p>
+<p><strong>Synthetic Applicant A</strong><br>Boundary case<br>HELOC | Near Prime | $35.4K request<br>Baseline → Approve<br>Tighter Risk → Counteroffer<br>Rate Up → Manual Review<br>High Balance → Manual Review<br>Low Balance → Approve</p>
+<p>Right card:</p>
+<p><strong>Synthetic Applicant B</strong><br>Constraint case<br>Auto | Subprime | $53.9K request<br>Baseline → Manual Review<br>Tighter Risk → Decline<br>Growth → Manual Review<br>Aggressive CO → Manual Review<br>Credit Stress → Decline</p>
+<p>Footer:</p>
+<p><strong>Synthetic data | No PII | Strategy + scenario lineage preserved</strong></p>
+<p>Avoid making this a chart. Make it feel like two mini case files.</p>
+<hr>
+<h2>LinkedIn-ready Post 6 draft</h2>
+<p>A strategy frontier shows the portfolio view.</p>
+<p>A row-level trace shows whether the strategy engine is explainable.</p>
+<p>That distinction matters.</p>
+<p>In Module 2 of my Enterprise Credit Decisioning Strategy Simulator, I pulled synthetic application examples through the final campaign to see how outcomes changed under different strategy and scenario postures.</p>
+<p>Not a portfolio average.</p>
+<p>Not a dashboard aggregate.</p>
+<p>A row-level strategy path.</p>
+<p>Synthetic Applicant A:</p>
+<p>HELOC<br>Near Prime<br>Score: 682<br>Requested amount: $35.4K<br>Requested PTI: 4.35%<br>Synthetic estimated-PD proxy: 7.45%</p>
+<p>On the baseline strategy:</p>
+<p>M2-01 Baseline → APPROVE as requested</p>
+<p>Under tighter synthetic-risk posture:</p>
+<p>M2-02 Tighter Risk → COUNTEROFFER at $35.0K</p>
+<p>Under growth, affordability, selective counteroffer, product guardrail, manual-review reduction, and aggressive counteroffer postures on the same baseline population:</p>
+<p>→ APPROVE as requested</p>
+<p>But when the upstream scenario changed, the path changed:</p>
+<p>Rate Up 200bp → MANUAL_REVIEW<br>Rate Up 300bp → MANUAL_REVIEW<br>Credit Stress Mix → MANUAL_REVIEW<br>High-Balance Appetite → MANUAL_REVIEW<br>Low-Balance Conservative Requests → APPROVE</p>
+<p>Same synthetic application identity.</p>
+<p>Different source scenario and strategy posture.</p>
+<p>Different path.</p>
+<p>That is why lineage matters.</p>
+<p>Synthetic Applicant B tells a different story:</p>
+<p>Auto Loan<br>Subprime<br>Score: 594<br>Requested amount: $53.9K<br>Requested PTI: 49.13%<br>Synthetic estimated-PD proxy: 32.56%</p>
+<p>Baseline → MANUAL_REVIEW<br>Tighter Risk → DECLINE<br>Growth → MANUAL_REVIEW<br>Selective Counteroffer → MANUAL_REVIEW<br>Aggressive Counteroffer → MANUAL_REVIEW<br>Manual Review Reduction → DECLINE<br>Credit Stress Mix → DECLINE</p>
+<p>This is the governance case.</p>
+<p>Growth did not erase feasibility constraints.</p>
+<p>Aggressive counteroffer expansion did not force an offer.</p>
+<p>Manual-review reduction changed unresolved failed-counteroffer treatment into decline.</p>
+<p>That is what a governed strategy simulator should make visible.</p>
+<p>At the portfolio level, you need the frontier.</p>
+<p>At the applicant level, you need the path.</p>
+<p>Which input changed?</p>
+<p>Which rule fired?</p>
+<p>Was the issue synthetic risk?</p>
+<p>Affordability?</p>
+<p>Requested structure?</p>
+<p>Counteroffer feasibility?</p>
+<p>Manual-review posture?</p>
+<p>For credit strategy testing, the output label is not enough.</p>
+<p>The question is:</p>
+<p>“Why did this synthetic applicant move?”</p>
+<p>That is the difference between a black-box decision label and a reviewable strategy engine.</p>
+<p>All applicant data is synthetic.</p>
+<p>Outcomes are simulated strategy outcomes, not production underwriting decisions.</p>
+<p>Link in comments.</p>
+<p>#CreditRisk #CreditStrategy #DecisionScience #RiskAnalytics #DataGovernance #SQL #SyntheticData</p>
+<hr>
+<p>This post now gives the series a better arc: Post 5 covers the portfolio frontier, Post 6 zooms into applicant-level movement, Post 7 can then explain counteroffer governance as the mechanism, and Post 8 can close with evidence discipline / No Cold Handoffs.</p>
+</div></article><article id="c051-m00033" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00033 · 2026-06-02T14:17:52.513000-04:00 · active path</p><div class="body"><p>Are these super interesting cases or can we find better? is there a particular query I could make of strategy_decisions_archive to find more interesting cases?</p>
+</div></article><article id="c051-m00059" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00059 · 2026-06-02T14:27:39.779282-04:00 · active path</p><div class="body"><p>Yes — we can probably find better.</p>
+<p>The three attached cases are <strong>usable</strong>, but only one is genuinely strong for a LinkedIn micro-dive.</p>
+<p><strong>APP-00008337</strong> is decent. It is a clean “mostly approve, but boundary movement appears under tighter risk and source stress” case. The weakness is that much of the movement comes from changing the upstream Module 1 scenario, not just Module 2 strategy. That can work, but you would need to explain the distinction carefully.</p>
+<p><strong>APP-00012661</strong> is the strongest of the three. It is a good governance / constraint case: baseline manual review, tighter risk decline, manual-review-reduction decline, aggressive counteroffer override still unresolved. That tells a real story: strategy posture changes routing, but feasibility still governs the result.</p>
+<p><strong>APP-00044108</strong> is probably too stable. It is mostly approve, with only a small tighter-risk counteroffer. That is realistic, but not especially compelling for Post 6.</p>
+<p>For Post 6, I would search for a case that has <strong>more outcome diversity under the same Module 1 scenario and population</strong>. That keeps the story cleaner because you are isolating downstream Module 2 strategy effect rather than mixing strategy effect with upstream scenario effect. Module 2’s own comparison design is built around that principle: baseline and challenger comparisons should share the same <code>module1_scenario_set_name</code>, <code>module1_scenario_name</code>, and <code>population_id</code>, with <code>application_id</code> used to observe how the same synthetic applicant moved across strategies. fileciteturn8file5</p>
+<h2>The query I would run first</h2>
+<p>This query looks for the most narratively interesting <strong>same-source applicant cases</strong>. It scores applicants higher when they show multiple outcome types, movement between baseline / tighter risk / growth / counteroffer / manual-review-reduction strategies, aggressive counteroffer evidence, feasibility failures, and rule-trigger complexity.</p>
+<pre><code class="language-sql">WITH base AS (
+    SELECT
+        SUBSTRING(strategy_run_id FROM &#39;^(M2-[0-9]{2})&#39;) AS module2_run_id,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id,
+
+        product_type,
+        product_type_policy_key,
+        score_band,
+        score_band_policy_key,
+        credit_score,
+        annual_income,
+        debt_to_income_ratio,
+        utilization_rate,
+        requested_amount,
+        requested_payment_to_income_ratio,
+        estimated_pd,
+        estimated_lgd,
+        requested_expected_loss_amount,
+
+        strategy_name,
+        decision_outcome,
+        decision_path,
+        primary_reason_code,
+        primary_reason_family,
+
+        approved_amount,
+        approved_payment_to_income_ratio,
+        approved_expected_loss_amount,
+
+        counteroffer_strategy_variant,
+        ordinary_counteroffer_candidate_flag,
+        aggressive_counteroffer_requested_structure_override_flag,
+        counteroffer_feasibility_evaluated_flag,
+        counteroffer_feasibility_pass_flag,
+        counteroffer_feasibility_failure_reason,
+
+        total_rule_trigger_count
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    WHERE population_id = &#39;BASE_POPULATION_V1&#39;
+),
+
+case_rollup AS (
+    SELECT
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id,
+
+        MAX(product_type) AS product_type,
+        MAX(product_type_policy_key) AS product_type_policy_key,
+        MAX(score_band) AS score_band,
+        MAX(score_band_policy_key) AS score_band_policy_key,
+        MAX(credit_score) AS credit_score,
+
+        ROUND(MAX(annual_income)::NUMERIC, 2) AS annual_income,
+        ROUND(MAX(debt_to_income_ratio)::NUMERIC, 4) AS dti,
+        ROUND(MAX(utilization_rate)::NUMERIC, 4) AS utilization_rate,
+        ROUND(MAX(requested_amount)::NUMERIC, 2) AS requested_amount,
+        ROUND(MAX(requested_payment_to_income_ratio)::NUMERIC, 4) AS requested_pti,
+        ROUND(MAX(estimated_pd)::NUMERIC, 4) AS synthetic_pd_proxy,
+        ROUND(MAX(estimated_lgd)::NUMERIC, 4) AS estimated_lgd,
+        ROUND(MAX(requested_expected_loss_amount)::NUMERIC, 2) AS requested_expected_loss_amount,
+
+        COUNT(*) AS archived_strategy_rows,
+        COUNT(DISTINCT strategy_name) AS strategy_count,
+        COUNT(DISTINCT decision_outcome) AS outcome_diversity,
+
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;APPROVE&#39;) AS approve_rows,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;COUNTEROFFER&#39;) AS counteroffer_rows,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;MANUAL_REVIEW&#39;) AS manual_review_rows,
+        COUNT(*) FILTER (WHERE decision_outcome = &#39;DECLINE&#39;) AS decline_rows,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;BASELINE_STRATEGY&#39;
+        ) AS baseline_outcome,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;
+        ) AS tighter_risk_outcome,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;GROWTH_ORIENTED_STRATEGY&#39;
+        ) AS growth_outcome,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;TIGHTER_AFFORDABILITY_STRATEGY&#39;
+        ) AS tighter_affordability_outcome,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY&#39;
+        ) AS selective_counteroffer_outcome,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+        ) AS aggressive_counteroffer_outcome,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;MANUAL_REVIEW_REDUCTION_STRATEGY&#39;
+        ) AS manual_review_reduction_outcome,
+
+        MAX(primary_reason_code) FILTER (
+            WHERE strategy_name = &#39;BASELINE_STRATEGY&#39;
+        ) AS baseline_primary_reason_code,
+
+        MAX(primary_reason_code) FILTER (
+            WHERE strategy_name = &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39;
+        ) AS tighter_risk_primary_reason_code,
+
+        MAX(primary_reason_code) FILTER (
+            WHERE strategy_name = &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+        ) AS aggressive_counteroffer_primary_reason_code,
+
+        MAX(total_rule_trigger_count) AS max_rule_trigger_count,
+
+        COUNT(*) FILTER (
+            WHERE ordinary_counteroffer_candidate_flag IS TRUE
+        ) AS ordinary_counteroffer_candidate_rows,
+
+        COUNT(*) FILTER (
+            WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+        ) AS aggressive_override_rows,
+
+        COUNT(*) FILTER (
+            WHERE counteroffer_feasibility_evaluated_flag IS TRUE
+              AND counteroffer_feasibility_pass_flag IS TRUE
+        ) AS feasible_counteroffer_rows,
+
+        COUNT(*) FILTER (
+            WHERE counteroffer_feasibility_evaluated_flag IS TRUE
+              AND counteroffer_feasibility_pass_flag IS FALSE
+        ) AS failed_counteroffer_rows,
+
+        ROUND(
+            MAX(COALESCE(approved_amount, 0))::NUMERIC
+            - MIN(COALESCE(approved_amount, 0))::NUMERIC,
+            2
+        ) AS approved_amount_range,
+
+        ROUND(
+            MAX(COALESCE(approved_expected_loss_amount, 0))::NUMERIC
+            - MIN(COALESCE(approved_expected_loss_amount, 0))::NUMERIC,
+            2
+        ) AS approved_el_range
+
+    FROM base
+
+    GROUP BY
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+),
+
+scored AS (
+    SELECT
+        *,
+
+        (
+            outcome_diversity * 20
+
+            + CASE
+                WHEN approve_rows &gt; 0
+                 AND counteroffer_rows &gt; 0
+                 AND manual_review_rows &gt; 0
+                    THEN 25
+                ELSE 0
+              END
+
+            + CASE
+                WHEN approve_rows &gt; 0
+                 AND decline_rows &gt; 0
+                    THEN 25
+                ELSE 0
+              END
+
+            + CASE
+                WHEN baseline_outcome IS NOT NULL
+                 AND tighter_risk_outcome IS NOT NULL
+                 AND baseline_outcome IS DISTINCT FROM tighter_risk_outcome
+                    THEN 15
+                ELSE 0
+              END
+
+            + CASE
+                WHEN baseline_outcome IS NOT NULL
+                 AND growth_outcome IS NOT NULL
+                 AND baseline_outcome IS DISTINCT FROM growth_outcome
+                    THEN 12
+                ELSE 0
+              END
+
+            + CASE
+                WHEN selective_counteroffer_outcome IS NOT NULL
+                 AND aggressive_counteroffer_outcome IS NOT NULL
+                 AND selective_counteroffer_outcome IS DISTINCT FROM aggressive_counteroffer_outcome
+                    THEN 20
+                ELSE 0
+              END
+
+            + CASE
+                WHEN baseline_outcome = &#39;MANUAL_REVIEW&#39;
+                 AND manual_review_reduction_outcome = &#39;DECLINE&#39;
+                    THEN 15
+                ELSE 0
+              END
+
+            + CASE
+                WHEN aggressive_override_rows &gt; 0
+                    THEN 15
+                ELSE 0
+              END
+
+            + CASE
+                WHEN feasible_counteroffer_rows &gt; 0
+                 AND failed_counteroffer_rows &gt; 0
+                    THEN 12
+                ELSE 0
+              END
+
+            + CASE
+                WHEN max_rule_trigger_count &gt;= 6
+                    THEN 10
+                WHEN max_rule_trigger_count &gt;= 3
+                    THEN 5
+                ELSE 0
+              END
+
+            + CASE
+                WHEN approved_amount_range &gt;= 50000
+                    THEN 10
+                WHEN approved_amount_range &gt;= 10000
+                    THEN 5
+                ELSE 0
+              END
+        ) AS narrative_interest_score,
+
+        CASE
+            WHEN approve_rows &gt; 0
+             AND counteroffer_rows &gt; 0
+             AND manual_review_rows &gt; 0
+             AND decline_rows &gt; 0
+                THEN &#39;FOUR_OUTCOME_CASE&#39;
+
+            WHEN approve_rows &gt; 0
+             AND counteroffer_rows &gt; 0
+             AND manual_review_rows &gt; 0
+                THEN &#39;APPROVE_COUNTEROFFER_REVIEW_CASE&#39;
+
+            WHEN baseline_outcome = &#39;MANUAL_REVIEW&#39;
+             AND manual_review_reduction_outcome = &#39;DECLINE&#39;
+                THEN &#39;MANUAL_REVIEW_TO_DECLINE_GOVERNANCE_CASE&#39;
+
+            WHEN selective_counteroffer_outcome IS DISTINCT FROM aggressive_counteroffer_outcome
+                THEN &#39;SELECTIVE_VS_AGGRESSIVE_COUNTEROFFER_CASE&#39;
+
+            WHEN baseline_outcome IS DISTINCT FROM tighter_risk_outcome
+                THEN &#39;BASELINE_VS_TIGHTER_RISK_BOUNDARY_CASE&#39;
+
+            ELSE &#39;GENERAL_ROW_LEVEL_MOVEMENT_CASE&#39;
+        END AS suggested_story_type
+
+    FROM case_rollup
+
+    WHERE strategy_count &gt;= 4
+      AND outcome_diversity &gt;= 2
+)
+
+SELECT
+    narrative_interest_score,
+    suggested_story_type,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id,
+
+    product_type,
+    score_band,
+    credit_score,
+    annual_income,
+    dti,
+    utilization_rate,
+    requested_amount,
+    requested_pti,
+    synthetic_pd_proxy,
+    estimated_lgd,
+    requested_expected_loss_amount,
+
+    strategy_count,
+    outcome_diversity,
+
+    approve_rows,
+    counteroffer_rows,
+    manual_review_rows,
+    decline_rows,
+
+    baseline_outcome,
+    tighter_risk_outcome,
+    growth_outcome,
+    tighter_affordability_outcome,
+    selective_counteroffer_outcome,
+    aggressive_counteroffer_outcome,
+    manual_review_reduction_outcome,
+
+    baseline_primary_reason_code,
+    tighter_risk_primary_reason_code,
+    aggressive_counteroffer_primary_reason_code,
+
+    ordinary_counteroffer_candidate_rows,
+    aggressive_override_rows,
+    feasible_counteroffer_rows,
+    failed_counteroffer_rows,
+
+    max_rule_trigger_count,
+    approved_amount_range,
+    approved_el_range
+
+FROM scored
+
+ORDER BY
+    narrative_interest_score DESC,
+    outcome_diversity DESC,
+    approved_amount_range DESC,
+    approved_el_range DESC,
+    application_id
+
+LIMIT 50;
+</code></pre>
+<h2>Then pull the detail rows for the best candidate</h2>
+<p>After the first query gives you a promising <code>application_id</code> and <code>module1_scenario_name</code>, run this:</p>
+<pre><code class="language-sql">SELECT
+    SUBSTRING(strategy_run_id FROM &#39;^(M2-[0-9]{2})&#39;) AS module2_run_id,
+
+    strategy_name,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id,
+
+    product_type,
+    score_band,
+    credit_score,
+    annual_income,
+    debt_to_income_ratio,
+    utilization_rate,
+    requested_amount,
+    requested_payment_to_income_ratio,
+    estimated_pd,
+    estimated_lgd,
+    requested_expected_loss_amount,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code,
+    secondary_reason_code,
+    tertiary_reason_code,
+
+    counteroffer_strategy_variant,
+    ordinary_counteroffer_candidate_flag,
+    aggressive_counteroffer_requested_structure_override_flag,
+    counteroffer_feasibility_evaluated_flag,
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_failure_reason,
+
+    approved_amount,
+    approved_payment_to_income_ratio,
+    approved_expected_loss_amount,
+    exposure_reduction_amount,
+    exposure_reduction_pct,
+
+    total_rule_trigger_count,
+    triggered_reason_code_list
+
+FROM credit_decisioning_sim.strategy_decisions_archive
+
+WHERE application_id = &#39;&lt;PASTE_APPLICATION_ID_HERE&gt;&#39;
+  AND module1_scenario_set_name = &#39;&lt;PASTE_SCENARIO_SET_HERE&gt;&#39;
+  AND module1_scenario_name = &#39;&lt;PASTE_SCENARIO_NAME_HERE&gt;&#39;
+  AND population_id = &#39;BASE_POPULATION_V1&#39;
+
+ORDER BY
+    CASE strategy_name
+        WHEN &#39;BASELINE_STRATEGY&#39; THEN 1
+        WHEN &#39;TIGHTER_SYNTHETIC_RISK_STRATEGY&#39; THEN 2
+        WHEN &#39;GROWTH_ORIENTED_STRATEGY&#39; THEN 3
+        WHEN &#39;TIGHTER_AFFORDABILITY_STRATEGY&#39; THEN 4
+        WHEN &#39;SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY&#39; THEN 5
+        WHEN &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39; THEN 6
+        WHEN &#39;PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY&#39; THEN 7
+        WHEN &#39;MANUAL_REVIEW_REDUCTION_STRATEGY&#39; THEN 8
+        ELSE 99
+    END,
+    strategy_name;
+</code></pre>
+<h2>Option C-specific query</h2>
+<p>Because Post 7 is likely about counteroffer governance, I would not overuse Option C in Post 6. But if you want a very strong Post 6 case that tees up Post 7, run this and look for applicants where <strong>selective and aggressive counteroffer postures diverge</strong>.</p>
+<pre><code class="language-sql">WITH option_c AS (
+    SELECT
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id,
+
+        MAX(product_type) AS product_type,
+        MAX(score_band) AS score_band,
+        MAX(credit_score) AS credit_score,
+        ROUND(MAX(requested_amount)::NUMERIC, 2) AS requested_amount,
+        ROUND(MAX(requested_payment_to_income_ratio)::NUMERIC, 4) AS requested_pti,
+        ROUND(MAX(estimated_pd)::NUMERIC, 4) AS synthetic_pd_proxy,
+        ROUND(MAX(requested_expected_loss_amount)::NUMERIC, 2) AS requested_expected_loss_amount,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;BASELINE_STRATEGY&#39;
+        ) AS baseline_outcome,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY&#39;
+        ) AS selective_outcome,
+
+        MAX(decision_outcome) FILTER (
+            WHERE strategy_name = &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+        ) AS aggressive_outcome,
+
+        MAX(primary_reason_code) FILTER (
+            WHERE strategy_name = &#39;BASELINE_STRATEGY&#39;
+        ) AS baseline_reason,
+
+        MAX(primary_reason_code) FILTER (
+            WHERE strategy_name = &#39;SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY&#39;
+        ) AS selective_reason,
+
+        MAX(primary_reason_code) FILTER (
+            WHERE strategy_name = &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+        ) AS aggressive_reason,
+
+        BOOL_OR(aggressive_counteroffer_requested_structure_override_flag) FILTER (
+            WHERE strategy_name = &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+        ) AS aggressive_override_flag,
+
+        MAX(counteroffer_feasibility_pass_flag::INT) FILTER (
+            WHERE strategy_name = &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+        ) AS aggressive_feasibility_pass_int,
+
+        ROUND(MAX(approved_amount) FILTER (
+            WHERE strategy_name = &#39;BASELINE_STRATEGY&#39;
+        )::NUMERIC, 2) AS baseline_approved_amount,
+
+        ROUND(MAX(approved_amount) FILTER (
+            WHERE strategy_name = &#39;SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY&#39;
+        )::NUMERIC, 2) AS selective_approved_amount,
+
+        ROUND(MAX(approved_amount) FILTER (
+            WHERE strategy_name = &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+        )::NUMERIC, 2) AS aggressive_approved_amount
+
+    FROM credit_decisioning_sim.strategy_decisions_archive
+
+    WHERE population_id = &#39;BASE_POPULATION_V1&#39;
+      AND module1_scenario_name IN (
+          &#39;BASELINE_V2&#39;,
+          &#39;NEAR_PRIME_EXPANSION_MIX&#39;,
+          &#39;HIGH_BALANCE_APPETITE&#39;
+      )
+      AND strategy_name IN (
+          &#39;BASELINE_STRATEGY&#39;,
+          &#39;SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY&#39;,
+          &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+      )
+
+    GROUP BY
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+)
+
+SELECT
+    CASE
+        WHEN selective_outcome IS DISTINCT FROM aggressive_outcome
+            THEN &#39;SELECTIVE_AND_AGGRESSIVE_DIVERGE&#39;
+        WHEN baseline_outcome IS DISTINCT FROM aggressive_outcome
+            THEN &#39;BASELINE_AND_AGGRESSIVE_DIVERGE&#39;
+        ELSE &#39;OPTION_C_PATH_EVIDENCE&#39;
+    END AS option_c_story_type,
+
+    *
+
+FROM option_c
+
+WHERE baseline_outcome IS NOT NULL
+  AND selective_outcome IS NOT NULL
+  AND aggressive_outcome IS NOT NULL
+  AND (
+        selective_outcome IS DISTINCT FROM aggressive_outcome
+     OR baseline_outcome IS DISTINCT FROM aggressive_outcome
+     OR aggressive_override_flag IS TRUE
+  )
+
+ORDER BY
+    CASE
+        WHEN selective_outcome IS DISTINCT FROM aggressive_outcome THEN 1
+        WHEN baseline_outcome IS DISTINCT FROM aggressive_outcome THEN 2
+        ELSE 3
+    END,
+    aggressive_override_flag DESC,
+    requested_amount DESC,
+    synthetic_pd_proxy DESC,
+    application_id
+
+LIMIT 50;
+</code></pre>
+<h2>What I would look for in the output</h2>
+<p>For Post 6, the best applicant is not necessarily the largest dollar delta. Module 2 already has a Section 13.6-style diagnostic that orders matched applicant examples by largest approved-exposure and approved-Expected-Loss movement, but that kind of sample is a diagnostic starting point, not automatically the best storytelling sample. fileciteturn8file11</p>
+<p>I would pick one of these:</p>
+<p><strong>Best story type:</strong> same source scenario, same application, three or four different outcomes across strategies.<br>Example pattern: <code>APPROVE → COUNTEROFFER → MANUAL_REVIEW → DECLINE</code>.</p>
+<p><strong>Second-best story type:</strong> baseline manual review, manual-review-reduction decline, aggressive counteroffer still fails feasibility.<br>That tells a governance story: strategy posture changes routing, but constraints remain binding.</p>
+<p><strong>Third-best story type:</strong> baseline approve, tighter risk counteroffer or decline, growth approve.<br>That tells a clean frontier-at-the-row-level story.</p>
+<p>I would avoid cases that are mostly stable approvals unless the point is “not every applicant is sensitive.” That is true, but it is less compelling for Post 6.</p>
+<p>My recommendation: run the first query and look for a top candidate with <code>outcome_diversity &gt;= 3</code> inside <code>BASELINE_V2</code>, <code>NEAR_PRIME_EXPANSION_MIX</code>, or <code>HIGH_BALANCE_APPETITE</code>. If none are clean enough, use <strong>APP-00012661</strong> as the fallback governance case.</p>
+</div></article><article id="c051-m00061" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00061 · 2026-06-02T15:45:57.752000-04:00 · active path</p><div class="body"><p>here are 4 examples that are the top examples in terms of narrative score for those selected types. please craft a powerhouse post 6 around these. then let&#39;s talk again about supporting image ideas. for this post, i&#39;d like the image to be something that grabs the users attention and is clever.  our day 2/3 posts used the attached images.  i wonder if we can build a clever marketing image for day 6 in that same vein.</p>
+<p><strong>Attachments in export:</strong> <code>APPROVE_COUNTEROFFER_REVIEW_CASE.csv</code>, <code>SELECTIVE_VS_AGGRESSIVE_COUNTEROFFER_CASE.csv</code>, <code>APPROVE_COUNTEROFFER_REVIEW_CASE_MODULE1_V2_CREDIT_BOX_SENSITIVITY_SET_NEAR_PRIME_EXPANSION_MIX.csv</code>, <code>MANUAL_REVIEW_TO_DECLINE_GOVERNANCE_CASE.csv</code>, <code>ChatGPT Image Jun 1, 2026, 04_04_05 PM.png</code>, <code>edited_synthetic_toy_data(1).png</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c051-m00077" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00077 · 2026-06-02T15:51:13.722369-04:00 · active path</p><div class="body"><p>Yes — these are much stronger than the first three. The story is now clearly different from Post 5.</p>
+<p>Post 5 was the <strong>portfolio frontier</strong>.</p>
+<p>Post 6 should be the <strong>applicant trace</strong>.</p>
+<p>That is the right move because Module 2 is explicitly designed so final outcomes are not black-box labels; they emerge through strategy controls, product policy, rule triggers, counteroffer path evidence, exposure treatment, final outcomes, reason codes, archive persistence, and matched comparison. fileciteturn14file0 The design also separates baseline, tighter risk, growth, affordability discipline, selective counteroffer, aggressive counteroffer, product guardrail, and manual-review-reduction postures so the same synthetic applicant can be traced across different strategy choices. fileciteturn13file1</p>
+<h2>LinkedIn Post 6 Draft</h2>
+<p>Portfolio metrics tell you where the strategy moved.</p>
+<p>Row-level traces tell you why.</p>
+<p>That distinction matters.</p>
+<p>In Post 5, I looked at the Module 2 strategy frontier:</p>
+<p>Access.<br>Approved exposure.<br>Approved Expected Loss.<br>Counteroffers.<br>Manual review.<br>Declines.</p>
+<p>But a frontier is still an aggregate view.</p>
+<p>So I pulled several synthetic applicants from the campaign archive and followed how their outcomes changed across strategy postures.</p>
+<p>Same synthetic applicant.</p>
+<p>Different strategy controls.</p>
+<p>Different path.</p>
+<p>A few examples:</p>
+<p>APP-00013809<br>Mortgage | Prime<br>Score: 738<br>Requested amount: $512K<br>Requested PTI: 32.05%<br>Synthetic estimated-PD proxy: 6.18%</p>
+<p>Baseline → MANUAL_REVIEW<br>Tighter Risk → COUNTEROFFER at $510K<br>Growth → APPROVE as requested<br>Tighter Affordability → COUNTEROFFER at $460K<br>Selective Counteroffer → MANUAL_REVIEW<br>Aggressive Counteroffer → MANUAL_REVIEW</p>
+<p>This is not a weak applicant.</p>
+<p>This is a boundary applicant.</p>
+<p>Under one posture, the file stays unresolved.</p>
+<p>Under growth, the same requested structure is approved.</p>
+<p>Under affordability discipline, the exposure is reduced.</p>
+<p>That is a strategy path, not a score cutoff.</p>
+<p>Another example:</p>
+<p>APP-00010577<br>Mortgage | Prime<br>Score: 704<br>Requested amount: $714K<br>Requested PTI: 32.85%<br>Synthetic estimated-PD proxy: 5.79%</p>
+<p>Under the Near-Prime Expansion Mix:</p>
+<p>Baseline → APPROVE as requested<br>Tighter Risk → MANUAL_REVIEW<br>Selective Counteroffer → COUNTEROFFER at $650K<br>Aggressive Counteroffer → COUNTEROFFER at $650K</p>
+<p>Same synthetic application.</p>
+<p>Same source scenario.</p>
+<p>Same population.</p>
+<p>The difference is strategy posture.</p>
+<p>A third example shows why counteroffer design matters:</p>
+<p>APP-00028510<br>HELOC | Near Prime<br>Score: 672<br>Requested amount: $232K<br>DTI: 58.17%<br>Synthetic estimated-PD proxy: 14.01%</p>
+<p>Baseline → COUNTEROFFER at $175K<br>Growth → COUNTEROFFER at $192K<br>Tighter Affordability → DECLINE<br>Selective Counteroffer → MANUAL_REVIEW<br>Aggressive Counteroffer → COUNTEROFFER at $150K</p>
+<p>This is the routing story.</p>
+<p>Selective feasibility kept the severe requested-structure case in review.</p>
+<p>Aggressive expansion routed it into governed feasibility testing.</p>
+<p>But it did not approve the request as-is.</p>
+<p>It reduced exposure.</p>
+<p>It lowered approved PTI.</p>
+<p>It lowered approved Expected Loss.</p>
+<p>That is a controlled counteroffer path, not a rubber stamp.</p>
+<p>One more:</p>
+<p>APP-00040465<br>Unsecured Personal Loan | Near Prime<br>Score: 653<br>Requested amount: $47.5K<br>Requested PTI: 18.38%<br>Synthetic estimated-PD proxy: 14.97%<br>LGD: 70%</p>
+<p>Baseline → MANUAL_REVIEW<br>Tighter Risk → MANUAL_REVIEW<br>Growth → COUNTEROFFER at $26K<br>Selective Counteroffer → MANUAL_REVIEW<br>Aggressive Counteroffer → COUNTEROFFER at $19K<br>Manual Review Reduction → DECLINE</p>
+<p>This is the governance case.</p>
+<p>The same applicant can remain unresolved, receive a reduced-exposure offer, or move to no-offer depending on the operating posture.</p>
+<p>Manual-review reduction did not create better economics.</p>
+<p>It changed unresolved treatment.</p>
+<p>Growth did not ignore risk.</p>
+<p>It found a feasible reduced-exposure path.</p>
+<p>Aggressive counteroffer did not bypass controls.</p>
+<p>It tested whether a more conservative offer amount could survive feasibility.</p>
+<p>That is why row-level traceability matters.</p>
+<p>At the portfolio level, you need the frontier.</p>
+<p>At the applicant level, you need the path.</p>
+<p>Which input changed?</p>
+<p>Which rule fired?</p>
+<p>Was the binding issue synthetic risk?</p>
+<p>Affordability?</p>
+<p>DTI?</p>
+<p>Requested exposure?</p>
+<p>Product policy?</p>
+<p>Expected Loss?</p>
+<p>Counteroffer feasibility?</p>
+<p>Manual-review posture?</p>
+<p>A credit strategy simulator should not only answer:</p>
+<p>“What happened to the approval rate?”</p>
+<p>It should also answer:</p>
+<p>“Which synthetic applicants moved, how did they move, and why?”</p>
+<p>That is the difference between reporting a decision label and building a reviewable strategy engine.</p>
+<p>All applicant data is synthetic.</p>
+<p>Outcomes are simulated strategy outcomes, not production underwriting decisions.</p>
+<p>GitHub project:</p>
+<p>Link in comments.</p>
+<p>#CreditRisk #CreditStrategy #DecisionScience #RiskAnalytics #DataGovernance #SQL #SyntheticData</p>
+<hr>
+<h2>Why this works</h2>
+<p>This draft gives Post 6 a distinct job in the series:</p>
+<p>Post 4: strategy is not a score cutoff.<br>Post 5: strategy is a portfolio frontier.<br>Post 6: strategy is also a row-level path.</p>
+<p>It also gives you four different micro-stories:</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Story</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>APP-00013809</td>
+<td>Boundary applicant: review, approve, or counteroffer depending on posture</td>
+</tr>
+<tr>
+<td>APP-00010577</td>
+<td>Same scenario, clean strategy movement: approve, review, or counteroffer</td>
+</tr>
+<tr>
+<td>APP-00028510</td>
+<td>Selective vs aggressive counteroffer routing divergence</td>
+</tr>
+<tr>
+<td>APP-00040465</td>
+<td>Governance case: review, reduced exposure, or decline</td>
+</tr>
+</tbody></table>
+<p>This tees up Post 7 well because Post 6 introduces counteroffer behavior at the applicant level without exhausting the full counteroffer-governance story.</p>
+<h2>Supporting image direction</h2>
+<p>I would <strong>not</strong> use a dense chart for this post. The visual should feel like a clever “decision-system metaphor,” the way your Day 2 and Day 3 images used a physical / forensic metaphor rather than a spreadsheet.</p>
+<p>The strongest concept is:</p>
+<h1><strong>The Strategy Prism</strong></h1>
+<p><strong>Visual thesis:</strong><br>One synthetic applicant enters the strategy engine. Multiple decision paths come out.</p>
+<p>Picture a dark, high-contrast image with a glowing synthetic applicant card on the left, a neon glass prism / decision engine in the center, and four outcome beams splitting to the right:</p>
+<p>APPROVE<br>COUNTEROFFER<br>MANUAL_REVIEW<br>DECLINE</p>
+<p>The image headline:</p>
+<p><strong>One Applicant. Multiple Strategy Paths.</strong></p>
+<p>Subtitle:</p>
+<p><strong>The portfolio frontier shows the map. The row-level trace shows the path.</strong></p>
+<p>Bottom proof strip:</p>
+<p><strong>39 strategy runs | 1.95M archived decisions | Matched lineage | No PII</strong></p>
+<p>Small case cards along the bottom:</p>
+<p><strong>Mortgage | Prime | $512K</strong><br>Review → Approve → Counteroffer</p>
+<p><strong>Mortgage | Prime | $714K</strong><br>Approve → Review → Counteroffer</p>
+<p><strong>HELOC | Near Prime | $232K</strong><br>Counteroffer → Review → Decline → Counteroffer</p>
+<p><strong>Personal Loan | Near Prime | $47.5K</strong><br>Review → Counteroffer → Decline</p>
+<p>This would visually separate Post 6 from Post 5. Post 5 is a frontier. Post 6 is the prism that shows how individual applicants split across policy paths.</p>
+<p>Two alternate image concepts are also viable:</p>
+<p><strong>Decision MRI</strong><br>A synthetic application card goes into a scanning machine. The output is four diagnostic panels: affordability, DTI, exposure, counteroffer feasibility. Strong, clever, but slightly more complex.</p>
+<p><strong>Strategy Flight Board</strong><br>A dark airport-style departure board where the same synthetic applicant is routed to different “gates”: APPROVE, COUNTEROFFER, MANUAL_REVIEW, DECLINE. Very attention-grabbing, but slightly less enterprise-risk-native than the prism.</p>
+<p>My recommendation: <strong>Strategy Prism</strong>. It is clean, clever, visually intuitive, and directly supports the post’s core message: the same synthetic applicant can split into different outcomes depending on the governed strategy path.</p>
+</div></article><article id="c051-m00078" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00078 · 2026-06-02T15:56:10.457000-04:00 · active path</p><div class="body"><p>the post must be under 3,000 characters.  let&#39;s tighten this up and make the point quicker and more professionally.</p>
+</div></article><article id="c051-m00079" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00079 · 2026-06-02T15:56:16.155733-04:00 · active path</p><div class="body"><p>Absolutely — here is a tighter, more professional <strong>Post 6 draft</strong> that stays comfortably under <strong>3,000 characters</strong>.</p>
+<hr>
+<p><strong>Post 6 draft</strong></p>
+<p>Portfolio metrics tell you <strong>where</strong> strategy moved.<br>Applicant-level traces tell you <strong>why</strong>.</p>
+<p>In Post 5, I showed the Module 2 strategy frontier.<br>For Post 6, I zoomed into the archive and followed individual synthetic applicants across strategy postures.</p>
+<p>Same synthetic applicant.<br>Same governed system.<br>Different strategy controls.<br>Different result.</p>
+<p>A few examples from the campaign:</p>
+<p><strong>APP-00013809</strong><br>Mortgage | Prime | Score 738 | Request $512K<br>Baseline → <strong>MANUAL_REVIEW</strong><br>Growth → <strong>APPROVE</strong><br>Tighter Risk → <strong>COUNTEROFFER</strong> at $510K<br>Tighter Affordability → <strong>COUNTEROFFER</strong> at $460K  </p>
+<p>This is a boundary case.<br>Not a weak file — a strategy-sensitive one.</p>
+<p><strong>APP-00028510</strong><br>HELOC | Near Prime | Score 672 | Request $232K<br>Baseline → <strong>COUNTEROFFER</strong> at $175K<br>Growth → <strong>COUNTEROFFER</strong> at $192K<br>Tighter Affordability → <strong>DECLINE</strong><br>Selective Counteroffer → <strong>MANUAL_REVIEW</strong><br>Aggressive Counteroffer → <strong>COUNTEROFFER</strong> at $150K  </p>
+<p>This is the counteroffer routing story.<br>The same applicant can move between review, decline, and reduced-exposure offer depending on feasibility posture.</p>
+<p><strong>APP-00040465</strong><br>Unsecured Personal Loan | Near Prime | Score 653 | Request $47.5K<br>Baseline → <strong>MANUAL_REVIEW</strong><br>Growth → <strong>COUNTEROFFER</strong> at $26K<br>Aggressive Counteroffer → <strong>COUNTEROFFER</strong> at $19K<br>Manual Review Reduction → <strong>DECLINE</strong></p>
+<p>This is the governance story.<br>Manual-review reduction does not improve economics — it changes unresolved treatment.</p>
+<p>That is the point.</p>
+<p><strong>Credit strategy is not a score cutoff.</strong><br>It is a <strong>governed decision chain</strong>.</p>
+<p>The same applicant can move from approve, to counteroffer, to review, to decline depending on:</p>
+<ul>
+<li>affordability  </li>
+<li>requested exposure  </li>
+<li>product guardrails  </li>
+<li>counteroffer feasibility  </li>
+<li>manual-review posture</li>
+</ul>
+<p>At the portfolio level, you need the <strong>frontier</strong>.<br>At the applicant level, you need the <strong>path</strong>.</p>
+<p>A good simulator should answer not only:</p>
+<p><strong>“What happened to approval rate?”</strong></p>
+<p>It should also answer:</p>
+<p><strong>“Which applicants moved, how did they move, and why?”</strong></p>
+<p>That is the difference between a dashboard and a reviewable strategy engine.</p>
+<p>All data is synthetic.<br>Outcomes are simulated strategy outcomes, not production underwriting decisions.</p>
+<p><strong>Link in comments.</strong></p>
+<p>#CreditRisk #CreditStrategy #DecisionScience #RiskAnalytics #DataGovernance #SQL #SyntheticData</p>
+<hr>
+<p>This version is about <strong>2,300 characters</strong>, so you have room if you want a minor tweak.</p>
+<p>If you want, next I can give you:</p>
+<ol>
+<li>a <strong>slightly punchier version</strong>, or  </li>
+<li><strong>3 clever supporting image concepts</strong> specifically tailored to this tightened post.</li>
+</ol>
+</div></article><article id="c051-m00082" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00082 · 2026-06-02T16:02:44.153000-04:00 · active path</p><div class="body"><ol>
+<li>Change to: &#39;In the last post, we examined the Module 2 strategy frontier.
+Now, let&#39;s follow individual synthetic applicants across strategy postures.&#39;  2) Get rid of &#39;A few examples from the campaign:&#39;  3) add PTI data points to each example first line. do not worry about repeating for counteroffer lines.</li>
+</ol>
+</div></article><article id="c051-m00090" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00090 · 2026-06-02T16:05:06.215321-04:00 · active path</p><div class="body"><p>This version is approximately <strong>2,500 characters</strong>.</p>
+<hr>
+<p>Portfolio metrics tell you <strong>where</strong> strategy moved.<br>Applicant-level traces tell you <strong>why</strong>.</p>
+<p>In the last post, we examined the Module 2 strategy frontier.<br>Now, let&#39;s follow individual synthetic applicants across strategy postures.</p>
+<p>Same synthetic applicant.<br>Same governed system.<br>Different strategy controls.<br>Different result.</p>
+<p><strong>APP-00013809</strong> — Mortgage | Prime | Score 738 | Request $512K | Requested PTI 32.05%<br>Baseline → <strong>MANUAL_REVIEW</strong><br>Growth → <strong>APPROVE</strong><br>Tighter Risk → <strong>COUNTEROFFER</strong> at $510K<br>Tighter Affordability → <strong>COUNTEROFFER</strong> at $460K  </p>
+<p>This is a boundary case.<br>Not a weak file — a strategy-sensitive one.</p>
+<p><strong>APP-00010577</strong> — Mortgage | Prime | Score 704 | Request $714K | Requested PTI 32.85%<br>Baseline → <strong>APPROVE</strong><br>Tighter Risk → <strong>MANUAL_REVIEW</strong><br>Selective Counteroffer → <strong>COUNTEROFFER</strong> at $650K<br>Aggressive Counteroffer → <strong>COUNTEROFFER</strong> at $650K  </p>
+<p>Same applicant.<br>Same source scenario.<br>Different strategy posture.</p>
+<p><strong>APP-00028510</strong> — HELOC | Near Prime | Score 672 | Request $232K | Requested PTI 17.36%<br>Baseline → <strong>COUNTEROFFER</strong> at $175K<br>Growth → <strong>COUNTEROFFER</strong> at $192K<br>Tighter Affordability → <strong>DECLINE</strong><br>Selective Counteroffer → <strong>MANUAL_REVIEW</strong><br>Aggressive Counteroffer → <strong>COUNTEROFFER</strong> at $150K  </p>
+<p>This is the counteroffer routing story.<br>The same applicant can move between review, decline, and reduced-exposure offer depending on feasibility posture.</p>
+<p><strong>APP-00040465</strong> — Personal Loan | Near Prime | Score 653 | Request $47.5K | Requested PTI 18.38%<br>Baseline → <strong>MANUAL_REVIEW</strong><br>Growth → <strong>COUNTEROFFER</strong> at $26K<br>Aggressive Counteroffer → <strong>COUNTEROFFER</strong> at $19K<br>Manual Review Reduction → <strong>DECLINE</strong></p>
+<p>This is the governance story.<br>Manual-review reduction does not improve economics.<br>It changes unresolved treatment.</p>
+<p>That is the point.</p>
+<p><strong>Credit strategy is not a score cutoff.</strong><br>It is a <strong>governed decision chain</strong>.</p>
+<p>The same applicant can move from approve, to counteroffer, to review, to decline depending on:</p>
+<p>affordability<br>requested exposure<br>product guardrails<br>counteroffer feasibility<br>manual-review posture  </p>
+<p>At the portfolio level, you need the <strong>frontier</strong>.<br>At the applicant level, you need the <strong>path</strong>.</p>
+<p>A good simulator should answer not only:</p>
+<p><strong>“What happened to approval rate?”</strong></p>
+<p>It should also answer:</p>
+<p><strong>“Which applicants moved, how did they move, and why?”</strong></p>
+<p>That is the difference between a dashboard and a reviewable strategy engine.</p>
+<p>All data is synthetic.<br>Outcomes are simulated strategy outcomes, not production underwriting decisions.</p>
+<p><strong>Link in comments.</strong></p>
+<p>#CreditRisk #CreditStrategy #DecisionScience #RiskAnalytics #DataGovernance #SQL #SyntheticData</p>
+</div></article><article id="c051-m00091" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00091 · 2026-06-02T16:08:52.994000-04:00 · active path</p><div class="body"><p>perfect.  do not generate images. now let&#39;s discuss 3 clever supporting image concepts specifically tailored to this tightened post. do not generate images.</p>
+</div></article><article id="c051-m00093" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00093 · 2026-06-02T16:10:46.529241-04:00 · active path</p><div class="body"><p>Yes. For Post 6, the visual should <strong>not</strong> feel like another frontier chart. Post 5 already owned the portfolio-level frontier story. This image should make the row-level trace feel immediate: one applicant, several possible paths, governed logic underneath. Post 5 framed strategy as a multidimensional frontier across access, approved exposure, Expected Loss, counteroffers, review burden, and routing; Post 6 now needs to zoom into the applicant path behind those aggregate movements. fileciteturn15file0</p>
+<p>Here are three strong concepts.</p>
+<hr>
+<h2>Concept 1 — <strong>The Strategy Prism</strong></h2>
+<p><strong>Core idea:</strong><br>One synthetic applicant enters the strategy engine. Multiple governed outcome paths split out.</p>
+<p><strong>Headline:</strong><br><strong>One Applicant. Multiple Strategy Paths.</strong></p>
+<p><strong>Subtitle:</strong><br><strong>The frontier shows the map. The row-level trace shows the path.</strong></p>
+<p><strong>Visual layout:</strong><br>A dark, cinematic background. On the left, a glowing “synthetic application card” with simplified applicant fields:</p>
+<pre><code class="language-text">APP-00013809
+Mortgage | Prime
+Score 738 | PTI 32.05%
+Request $512K
+</code></pre>
+<p>The card feeds into a translucent neon prism or decision engine in the center. Four beams exit to the right:</p>
+<pre><code class="language-text">APPROVE
+COUNTEROFFER
+MANUAL_REVIEW
+DECLINE
+</code></pre>
+<p>Each beam has a small strategy tag:</p>
+<pre><code class="language-text">Growth → APPROVE
+Tighter Affordability → COUNTEROFFER
+Baseline → MANUAL_REVIEW
+</code></pre>
+<p><strong>Footer strip:</strong></p>
+<pre><code class="language-text">39 strategy runs | Matched lineage | Synthetic data | No PII
+</code></pre>
+<p><strong>Why it works:</strong><br>This is probably the strongest concept. It visually explains the post in one second: the same applicant can split into different outcomes depending on strategy posture. It also fits the style of your prior images: dark, executive, technical, and metaphor-driven rather than dashboard-heavy.</p>
+<p><strong>Risk to avoid:</strong><br>Do not overload it with all four applicants. Use one hero applicant, then maybe three small “trace chips” along the bottom.</p>
+<hr>
+<h2>Concept 2 — <strong>The Decision Flight Board</strong></h2>
+<p><strong>Core idea:</strong><br>The same synthetic applicant gets routed to different “gates” depending on strategy posture.</p>
+<p><strong>Headline:</strong><br><strong>Same Applicant. Different Routing.</strong></p>
+<p><strong>Subtitle:</strong><br><strong>Strategy posture changes the path — not the applicant.</strong></p>
+<p><strong>Visual layout:</strong><br>A dark airport-style departure board or trading-floor routing board. The left side shows:</p>
+<pre><code class="language-text">SYNTHETIC APPLICANT TRACE
+</code></pre>
+<p>Then rows like:</p>
+<pre><code class="language-text">APP-00013809 | Baseline              | MANUAL_REVIEW
+APP-00013809 | Growth                | APPROVE
+APP-00013809 | Tighter Risk          | COUNTEROFFER
+APP-00013809 | Tighter Affordability | COUNTEROFFER
+</code></pre>
+<p>A second mini-panel could show APP-00040465:</p>
+<pre><code class="language-text">Baseline → REVIEW
+Growth → COUNTEROFFER
+Manual Review Reduction → DECLINE
+</code></pre>
+<p>Use status-board styling: clean rows, monospaced text, glowing outcome labels, small icons for approve / counteroffer / review / decline.</p>
+<p><strong>Footer strip:</strong></p>
+<pre><code class="language-text">Applicant-level traceability | Governed strategy controls | No PII
+</code></pre>
+<p><strong>Why it works:</strong><br>It is clever because everyone immediately understands routing boards. It also supports the post’s professional tone: operational routing, not abstract theory. This concept is especially good if you want the image to feel more “decision operations” than “risk science.”</p>
+<p><strong>Risk to avoid:</strong><br>It can become text-heavy. Keep the board to 6–8 rows max and make the outcome labels the visual anchor.</p>
+<hr>
+<h2>Concept 3 — <strong>The Policy X-Ray</strong></h2>
+<p><strong>Core idea:</strong><br>The applicant is not just assigned a label; the simulator reveals the decision anatomy underneath.</p>
+<p><strong>Headline:</strong><br><strong>Don’t Just Read the Label. Trace the Path.</strong></p>
+<p><strong>Subtitle:</strong><br><strong>Affordability. Exposure. Feasibility. Review posture.</strong></p>
+<p><strong>Visual layout:</strong><br>A synthetic applicant card sits inside an X-ray / scanner frame. The scan reveals four internal “bones” or layers:</p>
+<pre><code class="language-text">Requested Exposure
+Requested PTI
+Product Guardrails
+Counteroffer Feasibility
+</code></pre>
+<p>On the right, show a compact outcome stack:</p>
+<pre><code class="language-text">APP-00040465
+Baseline → MANUAL_REVIEW
+Growth → COUNTEROFFER $26K
+Aggressive CO → COUNTEROFFER $19K
+Review Reduction → DECLINE
+</code></pre>
+<p>A second smaller callout can show:</p>
+<pre><code class="language-text">Manual-review reduction does not improve economics.
+It changes unresolved treatment.
+</code></pre>
+<p><strong>Footer strip:</strong></p>
+<pre><code class="language-text">Row-level evidence | Simulated outcomes | Synthetic data | No PII
+</code></pre>
+<p><strong>Why it works:</strong><br>This one is the most conceptually aligned with the post’s “why did this applicant move?” message. It makes the simulator feel like a diagnostic tool, not just an output generator. It also ties directly to Module 2’s design principle that simulated outcomes should emerge through a transparent chain of strategy controls, product policy, rule triggers, exposure treatment, final outcome, and reason-code traceability. fileciteturn15file6</p>
+<p><strong>Risk to avoid:</strong><br>The X-ray metaphor can get too medical or too busy. Keep it abstract: more “decision scan” than hospital scan.</p>
+<hr>
+<h2>My recommendation</h2>
+<p>Use <strong>Concept 1: The Strategy Prism</strong>.</p>
+<p>It is the cleanest and most marketable for LinkedIn because it turns the core idea into a visual metaphor:</p>
+<pre><code class="language-text">One applicant enters.
+Strategy posture changes.
+Different paths emerge.
+</code></pre>
+<p>It also creates a nice progression from your earlier images. The prior visuals used strong metaphors: synthetic data as governed building blocks and Expected Loss movement as forensic fingerprints. For Post 6, the prism becomes the metaphor for applicant-level strategy movement.</p>
+<p>Best final image copy:</p>
+<pre><code class="language-text">One Applicant. Multiple Strategy Paths.
+
+The frontier shows the map.
+The row-level trace shows the path.
+
+APP-00013809
+Mortgage | Prime | Score 738 | PTI 32.05%
+
+Baseline → MANUAL_REVIEW
+Growth → APPROVE
+Tighter Risk → COUNTEROFFER
+Tighter Affordability → COUNTEROFFER
+
+Synthetic data | Matched lineage | No PII
+</code></pre>
+<p>That would be sharp, memorable, and directly aligned to the tightened post.</p>
+</div></article><article id="c051-m00094" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00094 · 2026-06-02T16:18:53.012000-04:00 · active path</p><div class="body"><p>i like the prism example and using APP-00013809.  here is a good template.  please craft a high powered image to accompany our post 6 using this example template and APP-00013809 example.</p>
+<p><strong>Attachments in export:</strong> <code>prism example.jpg</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c051-m00097" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00097 · 2026-06-02T16:21:15.918586-04:00 · active path</p><div class="body"><p><em>No text body is present in the export. This message may contain an image or attachment.</em></p>
+</div></article><article id="c051-m00098" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00098 · 2026-06-02T16:26:01.386000-04:00 · active path</p><div class="body"><p>give me the write-up again in a simple copy paste format</p>
+</div></article><article id="c051-m00101" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00101 · 2026-06-02T16:26:52.699722-04:00 · active path</p><div class="body"><p>Portfolio metrics tell you where strategy moved.<br>Applicant-level traces tell you why.</p>
+<p>In the last post, we examined the Module 2 strategy frontier.<br>Now, let&#39;s follow individual synthetic applicants across strategy postures.</p>
+<p>Same synthetic applicant.<br>Same governed system.<br>Different strategy controls.<br>Different result.</p>
+<p>APP-00013809 — Mortgage | Prime | Score 738 | Request $512K | Requested PTI 32.05%</p>
+<p>Baseline → MANUAL_REVIEW<br>Growth → APPROVE<br>Tighter Risk → COUNTEROFFER at $510K<br>Tighter Affordability → COUNTEROFFER at $460K  </p>
+<p>This is a boundary case.<br>Not a weak file — a strategy-sensitive one.</p>
+<p>APP-00010577 — Mortgage | Prime | Score 704 | Request $714K | Requested PTI 32.85%</p>
+<p>Baseline → APPROVE<br>Tighter Risk → MANUAL_REVIEW<br>Selective Counteroffer → COUNTEROFFER at $650K<br>Aggressive Counteroffer → COUNTEROFFER at $650K  </p>
+<p>Same applicant.<br>Same source scenario.<br>Different strategy posture.</p>
+<p>APP-00028510 — HELOC | Near Prime | Score 672 | Request $232K | Requested PTI 17.36%</p>
+<p>Baseline → COUNTEROFFER at $175K<br>Growth → COUNTEROFFER at $192K<br>Tighter Affordability → DECLINE<br>Selective Counteroffer → MANUAL_REVIEW<br>Aggressive Counteroffer → COUNTEROFFER at $150K  </p>
+<p>This is the counteroffer routing story.<br>The same applicant can move between review, decline, and reduced-exposure offer depending on feasibility posture.</p>
+<p>APP-00040465 — Personal Loan | Near Prime | Score 653 | Request $47.5K | Requested PTI 18.38%</p>
+<p>Baseline → MANUAL_REVIEW<br>Growth → COUNTEROFFER at $26K<br>Aggressive Counteroffer → COUNTEROFFER at $19K<br>Manual Review Reduction → DECLINE</p>
+<p>This is the governance story.<br>Manual-review reduction does not improve economics.<br>It changes unresolved treatment.</p>
+<p>That is the point.</p>
+<p>Credit strategy is not a score cutoff.<br>It is a governed decision chain.</p>
+<p>The same applicant can move from approve, to counteroffer, to review, to decline depending on:</p>
+<p>affordability<br>requested exposure<br>product guardrails<br>counteroffer feasibility<br>manual-review posture  </p>
+<p>At the portfolio level, you need the frontier.<br>At the applicant level, you need the path.</p>
+<p>A good simulator should answer not only:</p>
+<p>“What happened to approval rate?”</p>
+<p>It should also answer:</p>
+<p>“Which applicants moved, how did they move, and why?”</p>
+<p>That is the difference between a dashboard and a reviewable strategy engine.</p>
+<p>All data is synthetic.<br>Outcomes are simulated strategy outcomes, not production underwriting decisions.</p>
+<p>Link in comments.</p>
+<p>#CreditRisk #CreditStrategy #DecisionScience #RiskAnalytics #DataGovernance #SQL #SyntheticData</p>
+</div></article><article id="c051-m00102" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00102 · 2026-06-02T16:27:57.762000-04:00 · active path</p><div class="body"><p>I was asking you to provide the same write-up (no changes) in a way that I click a single button to easily copy</p>
+</div></article><article id="c051-m00104" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00104 · 2026-06-02T16:28:41.631471-04:00 · active path</p><div class="body"><pre><code class="language-text">Portfolio metrics tell you where strategy moved.  
+Applicant-level traces tell you why.
+
+In the last post, we examined the Module 2 strategy frontier.  
+Now, let&#39;s follow individual synthetic applicants across strategy postures.
+
+Same synthetic applicant.  
+Same governed system.  
+Different strategy controls.  
+Different result.
+
+APP-00013809 — Mortgage | Prime | Score 738 | Request $512K | Requested PTI 32.05%
+
+Baseline → MANUAL_REVIEW  
+Growth → APPROVE  
+Tighter Risk → COUNTEROFFER at $510K  
+Tighter Affordability → COUNTEROFFER at $460K  
+
+This is a boundary case.  
+Not a weak file — a strategy-sensitive one.
+
+APP-00010577 — Mortgage | Prime | Score 704 | Request $714K | Requested PTI 32.85%
+
+Baseline → APPROVE  
+Tighter Risk → MANUAL_REVIEW  
+Selective Counteroffer → COUNTEROFFER at $650K  
+Aggressive Counteroffer → COUNTEROFFER at $650K  
+
+Same applicant.  
+Same source scenario.  
+Different strategy posture.
+
+APP-00028510 — HELOC | Near Prime | Score 672 | Request $232K | Requested PTI 17.36%
+
+Baseline → COUNTEROFFER at $175K  
+Growth → COUNTEROFFER at $192K  
+Tighter Affordability → DECLINE  
+Selective Counteroffer → MANUAL_REVIEW  
+Aggressive Counteroffer → COUNTEROFFER at $150K  
+
+This is the counteroffer routing story.  
+The same applicant can move between review, decline, and reduced-exposure offer depending on feasibility posture.
+
+APP-00040465 — Personal Loan | Near Prime | Score 653 | Request $47.5K | Requested PTI 18.38%
+
+Baseline → MANUAL_REVIEW  
+Growth → COUNTEROFFER at $26K  
+Aggressive Counteroffer → COUNTEROFFER at $19K  
+Manual Review Reduction → DECLINE
+
+This is the governance story.  
+Manual-review reduction does not improve economics.  
+It changes unresolved treatment.
+
+That is the point.
+
+Credit strategy is not a score cutoff.  
+It is a governed decision chain.
+
+The same applicant can move from approve, to counteroffer, to review, to decline depending on:
+
+affordability  
+requested exposure  
+product guardrails  
+counteroffer feasibility  
+manual-review posture  
+
+At the portfolio level, you need the frontier.  
+At the applicant level, you need the path.
+
+A good simulator should answer not only:
+
+“What happened to approval rate?”
+
+It should also answer:
+
+“Which applicants moved, how did they move, and why?”
+
+That is the difference between a dashboard and a reviewable strategy engine.
+
+All data is synthetic.  
+Outcomes are simulated strategy outcomes, not production underwriting decisions.
+
+Link in comments.
+
+#CreditRisk #CreditStrategy #DecisionScience #RiskAnalytics #DataGovernance #SQL #SyntheticData
+</code></pre>
+</div></article><article id="c051-m00106" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00106 · 2026-06-02T16:31:43.276000-04:00 · active path</p><div class="body"><p>awesome.  lets examine post 7 theme / write-up now including image suggestions.  for the counteroffer theme, what is the best way to go? micro level again? macro? mix? dig into the mechanics?  a going under the hood into the mechanics - tying it into the micro results might be the most unique aspect vs all the other posts we&#39;ve done. we haven&#39;t really gotten into the coding in any post yet.</p>
+</div></article><article id="c051-m00108" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00108 · 2026-06-02T16:34:59.232517-04:00 · active path</p><div class="body"><p>The best Post 7 angle is a <strong>mix</strong>, but weighted toward <strong>under-the-hood mechanics</strong>.</p>
+<p>Not pure macro — Post 5 already owned the frontier story.<br>Not pure micro — Post 6 already traced individual applicants.<br>Not a code dump — too narrow for LinkedIn.</p>
+<p>The unique angle is:</p>
+<p><strong>Counteroffer is not a label. It is a governed routing and feasibility system.</strong></p>
+<p>That lets you connect three things in one post:</p>
+<p><strong>Micro:</strong> APP-00028510 moved from selective manual review to aggressive counteroffer.<br><strong>Mechanics:</strong> Section 6/7/8 logic explains how candidate routing and feasibility testing work.<br><strong>Macro proof:</strong> M2-37/M2-38/M2-39 show aggressive override rows flowing through governed feasibility, not bypassing controls.</p>
+<p>That is the strongest story because it shows actual decision-system architecture. Module 2’s SQL explicitly separates candidate creation, preliminary routing, and counteroffer feasibility testing; it also documents that aggressive expansion changes which rows enter feasibility testing, while Section 8 still applies product caps, minimum amount rules, PTI targets, approved Expected Loss caps, exposure-reduction limits, and rounding rules. fileciteturn16file16 fileciteturn16file15 fileciteturn16file8</p>
+<h2>Recommended Post 7 theme</h2>
+<p><strong>Counteroffer Governance Is Exposure Routing</strong></p>
+<p>Core message:</p>
+<p><strong>Aggressive counteroffer expansion does not mean bypassing controls.<br>It means routing more rows into governed feasibility testing.</strong></p>
+<p>This should be the first post where you show a little bit of “how the engine thinks.”</p>
+<hr>
+<h2>Post 7 draft</h2>
+<pre><code class="language-text">Counteroffer strategy is not “approve less.”
+
+It is governed exposure routing.
+
+In the last post, we followed individual synthetic applicants across strategy postures.
+
+Now, let’s go under the hood.
+
+Take APP-00028510:
+
+HELOC | Near Prime | Score 672 | Request $232K | Requested PTI 17.36%
+
+Selective Counteroffer → MANUAL_REVIEW  
+Aggressive Counteroffer → COUNTEROFFER at $150K
+
+That movement is not a random label change.
+
+It comes from how the strategy engine routes the row:
+
+Requested structure  
+→ Counteroffer candidate test  
+→ Preliminary route  
+→ Feasibility gate  
+→ Final simulated outcome
+
+In the SQL, selective and aggressive counteroffer strategies use the same product-level feasibility math.
+
+The difference is routing posture.
+
+Selective feasibility is more conservative:
+
+ordinary governed counteroffer candidates move forward; more severe requested-structure cases can remain in manual review.
+
+Aggressive expansion is broader:
+
+additional severe requested-structure rows are allowed into counteroffer feasibility testing.
+
+But they still have to pass the gates.
+
+A preliminary counteroffer is only permission to test feasibility.
+
+It is not a final offer.
+
+The row still has to survive:
+
+product counteroffer permission  
+product cap  
+minimum viable offer amount  
+minimum counteroffer percent  
+maximum exposure reduction  
+approved PTI target  
+approved Expected Loss cap  
+rounding rules
+
+That is the key distinction.
+
+Aggressive counteroffer expansion does not bypass controls.
+
+It expands which rows get tested through controls.
+
+Across the aggressive expansion layer:
+
+M2-37 | Baseline Population  
+4,614 aggressive override rows  
+88% final counteroffer | 12% manual review
+
+M2-38 | Near-Prime Expansion  
+4,380 aggressive override rows  
+84% final counteroffer | 16% manual review
+
+M2-39 | High-Balance Appetite  
+8,892 aggressive override rows  
+80% final counteroffer | 20% manual review
+
+Observed final aggressive override declines: 0
+
+This is why counteroffer governance matters.
+
+A simple policy says:
+
+“Reduce exposure.”
+
+A governed engine asks:
+
+“Which rows can be reduced, why, under which constraints, and with what final outcome?”
+
+That is the difference between a counteroffer rule and a counteroffer engine.
+
+All data is synthetic.  
+Outcomes are simulated strategy outcomes, not production underwriting decisions.
+
+Link in comments.
+
+#CreditRisk #CreditStrategy #DecisionScience #CounterofferStrategy #RiskAnalytics #DataGovernance #SQL
+</code></pre>
+<p>This is about <strong>2,600–2,800 characters</strong>, depending on LinkedIn’s treatment of line breaks.</p>
+<hr>
+<h2>Image concept 1 — recommended</h2>
+<h1><strong>The Counteroffer Engine Cutaway</strong></h1>
+<p>This is the strongest visual.</p>
+<p><strong>Headline:</strong><br><strong>Counteroffer Governance Is Exposure Routing</strong></p>
+<p><strong>Subtitle:</strong><br><strong>Same feasibility gate. Different routing posture.</strong></p>
+<p><strong>Visual structure:</strong></p>
+<p>Left side: one applicant card.</p>
+<pre><code class="language-text">APP-00028510
+HELOC | Near Prime
+Score 672 | PTI 17.36%
+Request $232K
+</code></pre>
+<p>Center: a mechanical / neon “decision engine” cutaway with four chambers:</p>
+<pre><code class="language-text">1. Requested Structure
+2. Candidate Test
+3. Preliminary Route
+4. Feasibility Gate
+</code></pre>
+<p>Right side: two outcome lanes.</p>
+<pre><code class="language-text">Selective Feasibility
+→ MANUAL_REVIEW
+
+Aggressive Expansion
+→ COUNTEROFFER $150K
+</code></pre>
+<p>Bottom proof strip:</p>
+<pre><code class="language-text">M2-37: 4,614 overrides | 88% CO
+M2-38: 4,380 overrides | 84% CO
+M2-39: 8,892 overrides | 80% CO
+No PII | Simulated Outcomes
+</code></pre>
+<p>Why this works: it visually says “under the hood” without showing a dense SQL screenshot.</p>
+<hr>
+<h2>Image concept 2</h2>
+<h1><strong>The Feasibility Gate</strong></h1>
+<p><strong>Headline:</strong><br><strong>A Counteroffer Is Not Final Until It Passes the Gate</strong></p>
+<p>Visual: APP-00028510 approaches a large glowing gate labeled:</p>
+<pre><code class="language-text">FEASIBILITY TEST
+</code></pre>
+<p>The gate has lock icons for:</p>
+<pre><code class="language-text">Product cap
+Min offer amount
+Max exposure reduction
+Approved PTI target
+Approved EL cap
+Rounding rule
+</code></pre>
+<p>Two arrows:</p>
+<pre><code class="language-text">Pass → COUNTEROFFER
+Fail → MANUAL_REVIEW / DECLINE
+</code></pre>
+<p>This image is simpler and more executive. It is less clever than the engine cutaway, but very clear.</p>
+<hr>
+<h2>Image concept 3</h2>
+<h1><strong>SQL Under the Hood</strong></h1>
+<p><strong>Headline:</strong><br><strong>Not One CASE Statement. A Governed Decision Chain.</strong></p>
+<p>Visual: dark code-console aesthetic, but not a real code screenshot. Use a clean pseudo-code card:</p>
+<pre><code class="language-text">IF ordinary_candidate
+   → test feasibility
+
+IF aggressive_override
+   AND no hard stop
+   AND no severe risk stop
+   AND no severe DTI stop
+   → test feasibility
+
+IF feasibility_pass
+   → COUNTEROFFER
+ELSE
+   → review / decline resolution
+</code></pre>
+<p>Right side: APP-00028510 trace:</p>
+<pre><code class="language-text">Selective → MANUAL_REVIEW
+Aggressive → COUNTEROFFER $150K
+</code></pre>
+<p>This is the most technical concept. It would stand out because you have not shown the coding mechanics yet, but it risks being slightly less visually polished than the cutaway.</p>
+<hr>
+<p>My recommendation: use <strong>Concept 1 — The Counteroffer Engine Cutaway</strong>. It preserves the polished dark/neon visual language from your earlier posts, but adds a new “under the hood” layer that makes Post 7 distinct from both the strategy frontier and applicant trace posts.</p>
+</div></article><article id="c051-m00110" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00110 · 2026-06-02T16:39:17.048000-04:00 · active path</p><div class="body"><p>i think a more interesting case would be to show our example at each of these gates: The row still has to survive:</p>
+<p>product counteroffer permission<br>product cap<br>minimum viable offer amount<br>minimum counteroffer percent<br>maximum exposure reduction<br>approved PTI target<br>approved Expected Loss cap<br>rounding rules        what we&#39;re it&#39;s values and why did it pass or not pass</p>
+</div></article><article id="c051-m00126" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00126 · 2026-06-02T16:44:47.083683-04:00 · active path</p><div class="body"><p>Yes — this is the better Post 7.</p>
+<p>The strongest angle is not just “counteroffers reduce exposure.” It is:</p>
+<p><strong>A counteroffer is only real after it survives the feasibility gates.</strong></p>
+<p>That gives you a more technical, differentiated post than anything else in the series. It also lets you show the engine mechanics without dumping code.</p>
+<p>For <strong>APP-00028510</strong>, the key nuance is important:</p>
+<p><strong>Selective Counteroffer did not fail the gates.</strong><br>It never reached them.</p>
+<p><strong>Aggressive Counteroffer reached the gates and passed.</strong></p>
+<p>That is the story.</p>
+<p>Module 2 is built so Section 7 handles preliminary routing, and Section 8 then tests counteroffer feasibility through product cap, PTI target, Expected Loss cap, minimum viable amount, rounding, and pass/fail diagnostics. fileciteturn16file8 fileciteturn16file0</p>
+<h2>APP-00028510 gate walk</h2>
+<p><strong>Applicant:</strong> APP-00028510<br><strong>Product:</strong> HELOC<br><strong>Score band:</strong> Near Prime<br><strong>Score:</strong> 672<br><strong>Requested amount:</strong> $232.3K<br><strong>Requested PTI:</strong> 17.36%<br><strong>Synthetic estimated-PD proxy:</strong> 14.01%<br><strong>LGD:</strong> 25%<br><strong>Requested Expected Loss:</strong> $8.13K  </p>
+<h3>Selective Counteroffer posture</h3>
+<p><strong>M2-05 | Selective Counteroffer Feasibility</strong></p>
+<p>Outcome: <strong>MANUAL_REVIEW</strong></p>
+<p>Why?</p>
+<p>This row was treated as a severe requested-structure case. Under selective feasibility, it was not routed into counteroffer feasibility testing.</p>
+<p>So the right interpretation is:</p>
+<pre><code class="language-text">Selective posture → did not enter feasibility gate → MANUAL_REVIEW
+</code></pre>
+<p>Not:</p>
+<pre><code class="language-text">Selective posture → failed counteroffer math
+</code></pre>
+<p>That distinction is powerful.</p>
+<h3>Aggressive Counteroffer posture</h3>
+<p><strong>M2-37 | Aggressive Counteroffer Expansion</strong></p>
+<p>Outcome: <strong>COUNTEROFFER at $150K</strong></p>
+<p>Here, the aggressive override allowed the row to enter the same governed feasibility framework.</p>
+<p>Then the gate walk looks like this:</p>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th align="right">Value</th>
+<th align="right">Threshold / Rule</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Product counteroffer permission</td>
+<td align="right">HELOC counteroffer allowed</td>
+<td align="right">Must be allowed</td>
+<td><strong>Pass</strong></td>
+</tr>
+<tr>
+<td>Product cap</td>
+<td align="right">$150K offer</td>
+<td align="right">Max approved HELOC amount = $150K</td>
+<td><strong>Pass / binding</strong></td>
+</tr>
+<tr>
+<td>Minimum viable amount</td>
+<td align="right">$150K offer</td>
+<td align="right">Must be at least $92.9K</td>
+<td><strong>Pass</strong></td>
+</tr>
+<tr>
+<td>Minimum counteroffer percent</td>
+<td align="right">64.6% of request</td>
+<td align="right">Must be at least 35%</td>
+<td><strong>Pass</strong></td>
+</tr>
+<tr>
+<td>Maximum exposure reduction</td>
+<td align="right">35.4% reduction</td>
+<td align="right">Max reduction = 60%</td>
+<td><strong>Pass</strong></td>
+</tr>
+<tr>
+<td>Approved PTI target</td>
+<td align="right">11.21%</td>
+<td align="right">Must be ≤ 20.00%</td>
+<td><strong>Pass</strong></td>
+</tr>
+<tr>
+<td>Approved Expected Loss cap</td>
+<td align="right">$5.25K</td>
+<td align="right">Must be ≤ $5.60K</td>
+<td><strong>Pass</strong></td>
+</tr>
+<tr>
+<td>Rounding rule</td>
+<td align="right">$150K</td>
+<td align="right">Rounded to $1K increment</td>
+<td><strong>Pass</strong></td>
+</tr>
+</tbody></table>
+<p>So the post can make a very precise point:</p>
+<p><strong>Aggressive expansion did not approve the request.</strong><br>It reduced the exposure from <strong>$232.3K to $150K</strong>.</p>
+<p><strong>It did not bypass controls.</strong><br>It changed whether the row was allowed to be tested through controls.</p>
+<p>That is exactly what makes this a counteroffer engine rather than a counteroffer label. Section 8’s design explicitly treats preliminary counteroffer routing as permission to test feasibility, not as a final offer; final feasibility depends on product permission, product caps, minimum offer rules, max reduction, PTI target, Expected Loss cap, and rounding. fileciteturn16file4</p>
+<h2>Best Post 7 thesis</h2>
+<p>I would frame it like this:</p>
+<p><strong>Counteroffer governance is not a softer approval path.<br>It is a controlled feasibility test.</strong></p>
+<p>Then use APP-00028510 as the walk-through:</p>
+<pre><code class="language-text">Selective posture:
+Severe requested structure → Manual Review
+
+Aggressive posture:
+Severe requested structure → Feasibility test → $150K counteroffer
+</code></pre>
+<p>The punchline:</p>
+<pre><code class="language-text">The strategy difference was not the math.
+The strategy difference was routing into the math.
+</code></pre>
+<p>That is a strong, unique post.</p>
+<h2>Query to pull this directly from the archive</h2>
+<p>This should return the exact gate fields if your full <code>strategy_decisions_archive</code> includes the Section 8 diagnostics from the canonical output.</p>
+<pre><code class="language-sql">SELECT
+    module2_run_id,
+    strategy_name,
+    application_id,
+
+    product_type,
+    score_band,
+    credit_score,
+    requested_amount,
+    requested_payment_to_income_ratio,
+    estimated_pd,
+    estimated_lgd,
+    requested_expected_loss_amount,
+
+    ordinary_counteroffer_candidate_flag,
+    aggressive_counteroffer_requested_structure_override_flag,
+
+    preliminary_decision_outcome,
+    preliminary_decision_path,
+    requires_counteroffer_feasibility_flag,
+
+    counteroffer_feasibility_evaluated_flag,
+    counteroffer_feasibility_pass_flag,
+    counteroffer_feasibility_failure_reason,
+
+    counteroffer_allowed_flag,
+
+    product_min_approved_amount,
+    product_max_approved_amount,
+    product_min_counteroffer_pct,
+    product_max_exposure_reduction_pct,
+    counteroffer_target_pti,
+    product_approved_el_cap,
+    approved_amount_rounding_increment,
+
+    counteroffer_product_cap_amount,
+    counteroffer_pti_target_amount,
+    counteroffer_el_cap_amount,
+    counteroffer_raw_max_feasible_amount,
+    counteroffer_min_viable_amount,
+    counteroffer_rounded_amount,
+
+    counteroffer_test_payment_to_income_ratio,
+    counteroffer_test_expected_loss_amount,
+
+    approved_amount,
+    approved_payment_to_income_ratio,
+    approved_expected_loss_amount,
+    exposure_reduction_amount,
+    exposure_reduction_pct,
+
+    decision_outcome,
+    decision_path,
+    primary_reason_code,
+    secondary_reason_code,
+    tertiary_reason_code,
+    triggered_reason_code_list
+
+FROM credit_decisioning_sim.strategy_decisions_archive
+
+WHERE application_id = &#39;APP-00028510&#39;
+  AND module1_scenario_set_name = &#39;MODULE1_V2_BASELINE_SET&#39;
+  AND module1_scenario_name = &#39;BASELINE_V2&#39;
+  AND population_id = &#39;BASE_POPULATION_V1&#39;
+  AND strategy_name IN (
+      &#39;SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY&#39;,
+      &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39;
+  )
+
+ORDER BY
+    CASE strategy_name
+        WHEN &#39;SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY&#39; THEN 1
+        WHEN &#39;AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY&#39; THEN 2
+        ELSE 99
+    END;
+</code></pre>
+<p>One additional note: if you want an even more dramatic <strong>pass/fail gate</strong> example, APP-00040465 is probably the best companion case. APP-00028510 shows “not routed vs routed and passed.” APP-00040465 shows actual feasibility failure under one posture and feasibility success under another. But for the main Post 7 story, APP-00028510 is cleaner because it directly illustrates selective vs aggressive counteroffer routing.</p>
+</div></article><article id="c051-m00128" class="message user"><div class="role">Andrew</div><p class="meta">C051-M00128 · 2026-06-02T16:51:07.448000-04:00 · active path</p><div class="body"><p>make best judgement regarding 28510 vs 40465. finalize post 7 write-up.</p>
+<p><strong>Attachments in export:</strong> <code>strategy_decisions_archive_202606021650_APP-00040465.csv</code>, <code>strategy_decisions_archive_202606021649_APP-00028510.csv</code>. See <a href="../../Indexes/Attachment_Inventory.csv">attachment inventory</a> for availability.</p>
+</div></article><article id="c051-m00138" class="message assistant"><div class="role">ChatGPT</div><p class="meta">C051-M00138 · 2026-06-02T16:54:08.623875-04:00 · active path</p><div class="body"><p>I’d use <strong>APP-00040465</strong> as the Post 7 hero case.</p>
+<p>APP-00028510 is cleaner, but <strong>APP-00040465 is more compelling</strong> because the counteroffer barely clears multiple feasibility gates. That makes the mechanics visible.</p>
+<pre><code class="language-text">Counteroffer strategy is not “approve less.”
+
+It is governed exposure routing.
+
+In the last post, we followed synthetic applicants across strategy postures.
+
+Now, let’s open the counteroffer engine.
+
+APP-00040465 — Unsecured Personal Loan | Near Prime | Score 653 | Request $47.5K | Requested PTI 18.38% | Synthetic estimated-PD proxy 14.97% | LGD 70%
+
+M2-05 Selective Counteroffer → MANUAL_REVIEW  
+M2-37 Aggressive Counteroffer → COUNTEROFFER at $19K
+
+The applicant did not change.
+
+The routing posture did.
+
+Under selective feasibility, this was a severe requested-structure case, so it stayed in review.
+
+Under aggressive expansion, the same row entered the governed counteroffer feasibility gates:
+
+Product counteroffer allowed → Yes
+
+Product cap → $30K max; final offer $19K
+
+Minimum viable amount → $18.99K; final offer $19K
+
+Minimum counteroffer percent → 40.0% required; final offer = 40.02% of request
+
+Maximum exposure reduction → 60.0% max; final offer = 59.98% reduction
+
+Approved PTI target → 11.50% cap; approved PTI = 7.36%
+
+Approved Expected Loss cap → $2.0K cap; approved EL = $1.99K
+
+Rounding rule → $500 increment; final offer = $19K
+
+That is the important part.
+
+The $19K counteroffer barely cleared the feasibility framework.
+
+It was not a soft approval.
+
+It was a constrained offer.
+
+The requested $47.5K structure did not survive.
+
+The reduced $19K structure did.
+
+That is counteroffer governance.
+
+A preliminary counteroffer route is not the final decision.
+
+It is permission to test whether lower exposure can satisfy product policy, affordability, Expected Loss, viability, and rounding constraints.
+
+Aggressive expansion does not bypass the gates.
+
+It changes which rows are allowed to walk up to the gates.
+
+That is why code structure matters.
+
+A simple rule says:
+
+“Counteroffer the applicant.”
+
+A governed engine asks:
+
+“Can this applicant receive a viable reduced-exposure offer, under which constraints, and with what residual risk?”
+
+That is the difference between a counteroffer label and a counteroffer engine.
+
+All data is synthetic.  
+Outcomes are simulated strategy outcomes, not production underwriting decisions.
+
+Link in comments.
+
+#CreditRisk #CreditStrategy #DecisionScience #CounterofferStrategy #RiskAnalytics #DataGovernance #SQL
+</code></pre>
+</div></article><footer>Conversation text records development decisions; retained code and QA outputs support technical results.</footer></main><script>document.getElementById("search").addEventListener("input",e=>{const q=e.target.value.toLowerCase();document.querySelectorAll(".message").forEach(m=>m.hidden=!m.textContent.toLowerCase().includes(q));});</script></html>

@@ -1,0 +1,4624 @@
+# Campaign QA and strategy expansion
+
+## Part 06
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_05.md) · [Next](Part_07.md)
+
+<a id="c040-m02267"></a>
+
+### C040-M02267
+
+**ChatGPT** · 2026-05-22T09:38:55.708448-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02267 -->
+Yes — I would replace **Section 17.20 only** with the materialized-temp version below. It keeps the same final acceptance logic, preserves the corrected 17.9-aligned convention checks, fixes the Option C field-name issue, and avoids repeatedly rescanning / replanning the heavy CTE chain by materializing each major helper table once. This is based on your current 17.20 reference block. fileciteturn26file0
+
+```sql
+/***************************************************************************************************
+SECTION 17.20 — FINAL MODULE 2 CAMPAIGN ACCEPTANCE ROLLUP
+****************************************************************************************************
+
+BUSINESS PURPOSE:
+    Produce the final one-row campaign acceptance status after archive, registry, evidence,
+    convention, comparison, matched-source, Option C, parameter-snapshot, and product-policy
+    audit checks.
+
+    Section 17.20 answers:
+
+        "Is the completed Module 2 campaign evidence structurally ready for executive analysis,
+         validation-summary drafting, README interpretation, and LinkedIn storyline development?"
+
+SQL PURPOSE:
+    Confirm final campaign acceptance across these gates:
+
+        1. Campaign registry completeness.
+        2. Comparison registry completeness.
+        3. Archive inventory completeness.
+        4. Archive row-level grain uniqueness.
+        5. Comparison readiness.
+        6. Matched source-field consistency.
+        7. Executive evidence completeness.
+        8. Parameter snapshot completeness.
+        9. Validation evidence completeness.
+        10. Segment evidence completeness.
+        11. Full-archive final-output convention integrity.
+        12. Option C selective/aggressive counteroffer split evidence readiness.
+        13. Product-guardrail exact-value parameter snapshot audit.
+
+PERFORMANCE DESIGN:
+    This version intentionally materializes the major helper objects into temporary tables.
+
+    The prior single-CTE version could force PostgreSQL to repeatedly re-plan or rescan expensive
+    archive and comparison logic inside one large query.
+
+    This version instead creates:
+        temp active registry helpers,
+        temp active archive helpers,
+        temp comparison-pair helpers,
+        temp evidence helpers,
+        temp convention helpers,
+        temp product-guardrail audit helpers,
+        and a final acceptance-status helper.
+
+    This should materially reduce runtime on a completed 39-run campaign archive.
+
+WHY THIS PATCH EXISTS:
+    Section 17.9 already validates final-output conventions using the locked Module 2 conventions:
+
+        APPROVE:
+            preserves requested exposure, requested payment / PTI, and requested Expected Loss.
+
+        COUNTEROFFER:
+            uses feasible reduced exposure, reduced / controlled approved PTI, and approved
+            Expected Loss no greater than requested Expected Loss or the product approved-EL cap.
+
+        MANUAL_REVIEW:
+            remains unresolved with NULL approved amount, payment, PTI, and Expected Loss fields.
+
+        DECLINE:
+            uses the zero-exposure convention with approved amount, approved payment, approved PTI,
+            and approved Expected Loss equal to zero.
+
+    The prior 17.20 rollup used stale combined no-offer payment logic that treated valid DECLINE
+    zero-payment / zero-PTI rows as violations.
+
+    This replacement aligns 17.20 with the already-passing 17.9 convention definitions.
+
+OPTION C FIELD-NAMING NOTE:
+    There is no archive column named:
+        aggressive_counteroffer_requested_structure_override_enabled
+
+    The correct fields are:
+
+        severe_requested_structure_counteroffer_override_enabled
+            Strategy-control enablement field.
+
+        aggressive_counteroffer_requested_structure_override_flag
+            Row-level evidence flag for aggressive requested-structure override routing.
+
+EXPECTED FINAL STATUS:
+    MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+
+ACCEPTANCE STATUS VALUES:
+    MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS:
+        Archive, registry, evidence, convention, comparison, source-consistency, Option C, and audited
+        product-policy checks are clean.
+
+    STRUCTURAL_ACCEPTANCE_PASS_BUT_PRODUCT_GUARDRAIL_POLICY_REVIEW_REQUIRED:
+        Structural, archive, evidence, convention, comparison, source-consistency, and Option C checks
+        are clean, but the product-guardrail exact-value parameter audit requires review.
+
+    REVIEW_MODULE_2_CAMPAIGN_RESULTS_BEFORE_ANALYSIS:
+        One or more structural, archive, registry, evidence, convention, comparison, source-field,
+        Option C, validation, parameter, or product-policy checks require review before final
+        interpretation.
+
+READ-ONLY BOUNDARY:
+    Section 17.20 creates temporary helper tables only.
+
+    Section 17.20 does not insert archive rows.
+    Section 17.20 does not delete archive rows.
+    Section 17.20 does not update archive rows.
+    Section 17.20 does not modify latest-run rows.
+    Section 17.20 does not modify evidence rows.
+    Section 17.20 does not modify campaign registry rows.
+    Section 17.20 does not modify comparison registry rows.
+    Section 17.20 does not modify strategy parameter rows.
+    Section 17.20 does not modify product-policy parameter rows.
+    Section 17.20 does not recalculate decisions, approved exposure, approved Expected Loss, or
+    simulated reason codes.
+
+***************************************************************************************************/
+
+
+/***************************************************************************************************
+17.20.0 — LOCAL TEMP HELPER RESET
+****************************************************************************************************/
+
+DROP TABLE IF EXISTS tmp_m2_17_20_active_campaign_runs;
+DROP TABLE IF EXISTS tmp_m2_17_20_active_run_keys;
+DROP TABLE IF EXISTS tmp_m2_17_20_active_comparison_registry;
+DROP TABLE IF EXISTS tmp_m2_17_20_expected_product_guardrail_policy;
+DROP TABLE IF EXISTS tmp_m2_17_20_module1_source_counts;
+DROP TABLE IF EXISTS tmp_m2_17_20_active_run_source_counts;
+DROP TABLE IF EXISTS tmp_m2_17_20_active_campaign_duplicate_keys;
+DROP TABLE IF EXISTS tmp_m2_17_20_active_comparison_duplicate_groups;
+DROP TABLE IF EXISTS tmp_m2_17_20_expected_campaign_shape;
+DROP TABLE IF EXISTS tmp_m2_17_20_active_archive_rows;
+DROP TABLE IF EXISTS tmp_m2_17_20_archive_counts;
+DROP TABLE IF EXISTS tmp_m2_17_20_archive_reconciliation;
+DROP TABLE IF EXISTS tmp_m2_17_20_archive_duplicate_grain;
+DROP TABLE IF EXISTS tmp_m2_17_20_campaign_registry_summary;
+DROP TABLE IF EXISTS tmp_m2_17_20_comparison_registry_summary;
+DROP TABLE IF EXISTS tmp_m2_17_20_comparison_pair_rows;
+DROP TABLE IF EXISTS tmp_m2_17_20_comparison_readiness_by_group;
+DROP TABLE IF EXISTS tmp_m2_17_20_comparison_readiness_summary;
+DROP TABLE IF EXISTS tmp_m2_17_20_source_consistency_by_group;
+DROP TABLE IF EXISTS tmp_m2_17_20_source_consistency_summary;
+DROP TABLE IF EXISTS tmp_m2_17_20_executive_evidence_by_run;
+DROP TABLE IF EXISTS tmp_m2_17_20_parameter_snapshot_by_run;
+DROP TABLE IF EXISTS tmp_m2_17_20_validation_key_catalog;
+DROP TABLE IF EXISTS tmp_m2_17_20_validation_evidence_by_run;
+DROP TABLE IF EXISTS tmp_m2_17_20_expected_segment_by_run;
+DROP TABLE IF EXISTS tmp_m2_17_20_segment_evidence_by_run;
+DROP TABLE IF EXISTS tmp_m2_17_20_evidence_summary;
+DROP TABLE IF EXISTS tmp_m2_17_20_option_c_evidence_summary;
+DROP TABLE IF EXISTS tmp_m2_17_20_convention_counts;
+DROP TABLE IF EXISTS tmp_m2_17_20_convention_summary;
+DROP TABLE IF EXISTS tmp_m2_17_20_product_guardrail_campaign_runs;
+DROP TABLE IF EXISTS tmp_m2_17_20_product_guardrail_parameter_snapshots;
+DROP TABLE IF EXISTS tmp_m2_17_20_product_guardrail_runs;
+DROP TABLE IF EXISTS tmp_m2_17_20_expected_run_product_rows;
+DROP TABLE IF EXISTS tmp_m2_17_20_actual_product_guardrail_policy_raw;
+DROP TABLE IF EXISTS tmp_m2_17_20_actual_product_guardrail_policy;
+DROP TABLE IF EXISTS tmp_m2_17_20_product_guardrail_policy_comparison;
+DROP TABLE IF EXISTS tmp_m2_17_20_product_guardrail_policy_audit;
+DROP TABLE IF EXISTS tmp_m2_17_20_acceptance_inputs;
+DROP TABLE IF EXISTS tmp_m2_17_20_acceptance_status;
+
+
+/***************************************************************************************************
+17.20.1 — ACTIVE REGISTRY AND EXPECTED POLICY HELPERS
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_active_campaign_runs
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    module1_run_id,
+    module2_run_id,
+    run_sequence_number,
+    showcase_id,
+    showcase_name,
+    comparison_group_id,
+    validation_evidence_group_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+FROM credit_decisioning_sim.strategy_run_campaign_registry
+WHERE registry_active_flag IS TRUE;
+
+CREATE INDEX idx_tmp_m2_17_20_active_campaign_runs_key
+ON tmp_m2_17_20_active_campaign_runs (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+CREATE INDEX idx_tmp_m2_17_20_active_campaign_runs_module2
+ON tmp_m2_17_20_active_campaign_runs (module2_run_id);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_active_run_keys
+ON COMMIT PRESERVE ROWS
+AS
+SELECT DISTINCT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+FROM tmp_m2_17_20_active_campaign_runs;
+
+CREATE INDEX idx_tmp_m2_17_20_active_run_keys
+ON tmp_m2_17_20_active_run_keys (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_active_comparison_registry
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    comparison_group_id,
+    comparison_set_name,
+    showcase_id,
+    showcase_name,
+
+    baseline_module2_run_id,
+    challenger_module2_run_id,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version
+FROM credit_decisioning_sim.strategy_comparison_campaign_registry
+WHERE registry_active_flag IS TRUE;
+
+CREATE INDEX idx_tmp_m2_17_20_active_comparison_registry_group
+ON tmp_m2_17_20_active_comparison_registry (comparison_group_id);
+
+CREATE INDEX idx_tmp_m2_17_20_active_comparison_registry_baseline
+ON tmp_m2_17_20_active_comparison_registry (
+    baseline_strategy_set_name,
+    baseline_strategy_name,
+    baseline_strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+CREATE INDEX idx_tmp_m2_17_20_active_comparison_registry_challenger
+ON tmp_m2_17_20_active_comparison_registry (
+    challenger_strategy_set_name,
+    challenger_strategy_name,
+    challenger_strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_expected_product_guardrail_policy
+ON COMMIT PRESERVE ROWS
+AS
+SELECT *
+FROM (
+    VALUES
+        (
+            'UNSECURED_PERSONAL_LOAN'::TEXT,
+            0.130000::NUMERIC,
+            0.220000::NUMERIC,
+            0.320000::NUMERIC,
+            0.110000::NUMERIC,
+            2500.00::NUMERIC,
+            5000.00::NUMERIC,
+            8500.00::NUMERIC,
+            2000.00::NUMERIC,
+            1000.00::NUMERIC,
+            27500.00::NUMERIC,
+            0.500000::NUMERIC,
+            0.500000::NUMERIC
+        ),
+        (
+            'REVOLVING_LINE'::TEXT,
+            0.100000::NUMERIC,
+            0.180000::NUMERIC,
+            0.280000::NUMERIC,
+            0.080000::NUMERIC,
+            1500.00::NUMERIC,
+            3200.00::NUMERIC,
+            6500.00::NUMERIC,
+            1400.00::NUMERIC,
+            1000.00::NUMERIC,
+            16000.00::NUMERIC,
+            0.500000::NUMERIC,
+            0.500000::NUMERIC
+        )
+) AS v(
+    product_type,
+    expected_product_approve_max_pti,
+    expected_product_review_max_pti,
+    expected_product_decline_min_pti,
+    expected_counteroffer_target_pti,
+    expected_product_approve_max_requested_el,
+    expected_product_review_max_requested_el,
+    expected_product_decline_min_requested_el,
+    expected_product_approved_el_cap,
+    expected_product_min_approved_amount,
+    expected_product_max_approved_amount,
+    expected_product_min_counteroffer_pct,
+    expected_product_max_exposure_reduction_pct
+);
+
+ANALYZE tmp_m2_17_20_active_campaign_runs;
+ANALYZE tmp_m2_17_20_active_run_keys;
+ANALYZE tmp_m2_17_20_active_comparison_registry;
+ANALYZE tmp_m2_17_20_expected_product_guardrail_policy;
+
+
+/***************************************************************************************************
+17.20.2 — MODULE 1 SOURCE COUNTS AND ACTIVE RUN SOURCE COUNTS
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_module1_source_counts
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    s.scenario_set_name AS module1_scenario_set_name,
+    s.scenario_name AS module1_scenario_name,
+    s.population_id,
+
+    COUNT(*) AS expected_module1_source_rows,
+    COUNT(DISTINCT s.application_id) AS expected_module1_distinct_application_id_count
+FROM credit_decisioning_sim.synthetic_applications_scenario_archive s
+JOIN (
+    SELECT DISTINCT
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id
+    FROM tmp_m2_17_20_active_campaign_runs
+) r
+    ON r.module1_scenario_set_name = s.scenario_set_name
+   AND r.module1_scenario_name = s.scenario_name
+   AND r.population_id = s.population_id
+GROUP BY
+    s.scenario_set_name,
+    s.scenario_name,
+    s.population_id;
+
+CREATE INDEX idx_tmp_m2_17_20_module1_source_counts
+ON tmp_m2_17_20_module1_source_counts (
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_active_run_source_counts
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.*,
+
+    s.expected_module1_source_rows,
+    s.expected_module1_distinct_application_id_count
+FROM tmp_m2_17_20_active_campaign_runs r
+
+LEFT JOIN tmp_m2_17_20_module1_source_counts s
+    ON s.module1_scenario_set_name = r.module1_scenario_set_name
+   AND s.module1_scenario_name = r.module1_scenario_name
+   AND s.population_id = r.population_id;
+
+CREATE INDEX idx_tmp_m2_17_20_active_run_source_counts_key
+ON tmp_m2_17_20_active_run_source_counts (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_active_campaign_duplicate_keys
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS active_registry_key_count
+FROM tmp_m2_17_20_active_campaign_runs
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+HAVING COUNT(*) > 1;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_active_comparison_duplicate_groups
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    comparison_group_id,
+    COUNT(*) AS active_comparison_group_count
+FROM tmp_m2_17_20_active_comparison_registry
+GROUP BY comparison_group_id
+HAVING COUNT(*) > 1;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_expected_campaign_shape
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    (SELECT COUNT(*) FROM tmp_m2_17_20_active_campaign_runs)
+        AS expected_campaign_runs,
+
+    (SELECT COUNT(*) FROM tmp_m2_17_20_active_comparison_registry)
+        AS expected_comparison_groups,
+
+    (SELECT COALESCE(SUM(expected_module1_source_rows), 0)
+     FROM tmp_m2_17_20_active_run_source_counts)
+        AS expected_total_active_campaign_source_rows,
+
+    (
+        SELECT COUNT(DISTINCT (
+            v.validation_area,
+            v.validation_test_name,
+            v.validation_category
+        ))
+        FROM tmp_m2_17_20_active_campaign_runs r
+        JOIN credit_decisioning_sim.strategy_run_validation_evidence v
+            ON v.strategy_set_name = r.strategy_set_name
+           AND v.strategy_name = r.strategy_name
+           AND v.strategy_version = r.strategy_version
+           AND v.module1_scenario_set_name = r.module1_scenario_set_name
+           AND v.module1_scenario_name = r.module1_scenario_name
+           AND v.population_id = r.population_id
+    ) AS expected_validation_key_count,
+
+    (
+        SELECT COUNT(*)
+        FROM tmp_m2_17_20_active_campaign_runs
+        WHERE strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+    ) AS expected_product_guardrail_campaign_runs,
+
+    (
+        SELECT COUNT(*)
+        FROM tmp_m2_17_20_expected_product_guardrail_policy
+    ) AS audited_product_count,
+
+    (
+        SELECT COUNT(*)
+        FROM tmp_m2_17_20_active_campaign_runs
+        WHERE strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY'
+    )
+    *
+    (
+        SELECT COUNT(*)
+        FROM tmp_m2_17_20_expected_product_guardrail_policy
+    ) AS expected_product_guardrail_policy_rows;
+
+ANALYZE tmp_m2_17_20_module1_source_counts;
+ANALYZE tmp_m2_17_20_active_run_source_counts;
+ANALYZE tmp_m2_17_20_expected_campaign_shape;
+
+
+/***************************************************************************************************
+17.20.3 — ACTIVE ARCHIVE MATERIALIZATION, COUNTS, AND GRAIN
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_active_archive_rows
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    a.strategy_set_name,
+    a.strategy_name,
+    a.strategy_version,
+
+    a.module1_scenario_set_name,
+    a.module1_scenario_name,
+    a.population_id,
+
+    a.application_id,
+
+    a.product_type_policy_key,
+    a.score_band_policy_key,
+    a.product_score_policy_segment,
+
+    a.credit_score,
+    a.annual_income,
+
+    a.requested_amount,
+    a.requested_monthly_payment_proxy,
+    a.requested_payment_to_income_ratio,
+    a.amount_to_income_ratio,
+
+    a.estimated_pd,
+    a.estimated_lgd,
+    a.requested_expected_loss_amount,
+
+    a.decision_outcome,
+    a.approval_flag,
+    a.counteroffer_flag,
+    a.manual_review_flag,
+    a.decline_flag,
+    a.simulated_offer_exposure_flag,
+
+    a.approved_amount,
+    a.counteroffer_amount,
+    a.exposure_reduction_flag,
+    a.exposure_reduction_amount,
+    a.exposure_reduction_pct,
+
+    a.approved_monthly_payment_proxy,
+    a.approved_payment_to_income_ratio,
+
+    a.approved_expected_loss_amount,
+    a.product_approved_el_cap,
+
+    a.primary_reason_code,
+    a.primary_reason_family,
+    a.triggered_reason_code_list,
+    a.reason_priority_rank,
+    a.reason_code_count,
+
+    a.counteroffer_strategy_variant,
+    a.aggressive_counteroffer_expansion_enabled,
+    a.severe_requested_structure_counteroffer_override_enabled,
+    a.exposure_extreme_counteroffer_override_enabled,
+    a.exposure_policy_stop_counteroffer_override_enabled,
+    a.requested_pti_decline_counteroffer_override_enabled,
+    a.requested_el_decline_counteroffer_override_enabled,
+    a.ordinary_counteroffer_candidate_flag,
+    a.aggressive_counteroffer_requested_structure_override_flag
+
+FROM credit_decisioning_sim.strategy_decisions_archive a
+
+JOIN tmp_m2_17_20_active_run_keys r
+    ON r.strategy_set_name = a.strategy_set_name
+   AND r.strategy_name = a.strategy_name
+   AND r.strategy_version = a.strategy_version
+   AND r.module1_scenario_set_name = a.module1_scenario_set_name
+   AND r.module1_scenario_name = a.module1_scenario_name
+   AND r.population_id = a.population_id;
+
+CREATE INDEX idx_tmp_m2_17_20_active_archive_rows_key_app
+ON tmp_m2_17_20_active_archive_rows (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+CREATE INDEX idx_tmp_m2_17_20_active_archive_rows_key
+ON tmp_m2_17_20_active_archive_rows (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+CREATE INDEX idx_tmp_m2_17_20_active_archive_rows_module1_app
+ON tmp_m2_17_20_active_archive_rows (
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+    application_id
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_archive_counts
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS archived_rows,
+    COUNT(DISTINCT application_id) AS distinct_application_id_count
+FROM tmp_m2_17_20_active_archive_rows
+GROUP BY
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+CREATE INDEX idx_tmp_m2_17_20_archive_counts_key
+ON tmp_m2_17_20_archive_counts (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_archive_reconciliation
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    COUNT(*) AS active_campaign_registry_rows_for_archive_check,
+
+    COUNT(*) FILTER (
+        WHERE r.expected_module1_source_rows IS NULL
+    ) AS active_runs_missing_module1_source_count,
+
+    COUNT(*) FILTER (
+        WHERE r.expected_module1_source_rows IS NOT NULL
+          AND r.expected_module1_source_rows
+                IS DISTINCT FROM r.expected_module1_distinct_application_id_count
+    ) AS active_runs_with_module1_source_application_id_grain_issue,
+
+    COUNT(*) FILTER (
+        WHERE a.archived_rows IS NOT NULL
+    ) AS active_runs_with_archive_rows,
+
+    COUNT(*) FILTER (
+        WHERE a.archived_rows IS NULL
+    ) AS active_runs_missing_archive_rows,
+
+    COALESCE(SUM(a.archived_rows), 0) AS total_active_campaign_archived_rows,
+
+    COUNT(*) FILTER (
+        WHERE a.archived_rows IS NOT NULL
+          AND r.expected_module1_source_rows IS NOT NULL
+          AND a.archived_rows IS DISTINCT FROM r.expected_module1_source_rows
+    ) AS active_runs_with_archive_row_count_mismatch,
+
+    COUNT(*) FILTER (
+        WHERE a.archived_rows IS NOT NULL
+          AND (
+                a.archived_rows IS DISTINCT FROM a.distinct_application_id_count
+             OR (
+                    r.expected_module1_source_rows IS NOT NULL
+                AND a.distinct_application_id_count IS DISTINCT FROM r.expected_module1_source_rows
+                )
+          )
+    ) AS active_runs_with_archive_application_id_grain_issue
+
+FROM tmp_m2_17_20_active_run_source_counts r
+
+LEFT JOIN tmp_m2_17_20_archive_counts a
+    ON a.strategy_set_name = r.strategy_set_name
+   AND a.strategy_name = r.strategy_name
+   AND a.strategy_version = r.strategy_version
+   AND a.module1_scenario_set_name = r.module1_scenario_set_name
+   AND a.module1_scenario_name = r.module1_scenario_name
+   AND a.population_id = r.population_id;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_archive_duplicate_grain
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    COUNT(*) AS duplicate_archive_grain_count
+FROM (
+    SELECT
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+
+        application_id,
+        COUNT(*) AS archive_grain_row_count
+    FROM tmp_m2_17_20_active_archive_rows
+    GROUP BY
+        strategy_set_name,
+        strategy_name,
+        strategy_version,
+        module1_scenario_set_name,
+        module1_scenario_name,
+        population_id,
+        application_id
+    HAVING COUNT(*) > 1
+) d;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_campaign_registry_summary
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    (SELECT COUNT(*) FROM tmp_m2_17_20_active_campaign_runs)
+        AS active_campaign_registry_rows,
+
+    (SELECT COUNT(*) FROM tmp_m2_17_20_active_campaign_duplicate_keys)
+        AS duplicate_active_campaign_technical_key_rows;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_comparison_registry_summary
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    (SELECT COUNT(*) FROM tmp_m2_17_20_active_comparison_registry)
+        AS active_comparison_registry_rows,
+
+    (SELECT COUNT(*) FROM tmp_m2_17_20_active_comparison_duplicate_groups)
+        AS duplicate_active_comparison_group_rows;
+
+ANALYZE tmp_m2_17_20_active_archive_rows;
+ANALYZE tmp_m2_17_20_archive_counts;
+ANALYZE tmp_m2_17_20_archive_reconciliation;
+
+
+/***************************************************************************************************
+17.20.4 — ACTIVE COMPARISON MATCHING AND SOURCE-FIELD CONSISTENCY
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_comparison_pair_rows
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    c.comparison_group_id,
+    b.application_id,
+
+    (
+        b.product_type_policy_key IS DISTINCT FROM ch.product_type_policy_key
+     OR b.score_band_policy_key IS DISTINCT FROM ch.score_band_policy_key
+     OR b.credit_score IS DISTINCT FROM ch.credit_score
+     OR b.annual_income IS DISTINCT FROM ch.annual_income
+     OR b.requested_amount IS DISTINCT FROM ch.requested_amount
+     OR b.requested_monthly_payment_proxy IS DISTINCT FROM ch.requested_monthly_payment_proxy
+     OR b.requested_payment_to_income_ratio IS DISTINCT FROM ch.requested_payment_to_income_ratio
+     OR b.amount_to_income_ratio IS DISTINCT FROM ch.amount_to_income_ratio
+     OR b.estimated_pd IS DISTINCT FROM ch.estimated_pd
+     OR b.estimated_lgd IS DISTINCT FROM ch.estimated_lgd
+     OR b.requested_expected_loss_amount IS DISTINCT FROM ch.requested_expected_loss_amount
+     OR b.module1_scenario_set_name IS DISTINCT FROM ch.module1_scenario_set_name
+     OR b.module1_scenario_name IS DISTINCT FROM ch.module1_scenario_name
+     OR b.population_id IS DISTINCT FROM ch.population_id
+    ) AS source_field_mismatch_flag
+
+FROM tmp_m2_17_20_active_comparison_registry c
+
+JOIN tmp_m2_17_20_active_archive_rows b
+    ON b.strategy_set_name = c.baseline_strategy_set_name
+   AND b.strategy_name = c.baseline_strategy_name
+   AND b.strategy_version = c.baseline_strategy_version
+   AND b.module1_scenario_set_name = c.module1_scenario_set_name
+   AND b.module1_scenario_name = c.module1_scenario_name
+   AND b.population_id = c.population_id
+
+JOIN tmp_m2_17_20_active_archive_rows ch
+    ON ch.strategy_set_name = c.challenger_strategy_set_name
+   AND ch.strategy_name = c.challenger_strategy_name
+   AND ch.strategy_version = c.challenger_strategy_version
+   AND ch.module1_scenario_set_name = c.module1_scenario_set_name
+   AND ch.module1_scenario_name = c.module1_scenario_name
+   AND ch.population_id = c.population_id
+   AND ch.application_id = b.application_id;
+
+CREATE INDEX idx_tmp_m2_17_20_comparison_pair_rows_group
+ON tmp_m2_17_20_comparison_pair_rows (comparison_group_id);
+
+ANALYZE tmp_m2_17_20_comparison_pair_rows;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_comparison_readiness_by_group
+ON COMMIT PRESERVE ROWS
+AS
+WITH matched_counts AS (
+    SELECT
+        comparison_group_id,
+        COUNT(*) AS matched_application_id_count
+    FROM tmp_m2_17_20_comparison_pair_rows
+    GROUP BY comparison_group_id
+)
+SELECT
+    c.comparison_group_id,
+
+    CASE
+        WHEN c.baseline_strategy_set_name = c.challenger_strategy_set_name
+         AND c.baseline_strategy_name = c.challenger_strategy_name
+         AND c.baseline_strategy_version = c.challenger_strategy_version
+            THEN TRUE
+        ELSE FALSE
+    END AS same_strategy_selected_flag,
+
+    COALESCE(bc.archived_rows, 0) AS baseline_archived_row_count,
+    COALESCE(chc.archived_rows, 0) AS challenger_archived_row_count,
+
+    COALESCE(m.matched_application_id_count, 0) AS matched_application_id_count,
+
+    GREATEST(
+        COALESCE(bc.archived_rows, 0) - COALESCE(m.matched_application_id_count, 0),
+        0
+    ) AS baseline_only_application_id_count,
+
+    GREATEST(
+        COALESCE(chc.archived_rows, 0) - COALESCE(m.matched_application_id_count, 0),
+        0
+    ) AS challenger_only_application_id_count
+
+FROM tmp_m2_17_20_active_comparison_registry c
+
+LEFT JOIN tmp_m2_17_20_archive_counts bc
+    ON bc.strategy_set_name = c.baseline_strategy_set_name
+   AND bc.strategy_name = c.baseline_strategy_name
+   AND bc.strategy_version = c.baseline_strategy_version
+   AND bc.module1_scenario_set_name = c.module1_scenario_set_name
+   AND bc.module1_scenario_name = c.module1_scenario_name
+   AND bc.population_id = c.population_id
+
+LEFT JOIN tmp_m2_17_20_archive_counts chc
+    ON chc.strategy_set_name = c.challenger_strategy_set_name
+   AND chc.strategy_name = c.challenger_strategy_name
+   AND chc.strategy_version = c.challenger_strategy_version
+   AND chc.module1_scenario_set_name = c.module1_scenario_set_name
+   AND chc.module1_scenario_name = c.module1_scenario_name
+   AND chc.population_id = c.population_id
+
+LEFT JOIN matched_counts m
+    ON m.comparison_group_id = c.comparison_group_id;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_comparison_readiness_summary
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    COUNT(*) AS comparison_group_count,
+
+    COUNT(*) FILTER (
+        WHERE same_strategy_selected_flag IS FALSE
+          AND baseline_archived_row_count > 0
+          AND challenger_archived_row_count > 0
+          AND matched_application_id_count = baseline_archived_row_count
+          AND matched_application_id_count = challenger_archived_row_count
+          AND baseline_only_application_id_count = 0
+          AND challenger_only_application_id_count = 0
+    ) AS comparison_ready_count,
+
+    COUNT(*) FILTER (
+        WHERE same_strategy_selected_flag IS TRUE
+           OR baseline_archived_row_count = 0
+           OR challenger_archived_row_count = 0
+           OR matched_application_id_count <> baseline_archived_row_count
+           OR matched_application_id_count <> challenger_archived_row_count
+           OR baseline_only_application_id_count <> 0
+           OR challenger_only_application_id_count <> 0
+    ) AS comparison_review_count
+
+FROM tmp_m2_17_20_comparison_readiness_by_group;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_source_consistency_by_group
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    comparison_group_id,
+
+    COUNT(*) AS matched_application_count,
+
+    COUNT(*) FILTER (
+        WHERE source_field_mismatch_flag IS TRUE
+    ) AS source_field_mismatch_count
+
+FROM tmp_m2_17_20_comparison_pair_rows
+GROUP BY comparison_group_id;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_source_consistency_summary
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    COUNT(*) AS source_consistency_group_count,
+
+    COUNT(*) FILTER (
+        WHERE source_field_mismatch_count = 0
+    ) AS source_consistency_pass_count,
+
+    COUNT(*) FILTER (
+        WHERE source_field_mismatch_count <> 0
+    ) AS source_consistency_review_count,
+
+    COALESCE(SUM(source_field_mismatch_count), 0) AS total_source_field_mismatch_rows
+
+FROM tmp_m2_17_20_source_consistency_by_group;
+
+ANALYZE tmp_m2_17_20_comparison_readiness_by_group;
+ANALYZE tmp_m2_17_20_source_consistency_by_group;
+
+
+/***************************************************************************************************
+17.20.5 — SECTION 16 EVIDENCE COVERAGE HELPERS
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_executive_evidence_by_run
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.module2_run_id,
+
+    COUNT(e.strategy_name) AS executive_rows,
+
+    COUNT(*) FILTER (
+        WHERE e.strategy_name IS NULL
+           OR e.module1_run_id IS NULL
+           OR e.module2_run_id IS NULL
+           OR e.run_sequence_number IS NULL
+           OR e.showcase_id IS NULL
+           OR e.validation_evidence_group_id IS NULL
+           OR e.run_registry_match_status IS NULL
+           OR e.applications IS NULL
+           OR e.approval_rate IS NULL
+           OR e.counteroffer_rate IS NULL
+           OR e.manual_review_rate IS NULL
+           OR e.decline_rate IS NULL
+           OR e.simulated_offer_exposure_rate IS NULL
+           OR e.total_requested_amount IS NULL
+           OR e.total_approved_amount IS NULL
+           OR e.total_requested_expected_loss_amount IS NULL
+           OR e.total_approved_expected_loss_amount IS NULL
+           OR e.approved_expected_loss_capture_rate IS NULL
+           OR e.approved_el_per_approved_dollar IS NULL
+           OR e.frontier_position_type IS NULL
+           OR e.executive_frontier_quadrant IS NULL
+           OR e.frontier_interpretation_note IS NULL
+           OR e.counteroffer_strategy_variant IS NULL
+           OR e.aggressive_counteroffer_expansion_enabled IS NULL
+           OR e.ordinary_counteroffer_candidate_rows IS NULL
+           OR e.aggressive_override_rows IS NULL
+           OR e.option_c_frontier_posture_type IS NULL
+    ) AS executive_required_field_gap_rows
+
+FROM tmp_m2_17_20_active_campaign_runs r
+
+LEFT JOIN credit_decisioning_sim.strategy_run_evidence_summary e
+    ON e.strategy_set_name = r.strategy_set_name
+   AND e.strategy_name = r.strategy_name
+   AND e.strategy_version = r.strategy_version
+   AND e.module1_scenario_set_name = r.module1_scenario_set_name
+   AND e.module1_scenario_name = r.module1_scenario_name
+   AND e.population_id = r.population_id
+
+GROUP BY r.module2_run_id;
+
+CREATE INDEX idx_tmp_m2_17_20_executive_evidence_by_run
+ON tmp_m2_17_20_executive_evidence_by_run (module2_run_id);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_parameter_snapshot_by_run
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.module2_run_id,
+
+    COUNT(p.strategy_name) AS parameter_snapshot_rows,
+
+    COUNT(*) FILTER (
+        WHERE p.strategy_name IS NULL
+           OR p.strategy_params_jsonb IS NULL
+           OR p.product_policy_params_jsonb IS NULL
+           OR p.run_story_params_jsonb IS NULL
+           OR p.parameter_snapshot_hash IS NULL
+           OR p.module1_run_id IS NULL
+           OR p.module2_run_id IS NULL
+           OR p.validation_evidence_group_id IS NULL
+           OR p.run_registry_match_status IS NULL
+    ) AS parameter_snapshot_required_field_gap_rows
+
+FROM tmp_m2_17_20_active_campaign_runs r
+
+LEFT JOIN credit_decisioning_sim.strategy_run_parameter_snapshot p
+    ON p.strategy_set_name = r.strategy_set_name
+   AND p.strategy_name = r.strategy_name
+   AND p.strategy_version = r.strategy_version
+   AND p.module1_scenario_set_name = r.module1_scenario_set_name
+   AND p.module1_scenario_name = r.module1_scenario_name
+   AND p.population_id = r.population_id
+
+GROUP BY r.module2_run_id;
+
+CREATE INDEX idx_tmp_m2_17_20_parameter_snapshot_by_run
+ON tmp_m2_17_20_parameter_snapshot_by_run (module2_run_id);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_validation_key_catalog
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    COUNT(DISTINCT (
+        v.validation_area,
+        v.validation_test_name,
+        v.validation_category
+    )) AS expected_validation_key_count
+FROM tmp_m2_17_20_active_campaign_runs r
+
+JOIN credit_decisioning_sim.strategy_run_validation_evidence v
+    ON v.strategy_set_name = r.strategy_set_name
+   AND v.strategy_name = r.strategy_name
+   AND v.strategy_version = r.strategy_version
+   AND v.module1_scenario_set_name = r.module1_scenario_set_name
+   AND v.module1_scenario_name = r.module1_scenario_name
+   AND v.population_id = r.population_id;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_validation_evidence_by_run
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.module2_run_id,
+
+    COUNT(*) FILTER (
+        WHERE v.validation_area IS NOT NULL
+    ) AS validation_rows,
+
+    COUNT(DISTINCT (
+        v.validation_area,
+        v.validation_test_name,
+        v.validation_category
+    )) FILTER (
+        WHERE v.validation_area IS NOT NULL
+    ) AS validation_distinct_key_count,
+
+    (
+        COUNT(*) FILTER (
+            WHERE v.validation_area IS NOT NULL
+        )
+        -
+        COUNT(DISTINCT (
+            v.validation_area,
+            v.validation_test_name,
+            v.validation_category
+        )) FILTER (
+            WHERE v.validation_area IS NOT NULL
+        )
+    ) AS duplicate_validation_key_rows
+
+FROM tmp_m2_17_20_active_campaign_runs r
+
+LEFT JOIN credit_decisioning_sim.strategy_run_validation_evidence v
+    ON v.strategy_set_name = r.strategy_set_name
+   AND v.strategy_name = r.strategy_name
+   AND v.strategy_version = r.strategy_version
+   AND v.module1_scenario_set_name = r.module1_scenario_set_name
+   AND v.module1_scenario_name = r.module1_scenario_name
+   AND v.population_id = r.population_id
+
+GROUP BY r.module2_run_id;
+
+CREATE INDEX idx_tmp_m2_17_20_validation_evidence_by_run
+ON tmp_m2_17_20_validation_evidence_by_run (module2_run_id);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_expected_segment_by_run
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.module2_run_id,
+
+    COUNT(DISTINCT (
+        a.product_type_policy_key,
+        a.score_band_policy_key,
+        a.product_score_policy_segment
+    )) AS expected_segment_rows
+FROM tmp_m2_17_20_active_campaign_runs r
+
+JOIN tmp_m2_17_20_active_archive_rows a
+    ON a.strategy_set_name = r.strategy_set_name
+   AND a.strategy_name = r.strategy_name
+   AND a.strategy_version = r.strategy_version
+   AND a.module1_scenario_set_name = r.module1_scenario_set_name
+   AND a.module1_scenario_name = r.module1_scenario_name
+   AND a.population_id = r.population_id
+
+GROUP BY r.module2_run_id;
+
+CREATE INDEX idx_tmp_m2_17_20_expected_segment_by_run
+ON tmp_m2_17_20_expected_segment_by_run (module2_run_id);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_segment_evidence_by_run
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.module2_run_id,
+
+    COUNT(*) FILTER (
+        WHERE s.product_type_policy_key IS NOT NULL
+    ) AS segment_rows,
+
+    COUNT(DISTINCT (
+        s.product_type_policy_key,
+        s.score_band_policy_key,
+        s.product_score_policy_segment
+    )) FILTER (
+        WHERE s.product_type_policy_key IS NOT NULL
+    ) AS segment_distinct_key_count,
+
+    (
+        COUNT(*) FILTER (
+            WHERE s.product_type_policy_key IS NOT NULL
+        )
+        -
+        COUNT(DISTINCT (
+            s.product_type_policy_key,
+            s.score_band_policy_key,
+            s.product_score_policy_segment
+        )) FILTER (
+            WHERE s.product_type_policy_key IS NOT NULL
+        )
+    ) AS duplicate_segment_key_rows
+
+FROM tmp_m2_17_20_active_campaign_runs r
+
+LEFT JOIN credit_decisioning_sim.strategy_run_segment_evidence_summary s
+    ON s.strategy_set_name = r.strategy_set_name
+   AND s.strategy_name = r.strategy_name
+   AND s.strategy_version = r.strategy_version
+   AND s.module1_scenario_set_name = r.module1_scenario_set_name
+   AND s.module1_scenario_name = r.module1_scenario_name
+   AND s.population_id = r.population_id
+
+GROUP BY r.module2_run_id;
+
+CREATE INDEX idx_tmp_m2_17_20_segment_evidence_by_run
+ON tmp_m2_17_20_segment_evidence_by_run (module2_run_id);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_evidence_summary
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    COUNT(*) AS registry_run_count_for_evidence_check,
+
+    SUM(ex.executive_rows) AS executive_evidence_rows,
+
+    COUNT(*) FILTER (
+        WHERE ex.executive_rows = 1
+          AND ex.executive_required_field_gap_rows = 0
+    ) AS executive_evidence_complete_run_count,
+
+    COUNT(*) FILTER (
+        WHERE ex.executive_rows <> 1
+           OR ex.executive_required_field_gap_rows <> 0
+    ) AS executive_evidence_issue_run_count,
+
+    SUM(ps.parameter_snapshot_rows) AS parameter_snapshot_rows,
+
+    COUNT(*) FILTER (
+        WHERE ps.parameter_snapshot_rows = 1
+    ) AS parameter_snapshot_single_row_run_count,
+
+    COUNT(*) FILTER (
+        WHERE ps.parameter_snapshot_rows <> 1
+    ) AS parameter_snapshot_row_count_issue_run_count,
+
+    COUNT(*) AS registry_run_count_for_parameter_snapshot_check,
+
+    COUNT(*) FILTER (
+        WHERE ps.parameter_snapshot_rows = 1
+          AND ps.parameter_snapshot_required_field_gap_rows = 0
+    ) AS parameter_snapshot_ready_run_count,
+
+    COUNT(*) FILTER (
+        WHERE ps.parameter_snapshot_rows <> 1
+           OR ps.parameter_snapshot_required_field_gap_rows <> 0
+    ) AS parameter_snapshot_issue_run_count,
+
+    COUNT(*) FILTER (
+        WHERE ve.validation_rows = vk.expected_validation_key_count
+          AND ve.validation_distinct_key_count = vk.expected_validation_key_count
+          AND ve.duplicate_validation_key_rows = 0
+    ) AS validation_evidence_complete_run_count,
+
+    COUNT(*) FILTER (
+        WHERE ve.validation_rows <> vk.expected_validation_key_count
+           OR ve.validation_distinct_key_count <> vk.expected_validation_key_count
+           OR ve.duplicate_validation_key_rows <> 0
+    ) AS validation_evidence_incomplete_run_count,
+
+    MIN(ve.validation_rows) AS min_validation_rows_per_run,
+    MAX(ve.validation_rows) AS max_validation_rows_per_run,
+    SUM(ve.validation_rows) AS total_validation_evidence_rows,
+
+    COUNT(*) FILTER (
+        WHERE se.segment_rows = es.expected_segment_rows
+          AND se.segment_distinct_key_count = es.expected_segment_rows
+          AND se.duplicate_segment_key_rows = 0
+    ) AS segment_evidence_complete_run_count,
+
+    COUNT(*) FILTER (
+        WHERE se.segment_rows <> es.expected_segment_rows
+           OR se.segment_distinct_key_count <> es.expected_segment_rows
+           OR se.duplicate_segment_key_rows <> 0
+    ) AS segment_evidence_issue_run_count,
+
+    MIN(es.expected_segment_rows) AS min_expected_segment_rows_per_run,
+    MAX(es.expected_segment_rows) AS max_expected_segment_rows_per_run,
+    MIN(se.segment_rows) AS min_segment_rows_per_run,
+    MAX(se.segment_rows) AS max_segment_rows_per_run,
+    SUM(se.segment_rows) AS total_segment_evidence_rows
+
+FROM tmp_m2_17_20_active_campaign_runs r
+
+JOIN tmp_m2_17_20_executive_evidence_by_run ex
+    ON ex.module2_run_id = r.module2_run_id
+
+JOIN tmp_m2_17_20_parameter_snapshot_by_run ps
+    ON ps.module2_run_id = r.module2_run_id
+
+JOIN tmp_m2_17_20_validation_evidence_by_run ve
+    ON ve.module2_run_id = r.module2_run_id
+
+JOIN tmp_m2_17_20_expected_segment_by_run es
+    ON es.module2_run_id = r.module2_run_id
+
+JOIN tmp_m2_17_20_segment_evidence_by_run se
+    ON se.module2_run_id = r.module2_run_id
+
+CROSS JOIN tmp_m2_17_20_validation_key_catalog vk;
+
+ANALYZE tmp_m2_17_20_evidence_summary;
+
+
+/***************************************************************************************************
+17.20.6 — OPTION C EXECUTIVE EVIDENCE READINESS
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_option_c_evidence_summary
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    COUNT(*) AS option_c_evidence_run_count,
+
+    COUNT(*) FILTER (
+        WHERE e.counteroffer_strategy_variant IS NULL
+           OR e.aggressive_counteroffer_expansion_enabled IS NULL
+           OR e.ordinary_counteroffer_candidate_rows IS NULL
+           OR e.ordinary_counteroffer_candidate_rate IS NULL
+           OR e.aggressive_override_rows IS NULL
+           OR e.aggressive_override_rate IS NULL
+           OR e.aggressive_override_final_counteroffer_rows IS NULL
+           OR e.aggressive_override_final_manual_review_rows IS NULL
+           OR e.aggressive_override_final_decline_rows IS NULL
+           OR e.option_c_frontier_posture_type IS NULL
+    ) AS option_c_executive_evidence_gap_rows,
+
+    COUNT(*) FILTER (
+        WHERE e.strategy_name = 'SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY'
+          AND COALESCE(e.aggressive_override_rows, 0) <> 0
+    ) AS selective_strategy_aggressive_override_evidence_issue_rows,
+
+    COUNT(*) FILTER (
+        WHERE e.strategy_name = 'AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY'
+          AND COALESCE(e.aggressive_override_rows, 0) <= 0
+    ) AS aggressive_strategy_missing_override_evidence_rows
+
+FROM tmp_m2_17_20_active_campaign_runs r
+
+LEFT JOIN credit_decisioning_sim.strategy_run_evidence_summary e
+    ON e.strategy_set_name = r.strategy_set_name
+   AND e.strategy_name = r.strategy_name
+   AND e.strategy_version = r.strategy_version
+   AND e.module1_scenario_set_name = r.module1_scenario_set_name
+   AND e.module1_scenario_name = r.module1_scenario_name
+   AND e.population_id = r.population_id;
+
+
+/***************************************************************************************************
+17.20.7 — FINAL-OUTPUT CONVENTION CHECKS
+
+IMPORTANT:
+    This block intentionally mirrors the Section 17.9 convention logic.
+
+    Do not combine MANUAL_REVIEW and DECLINE into one generic no-offer payment rule.
+
+    MANUAL_REVIEW remains unresolved:
+        approved amount, approved payment, approved PTI, and approved Expected Loss are NULL.
+
+    DECLINE uses the zero-exposure convention:
+        approved amount, approved payment, approved PTI, and approved Expected Loss are zero.
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_convention_counts
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    COUNT(*) AS active_campaign_archived_rows,
+
+    COUNT(*) FILTER (
+        WHERE (
+                COALESCE(approval_flag::INT, 0)
+              + COALESCE(counteroffer_flag::INT, 0)
+              + COALESCE(manual_review_flag::INT, 0)
+              + COALESCE(decline_flag::INT, 0)
+              ) <> 1
+    ) AS final_outcome_flag_count_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE (
+                decision_outcome IN ('APPROVE', 'COUNTEROFFER')
+            AND simulated_offer_exposure_flag IS DISTINCT FROM TRUE
+              )
+           OR (
+                decision_outcome IN ('MANUAL_REVIEW', 'DECLINE')
+            AND simulated_offer_exposure_flag IS DISTINCT FROM FALSE
+              )
+    ) AS simulated_offer_exposure_flag_violation_rows,
+
+    /***********************************************************************************************
+    Amount conventions.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'APPROVE'
+          AND (
+                approved_amount IS NULL
+             OR approved_amount IS DISTINCT FROM requested_amount
+             OR counteroffer_amount IS NOT NULL
+             OR exposure_reduction_flag IS DISTINCT FROM FALSE
+             OR COALESCE(exposure_reduction_amount, 0) <> 0
+             OR COALESCE(exposure_reduction_pct, 0) <> 0
+          )
+    ) AS approve_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_amount IS NULL
+             OR counteroffer_amount IS NULL
+             OR counteroffer_amount IS DISTINCT FROM approved_amount
+             OR approved_amount <= 0
+             OR requested_amount IS NULL
+             OR approved_amount >= requested_amount
+             OR exposure_reduction_flag IS DISTINCT FROM TRUE
+             OR exposure_reduction_amount IS NULL
+             OR exposure_reduction_amount <= 0
+             OR exposure_reduction_pct IS NULL
+             OR exposure_reduction_pct <= 0
+          )
+    ) AS counteroffer_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND (
+                approved_amount IS NOT NULL
+             OR counteroffer_amount IS NOT NULL
+             OR exposure_reduction_flag IS DISTINCT FROM FALSE
+             OR exposure_reduction_amount IS NOT NULL
+             OR exposure_reduction_pct IS NOT NULL
+          )
+    ) AS manual_review_amount_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND (
+                approved_amount IS DISTINCT FROM 0
+             OR counteroffer_amount IS NOT NULL
+             OR exposure_reduction_flag IS DISTINCT FROM FALSE
+             OR COALESCE(exposure_reduction_amount, 0) <> 0
+             OR COALESCE(exposure_reduction_pct, 0) <> 0
+          )
+    ) AS decline_amount_violation_rows,
+
+    /***********************************************************************************************
+    Affordability / payment conventions.
+
+    Correct logic:
+        APPROVE preserves requested payment and PTI.
+        COUNTEROFFER has populated approved payment / PTI and should not increase PTI.
+        MANUAL_REVIEW is unresolved / NULL.
+        DECLINE is zero-payment / zero-PTI.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'APPROVE'
+          AND (
+                approved_monthly_payment_proxy IS NULL
+             OR approved_payment_to_income_ratio IS NULL
+             OR approved_monthly_payment_proxy
+                    IS DISTINCT FROM requested_monthly_payment_proxy
+             OR approved_payment_to_income_ratio
+                    IS DISTINCT FROM requested_payment_to_income_ratio
+          )
+    ) AS approve_payment_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_monthly_payment_proxy IS NULL
+             OR approved_payment_to_income_ratio IS NULL
+             OR approved_monthly_payment_proxy < 0
+             OR approved_payment_to_income_ratio < 0
+             OR (
+                    requested_monthly_payment_proxy IS NOT NULL
+                AND approved_monthly_payment_proxy > requested_monthly_payment_proxy
+                )
+             OR (
+                    requested_payment_to_income_ratio IS NOT NULL
+                AND approved_payment_to_income_ratio > requested_payment_to_income_ratio
+                )
+          )
+    ) AS counteroffer_affordability_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND (
+                approved_monthly_payment_proxy IS NOT NULL
+             OR approved_payment_to_income_ratio IS NOT NULL
+          )
+    ) AS manual_review_affordability_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND (
+                approved_monthly_payment_proxy IS DISTINCT FROM 0
+             OR approved_payment_to_income_ratio IS DISTINCT FROM 0
+          )
+    ) AS decline_affordability_violation_rows,
+
+    /***********************************************************************************************
+    Approved Expected Loss conventions.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'APPROVE'
+          AND (
+                approved_expected_loss_amount IS NULL
+             OR approved_expected_loss_amount
+                    IS DISTINCT FROM requested_expected_loss_amount
+          )
+    ) AS approve_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'COUNTEROFFER'
+          AND (
+                approved_expected_loss_amount IS NULL
+             OR approved_expected_loss_amount < 0
+             OR (
+                    requested_expected_loss_amount IS NOT NULL
+                AND approved_expected_loss_amount > requested_expected_loss_amount
+                )
+             OR (
+                    product_approved_el_cap IS NOT NULL
+                AND approved_expected_loss_amount > product_approved_el_cap
+                )
+          )
+    ) AS counteroffer_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'MANUAL_REVIEW'
+          AND approved_expected_loss_amount IS NOT NULL
+    ) AS manual_review_expected_loss_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_expected_loss_amount IS DISTINCT FROM 0
+    ) AS decline_expected_loss_violation_rows,
+
+    /***********************************************************************************************
+    Reason-code completeness and family alignment.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE primary_reason_code IS NULL
+           OR primary_reason_family IS NULL
+           OR triggered_reason_code_list IS NULL
+           OR reason_priority_rank IS NULL
+           OR reason_code_count IS NULL
+           OR reason_code_count <= 0
+    ) AS reason_code_completeness_violation_rows,
+
+    COUNT(*) FILTER (
+        WHERE (
+                decision_outcome = 'APPROVE'
+            AND primary_reason_family <> 'APPROVAL'
+              )
+           OR (
+                decision_outcome = 'COUNTEROFFER'
+            AND primary_reason_family <> 'COUNTEROFFER'
+              )
+           OR (
+                decision_outcome = 'MANUAL_REVIEW'
+            AND primary_reason_family <> 'MANUAL_REVIEW'
+              )
+           OR (
+                decision_outcome = 'DECLINE'
+            AND primary_reason_family <> 'POLICY_STOP'
+              )
+    ) AS reason_family_alignment_violation_rows,
+
+    /***********************************************************************************************
+    Option C field persistence and reason traceability.
+
+    Field naming boundary:
+        severe_requested_structure_counteroffer_override_enabled
+            = strategy-control enablement field.
+
+        aggressive_counteroffer_requested_structure_override_flag
+            = row-level evidence that the applicant entered counteroffer feasibility through the
+              aggressive requested-structure override path.
+    ***********************************************************************************************/
+    COUNT(*) FILTER (
+        WHERE counteroffer_strategy_variant IS NULL
+           OR aggressive_counteroffer_expansion_enabled IS NULL
+           OR severe_requested_structure_counteroffer_override_enabled IS NULL
+           OR exposure_extreme_counteroffer_override_enabled IS NULL
+           OR exposure_policy_stop_counteroffer_override_enabled IS NULL
+           OR requested_pti_decline_counteroffer_override_enabled IS NULL
+           OR requested_el_decline_counteroffer_override_enabled IS NULL
+           OR ordinary_counteroffer_candidate_flag IS NULL
+           OR aggressive_counteroffer_requested_structure_override_flag IS NULL
+    ) AS option_c_archive_field_gap_rows,
+
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND (
+                triggered_reason_code_list IS NULL
+             OR (
+                    decision_outcome = 'COUNTEROFFER'
+                AND triggered_reason_code_list NOT LIKE
+                        '%COUNTEROFFER_AGGRESSIVE_REQUESTED_STRUCTURE_OVERRIDE%'
+                )
+             OR (
+                    decision_outcome = 'MANUAL_REVIEW'
+                AND triggered_reason_code_list NOT LIKE
+                        '%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%'
+                )
+             OR (
+                    decision_outcome = 'DECLINE'
+                AND triggered_reason_code_list NOT LIKE
+                        '%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%'
+                )
+          )
+    ) AS aggressive_override_reason_trace_gap_rows,
+
+    COUNT(*) FILTER (
+        WHERE strategy_name = 'SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY'
+          AND aggressive_counteroffer_requested_structure_override_flag IS TRUE
+    ) AS selective_strategy_aggressive_override_rows
+
+FROM tmp_m2_17_20_active_archive_rows;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_convention_summary
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    active_campaign_archived_rows,
+
+    (
+        final_outcome_flag_count_violation_rows
+        + simulated_offer_exposure_flag_violation_rows
+        + approve_amount_violation_rows
+        + counteroffer_amount_violation_rows
+        + manual_review_amount_violation_rows
+        + decline_amount_violation_rows
+        + approve_payment_violation_rows
+        + counteroffer_affordability_violation_rows
+        + manual_review_affordability_violation_rows
+        + decline_affordability_violation_rows
+        + approve_expected_loss_violation_rows
+        + counteroffer_expected_loss_violation_rows
+        + manual_review_expected_loss_violation_rows
+        + decline_expected_loss_violation_rows
+        + reason_code_completeness_violation_rows
+        + reason_family_alignment_violation_rows
+        + option_c_archive_field_gap_rows
+        + aggressive_override_reason_trace_gap_rows
+        + selective_strategy_aggressive_override_rows
+    ) AS critical_convention_violation_count,
+
+    final_outcome_flag_count_violation_rows,
+    simulated_offer_exposure_flag_violation_rows,
+
+    approve_amount_violation_rows,
+    counteroffer_amount_violation_rows,
+    manual_review_amount_violation_rows,
+    decline_amount_violation_rows,
+
+    approve_payment_violation_rows,
+    counteroffer_affordability_violation_rows,
+    manual_review_affordability_violation_rows,
+    decline_affordability_violation_rows,
+
+    approve_expected_loss_violation_rows,
+    counteroffer_expected_loss_violation_rows,
+    manual_review_expected_loss_violation_rows,
+    decline_expected_loss_violation_rows,
+
+    reason_code_completeness_violation_rows,
+    reason_family_alignment_violation_rows,
+
+    option_c_archive_field_gap_rows,
+    aggressive_override_reason_trace_gap_rows,
+    selective_strategy_aggressive_override_rows
+
+FROM tmp_m2_17_20_convention_counts;
+
+
+/***************************************************************************************************
+17.20.8 — PRODUCT GUARDRAIL EXACT-VALUE AUDIT SUMMARY
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_product_guardrail_campaign_runs
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    module2_run_id,
+    run_sequence_number,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version
+FROM tmp_m2_17_20_active_campaign_runs
+WHERE strategy_name = 'PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY';
+
+CREATE INDEX idx_tmp_m2_17_20_product_guardrail_campaign_runs_key
+ON tmp_m2_17_20_product_guardrail_campaign_runs (
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_product_guardrail_parameter_snapshots
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    module2_run_id,
+
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id,
+
+    COUNT(*) AS parameter_snapshot_rows_for_run,
+
+    (ARRAY_AGG(product_policy_params_jsonb ORDER BY evidence_snapshot_ts DESC NULLS LAST))[1]
+        AS product_policy_params_jsonb
+
+FROM credit_decisioning_sim.strategy_run_parameter_snapshot
+
+GROUP BY
+    module2_run_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id;
+
+CREATE INDEX idx_tmp_m2_17_20_product_guardrail_parameter_snapshots_key
+ON tmp_m2_17_20_product_guardrail_parameter_snapshots (
+    module2_run_id,
+    strategy_set_name,
+    strategy_name,
+    strategy_version,
+    module1_scenario_set_name,
+    module1_scenario_name,
+    population_id
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_product_guardrail_runs
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.module2_run_id,
+    r.run_sequence_number,
+
+    r.strategy_set_name,
+    r.strategy_name,
+    r.strategy_version,
+
+    r.module1_scenario_set_name,
+    r.module1_scenario_name,
+    r.population_id,
+
+    COALESCE(p.parameter_snapshot_rows_for_run, 0)
+        AS parameter_snapshot_rows_for_run,
+
+    p.product_policy_params_jsonb
+
+FROM tmp_m2_17_20_product_guardrail_campaign_runs r
+
+LEFT JOIN tmp_m2_17_20_product_guardrail_parameter_snapshots p
+    ON p.module2_run_id = r.module2_run_id
+   AND p.strategy_set_name = r.strategy_set_name
+   AND p.strategy_name = r.strategy_name
+   AND p.strategy_version = r.strategy_version
+   AND p.module1_scenario_set_name = r.module1_scenario_set_name
+   AND p.module1_scenario_name = r.module1_scenario_name
+   AND p.population_id = r.population_id;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_expected_run_product_rows
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.module2_run_id,
+    r.parameter_snapshot_rows_for_run,
+    e.*
+FROM tmp_m2_17_20_product_guardrail_runs r
+CROSS JOIN tmp_m2_17_20_expected_product_guardrail_policy e;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_actual_product_guardrail_policy_raw
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    r.module2_run_id,
+
+    pp.product_policy_row ->> 'product_type' AS product_type,
+
+    (pp.product_policy_row ->> 'product_approve_max_pti')::NUMERIC
+        AS actual_product_approve_max_pti,
+
+    (pp.product_policy_row ->> 'product_review_max_pti')::NUMERIC
+        AS actual_product_review_max_pti,
+
+    (pp.product_policy_row ->> 'product_decline_min_pti')::NUMERIC
+        AS actual_product_decline_min_pti,
+
+    (pp.product_policy_row ->> 'counteroffer_target_pti')::NUMERIC
+        AS actual_counteroffer_target_pti,
+
+    (pp.product_policy_row ->> 'product_approve_max_requested_el')::NUMERIC
+        AS actual_product_approve_max_requested_el,
+
+    (pp.product_policy_row ->> 'product_review_max_requested_el')::NUMERIC
+        AS actual_product_review_max_requested_el,
+
+    (pp.product_policy_row ->> 'product_decline_min_requested_el')::NUMERIC
+        AS actual_product_decline_min_requested_el,
+
+    (pp.product_policy_row ->> 'product_approved_el_cap')::NUMERIC
+        AS actual_product_approved_el_cap,
+
+    (pp.product_policy_row ->> 'product_min_approved_amount')::NUMERIC
+        AS actual_product_min_approved_amount,
+
+    (pp.product_policy_row ->> 'product_max_approved_amount')::NUMERIC
+        AS actual_product_max_approved_amount,
+
+    (pp.product_policy_row ->> 'product_min_counteroffer_pct')::NUMERIC
+        AS actual_product_min_counteroffer_pct,
+
+    (pp.product_policy_row ->> 'product_max_exposure_reduction_pct')::NUMERIC
+        AS actual_product_max_exposure_reduction_pct
+
+FROM tmp_m2_17_20_product_guardrail_runs r
+
+CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+        WHEN jsonb_typeof(r.product_policy_params_jsonb) = 'array'
+            THEN r.product_policy_params_jsonb
+        ELSE '[]'::jsonb
+    END
+) AS pp(product_policy_row)
+
+WHERE pp.product_policy_row ->> 'product_type' IN (
+    'UNSECURED_PERSONAL_LOAN',
+    'REVOLVING_LINE'
+);
+
+
+CREATE TEMP TABLE tmp_m2_17_20_actual_product_guardrail_policy
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    module2_run_id,
+    product_type,
+
+    COUNT(*) AS actual_product_policy_rows_for_product,
+
+    MAX(actual_product_approve_max_pti) AS actual_product_approve_max_pti,
+    MAX(actual_product_review_max_pti) AS actual_product_review_max_pti,
+    MAX(actual_product_decline_min_pti) AS actual_product_decline_min_pti,
+    MAX(actual_counteroffer_target_pti) AS actual_counteroffer_target_pti,
+    MAX(actual_product_approve_max_requested_el) AS actual_product_approve_max_requested_el,
+    MAX(actual_product_review_max_requested_el) AS actual_product_review_max_requested_el,
+    MAX(actual_product_decline_min_requested_el) AS actual_product_decline_min_requested_el,
+    MAX(actual_product_approved_el_cap) AS actual_product_approved_el_cap,
+    MAX(actual_product_min_approved_amount) AS actual_product_min_approved_amount,
+    MAX(actual_product_max_approved_amount) AS actual_product_max_approved_amount,
+    MAX(actual_product_min_counteroffer_pct) AS actual_product_min_counteroffer_pct,
+    MAX(actual_product_max_exposure_reduction_pct) AS actual_product_max_exposure_reduction_pct
+
+FROM tmp_m2_17_20_actual_product_guardrail_policy_raw
+GROUP BY
+    module2_run_id,
+    product_type;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_product_guardrail_policy_comparison
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    e.module2_run_id,
+    e.product_type,
+    e.parameter_snapshot_rows_for_run,
+
+    COALESCE(a.actual_product_policy_rows_for_product, 0)
+        AS actual_product_policy_rows_for_product,
+
+    (
+        CASE
+            WHEN a.product_type IS NULL THEN 1
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 1
+            WHEN a.actual_product_approve_max_pti IS DISTINCT FROM e.expected_product_approve_max_pti THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_review_max_pti IS DISTINCT FROM e.expected_product_review_max_pti THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_decline_min_pti IS DISTINCT FROM e.expected_product_decline_min_pti THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_counteroffer_target_pti IS DISTINCT FROM e.expected_counteroffer_target_pti THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_approve_max_requested_el IS DISTINCT FROM e.expected_product_approve_max_requested_el THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_review_max_requested_el IS DISTINCT FROM e.expected_product_review_max_requested_el THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_decline_min_requested_el IS DISTINCT FROM e.expected_product_decline_min_requested_el THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_approved_el_cap IS DISTINCT FROM e.expected_product_approved_el_cap THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_min_approved_amount IS DISTINCT FROM e.expected_product_min_approved_amount THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_max_approved_amount IS DISTINCT FROM e.expected_product_max_approved_amount THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_min_counteroffer_pct IS DISTINCT FROM e.expected_product_min_counteroffer_pct THEN 1
+            ELSE 0
+        END
+        +
+        CASE
+            WHEN a.product_type IS NULL THEN 0
+            WHEN COALESCE(a.actual_product_policy_rows_for_product, 0) <> 1 THEN 0
+            WHEN a.actual_product_max_exposure_reduction_pct IS DISTINCT FROM e.expected_product_max_exposure_reduction_pct THEN 1
+            ELSE 0
+        END
+    ) AS product_policy_field_mismatch_count
+
+FROM tmp_m2_17_20_expected_run_product_rows e
+
+LEFT JOIN tmp_m2_17_20_actual_product_guardrail_policy a
+    ON a.module2_run_id = e.module2_run_id
+   AND a.product_type = e.product_type;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_product_guardrail_policy_audit
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    (
+        SELECT COUNT(*)
+        FROM tmp_m2_17_20_product_guardrail_campaign_runs
+    ) AS product_guardrail_campaign_run_count,
+
+    (
+        SELECT COUNT(*)
+        FROM tmp_m2_17_20_expected_product_guardrail_policy
+    ) AS product_guardrail_audited_product_count,
+
+    (
+        SELECT COUNT(*)
+        FROM tmp_m2_17_20_product_guardrail_runs
+        WHERE parameter_snapshot_rows_for_run = 1
+    ) AS product_guardrail_parameter_snapshot_complete_run_count,
+
+    (
+        SELECT COUNT(*)
+        FROM tmp_m2_17_20_product_guardrail_runs
+        WHERE parameter_snapshot_rows_for_run <> 1
+    ) AS product_guardrail_parameter_snapshot_issue_run_count,
+
+    COUNT(*) AS product_guardrail_expected_policy_rows,
+
+    COUNT(*) FILTER (
+        WHERE actual_product_policy_rows_for_product = 1
+          AND parameter_snapshot_rows_for_run = 1
+          AND product_policy_field_mismatch_count = 0
+    ) AS product_guardrail_policy_ready_rows,
+
+    COUNT(*) FILTER (
+        WHERE actual_product_policy_rows_for_product = 0
+    ) AS missing_product_guardrail_policy_rows,
+
+    COUNT(*) FILTER (
+        WHERE actual_product_policy_rows_for_product <> 1
+    ) AS product_guardrail_policy_row_count_issue_rows,
+
+    COUNT(*) FILTER (
+        WHERE product_policy_field_mismatch_count > 0
+    ) AS product_guardrail_policy_mismatch_rows
+
+FROM tmp_m2_17_20_product_guardrail_policy_comparison;
+
+
+/***************************************************************************************************
+17.20.9 — FINAL ACCEPTANCE INPUTS AND STATUS FLAGS
+****************************************************************************************************/
+
+CREATE TEMP TABLE tmp_m2_17_20_acceptance_inputs
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    /***********************************************************************************************
+    Dynamic expected campaign shape.
+    ***********************************************************************************************/
+    ecs.expected_campaign_runs,
+    ecs.expected_comparison_groups,
+    ecs.expected_total_active_campaign_source_rows,
+    ecs.expected_validation_key_count,
+    ecs.expected_product_guardrail_campaign_runs,
+    ecs.audited_product_count,
+    ecs.expected_product_guardrail_policy_rows,
+
+    /***********************************************************************************************
+    Registry readiness.
+    ***********************************************************************************************/
+    crs.active_campaign_registry_rows,
+    crs.duplicate_active_campaign_technical_key_rows,
+
+    cprs.active_comparison_registry_rows,
+    cprs.duplicate_active_comparison_group_rows,
+
+    /***********************************************************************************************
+    Archive readiness.
+    ***********************************************************************************************/
+    ar.active_campaign_registry_rows_for_archive_check,
+    ar.active_runs_missing_module1_source_count,
+    ar.active_runs_with_module1_source_application_id_grain_issue,
+    ar.active_runs_with_archive_rows,
+    ar.active_runs_missing_archive_rows,
+    ar.total_active_campaign_archived_rows,
+    ar.active_runs_with_archive_row_count_mismatch,
+    ar.active_runs_with_archive_application_id_grain_issue,
+    adg.duplicate_archive_grain_count,
+
+    /***********************************************************************************************
+    Comparison readiness.
+    ***********************************************************************************************/
+    cr.comparison_group_count,
+    cr.comparison_ready_count,
+    cr.comparison_review_count,
+
+    /***********************************************************************************************
+    Source-field consistency.
+    ***********************************************************************************************/
+    sc.source_consistency_group_count,
+    sc.source_consistency_pass_count,
+    sc.source_consistency_review_count,
+    sc.total_source_field_mismatch_rows,
+
+    /***********************************************************************************************
+    Evidence readiness.
+    ***********************************************************************************************/
+    ev.registry_run_count_for_evidence_check,
+
+    ev.executive_evidence_rows,
+    ev.executive_evidence_complete_run_count,
+    ev.executive_evidence_issue_run_count,
+
+    ev.parameter_snapshot_rows,
+    ev.parameter_snapshot_single_row_run_count,
+    ev.parameter_snapshot_row_count_issue_run_count,
+
+    ev.registry_run_count_for_parameter_snapshot_check,
+    ev.parameter_snapshot_ready_run_count,
+    ev.parameter_snapshot_issue_run_count,
+
+    ev.validation_evidence_complete_run_count,
+    ev.validation_evidence_incomplete_run_count,
+    ev.min_validation_rows_per_run,
+    ev.max_validation_rows_per_run,
+    ev.total_validation_evidence_rows,
+
+    ev.segment_evidence_complete_run_count,
+    ev.segment_evidence_issue_run_count,
+    ev.min_expected_segment_rows_per_run,
+    ev.max_expected_segment_rows_per_run,
+    ev.min_segment_rows_per_run,
+    ev.max_segment_rows_per_run,
+    ev.total_segment_evidence_rows,
+
+    /***********************************************************************************************
+    Final-output convention readiness.
+    ***********************************************************************************************/
+    cs.active_campaign_archived_rows,
+    cs.critical_convention_violation_count,
+
+    cs.final_outcome_flag_count_violation_rows,
+    cs.simulated_offer_exposure_flag_violation_rows,
+
+    cs.approve_amount_violation_rows,
+    cs.counteroffer_amount_violation_rows,
+    cs.manual_review_amount_violation_rows,
+    cs.decline_amount_violation_rows,
+
+    cs.approve_payment_violation_rows,
+    cs.counteroffer_affordability_violation_rows,
+    cs.manual_review_affordability_violation_rows,
+    cs.decline_affordability_violation_rows,
+
+    cs.approve_expected_loss_violation_rows,
+    cs.counteroffer_expected_loss_violation_rows,
+    cs.manual_review_expected_loss_violation_rows,
+    cs.decline_expected_loss_violation_rows,
+
+    cs.reason_code_completeness_violation_rows,
+    cs.reason_family_alignment_violation_rows,
+
+    cs.option_c_archive_field_gap_rows,
+    cs.aggressive_override_reason_trace_gap_rows,
+    cs.selective_strategy_aggressive_override_rows,
+
+    /***********************************************************************************************
+    Option C evidence readiness.
+    ***********************************************************************************************/
+    oc.option_c_evidence_run_count,
+    oc.option_c_executive_evidence_gap_rows,
+    oc.selective_strategy_aggressive_override_evidence_issue_rows,
+    oc.aggressive_strategy_missing_override_evidence_rows,
+
+    /***********************************************************************************************
+    Product guardrail exact-value audit.
+    ***********************************************************************************************/
+    pga.product_guardrail_campaign_run_count,
+    pga.product_guardrail_audited_product_count,
+    pga.product_guardrail_expected_policy_rows,
+    pga.product_guardrail_parameter_snapshot_complete_run_count,
+    pga.product_guardrail_parameter_snapshot_issue_run_count,
+    pga.product_guardrail_policy_ready_rows,
+    pga.missing_product_guardrail_policy_rows,
+    pga.product_guardrail_policy_row_count_issue_rows,
+    pga.product_guardrail_policy_mismatch_rows,
+
+    /***********************************************************************************************
+    Acceptance gate flags.
+    ***********************************************************************************************/
+    (
+        crs.active_campaign_registry_rows = ecs.expected_campaign_runs
+        AND crs.duplicate_active_campaign_technical_key_rows = 0
+    ) AS campaign_registry_ready_flag,
+
+    (
+        cprs.active_comparison_registry_rows = ecs.expected_comparison_groups
+        AND cprs.duplicate_active_comparison_group_rows = 0
+    ) AS comparison_registry_ready_flag,
+
+    (
+        ar.active_campaign_registry_rows_for_archive_check = ecs.expected_campaign_runs
+        AND ar.active_runs_missing_module1_source_count = 0
+        AND ar.active_runs_with_module1_source_application_id_grain_issue = 0
+        AND ar.active_runs_with_archive_rows = ecs.expected_campaign_runs
+        AND ar.active_runs_missing_archive_rows = 0
+        AND ar.total_active_campaign_archived_rows = ecs.expected_total_active_campaign_source_rows
+        AND ar.active_runs_with_archive_row_count_mismatch = 0
+        AND ar.active_runs_with_archive_application_id_grain_issue = 0
+        AND adg.duplicate_archive_grain_count = 0
+    ) AS archive_ready_flag,
+
+    (
+        cr.comparison_group_count = ecs.expected_comparison_groups
+        AND cr.comparison_ready_count = ecs.expected_comparison_groups
+        AND cr.comparison_review_count = 0
+    ) AS comparison_ready_flag,
+
+    (
+        sc.source_consistency_group_count = ecs.expected_comparison_groups
+        AND sc.source_consistency_pass_count = ecs.expected_comparison_groups
+        AND sc.source_consistency_review_count = 0
+        AND sc.total_source_field_mismatch_rows = 0
+    ) AS source_consistency_ready_flag,
+
+    (
+        ev.registry_run_count_for_evidence_check = ecs.expected_campaign_runs
+        AND ev.executive_evidence_complete_run_count = ecs.expected_campaign_runs
+        AND ev.executive_evidence_issue_run_count = 0
+        AND ev.parameter_snapshot_single_row_run_count = ecs.expected_campaign_runs
+        AND ev.parameter_snapshot_row_count_issue_run_count = 0
+        AND ev.validation_evidence_complete_run_count = ecs.expected_campaign_runs
+        AND ev.validation_evidence_incomplete_run_count = 0
+        AND ev.segment_evidence_complete_run_count = ecs.expected_campaign_runs
+        AND ev.segment_evidence_issue_run_count = 0
+    ) AS evidence_ready_flag,
+
+    (
+        ev.registry_run_count_for_parameter_snapshot_check = ecs.expected_campaign_runs
+        AND ev.parameter_snapshot_ready_run_count = ecs.expected_campaign_runs
+        AND ev.parameter_snapshot_issue_run_count = 0
+    ) AS parameter_snapshot_ready_flag,
+
+    (
+        cs.critical_convention_violation_count = 0
+    ) AS final_output_conventions_ready_flag,
+
+    (
+        oc.option_c_evidence_run_count = ecs.expected_campaign_runs
+        AND oc.option_c_executive_evidence_gap_rows = 0
+        AND oc.selective_strategy_aggressive_override_evidence_issue_rows = 0
+        AND oc.aggressive_strategy_missing_override_evidence_rows = 0
+    ) AS option_c_evidence_ready_flag,
+
+    (
+        pga.product_guardrail_campaign_run_count = ecs.expected_product_guardrail_campaign_runs
+        AND pga.product_guardrail_audited_product_count = ecs.audited_product_count
+        AND pga.product_guardrail_expected_policy_rows = ecs.expected_product_guardrail_policy_rows
+        AND pga.product_guardrail_parameter_snapshot_issue_run_count = 0
+        AND pga.product_guardrail_policy_ready_rows = ecs.expected_product_guardrail_policy_rows
+        AND pga.missing_product_guardrail_policy_rows = 0
+        AND pga.product_guardrail_policy_row_count_issue_rows = 0
+        AND pga.product_guardrail_policy_mismatch_rows = 0
+    ) AS product_guardrail_policy_ready_flag
+
+FROM tmp_m2_17_20_expected_campaign_shape ecs
+CROSS JOIN tmp_m2_17_20_campaign_registry_summary crs
+CROSS JOIN tmp_m2_17_20_comparison_registry_summary cprs
+CROSS JOIN tmp_m2_17_20_archive_reconciliation ar
+CROSS JOIN tmp_m2_17_20_archive_duplicate_grain adg
+CROSS JOIN tmp_m2_17_20_comparison_readiness_summary cr
+CROSS JOIN tmp_m2_17_20_source_consistency_summary sc
+CROSS JOIN tmp_m2_17_20_evidence_summary ev
+CROSS JOIN tmp_m2_17_20_convention_summary cs
+CROSS JOIN tmp_m2_17_20_option_c_evidence_summary oc
+CROSS JOIN tmp_m2_17_20_product_guardrail_policy_audit pga;
+
+
+CREATE TEMP TABLE tmp_m2_17_20_acceptance_status
+ON COMMIT PRESERVE ROWS
+AS
+SELECT
+    ai.*,
+
+    (
+        campaign_registry_ready_flag
+        AND comparison_registry_ready_flag
+        AND archive_ready_flag
+        AND comparison_ready_flag
+        AND source_consistency_ready_flag
+        AND evidence_ready_flag
+        AND parameter_snapshot_ready_flag
+        AND final_output_conventions_ready_flag
+        AND option_c_evidence_ready_flag
+        AND product_guardrail_policy_ready_flag
+    ) AS structural_acceptance_ready_flag,
+
+    CASE
+        WHEN (
+                campaign_registry_ready_flag
+            AND comparison_registry_ready_flag
+            AND archive_ready_flag
+            AND comparison_ready_flag
+            AND source_consistency_ready_flag
+            AND evidence_ready_flag
+            AND parameter_snapshot_ready_flag
+            AND final_output_conventions_ready_flag
+            AND option_c_evidence_ready_flag
+            AND product_guardrail_policy_ready_flag
+        )
+            THEN 'MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS'
+
+        WHEN (
+                campaign_registry_ready_flag
+            AND comparison_registry_ready_flag
+            AND archive_ready_flag
+            AND comparison_ready_flag
+            AND source_consistency_ready_flag
+            AND evidence_ready_flag
+            AND parameter_snapshot_ready_flag
+            AND final_output_conventions_ready_flag
+            AND option_c_evidence_ready_flag
+            AND product_guardrail_policy_ready_flag IS DISTINCT FROM TRUE
+        )
+            THEN 'STRUCTURAL_ACCEPTANCE_PASS_BUT_PRODUCT_GUARDRAIL_POLICY_REVIEW_REQUIRED'
+
+        ELSE 'REVIEW_MODULE_2_CAMPAIGN_RESULTS_BEFORE_ANALYSIS'
+    END AS module2_campaign_acceptance_status,
+
+    CONCAT_WS(
+        ' | ',
+
+        CASE
+            WHEN campaign_registry_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_CAMPAIGN_REGISTRY'
+        END,
+
+        CASE
+            WHEN comparison_registry_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_COMPARISON_REGISTRY'
+        END,
+
+        CASE
+            WHEN archive_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_ARCHIVE_INVENTORY_OR_GRAIN'
+        END,
+
+        CASE
+            WHEN comparison_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_COMPARISON_READINESS'
+        END,
+
+        CASE
+            WHEN source_consistency_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_MATCHED_SOURCE_FIELD_CONSISTENCY'
+        END,
+
+        CASE
+            WHEN evidence_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_SECTION_16_EVIDENCE_COMPLETENESS'
+        END,
+
+        CASE
+            WHEN parameter_snapshot_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_PARAMETER_SNAPSHOT_TRACEABILITY'
+        END,
+
+        CASE
+            WHEN final_output_conventions_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_FINAL_OUTPUT_CONVENTIONS'
+        END,
+
+        CASE
+            WHEN option_c_evidence_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_OPTION_C_COUNTEROFFER_SPLIT_EVIDENCE'
+        END,
+
+        CASE
+            WHEN product_guardrail_policy_ready_flag IS DISTINCT FROM TRUE
+                THEN 'REVIEW_PRODUCT_GUARDRAIL_POLICY_EXACT_VALUES'
+        END
+    ) AS acceptance_review_focus
+
+FROM tmp_m2_17_20_acceptance_inputs ai;
+
+
+/***************************************************************************************************
+17.20.10 — FINAL ACCEPTANCE OUTPUT
+****************************************************************************************************/
+
+SELECT
+    /***********************************************************************************************
+    Final status.
+    ***********************************************************************************************/
+    module2_campaign_acceptance_status,
+
+    structural_acceptance_ready_flag,
+
+    CASE
+        WHEN acceptance_review_focus IS NULL
+          OR acceptance_review_focus = ''
+            THEN 'ALL_FINAL_ACCEPTANCE_GATES_PASSED'
+        ELSE acceptance_review_focus
+    END AS acceptance_review_focus,
+
+    /***********************************************************************************************
+    Dynamic expected campaign shape.
+    ***********************************************************************************************/
+    expected_campaign_runs,
+    expected_comparison_groups,
+    expected_total_active_campaign_source_rows,
+    expected_validation_key_count,
+
+    expected_product_guardrail_campaign_runs,
+    audited_product_count,
+    expected_product_guardrail_policy_rows,
+
+    /***********************************************************************************************
+    Registry and archive readiness.
+    ***********************************************************************************************/
+    active_campaign_registry_rows,
+    duplicate_active_campaign_technical_key_rows,
+
+    active_comparison_registry_rows,
+    duplicate_active_comparison_group_rows,
+
+    active_campaign_registry_rows_for_archive_check,
+    active_runs_missing_module1_source_count,
+    active_runs_with_module1_source_application_id_grain_issue,
+    active_runs_with_archive_rows,
+    active_runs_missing_archive_rows,
+    total_active_campaign_archived_rows,
+    active_runs_with_archive_row_count_mismatch,
+    active_runs_with_archive_application_id_grain_issue,
+    duplicate_archive_grain_count,
+
+    /***********************************************************************************************
+    Comparison and source-consistency readiness.
+    ***********************************************************************************************/
+    comparison_group_count,
+    comparison_ready_count,
+    comparison_review_count,
+
+    source_consistency_group_count,
+    source_consistency_pass_count,
+    source_consistency_review_count,
+    total_source_field_mismatch_rows,
+
+    /***********************************************************************************************
+    Evidence readiness.
+    ***********************************************************************************************/
+    registry_run_count_for_evidence_check,
+
+    executive_evidence_rows,
+    executive_evidence_complete_run_count,
+    executive_evidence_issue_run_count,
+
+    parameter_snapshot_rows,
+    parameter_snapshot_single_row_run_count,
+    parameter_snapshot_row_count_issue_run_count,
+
+    registry_run_count_for_parameter_snapshot_check,
+    parameter_snapshot_ready_run_count,
+    parameter_snapshot_issue_run_count,
+
+    validation_evidence_complete_run_count,
+    validation_evidence_incomplete_run_count,
+    min_validation_rows_per_run,
+    max_validation_rows_per_run,
+    total_validation_evidence_rows,
+
+    segment_evidence_complete_run_count,
+    segment_evidence_issue_run_count,
+    min_expected_segment_rows_per_run,
+    max_expected_segment_rows_per_run,
+    min_segment_rows_per_run,
+    max_segment_rows_per_run,
+    total_segment_evidence_rows,
+
+    /***********************************************************************************************
+    Final-output convention readiness.
+
+    These fields mirror Section 17.9 and keep MANUAL_REVIEW NULL conventions separate from
+    DECLINE zero-exposure conventions.
+    ***********************************************************************************************/
+    active_campaign_archived_rows,
+    critical_convention_violation_count,
+
+    final_outcome_flag_count_violation_rows,
+    simulated_offer_exposure_flag_violation_rows,
+
+    approve_amount_violation_rows,
+    counteroffer_amount_violation_rows,
+    manual_review_amount_violation_rows,
+    decline_amount_violation_rows,
+
+    approve_payment_violation_rows,
+    counteroffer_affordability_violation_rows,
+    manual_review_affordability_violation_rows,
+    decline_affordability_violation_rows,
+
+    approve_expected_loss_violation_rows,
+    counteroffer_expected_loss_violation_rows,
+    manual_review_expected_loss_violation_rows,
+    decline_expected_loss_violation_rows,
+
+    reason_code_completeness_violation_rows,
+    reason_family_alignment_violation_rows,
+
+    option_c_archive_field_gap_rows,
+    aggressive_override_reason_trace_gap_rows,
+    selective_strategy_aggressive_override_rows,
+
+    /***********************************************************************************************
+    Option C evidence readiness.
+    ***********************************************************************************************/
+    option_c_evidence_run_count,
+    option_c_executive_evidence_gap_rows,
+    selective_strategy_aggressive_override_evidence_issue_rows,
+    aggressive_strategy_missing_override_evidence_rows,
+
+    /***********************************************************************************************
+    Product guardrail exact-value audit.
+    ***********************************************************************************************/
+    product_guardrail_campaign_run_count,
+    product_guardrail_audited_product_count,
+    product_guardrail_expected_policy_rows,
+    product_guardrail_parameter_snapshot_complete_run_count,
+    product_guardrail_parameter_snapshot_issue_run_count,
+    product_guardrail_policy_ready_rows,
+    missing_product_guardrail_policy_rows,
+    product_guardrail_policy_row_count_issue_rows,
+    product_guardrail_policy_mismatch_rows,
+
+    /***********************************************************************************************
+    Acceptance flags.
+    ***********************************************************************************************/
+    campaign_registry_ready_flag,
+    comparison_registry_ready_flag,
+    archive_ready_flag,
+    comparison_ready_flag,
+    source_consistency_ready_flag,
+    evidence_ready_flag,
+    parameter_snapshot_ready_flag,
+    final_output_conventions_ready_flag,
+    option_c_evidence_ready_flag,
+    product_guardrail_policy_ready_flag
+
+FROM tmp_m2_17_20_acceptance_status;
+```
+
+Expected final result after this rerun remains:
+
+```text
+module2_campaign_acceptance_status = MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+structural_acceptance_ready_flag = true
+acceptance_review_focus = ALL_FINAL_ACCEPTANCE_GATES_PASSED
+critical_convention_violation_count = 0
+final_output_conventions_ready_flag = true
+```
+<!-- END_MESSAGE C040-M02267 -->
+
+
+---
+
+<a id="c040-m02268"></a>
+
+### C040-M02268
+
+**Andrew** · 2026-05-22T10:13:04.761000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02268 -->
+please review updated section 17.20 and complete the analysis of section 17 QA results.
+<!-- END_MESSAGE C040-M02268 -->
+
+
+**Attachments in export:** `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_17.20_QA_final_module_2_campaign_acceptance_rollup_campaign(1).csv`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c040-m02279"></a>
+
+### C040-M02279
+
+**ChatGPT** · 2026-05-22T10:22:29.197891-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02279 -->
+## Updated 17.20 review verdict
+
+```text
+Updated 17.20 runtime / execution status: PASS
+Updated 17.20 final acceptance status: NOT YET ACCEPTED
+Underlying campaign evidence status through 17.19: ACCEPTED
+Remaining issue type: 17.20 query-logic false positive
+True campaign data blocker found: no
+Required action: patch two stale convention checks in 17.20 and rerun 17.20
+```
+
+The materialized-temp-table version of 17.20 did its job from a performance/execution standpoint: it completed and produced the final rollup output. But the final rollup still returns:
+
+```text
+module2_campaign_acceptance_status =
+REVIEW_MODULE_2_CAMPAIGN_RESULTS_BEFORE_ANALYSIS
+
+structural_acceptance_ready_flag =
+false
+
+acceptance_review_focus =
+REVIEW_FINAL_OUTPUT_CONVENTIONS
+```
+
+That is **not** supported by the rest of Section 17 QA. Sections 17.1–17.19 are clean, and 17.9 specifically already passed the active-campaign archive convention check. Section 17.20 is intended to be the one-row final acceptance rollup after archive, registry, evidence, comparison, source-consistency, Option C, parameter snapshot, and product-policy checks; it should align to the already-passing 17.9 convention definitions. fileciteturn28file15turn28file19
+
+---
+
+# What passed in updated 17.20
+
+All non-convention readiness gates are clean:
+
+```text
+campaign_registry_ready_flag = true
+comparison_registry_ready_flag = true
+archive_ready_flag = true
+comparison_ready_flag = true
+source_consistency_ready_flag = true
+evidence_ready_flag = true
+parameter_snapshot_ready_flag = true
+option_c_evidence_ready_flag = true
+product_guardrail_policy_ready_flag = true
+```
+
+The structural counts are correct:
+
+```text
+expected_campaign_runs = 39
+active_campaign_registry_rows = 39
+
+expected_comparison_groups = 20
+active_comparison_registry_rows = 20
+comparison_ready_count = 20
+comparison_review_count = 0
+
+expected_total_active_campaign_source_rows = 1,950,000
+total_active_campaign_archived_rows = 1,950,000
+active_campaign_archived_rows = 1,950,000
+
+duplicate_archive_grain_count = 0
+source_field_mismatch_rows = 0
+```
+
+Evidence coverage is also correct:
+
+```text
+executive_evidence_complete_run_count = 39
+parameter_snapshot_ready_run_count = 39
+validation_evidence_complete_run_count = 39
+segment_evidence_complete_run_count = 39
+
+validation rows per run = 22
+total validation evidence rows = 858
+
+segment rows per run = 25
+total segment evidence rows = 975
+```
+
+Product-guardrail audit is clean:
+
+```text
+product_guardrail_campaign_run_count = 5
+product_guardrail_audited_product_count = 2
+product_guardrail_expected_policy_rows = 10
+product_guardrail_policy_ready_rows = 10
+missing_product_guardrail_policy_rows = 0
+product_guardrail_policy_row_count_issue_rows = 0
+product_guardrail_policy_mismatch_rows = 0
+```
+
+Option C executive evidence is clean:
+
+```text
+option_c_evidence_run_count = 39
+option_c_executive_evidence_gap_rows = 0
+selective_strategy_aggressive_override_evidence_issue_rows = 0
+aggressive_strategy_missing_override_evidence_rows = 0
+```
+
+These are all final-campaign acceptance positives.
+
+---
+
+# What is still failing in 17.20
+
+The only failed gate is:
+
+```text
+final_output_conventions_ready_flag = false
+```
+
+Driven by:
+
+```text
+critical_convention_violation_count = 532,834
+```
+
+The count decomposes into exactly two issue families:
+
+```text
+decline_amount_violation_rows = 517,987
+aggressive_override_reason_trace_gap_rows = 14,847
+
+517,987 + 14,847 = 532,834
+```
+
+Every other convention check is zero:
+
+```text
+final_outcome_flag_count_violation_rows = 0
+simulated_offer_exposure_flag_violation_rows = 0
+approve_amount_violation_rows = 0
+counteroffer_amount_violation_rows = 0
+manual_review_amount_violation_rows = 0
+
+approve_payment_violation_rows = 0
+counteroffer_affordability_violation_rows = 0
+manual_review_affordability_violation_rows = 0
+decline_affordability_violation_rows = 0
+
+approve_expected_loss_violation_rows = 0
+counteroffer_expected_loss_violation_rows = 0
+manual_review_expected_loss_violation_rows = 0
+decline_expected_loss_violation_rows = 0
+
+reason_code_completeness_violation_rows = 0
+reason_family_alignment_violation_rows = 0
+option_c_archive_field_gap_rows = 0
+selective_strategy_aggressive_override_rows = 0
+```
+
+So the remaining issue is narrow and identifiable.
+
+---
+
+# Root cause 1 — decline amount convention is still stricter than 17.9
+
+The updated 17.20 still treats decline rows as amount-convention violations when fields like `exposure_reduction_flag`, `exposure_reduction_amount`, or `exposure_reduction_pct` do not satisfy a stricter false/zero convention.
+
+But 17.9’s accepted convention logic is simpler and correct:
+
+```text
+DECLINE follows zero-exposure convention.
+approved_amount must equal 0.
+```
+
+17.9 passed with:
+
+```text
+decline_amount_violation_rows = 0
+```
+
+17.20 should not add extra decline exposure-reduction checks that 17.9 does not use. The Module 2 locked convention is:
+
+```text
+DECLINE:
+    approved_amount = 0
+    approved payment = 0
+    approved PTI = 0
+    approved Expected Loss = 0
+```
+
+The acceptance rollup should not reject valid decline rows because exposure-reduction diagnostics are NULL or otherwise not meaningful for no-offer outcomes.
+
+## Required 17.20 patch for decline amount
+
+In `tmp_m2_17_20_convention_counts`, replace the current `decline_amount_violation_rows` block with this:
+
+```sql
+    COUNT(*) FILTER (
+        WHERE decision_outcome = 'DECLINE'
+          AND approved_amount IS DISTINCT FROM 0::NUMERIC
+    ) AS decline_amount_violation_rows,
+```
+
+That mirrors 17.9 and should remove the false 517,987 violation count.
+
+---
+
+# Root cause 2 — aggressive override counteroffer reason-code string is wrong
+
+The current 17.20 check is looking for this reason code on aggressive override final counteroffers:
+
+```text
+COUNTEROFFER_AGGRESSIVE_REQUESTED_STRUCTURE_OVERRIDE
+```
+
+But the campaign evidence / 17.9 convention check uses:
+
+```text
+COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE
+```
+
+That is why the remaining aggressive override reason trace count equals:
+
+```text
+14,847
+```
+
+which is the total aggressive override final counteroffer population. Those rows are not missing the reason trace; 17.20 is looking for the wrong reason-code string.
+
+## Required 17.20 patch for aggressive override reason trace
+
+In `tmp_m2_17_20_convention_counts`, replace only this string:
+
+```sql
+'%COUNTEROFFER_AGGRESSIVE_REQUESTED_STRUCTURE_OVERRIDE%'
+```
+
+with:
+
+```sql
+'%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%'
+```
+
+The corrected block should look like:
+
+```sql
+    COUNT(*) FILTER (
+        WHERE aggressive_counteroffer_requested_structure_override_flag IS TRUE
+          AND (
+                triggered_reason_code_list IS NULL
+             OR (
+                    decision_outcome = 'COUNTEROFFER'
+                AND triggered_reason_code_list NOT LIKE
+                        '%COUNTEROFFER_AGGRESSIVE_EXPANSION_OVERRIDE%'
+                )
+             OR (
+                    decision_outcome = 'MANUAL_REVIEW'
+                AND triggered_reason_code_list NOT LIKE
+                        '%MANUAL_REVIEW_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%'
+                )
+             OR (
+                    decision_outcome = 'DECLINE'
+                AND triggered_reason_code_list NOT LIKE
+                        '%POLICY_STOP_AGGRESSIVE_COUNTEROFFER_NOT_FEASIBLE%'
+                )
+          )
+    ) AS aggressive_override_reason_trace_gap_rows,
+```
+
+That should remove the false 14,847 violation count.
+
+---
+
+# Final Section 17 QA conclusion
+
+```text
+17.1 archive campaign inventory: PASS
+17.2 archive slice detail: PASS
+17.3 archive grain duplicate check: PASS
+17.4 registry-to-archive reconciliation: PASS
+17.5 missing/mismatched registry runs: PASS
+17.6 archive slices without active registry row: PASS
+17.7 evidence coverage summary: PASS
+17.8 evidence coverage detail: PASS
+17.9 final-output convention checks: PASS
+17.10 validation status summary: PASS
+17.11 REVIEW / NOT_APPLICABLE concentration: PASS
+17.12 comparison registry readiness: PASS
+17.13 matched source-field consistency: PASS
+17.14 executive evidence summary: PASS
+17.15 baseline × challenger delta summary: PASS
+17.16 product guardrail effect check: PASS
+17.17 Option C effect check: PASS
+17.18 parameter snapshot profile audit: PASS
+17.19 product guardrail exact-value audit: PASS
+17.20 final acceptance rollup: NEEDS TWO SMALL QUERY-LOGIC PATCHES
+```
+
+## Campaign status after review
+
+```text
+Underlying full campaign status: ACCEPTED THROUGH 17.19
+Final acceptance CSV status: NOT YET FINAL
+Remaining blocker type: 17.20 rollup query mismatch, not campaign data
+```
+
+After applying the two 17.20 convention patches above and rerunning 17.20, the expected final output is:
+
+```text
+module2_campaign_acceptance_status =
+MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+
+structural_acceptance_ready_flag =
+true
+
+acceptance_review_focus =
+ALL_FINAL_ACCEPTANCE_GATES_PASSED
+
+critical_convention_violation_count =
+0
+
+final_output_conventions_ready_flag =
+true
+```
+
+No evidence from the updated 17.20 or the prior Section 17 outputs suggests a real archive, registry, comparison, source-consistency, evidence-capture, parameter-snapshot, product-guardrail, or Option C blocker.
+<!-- END_MESSAGE C040-M02279 -->
+
+
+---
+
+<a id="c040-m02280"></a>
+
+### C040-M02280
+
+**Andrew** · 2026-05-22T10:46:46.260000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02280 -->
+review updated 17.20 query
+<!-- END_MESSAGE C040-M02280 -->
+
+
+**Attachments in export:** `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_17.20_QA_final_module_2_campaign_acceptance_rollup_campaign(2).csv`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c040-m02286"></a>
+
+### C040-M02286
+
+**ChatGPT** · 2026-05-22T10:55:14.130111-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02286 -->
+## Updated Section 17.20 review verdict
+
+```text
+Updated 17.20 status: PASS
+Final Module 2 campaign acceptance status: ACCEPTED
+module2_campaign_acceptance_status: MODULE_2_CAMPAIGN_RESULTS_READY_FOR_ANALYSIS
+structural_acceptance_ready_flag: true
+acceptance_review_focus: ALL_FINAL_ACCEPTANCE_GATES_PASSED
+critical_convention_violation_count: 0
+Remaining blockers: none
+Further SQL changes required: none
+```
+
+The patched, materialized-temp Section 17.20 query is now working correctly and aligns with the already-passing Section 17.9 convention logic. The final rollup no longer produces false-positive decline or aggressive-override reason-trace violations. fileciteturn32file0
+
+---
+
+## Final acceptance gate review
+
+All ten final acceptance flags are now `true`:
+
+```text
+campaign_registry_ready_flag = true
+comparison_registry_ready_flag = true
+archive_ready_flag = true
+comparison_ready_flag = true
+source_consistency_ready_flag = true
+evidence_ready_flag = true
+parameter_snapshot_ready_flag = true
+final_output_conventions_ready_flag = true
+option_c_evidence_ready_flag = true
+product_guardrail_policy_ready_flag = true
+```
+
+This means the final campaign acceptance rollup passed across:
+
+```text
+active campaign registry
+comparison registry
+archive inventory and grain
+comparison readiness
+matched source-field consistency
+Section 16 evidence completeness
+parameter snapshot traceability
+final-output conventions
+Option C evidence readiness
+product-guardrail exact-value audit
+```
+
+No review focus remains.
+
+---
+
+## Campaign shape and archive readiness
+
+The final expected campaign shape reconciles:
+
+```text
+expected_campaign_runs = 39
+active_campaign_registry_rows = 39
+
+expected_comparison_groups = 20
+active_comparison_registry_rows = 20
+
+expected_total_active_campaign_source_rows = 1,950,000
+total_active_campaign_archived_rows = 1,950,000
+active_campaign_archived_rows = 1,950,000
+```
+
+Archive readiness is clean:
+
+```text
+active_runs_missing_module1_source_count = 0
+active_runs_missing_archive_rows = 0
+active_runs_with_archive_row_count_mismatch = 0
+active_runs_with_archive_application_id_grain_issue = 0
+duplicate_archive_grain_count = 0
+```
+
+This confirms the full 39-run campaign archive is complete and unique at the intended grain.
+
+---
+
+## Comparison and source consistency
+
+The active comparison framework is fully ready:
+
+```text
+comparison_group_count = 20
+comparison_ready_count = 20
+comparison_review_count = 0
+```
+
+Matched source-field consistency is clean:
+
+```text
+source_consistency_group_count = 20
+source_consistency_pass_count = 20
+source_consistency_review_count = 0
+total_source_field_mismatch_rows = 0
+```
+
+This confirms all active baseline/challenger comparisons are matched, ready, and source-consistent.
+
+---
+
+## Evidence coverage
+
+Section 16 evidence coverage is complete:
+
+```text
+registry_run_count_for_evidence_check = 39
+
+executive_evidence_rows = 39
+executive_evidence_complete_run_count = 39
+executive_evidence_issue_run_count = 0
+
+parameter_snapshot_rows = 39
+parameter_snapshot_ready_run_count = 39
+parameter_snapshot_issue_run_count = 0
+
+validation_evidence_complete_run_count = 39
+validation_evidence_incomplete_run_count = 0
+min_validation_rows_per_run = 22
+max_validation_rows_per_run = 22
+total_validation_evidence_rows = 858
+
+segment_evidence_complete_run_count = 39
+segment_evidence_issue_run_count = 0
+min_segment_rows_per_run = 25
+max_segment_rows_per_run = 25
+total_segment_evidence_rows = 975
+```
+
+This confirms every active campaign run has executive evidence, parameter snapshot evidence, validation evidence, and product × score segment evidence.
+
+---
+
+## Final-output convention checks
+
+The corrected convention rollup is now fully clean:
+
+```text
+critical_convention_violation_count = 0
+final_output_conventions_ready_flag = true
+```
+
+All component convention checks are zero:
+
+```text
+final_outcome_flag_count_violation_rows = 0
+simulated_offer_exposure_flag_violation_rows = 0
+
+approve_amount_violation_rows = 0
+counteroffer_amount_violation_rows = 0
+manual_review_amount_violation_rows = 0
+decline_amount_violation_rows = 0
+
+approve_payment_violation_rows = 0
+counteroffer_affordability_violation_rows = 0
+manual_review_affordability_violation_rows = 0
+decline_affordability_violation_rows = 0
+
+approve_expected_loss_violation_rows = 0
+counteroffer_expected_loss_violation_rows = 0
+manual_review_expected_loss_violation_rows = 0
+decline_expected_loss_violation_rows = 0
+
+reason_code_completeness_violation_rows = 0
+reason_family_alignment_violation_rows = 0
+
+option_c_archive_field_gap_rows = 0
+aggressive_override_reason_trace_gap_rows = 0
+selective_strategy_aggressive_override_rows = 0
+```
+
+This confirms the patched 17.20 now correctly recognizes:
+
+```text
+MANUAL_REVIEW = unresolved / NULL approved fields
+DECLINE = zero-exposure / zero-payment / zero-PTI / zero-Expected-Loss convention
+```
+
+and uses the correct aggressive expansion reason-code trace.
+
+---
+
+## Option C evidence readiness
+
+Option C evidence is complete:
+
+```text
+option_c_evidence_run_count = 39
+option_c_executive_evidence_gap_rows = 0
+selective_strategy_aggressive_override_evidence_issue_rows = 0
+aggressive_strategy_missing_override_evidence_rows = 0
+option_c_evidence_ready_flag = true
+```
+
+This means the final campaign preserved the selective/aggressive counteroffer strategy split evidence correctly:
+
+```text
+Selective feasibility rows do not leak aggressive override rows.
+Aggressive expansion rows have aggressive override evidence.
+Option C executive evidence is populated across all active campaign runs.
+```
+
+---
+
+## Product-guardrail exact-value audit
+
+The product-guardrail audit is also clean:
+
+```text
+product_guardrail_campaign_run_count = 5
+product_guardrail_audited_product_count = 2
+product_guardrail_expected_policy_rows = 10
+product_guardrail_parameter_snapshot_complete_run_count = 5
+product_guardrail_parameter_snapshot_issue_run_count = 0
+product_guardrail_policy_ready_rows = 10
+missing_product_guardrail_policy_rows = 0
+product_guardrail_policy_row_count_issue_rows = 0
+product_guardrail_policy_mismatch_rows = 0
+product_guardrail_policy_ready_flag = true
+```
+
+This confirms the product-guardrail strategy runs captured the expected exact-value product-policy snapshot rows for the audited products.
+
+---
+
+# Final Section 17 QA completion
+
+```text
+Section 17.1 archive campaign inventory: PASS
+Section 17.2 archive slice detail: PASS
+Section 17.3 archive grain duplicate check: PASS
+Section 17.4 registry-to-archive reconciliation: PASS
+Section 17.5 missing/mismatched registry runs: PASS
+Section 17.6 archive slices without active registry row: PASS
+Section 17.7 evidence coverage summary: PASS
+Section 17.8 evidence coverage detail: PASS
+Section 17.9 final-output convention checks: PASS
+Section 17.10 validation status summary: PASS
+Section 17.11 REVIEW / NOT_APPLICABLE concentration: PASS
+Section 17.12 comparison registry readiness: PASS
+Section 17.13 matched source-field consistency: PASS
+Section 17.14 executive evidence campaign summary: PASS
+Section 17.15 baseline × challenger delta summary: PASS
+Section 17.16 product guardrail effect check: PASS
+Section 17.17 Option C effect check: PASS
+Section 17.18 parameter snapshot profile audit: PASS
+Section 17.19 product guardrail exact-value audit: PASS
+Section 17.20 final campaign acceptance rollup: PASS
+```
+
+## Final campaign signoff
+
+```text
+Full Module 2 campaign QA: ACCEPTED
+
+All planned campaign runs completed and archived.
+Fresh Section 15 frontier was rerun.
+Section 16.9 synchronization completed.
+Section 17 final acceptance passed.
+No archive blocker.
+No registry blocker.
+No comparison blocker.
+No matched source-field blocker.
+No evidence coverage blocker.
+No parameter snapshot blocker.
+No final-output convention blocker.
+No Option C blocker.
+No product-guardrail policy audit blocker.
+```
+
+The final campaign SQL evidence is ready to preserve and use for executive analysis, validation-summary drafting, README interpretation, and LinkedIn storyline development.
+<!-- END_MESSAGE C040-M02286 -->
+
+
+---
+
+<a id="c040-m02287"></a>
+
+### C040-M02287
+
+**Andrew** · 2026-05-24T08:32:12.492000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02287 -->
+let's discuss interesting narratives we learned from this campaign.
+<!-- END_MESSAGE C040-M02287 -->
+
+
+---
+
+<a id="c040-m02290"></a>
+
+### C040-M02290
+
+**ChatGPT** · 2026-05-24T08:39:47.724014-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02290 -->
+Absolutely. The campaign produced several strong narratives, and the most interesting part is that they are not just “which strategy won?” narratives. They are **strategy-design narratives**: access versus risk, counteroffer conservatism versus counteroffer expansion, product-specific guardrails versus broad portfolio tightening, and the value of evidence synchronization / governance.
+
+The strongest overarching story is this:
+
+> **Credit strategy is not a score cutoff. It is a governed tradeoff system.**
+
+That is exactly what Module 2 was designed to show: access, approval rate, counteroffer usage, selective versus aggressive counteroffer posture, manual-review burden, decline concentration, affordability, approved exposure, synthetic estimated-risk profile, requested Expected Loss, approved Expected Loss, product guardrails, explanation-code transparency, parameter traceability, frontier synchronization, and post-campaign evidence readiness all move together. fileciteturn34file1
+
+## 1. The baseline became a true reference strategy, not just a default
+
+M2-01 gave us a credible champion baseline. It was not overly permissive, not overly conservative, and not artificially clean. It had approvals, counteroffers, manual review, declines, mixed-signal cases, borderline cases, ordinary counteroffer candidates, and clear reason-code structure.
+
+That matters because the rest of the campaign only works if the baseline is a meaningful anchor. A weak baseline would make challengers look impressive for the wrong reasons. Instead, the campaign showed that baseline was a stable reference point against which every challenger could be interpreted.
+
+Narrative angle:
+
+> “Before testing challengers, I built a baseline strategy that behaves like a real credit policy: it approves clean cases, counteroffers feasible but constrained structures, sends ambiguous cases to review, and declines severe-risk / hard-stop cases.”
+
+This is a strong credibility narrative because it shows decision-system design before optimization.
+
+## 2. M2-02 proved the cleanest “risk discipline” story
+
+M2-02, the tighter synthetic-risk challenger, gave one of the clearest portfolio stories:
+
+```text
+Lower offer exposure.
+Lower approval rate.
+Higher decline rate.
+Lower approved amount.
+Lower approved Expected Loss.
+Lower approved EL per approved dollar.
+Cleaner offered-population synthetic-risk profile.
+```
+
+This is the classic risk-discipline tradeoff. It is not ambiguous. The strategy tightened the population that received positive offer exposure and shifted reason-code movement toward synthetic-risk policy stops and synthetic-risk review.
+
+The most important insight is that the reduction in approved Expected Loss was not just a side effect of reducing volume. The offer population itself became cleaner. That is a better story than “we approved fewer people.” It is:
+
+> “The challenger changed the composition of approved exposure.”
+
+Narrative angle:
+
+> “A tighter risk strategy does not merely reduce approvals. It reshapes the risk profile of the offer book. The cost is access; the benefit is cleaner approved exposure and lower approved Expected Loss.”
+
+This is probably one of the first LinkedIn posts I would write from the campaign.
+
+## 3. M2-03 showed the honest growth tradeoff
+
+M2-03, the growth-oriented strategy, gave the mirror image of M2-02:
+
+```text
+Higher approval rate.
+Higher simulated offer exposure.
+Higher approved amount.
+Lower decline rate.
+Higher total approved Expected Loss.
+Higher approved EL per approved dollar.
+```
+
+That is exactly what a growth challenger should do. The important thing is that the engine did not pretend growth was free. It surfaced the tradeoff explicitly.
+
+This is an excellent executive narrative because it is honest:
+
+> “Growth can be achieved, but the approved-exposure book changes. The incremental approvals and offer exposure carry higher approved Expected Loss.”
+
+This is also a portfolio-grade story because it does not villainize growth. It frames growth as a controlled strategic posture with measurable cost.
+
+Narrative angle:
+
+> “A growth strategy is not a failure because risk increases. It is only a failure if the tradeoff is hidden. In a governed simulator, growth should visibly expand access and visibly price in the risk / loss tradeoff.”
+
+That is a strong analytics maturity point.
+
+## 4. M2-04 proved affordability tightening is not the same as risk tightening
+
+M2-04 was more subtle and therefore more interesting. The tighter affordability challenger reduced offer exposure, approved amount, approved PTI, and total approved Expected Loss, but it did not produce a pure “cleaner risk” story. It landed as a mixed frontier point because approved EL per approved dollar was not better than baseline.
+
+That is a very realistic result.
+
+Affordability discipline and synthetic-risk discipline overlap, but they are not identical. Tightening payment-burden constraints can reduce exposure and improve affordability metrics, while still leaving a selected approved book with a different risk density profile.
+
+Narrative angle:
+
+> “Affordability tightening is not interchangeable with risk tightening. A PTI guardrail can reduce exposure and payment burden while producing a mixed risk-efficiency profile.”
+
+That is a nuanced credit strategy point and would make a good technical post because it pushes against a common oversimplification: “tighter = safer.” The campaign showed that the type of tightening matters.
+
+## 5. Product guardrails showed that targeted policy can beat broad blunt-force tightening
+
+The product-specific guardrail runs were valuable because they showed a different class of strategy: not broad portfolio tightening, but targeted product-policy intervention.
+
+The guardrail design focused on unsecured personal loans and revolving lines, while keeping other products as monitoring rows. Section 17.16 is explicitly designed to check product-specific guardrail strategy effects where the challenger is `PRODUCT_SPECIFIC_GUARDRAIL_STRATEGY`, with unsecured personal loan and revolving line as the primary audited targets and other products as monitoring rows. fileciteturn34file13
+
+The narrative here is:
+
+> “Not every portfolio problem needs a portfolio-wide cutoff. Sometimes the right intervention is product-specific.”
+
+This is a very marketable analytics / strategy story. It demonstrates that the simulator can support surgical policy design:
+
+```text
+Tighten the products creating exposure / Expected Loss pressure.
+Preserve monitoring visibility on non-target products.
+Audit exact product-policy parameters.
+Confirm the intended product-policy snapshot was captured.
+```
+
+The exact-value audit mattered here. Section 17.19 exists because structural campaign acceptance can pass even if a product-policy parameter was populated with the wrong value; the audit confirms canonical product-guardrail values for unsecured personal loans and revolving lines. fileciteturn34file12
+
+Narrative angle:
+
+> “The product-guardrail story is not just that the target products moved. The governance story is that the strategy was parameter-traceable and exact-value audited.”
+
+That is a senior-level design point.
+
+## 6. Option C became the campaign’s most distinctive architecture narrative
+
+This may be the most original and differentiated narrative in the whole module.
+
+The old generic “counteroffer-first” idea evolved into a formal split:
+
+```text
+SELECTIVE_COUNTEROFFER_FEASIBILITY_STRATEGY
+AGGRESSIVE_COUNTEROFFER_EXPANSION_STRATEGY
+```
+
+The campaign showed that these are not the same strategy.
+
+Selective feasibility preserved conservative counteroffer discipline:
+
+```text
+ordinary counteroffer candidates exist
+aggressive override rows = 0
+review-oriented behavior preserved for severe requested-structure cases
+```
+
+Aggressive expansion did something materially different:
+
+```text
+more severe requested-structure cases routed into governed counteroffer feasibility testing
+aggressive override rows appeared
+many became final COUNTEROFFER
+some became MANUAL_REVIEW
+none became uncontrolled automatic approvals
+reason traces were preserved
+```
+
+Section 17.17 is built exactly around this narrative: it reviews active comparison groups where the challenger is either selective counteroffer feasibility or aggressive counteroffer expansion, and it explicitly frames aggressive expansion as routing governed severe requested-structure cases into counteroffer feasibility testing, not bypassing policy controls. fileciteturn35file14
+
+This is a very strong LinkedIn / README narrative:
+
+> “Counteroffer expansion is not the same as approval expansion. The question is whether additional applicants can be routed into governed feasibility testing without bypassing hard policy stops, risk controls, affordability caps, or reason-code traceability.”
+
+The aggressive expansion evidence is especially useful because it was not binary. It produced:
+
+```text
+final aggressive override counteroffers
+final aggressive override manual reviews
+zero final aggressive override declines in the observed campaign
+```
+
+That says the strategy expanded governed counteroffer opportunity, but did not erase review discipline.
+
+## 7. Manual-review reduction showed operational burden is a policy lever
+
+The manual-review reduction strategy is a different kind of challenger. It is not primarily about maximizing access or minimizing Expected Loss. It tests operational burden.
+
+The key strategic concept is:
+
+```text
+What happens if failed counteroffers resolve to DECLINE rather than MANUAL_REVIEW?
+```
+
+That is not a “better” strategy by default. It is a burden-reduction strategy with a real customer-access / no-offer tradeoff.
+
+Narrative angle:
+
+> “Manual review is not just an outcome category. It is an operational queue. A strategy can reduce review burden, but the cost is often a more decisive no-offer posture.”
+
+That is very practical and enterprise-relevant. It connects strategy design to operations capacity.
+
+## 8. Matched comparison discipline became a governance story, not just a QA feature
+
+The comparison framework became one of the campaign’s strongest governance assets.
+
+The key point is that baseline and challenger comparisons were matched on the same Module 1 scenario / population, with source-field consistency checks proving that deltas came from Module 2 strategy movement rather than population drift. Section 13 is explicitly the archive comparison layer that answers how two archived Module 2 strategy runs differ on the same Module 1 scenario and population, while avoiding archive mutation or recalculation. fileciteturn34file30
+
+This is important because “strategy A versus strategy B” is weak unless population comparability is controlled.
+
+Narrative angle:
+
+> “The campaign does not compare two random portfolios. It compares strategy outcomes on matched synthetic applicants, preserving source fields so movement can be attributed to the strategy layer.”
+
+That is an excellent governance / validation story.
+
+## 9. Section 15 became the executive control tower
+
+Section 15’s value became very clear after the full campaign. For single runs, it was mostly a baseline reference. After all 39 runs, it became the archive-wide strategy frontier.
+
+Section 15 is explicitly designed to answer how archived Module 1 scenario × Module 2 strategy slices trade off across offer exposure, approved amount, approved Expected Loss, affordability, risk profile, counteroffer behavior, Option C path behavior, manual review, decline rate, product behavior, score-band behavior, and reason-code movement. fileciteturn34file2
+
+The narrative here is:
+
+> “A campaign archive is more valuable than isolated run outputs because it lets you interpret strategy posture as a frontier.”
+
+This is a big executive framing point. The artifact does not just say “run 39 strategies.” It says:
+
+```text
+Here are the frontier positions:
+baseline reference
+risk discipline
+growth oriented
+affordability discipline / mixed
+counteroffer management
+manual-review reduction
+product guardrail
+Option C selective / aggressive
+```
+
+That makes the project read like a decisioning platform rather than a query collection.
+
+## 10. The final acceptance layer became part of the story
+
+This is not just infrastructure. It is part of the portfolio-grade narrative.
+
+The final campaign did not end with “the SQL ran.” It ended with:
+
+```text
+39 active campaign runs
+20 active comparison groups
+1,950,000 archived active-campaign rows
+complete evidence coverage
+complete parameter snapshots
+complete segment evidence
+source-consistent matched comparisons
+zero final-output convention violations
+Option C evidence ready
+product-guardrail exact-value audit ready
+final campaign acceptance passed
+```
+
+Section 17 is explicitly the final read-only acceptance layer after all runs, Section 15 rerun, and Section 16.9 synchronization; it reviews the completed campaign from persistent archive, registry, comparison, validation, parameter-snapshot, product-policy, and evidence objects. fileciteturn35file12
+
+Narrative angle:
+
+> “The strongest part of the campaign may not be the strategy results. It may be that the strategy results were made auditable, replayable, synchronized, and acceptance-gated.”
+
+That is a senior-level governance message.
+
+## 11. The most compelling LinkedIn post sequence
+
+I would not make one giant “campaign results” post. I would turn this into a series.
+
+### Post 1 — “Credit strategy is not a cutoff”
+
+Core message:
+
+```text
+A real strategy engine balances approval, counteroffer, manual review, decline,
+affordability, risk, exposure, Expected Loss, and explanation-code transparency.
+```
+
+Use M2-01 baseline as the anchor. The point is architecture, not results.
+
+### Post 2 — “The risk discipline challenger”
+
+Use M2-02.
+
+Core message:
+
+```text
+Tighter synthetic-risk discipline reduced approved Expected Loss and improved
+the offer-risk profile, but at the cost of access and higher declines.
+```
+
+This is the cleanest quantifiable champion/challenger story.
+
+### Post 3 — “Growth is not free — and that is the point”
+
+Use M2-03.
+
+Core message:
+
+```text
+Growth expanded approvals and offer exposure, but increased approved Expected Loss.
+A credible simulator should surface that tradeoff rather than hide it.
+```
+
+### Post 4 — “Affordability discipline is not the same as risk discipline”
+
+Use M2-04.
+
+Core message:
+
+```text
+A payment-burden strategy can reduce approved exposure and PTI without producing
+the same efficiency signature as synthetic-risk tightening.
+```
+
+This one is nuanced and differentiating.
+
+### Post 5 — “Product guardrails beat blunt-force policy”
+
+Use product-guardrail runs.
+
+Core message:
+
+```text
+Instead of tightening everything, target the products that need control.
+Then audit the exact product-policy snapshot.
+```
+
+This demonstrates practical credit-policy thinking.
+
+### Post 6 — “Counteroffer expansion, governed properly”
+
+Use Option C.
+
+Core message:
+
+```text
+Aggressive counteroffer expansion should not mean bypassing risk controls.
+It should mean routing more cases into governed feasibility testing with
+reason-code traceability and failed-counteroffer handling.
+```
+
+This is probably the most unique post.
+
+### Post 7 — “The acceptance gate”
+
+Use final Section 17.
+
+Core message:
+
+```text
+A strategy campaign is not complete when outputs exist.
+It is complete when archive, registry, evidence, comparison, convention,
+parameter, Option C, and product-policy audits all reconcile.
+```
+
+This is the governance credibility post.
+
+## 12. My recommended “headline narrative” for the whole campaign
+
+If you want one executive summary, I would frame it like this:
+
+> **The Module 2 campaign demonstrated that credit strategy can be simulated as a governed frontier rather than a single approval rule. Across 39 strategy runs and 20 matched comparison groups, the engine showed how risk tightening, growth expansion, affordability discipline, product guardrails, review-burden reduction, and counteroffer strategy design each move different parts of the portfolio. The most important result is not that one strategy wins universally; it is that each strategy produces an explainable tradeoff with archive-backed evidence, matched comparison discipline, parameter traceability, reason-code transparency, and final acceptance controls.**
+
+That is the core story.
+
+## The narratives I would prioritize
+
+My top three, in order:
+
+```text
+1. Governed strategy frontier:
+   This is the main portfolio-grade systems narrative.
+
+2. Risk discipline vs growth:
+   This is the cleanest executive tradeoff story.
+
+3. Option C selective vs aggressive counteroffer design:
+   This is the most differentiated technical strategy story.
+```
+
+The product-guardrail and affordability narratives are also strong, but I would use them after the above three because they are more specialized.
+
+The campaign’s biggest lesson is that **strategy quality is not measured by a single metric**. It is measured by whether the tradeoff is visible, controlled, explainable, and evidence-backed.
+<!-- END_MESSAGE C040-M02290 -->
+
+
+---
+
+<a id="c040-m02291"></a>
+
+### C040-M02291
+
+**Andrew** · 2026-05-24T11:33:55.836000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02291 -->
+i'd like ideas for the github readme including really interesting chart ideas.  in my other github portfolios I have showcased a 3 chart collage like in this example:
+<!-- END_MESSAGE C040-M02291 -->
+
+
+**Attachments in export:** `github_readme_example.pdf`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c040-m02302"></a>
+
+### C040-M02302
+
+**ChatGPT** · 2026-05-24T11:45:56.516243-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02302 -->
+Yes — the 3-chart collage format is a great fit for this project. Your example already signals the right README pattern: one compact visual panel that makes the project feel analytical, executive-ready, and visually legible before the reader gets deep into the SQL. fileciteturn37file0
+
+For this Module 2 README, I would use the 3-chart collage as the **hero evidence artifact**, then include a few smaller supporting visuals below. The key is not to chart everything. The README should visually prove the core claim:
+
+> **Credit strategy is not a score cutoff. It is a governed frontier across access, risk, affordability, counteroffers, product policy, evidence, and acceptance controls.**
+
+That language is strongly aligned to the Module 2 design: the SQL describes Module 2 as a governed synthetic credit strategy layer that applies strategy/product controls, assigns simulated outcomes, calculates approved exposure economics, supports archive-backed comparison, summarizes frontier tradeoffs, captures evidence, synchronizes post-campaign frontier evidence, and supports final acceptance. fileciteturn38file15
+
+# Recommended README structure
+
+I would structure the README like this:
+
+```text
+1. Project title and one-line thesis
+2. Hero 3-chart collage
+3. What this project demonstrates
+4. Architecture overview
+5. Campaign design
+6. Key strategy narratives
+7. Validation and acceptance evidence
+8. Repository guide
+9. How to reproduce / run
+10. Boundaries and future Module 3
+```
+
+The README should not read like “I wrote a SQL script.” It should read like:
+
+> **I designed a governed credit strategy simulation platform that turns synthetic applicant risk profiles into archived, comparable, explainable strategy outcomes.**
+
+That framing matters because Section 15 is explicitly positioned as the archive-wide strategy frontier control tower, translating completed strategy runs into a structured frontier for executive interpretation, README evidence, LinkedIn storytelling, campaign acceptance, and future Module 3 economics design. fileciteturn38file14
+
+---
+
+# Best hero 3-chart collage
+
+## Collage title
+
+```text
+Module 2 Campaign Frontier: Access, Risk, and Counteroffer Governance
+```
+
+## Chart 1 — Strategy frontier scatter
+
+**Purpose:** Show the whole campaign as a strategy frontier.
+
+```text
+Chart type:
+    Scatter / bubble chart
+
+X-axis:
+    simulated_offer_exposure_rate
+
+Y-axis:
+    approved_el_per_approved_dollar
+
+Bubble size:
+    total_approved_amount
+
+Color:
+    strategy family or frontier_position_type
+
+Labels:
+    M2-01 baseline
+    M2-02 tighter synthetic risk
+    M2-03 growth oriented
+    M2-04 tighter affordability
+    M2-05 selective counteroffer feasibility
+    M2-37 / M2-38 / M2-39 aggressive expansion
+```
+
+**Why it works:**  
+This immediately tells the viewer that strategy design is a tradeoff. Strategies with higher access often move upward or rightward in risk / exposure terms. Strategies with lower approved EL may move leftward in access. This is the README’s strongest “frontier” visual.
+
+**Caption idea:**
+
+```text
+Each point is an archived Module 2 strategy run. The frontier shows how access, approved exposure,
+and approved Expected Loss density move together across the governed campaign.
+```
+
+## Chart 2 — Baseline vs challenger delta bars
+
+**Purpose:** Show the most intuitive strategy tradeoffs against baseline.
+
+```text
+Chart type:
+    Diverging horizontal bar chart
+
+Rows:
+    M2-02 Tighter Synthetic Risk
+    M2-03 Growth Oriented
+    M2-04 Tighter Affordability
+    M2-05 Selective Counteroffer Feasibility
+    M2-37 Aggressive Counteroffer Expansion
+
+Metrics:
+    delta_simulated_offer_exposure_rate
+    delta_total_approved_amount
+    delta_total_approved_expected_loss_amount
+    delta_approved_el_per_approved_dollar
+```
+
+**Design option:** Use small multiples inside one panel: one small bar chart per metric.
+
+**Why it works:**  
+It tells the “risk discipline vs growth” story cleanly. M2-02 and M2-03 are mirror images: risk discipline reduces access and EL; growth expands access and approved amount while increasing expected loss. M2-04 becomes the nuanced affordability story.
+
+**Caption idea:**
+
+```text
+Baseline-relative deltas show that no strategy dominates every dimension: risk discipline, growth,
+affordability, and counteroffer management each move the portfolio differently.
+```
+
+## Chart 3 — Option C counteroffer split proof
+
+**Purpose:** Show that selective and aggressive counteroffer strategies are not the same thing.
+
+```text
+Chart type:
+    Stacked bar or grouped bar
+
+X-axis:
+    Option C strategy run
+        M2-05 selective
+        M2-18 selective
+        M2-29 selective
+        M2-37 aggressive
+        M2-38 aggressive
+        M2-39 aggressive
+
+Y-axis:
+    aggressive_override_rows
+
+Stack:
+    final counteroffer rows
+    final manual review rows
+    final decline rows
+```
+
+**Expected visual story:**
+
+```text
+Selective feasibility:
+    aggressive override rows = 0
+
+Aggressive expansion:
+    aggressive override rows > 0
+    many resolve to COUNTEROFFER
+    some resolve to MANUAL_REVIEW
+    none resolve to uncontrolled approvals
+```
+
+**Why it works:**  
+This is the most distinctive project-specific visual. It shows that “counteroffer expansion” is governed routing into feasibility testing, not blind approval expansion. Module 2’s own design language emphasizes ordinary versus aggressive counteroffer path evidence and final aggressive override outcome mix as part of validation and interpretation. fileciteturn38file15
+
+**Caption idea:**
+
+```text
+Aggressive counteroffer expansion increases governed feasibility routing; selective feasibility
+preserves conservative treatment. Aggressive override rows still resolve through feasibility and
+review controls.
+```
+
+This is the hero collage I would use at the top of the README.
+
+---
+
+# Alternative 3-chart collages worth considering
+
+## Collage B — “Strategy outcomes in one page”
+
+This is simpler and more accessible for a non-credit reader.
+
+### Chart 1 — Final outcome mix by strategy
+
+```text
+Stacked 100% bar:
+    APPROVE
+    COUNTEROFFER
+    MANUAL_REVIEW
+    DECLINE
+```
+
+Show selected runs:
+
+```text
+M2-01 baseline
+M2-02 tighter risk
+M2-03 growth
+M2-04 affordability
+M2-05 selective
+M2-37 aggressive
+```
+
+This visually introduces the decision taxonomy.
+
+### Chart 2 — Approved amount vs approved Expected Loss
+
+```text
+Combo bar / dot:
+    bar = total_approved_amount
+    dot = total_approved_expected_loss_amount
+```
+
+This shows exposure and loss moving together but not identically.
+
+### Chart 3 — Top reason-code delta drivers
+
+```text
+Horizontal bar:
+    comparison group / challenger
+    top_reason_code_delta_driver_code
+    population share change
+```
+
+This adds explainability. It proves the campaign is not just metrics; it has reason-code movement.
+
+**Best use:** README section after the hero.
+
+---
+
+## Collage C — “Risk discipline vs growth”
+
+This is ideal for a LinkedIn-style README graphic.
+
+### Chart 1 — M2-02 vs M2-01
+
+```text
+Dumbbell chart:
+    approval rate
+    offer exposure rate
+    decline rate
+    approved EL capture rate
+    approved EL per approved dollar
+```
+
+### Chart 2 — M2-03 vs M2-01
+
+Same metrics, opposite direction.
+
+### Chart 3 — Side-by-side frontier callout
+
+```text
+M2-02 = lower access / lower EL
+M2-03 = higher access / higher EL
+M2-01 = reference point
+```
+
+**Caption idea:**
+
+```text
+Risk discipline and growth are not opposites in code; they are governed strategy postures with
+measurable tradeoffs.
+```
+
+This would be very readable for recruiters and portfolio reviewers.
+
+---
+
+## Collage D — “Product guardrails are targeted policy, not broad tightening”
+
+### Chart 1 — Product-level delta heatmap
+
+```text
+Rows:
+    product_type_policy_key
+
+Columns:
+    product-guardrail comparison groups
+
+Cell value:
+    delta_simulated_offer_exposure_rate
+```
+
+Highlight:
+
+```text
+UNSECURED_PERSONAL_LOAN
+REVOLVING_LINE
+```
+
+### Chart 2 — Approved EL delta by product
+
+```text
+Bar chart:
+    delta_total_approved_expected_loss_amount
+    grouped by product
+```
+
+### Chart 3 — Product-policy audit badge chart
+
+```text
+Tile chart:
+    5 product guardrail runs × 2 audited products
+    all green = exact values matched
+```
+
+**Why it works:**  
+This is a very senior strategy story: targeted product-policy intervention plus exact-value audit. Section 17.16 treats unsecured personal loan and revolving line as the primary audited guardrail targets, with other products shown as monitoring rows. fileciteturn37file14 Section 17.19 exists to confirm that product-guardrail runs captured the intended canonical product-guardrail values for those products. fileciteturn37file13
+
+---
+
+## Collage E — “Final acceptance and governance”
+
+This is not the sexiest, but it is powerful for credibility.
+
+### Chart 1 — Campaign evidence inventory
+
+```text
+KPI tiles:
+    39 active runs
+    20 comparison groups
+    1,950,000 archived rows
+    858 validation evidence rows
+    975 segment evidence rows
+```
+
+### Chart 2 — Acceptance gate matrix
+
+```text
+Rows:
+    archive
+    registry
+    comparison readiness
+    source consistency
+    evidence coverage
+    parameter snapshots
+    final-output conventions
+    Option C evidence
+    product guardrail audit
+
+Columns:
+    status
+```
+
+Everything green.
+
+### Chart 3 — Archive/evidence coverage by run
+
+```text
+Dot matrix:
+    rows = M2-01 through M2-39
+    columns = archive, executive evidence, parameter snapshot, validation evidence, segment evidence
+```
+
+**Caption idea:**
+
+```text
+The campaign did not end when the SQL ran. It ended when archive, evidence, comparison,
+parameter, convention, Option C, and product-policy gates reconciled.
+```
+
+This belongs lower in the README, near the validation section.
+
+---
+
+# My recommended README visual stack
+
+I would not overload the README with too many images. I would use **three primary visuals** and maybe one optional appendix visual.
+
+## Top hero visual
+
+```text
+module2_campaign_frontier_collage.png
+```
+
+Contains:
+
+```text
+1. Strategy frontier scatter
+2. Baseline-relative delta bars
+3. Option C selective vs aggressive counteroffer split
+```
+
+This is the “wow” visual.
+
+## Mid-README visual
+
+```text
+module2_strategy_outcome_mix.png
+```
+
+A stacked outcome bar chart for selected representative runs:
+
+```text
+M2-01 baseline
+M2-02 tighter synthetic risk
+M2-03 growth
+M2-04 affordability
+M2-05 selective feasibility
+M2-37 aggressive expansion
+```
+
+This helps readers understand the four final outcomes:
+
+```text
+APPROVE
+COUNTEROFFER
+MANUAL_REVIEW
+DECLINE
+```
+
+## Governance visual
+
+```text
+module2_acceptance_gate_matrix.png
+```
+
+Shows final acceptance readiness:
+
+```text
+archive ready
+comparison ready
+source fields match
+evidence complete
+parameter snapshots complete
+conventions clean
+Option C evidence ready
+product guardrail audit ready
+```
+
+This reinforces that the project is audit-ready, not just analytical.
+
+---
+
+# README chart ideas ranked by impact
+
+## Tier 1 — definitely include
+
+### 1. Strategy frontier scatter
+
+This should be the signature chart.
+
+```text
+X = simulated_offer_exposure_rate
+Y = approved_el_per_approved_dollar
+Size = total_approved_amount
+Color = frontier_position_type
+Label = module2_run_id
+```
+
+Why it belongs: it summarizes the entire Module 2 idea in one picture.
+
+### 2. Baseline-relative delta chart
+
+```text
+Rows = selected challenger runs
+Columns / metrics = access, approved amount, approved EL, EL density
+```
+
+Why it belongs: it turns the campaign into an executive champion/challenger story.
+
+### 3. Option C selective vs aggressive chart
+
+```text
+Rows = selective/aggressive runs
+Bars = aggressive override final counteroffer / manual review / decline
+```
+
+Why it belongs: it shows your unique counteroffer architecture.
+
+---
+
+## Tier 2 — strong supporting visuals
+
+### 4. Product × score heatmap
+
+```text
+Rows = product
+Columns = score band
+Cell = simulated_offer_exposure_rate or approved_expected_loss_capture_rate
+```
+
+This is great for showing that the engine is product-aware and score-aware.
+
+### 5. Reason-code delta driver chart
+
+```text
+Rows = comparison groups
+Bar = top_reason_code_delta_population_share
+Color = reason family
+Label = top reason code
+```
+
+This proves explainability.
+
+### 6. Decision migration Sankey / matrix
+
+Use for M2-02 vs M2-01:
+
+```text
+APPROVE → COUNTEROFFER
+COUNTEROFFER → MANUAL_REVIEW
+COUNTEROFFER → DECLINE
+MANUAL_REVIEW → DECLINE
+MANUAL_REVIEW → COUNTEROFFER
+```
+
+This is excellent but may be visually harder to fit cleanly into README unless you make it polished.
+
+---
+
+## Tier 3 — good appendix visuals
+
+### 7. Evidence coverage by run
+
+```text
+Rows = M2-01 to M2-39
+Columns = archive, executive evidence, validation evidence, parameter snapshot, segment evidence
+All green
+```
+
+Great for governance, not the first visual.
+
+### 8. Product guardrail exact-value audit
+
+```text
+5 product guardrail runs × 2 audited products = 10 green tiles
+```
+
+Very credible for methodology.
+
+### 9. Manual-review burden chart
+
+```text
+Manual review rate by strategy family
+```
+
+Useful if you want an operations narrative.
+
+---
+
+# Suggested README captions
+
+## Hero caption
+
+```text
+The completed Module 2 campaign evaluated 39 governed strategy runs across matched synthetic
+application populations. The strategy frontier shows that risk discipline, growth, affordability,
+counteroffer design, and product guardrails produce different access / risk / exposure tradeoffs —
+not one universal winner.
+```
+
+## Frontier scatter caption
+
+```text
+Each bubble is an archived strategy run. Moving right increases simulated offer exposure; moving
+up increases approved Expected Loss per approved dollar. Bubble size represents approved exposure.
+```
+
+## Option C caption
+
+```text
+Selective counteroffer feasibility preserved conservative routing with zero aggressive override
+rows. Aggressive expansion routed additional severe requested-structure cases into governed
+counteroffer feasibility testing, producing final counteroffers and manual reviews without bypassing
+controls.
+```
+
+## Acceptance caption
+
+```text
+The final campaign acceptance layer confirmed archive completeness, comparison readiness, matched
+source-field consistency, evidence coverage, parameter traceability, final-output conventions,
+Option C evidence readiness, and product-guardrail exact-value audit readiness.
+```
+
+---
+
+# README section draft outline
+
+Here is the structure I would use.
+
+```markdown
+# Enterprise Credit Decisioning Strategy Simulator — Module 2
+
+## Credit strategy is not a score cutoff
+
+Module 2 is a governed synthetic credit strategy simulation layer. It consumes
+Module 1 synthetic application and risk outputs, applies configurable strategy
+and product-policy controls, assigns simulated outcomes, calculates approved
+exposure economics, persists archive outputs, supports matched comparison,
+summarizes strategy-frontier tradeoffs, captures evidence, and performs final
+post-campaign acceptance.
+
+![Module 2 campaign frontier collage](assets/module2_campaign_frontier_collage.png)
+
+## What this project demonstrates
+
+- Profile-driven strategy configuration
+- Product-policy guardrails
+- Four-outcome decision taxonomy
+- Counteroffer feasibility and exposure treatment
+- Selective vs aggressive counteroffer strategy split
+- Archive-backed matched comparison
+- Strategy frontier interpretation
+- Persistent evidence capture
+- Final acceptance gating
+
+## Campaign design
+
+- 39 Module 2 strategy runs
+- 20 active comparison groups
+- 1.95 million archived active-campaign strategy rows
+- 39 executive evidence rows
+- 858 validation evidence rows
+- 975 product × score segment evidence rows
+
+## Key findings
+
+### Risk discipline reduced approved Expected Loss, but lowered access
+
+### Growth expanded access, but increased approved Expected Loss
+
+### Affordability discipline was not identical to synthetic-risk discipline
+
+### Product guardrails created targeted policy movement
+
+### Option C proved selective and aggressive counteroffer expansion are different
+
+## Validation and governance
+
+The campaign passed final acceptance across archive, registry, comparison,
+source consistency, evidence coverage, parameter snapshots, output conventions,
+Option C evidence, and product-guardrail exact-value audit.
+
+## Repository guide
+
+...
+```
+
+The “credit strategy is not a score cutoff” thesis is directly aligned with the Module 2 executive snapshot, which frames strategy as a governed tradeoff across access, approvals, counteroffers, affordability, exposure, synthetic-risk profile, expected loss, product guardrails, reason-code transparency, parameter traceability, frontier synchronization, and post-campaign readiness. fileciteturn38file15
+
+---
+
+# Best chart-data sources
+
+For the README visuals, I would use these outputs:
+
+```text
+15.7A — Executive-ready strategy frontier summary
+    Best source for:
+        frontier scatter
+        baseline deltas
+        ranking / quadrant / frontier position
+        Option C frontier posture
+
+17.15 — Baseline × challenger delta summary
+    Best source for:
+        formal comparison deltas
+        comparison-group storytelling
+
+17.16 — Product guardrail strategy effect check
+    Best source for:
+        product guardrail target-product charts
+
+17.17 — Option C counteroffer strategy split effect check
+    Best source for:
+        selective vs aggressive counteroffer split chart
+
+17.20 — Final campaign acceptance rollup
+    Best source for:
+        governance / acceptance gate chart
+```
+
+If you only want to publish a few CSVs in `/outputs`, I would include:
+
+```text
+module2_15.7A_executive_frontier_summary.csv
+module2_17.15_baseline_challenger_delta_summary.csv
+module2_17.17_option_c_effect_check.csv
+module2_17.20_final_acceptance_rollup.csv
+```
+
+---
+
+# My favorite README visual concept
+
+The strongest single 3-chart collage would be:
+
+```text
+LEFT:
+    Strategy Frontier Scatter
+    "Where each strategy sits on access vs risk"
+
+CENTER:
+    Baseline-Relative Delta Bars
+    "How key challengers move access, exposure, and Expected Loss"
+
+RIGHT:
+    Option C Counteroffer Split
+    "Selective vs aggressive counteroffer governance"
+```
+
+This gives the reader:
+
+```text
+1. The full strategy landscape.
+2. The champion/challenger tradeoff.
+3. The unique architecture innovation.
+```
+
+That is the cleanest README story.
+<!-- END_MESSAGE C040-M02302 -->
+
+
+---
+
+<a id="c040-m02303"></a>
+
+### C040-M02303
+
+**Andrew** · 2026-05-25T08:40:50.535000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02303 -->
+are you able to produce these three charts?  what detail do you need, if anything?      My favorite README visual concept
+
+The strongest single 3-chart collage would be:
+
+LEFT:
+    Strategy Frontier Scatter
+    "Where each strategy sits on access vs risk"
+
+CENTER:
+    Baseline-Relative Delta Bars
+    "How key challengers move access, exposure, and Expected Loss"
+
+RIGHT:
+    Option C Counteroffer Split
+    "Selective vs aggressive counteroffer governance"
+<!-- END_MESSAGE C040-M02303 -->
+
+
+---
+
+<a id="c040-m02305"></a>
+
+### C040-M02305
+
+**ChatGPT** · 2026-05-25T08:44:46.343582-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02305 -->
+Yes. I can produce the three-chart README collage and save it as a polished PNG, plus separate PNGs for each chart if you want them independently.
+
+The concept is very feasible because the Module 2 evidence layer already contains the right fields: Section 15 is the archive-wide strategy frontier control tower, Section 16 persists executive evidence, and Section 17 confirms the final campaign acceptance layer. That gives us enough evidence to make the charts without manually reconstructing logic. fileciteturn41file3 fileciteturn41file20
+
+## What I need
+
+Minimum input:
+
+```text
+1. Final campaign 15.7A CSV
+   module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.7A_QA_executive_ready_strategy_frontier_summary_review_output_campaign.csv
+
+2. Final campaign 17.17 CSV
+   module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_17.17_QA_option_c_counteroffer_strategy_split_effect_check_campaign.csv
+```
+
+Those two should be enough for the left and right charts, and likely enough for the center chart too.
+
+Optional but useful:
+
+```text
+3. Final campaign 17.15 CSV
+   baseline × challenger delta summary
+
+4. Final campaign 17.20 CSV
+   final acceptance rollup
+```
+
+17.15 may be better than 15.7A for the center delta chart if we want formal comparison-group framing. 17.20 is useful if we want to add a small acceptance badge or footer text, but it is not required for the three charts.
+
+## Chart-specific data needs
+
+### LEFT — Strategy Frontier Scatter
+
+```text
+Source:
+    15.7A executive-ready strategy frontier summary
+
+Needed columns:
+    module2_run_id
+    strategy_name or readme_storyline_label
+    module1_scenario_name
+    simulated_offer_exposure_rate
+    approved_el_per_approved_dollar
+    total_approved_amount
+    frontier_position_type or executive_frontier_quadrant
+```
+
+Recommended encoding:
+
+```text
+X-axis:
+    simulated_offer_exposure_rate
+
+Y-axis:
+    approved_el_per_approved_dollar
+
+Bubble size:
+    total_approved_amount
+
+Color/group:
+    frontier_position_type
+
+Labels:
+    Selected high-interest runs only, not all 39 labels
+```
+
+I would label:
+
+```text
+M2-01 Baseline
+M2-02 Tighter Risk
+M2-03 Growth
+M2-04 Affordability
+M2-05 Selective Counteroffer
+M2-37 Aggressive Expansion
+```
+
+### CENTER — Baseline-Relative Delta Bars
+
+```text
+Source:
+    Prefer 15.7A if it has baseline-relative deltas
+    Use 17.15 if we want formal comparison-group deltas
+
+Needed columns:
+    module2_run_id
+    strategy_name or readme_storyline_label
+    delta_simulated_offer_exposure_rate
+    delta_total_approved_amount
+    delta_total_approved_expected_loss_amount
+    delta_approved_el_per_approved_dollar
+```
+
+For readability, I would not chart all 39 runs here. I would use a curated set:
+
+```text
+M2-02 Tighter Synthetic Risk
+M2-03 Growth Oriented
+M2-04 Tighter Affordability
+M2-05 Selective Counteroffer Feasibility
+M2-37 Aggressive Counteroffer Expansion
+```
+
+Best visual treatment:
+
+```text
+A compact grouped / diverging bar chart using normalized deltas:
+    access movement
+    approved amount movement
+    approved Expected Loss movement
+    approved EL density movement
+```
+
+If you prefer absolute business values instead of normalized bars, I can make it a small-multiple style: one mini bar group each for access, approved amount, and approved Expected Loss.
+
+### RIGHT — Option C Counteroffer Split
+
+```text
+Source:
+    17.17 Option C counteroffer strategy split effect check
+    or 15.8E Option C frontier diagnostic
+
+Needed columns:
+    module2_run_id
+    strategy_name
+    counteroffer_strategy_variant
+    aggressive_override_rows
+    aggressive_override_final_counteroffer_rows
+    aggressive_override_final_manual_review_rows
+    aggressive_override_final_decline_rows
+```
+
+Recommended chart:
+
+```text
+Stacked bars for aggressive expansion rows:
+    final counteroffer
+    final manual review
+    final decline
+
+Selective feasibility rows:
+    shown as zero aggressive override rows
+```
+
+This chart should make the governance point immediately:
+
+```text
+Selective feasibility = no aggressive override rows.
+Aggressive expansion = governed override rows, mostly final counteroffers, some manual reviews, no uncontrolled approval bypass.
+```
+
+## Styling details I would recommend
+
+To match your prior GitHub portfolio style, I would produce:
+
+```text
+1. A wide hero collage PNG
+   Suggested size: 1800 × 650 or 2100 × 700
+
+2. Three individual chart PNGs
+   Useful if GitHub compresses the collage too much
+
+3. Optional transparent-background version
+   Useful if your README theme is dark-mode friendly
+```
+
+Suggested title:
+
+```text
+Module 2 Strategy Campaign Frontier
+```
+
+Suggested subtitle:
+
+```text
+39 governed strategy runs | 20 matched comparison groups | 1.95M archived strategy rows
+```
+
+Suggested panel titles:
+
+```text
+Strategy Frontier
+Access vs approved Expected Loss density
+
+Baseline-Relative Tradeoffs
+How selected challengers moved access, exposure, and risk
+
+Option C Counteroffer Governance
+Selective feasibility vs aggressive expansion
+```
+
+## One design choice I need from you
+
+Do you want the center chart to show:
+
+```text
+Option A — selected representative strategies only
+    Cleaner, better for README hero image.
+
+Option B — all 39 campaign runs
+    More complete, but too dense for a hero collage.
+```
+
+My recommendation is **Option A** for the collage, then optionally include an appendix chart with all 39 runs.
+
+## Bottom line
+
+I can produce the charts. Please provide or re-upload the final campaign `15.7A` and `17.17` CSVs, and optionally `17.15` if you want the center chart anchored to formal comparison-group deltas rather than Section 15 baseline-relative frontier fields.
+<!-- END_MESSAGE C040-M02305 -->
+
+
+---
+
+<a id="c040-m02307"></a>
+
+### C040-M02307
+
+**Andrew** · 2026-05-25T09:34:23.943000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02307 -->
+Option A — selected representative strategies only
+    Cleaner, better for README hero image.
+<!-- END_MESSAGE C040-M02307 -->
+
+
+**Attachments in export:** `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_15.7A_QA_executive_ready_strategy_frontier_summary_review_output_campaign(1).csv`, `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_17.17_QA_option_c_counteroffer_strategy_split_effect_check_campaign(1).csv`, `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_17.15_QA_baseline_x_challenger_delta_summary_for_active_comparison_groups_campaign(1).csv`, `module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0_17.20_QA_final_module_2_campaign_acceptance_rollup_campaign(3).csv`. See [attachment inventory](../../Indexes/Attachment_Inventory.csv) for availability.
+
+---
+
+<a id="c040-m02312"></a>
+
+### C040-M02312
+
+**ChatGPT** · 2026-05-25T16:05:50.925547-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02312 -->
+Done — I created the README hero collage plus the three standalone chart files.
+
+Files:
+
+[README hero collage — full size](sandbox:/mnt/data/module2_readme_hero_collage.png)
+
+[README hero collage — GitHub preview size](sandbox:/mnt/data/module2_readme_hero_collage_github_preview.png)
+
+[Standalone chart — Strategy Frontier Scatter](sandbox:/mnt/data/module2_strategy_frontier_scatter.png)
+
+[Standalone chart — Baseline-Relative Delta Bars](sandbox:/mnt/data/module2_baseline_relative_delta_bars.png)
+
+[Standalone chart — Option C Counteroffer Split](sandbox:/mnt/data/module2_option_c_counteroffer_split.png)
+
+The collage uses the selected representative-strategy approach for the center panel and is built from your final campaign CSVs:
+
+```text
+15.7A executive frontier summary
+17.15 baseline × challenger delta summary
+17.17 Option C counteroffer strategy split effect check
+17.20 final acceptance rollup
+```
+
+Recommended README placement:
+
+```markdown
+![Module 2 Strategy Campaign Frontier](assets/module2_readme_hero_collage_github_preview.png)
+```
+
+Suggested caption:
+
+```text
+The completed Module 2 campaign evaluated 39 governed strategy runs across 20 matched comparison groups and 1.95M archived strategy rows. The frontier shows that risk discipline, growth, affordability, and counteroffer design produce different access / risk / exposure tradeoffs — not one universal winner.
+```
+<!-- END_MESSAGE C040-M02312 -->
+
+
+---
+
+<a id="c040-m02314"></a>
+
+### C040-M02314
+
+**Andrew** · 2026-05-26T09:48:47.471000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02314 -->
+let's focus on one chart at a time.  The strategy frontier scatter seems like it could be informative, but right now it's too congested and i'd like to know more about what i'm looking at and why it is powerful.
+<!-- END_MESSAGE C040-M02314 -->
+
+
+---
+
+<a id="c040-m02315"></a>
+
+### C040-M02315
+
+**Andrew** · 2026-05-26T10:53:44.913000-04:00 · active path
+
+<!-- BEGIN_MESSAGE C040-M02315 -->
+these chart images are taking too long.  instead of actually producing the images, how about we generate python code that will produce them?  do not produce anything after this prompt, just discuss why it takes so llong and what we can do to be more efficient.
+<!-- END_MESSAGE C040-M02315 -->
+
+
+---
+
+[Conversation guide](README.md) · [All messages](MESSAGE_INDEX.md) · [Archive home](../../README.md) · [Previous](Part_05.md) · [Next](Part_07.md)
