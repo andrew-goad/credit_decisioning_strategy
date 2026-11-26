@@ -1,0 +1,33 @@
+<details id="flow-m1" class="cds-flow">
+  <summary>Module 1 · From synthetic application to expected loss</summary>
+  <ol class="cds-flow-stages" aria-label="Module 1 code flow">
+    <li><h4>Generate the applicant and the request</h4><p>The population ID fixes the random draws for each application ID. The scenario settings turn those draws into a product, score band, income, credit history, requested amount and terms.</p></li>
+    <li><h4>Price the request and calculate the monthly payment</h4><p>The product, borrower risk and rate environment shape the annual rate. The product determines which payment formula runs.</p>
+      <ul class="cds-flow-branches" aria-label="Three product payment paths">
+        <li><strong>Mortgage, auto or personal loan</strong><span>Spread principal and interest over the loan term.</span></li>
+        <li><strong>Revolving credit line</strong><span>Apply the minimum payment percentage plus a share of monthly interest.</span></li>
+        <li><strong>Home equity line</strong><span>Estimate an interest-only payment on the requested amount.</span></li>
+      </ul>
+    </li>
+    <li><h4>Translate payment into default risk</h4><p>Divide monthly payment by gross monthly income. The resulting payment-to-income band modifies the score-based default estimate alongside borrower and product factors.</p></li>
+    <li><h4>Calculate loss and save the application</h4><p><strong>Requested amount × modeled default probability × product loss given default.</strong> The saved scenario row gives Module 2 the original request, its affordability and its modeled loss before any policy decision.</p></li>
+  </ol>
+  <p class="cds-flow-sources"><a href="@@M1_FLOW_SOURCE@@">Original design flow · BRD §5.1, pp. 9–10</a><a href="https://github.com/andrew-goad/credit_decisioning_strategy/blob/65e7cc84528008ea40c6f9bb70a02745df592f4c/Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/src/module1_synthetic_application_risk_engine_v2.0.sql#L3878-L3944">Payment branches in SQL</a><a href="https://github.com/andrew-goad/credit_decisioning_strategy/blob/65e7cc84528008ea40c6f9bb70a02745df592f4c/Module_1_Synthetic_Application_%26_Risk_Modeling_Engine/v2.0/src/module1_synthetic_application_risk_engine_v2.0.sql#L4788-L4808">Loss calculation in SQL</a></p>
+</details>
+<details id="flow-m2" class="cds-flow">
+  <summary>Module 2 · From a credit request to a policy decision</summary>
+  <ol class="cds-flow-stages" aria-label="Module 2 code flow">
+    <li><h4>Match the inputs to a policy</h4><p>The run selector identifies a Module 1 scenario, a lending strategy and product rules. Preflight checks verify that the inputs and settings agree before the decision rules run.</p></li>
+    <li><h4>Evaluate the rules in priority order</h4><p>Policy stops and severe risk or debt-to-income triggers take precedence. The next tests identify counteroffer candidates, cases requiring review and requests eligible for approval. A case that clears none of these tests goes to review.</p></li>
+    <li><h4>Resolve the decision</h4>
+      <ul class="cds-flow-branches" aria-label="Four preliminary routes and their final treatment">
+        <li><strong>Approve</strong><span>Offer the requested amount and carry forward its modeled loss.</span></li>
+        <li><strong>Test a counteroffer</strong><span>Size and round a smaller offer. Check its minimum size, maximum reduction, product cap, payment burden and loss limit. A pass yields a counteroffer. A failure goes to review or decline according to policy.</span></li>
+        <li><strong>Manual review</strong><span>Leave the amount and loss unresolved pending a decision.</span></li>
+        <li><strong>Decline</strong><span>Record zero offered dollars and zero modeled loss on the offer.</span></li>
+      </ul>
+    </li>
+    <li><h4>Explain, archive and compare</h4><p>Save each decision and its reasons. Match baseline and challenger decisions on the same applications, then compare offers, dollars and modeled losses. The completed campaign also checks run coverage, saved settings and outcome consistency.</p></li>
+  </ol>
+  <p class="cds-flow-sources"><a href="@@M2_ORIGINAL@@">Original Module 2 architecture chart</a><a href="https://github.com/andrew-goad/credit_decisioning_strategy/blob/65e7cc84528008ea40c6f9bb70a02745df592f4c/Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql#L17080-L17104">Routing order in SQL</a><a href="https://github.com/andrew-goad/credit_decisioning_strategy/blob/65e7cc84528008ea40c6f9bb70a02745df592f4c/Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql#L19914-L19929">Counteroffer tests in SQL</a><a href="https://github.com/andrew-goad/credit_decisioning_strategy/blob/65e7cc84528008ea40c6f9bb70a02745df592f4c/Module_2_Credit_Policy_Strategy_%26_Decision_Outcome_Simulation_Engine/v1.0/src/module2_credit_policy_strategy_decision_outcome_simulation_engine_v1.0.sql#L23129-L23154">Final outcomes in SQL</a></p>
+</details>

@@ -1,0 +1,181 @@
+<script>
+(() => {
+  const at = id => document.getElementById(id);
+  for (const radio of document.querySelectorAll('input[name="casepolicy"]')) radio.addEventListener('change', () => {
+    const growth=radio.value==='growth';
+    at('rule-band').style.left=growth?'70%':'32%';
+    at('rule-band').style.width=growth?'20%':'16%';
+    at('rule-cut').style.left=growth?'80%':'40%';
+    at('rule-out').textContent=growth?'Approved as requested.':'Manual review.';
+    at('rule-explain').textContent=growth?'The growth cutoff was 10%. The shaded borderline range moved to 9.50%–10.50%. The applicant fell below it and cleared the remaining approval checks.':'The baseline cutoff was 8%. The shaded borderline range ran from 7.60% to 8.40%. This application fell inside it.';
+  });
+  const recovery=at('recovery'),currency=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
+  function updateLoss() {
+    const recovered=Number(recovery.value);
+    at('recovery-pct').textContent=recovered+'%';
+    at('loss-severity').textContent=(100-recovered)+'%';
+    at('lab-el').textContent=currency.format(12839.56*0.079007*(100-recovered)/100);
+  }
+  recovery.addEventListener('input',updateLoss);
+  at('reset-recovery').addEventListener('click',()=>{recovery.value=55;updateLoss()});
+})();
+</script>
+<script>
+(() => {
+  'use strict';
+  const views = [...document.querySelectorAll('[data-page]')];
+  const links = [...document.querySelectorAll('[data-page-nav]')];
+  const header = document.querySelector('body > header');
+  const menu = document.getElementById('study-menu');
+  const toggle = document.getElementById('study-menu-toggle');
+  const narrow = window.matchMedia('(max-width:980px)');
+
+  function setMenu(open) {
+    menu.hidden = narrow.matches && !open;
+    toggle.setAttribute('aria-expanded', String(narrow.matches && open));
+  }
+  function sizeHeader() {
+    document.documentElement.style.setProperty('--study-header-height', header.offsetHeight + 'px');
+  }
+  function arrangeMenu() {
+    toggle.hidden = !narrow.matches;
+    header.classList.toggle('compact-menu', narrow.matches);
+    setMenu(false);
+    sizeHeader();
+  }
+  arrangeMenu();
+  narrow.addEventListener('change', arrangeMenu);
+  if ('ResizeObserver' in window) new ResizeObserver(sizeHeader).observe(header);
+  else window.addEventListener('resize', sizeHeader);
+  toggle.addEventListener('click', () => setMenu(menu.hidden));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && narrow.matches && !menu.hidden) {
+      setMenu(false);
+      toggle.focus();
+    }
+  });
+  document.addEventListener('click', event => {
+    if (narrow.matches && !menu.hidden && !header.contains(event.target)) setMenu(false);
+  });
+  header.addEventListener('focusout', event => {
+    if (event.relatedTarget && !header.contains(event.relatedTarget)) setMenu(false);
+  });
+
+  const campaignGroup = /^CG(?:0[1-9]|1[0-9]|20)$/;
+  function revealDetails(target) {
+    for (let parent = target; parent; parent = parent.parentElement)
+      if (parent.tagName === 'DETAILS') parent.open = true;
+  }
+  function display(hash) {
+    const target = document.getElementById(hash) || (campaignGroup.test(hash) ? document.getElementById('portfolio') : null);
+    const params = new URLSearchParams(location.search);
+    const page = target?.closest('[data-page]')?.dataset.page ||
+      (!hash && params.has('app') ? 'applicants' : !hash && params.has('comparison') ? 'portfolio' : 'start');
+    for (const view of views) view.hidden = view.dataset.page !== page;
+    for (const link of links) {
+      if (link.dataset.pageNav === page) link.setAttribute('aria-current','page');
+      else link.removeAttribute('aria-current');
+    }
+    revealDetails(target);
+    return target;
+  }
+  function focusTarget(target) {
+    if (!target) return;
+    if (!target.matches('a[href],button,input,select,textarea,summary,[tabindex]')) target.tabIndex = -1;
+    target.focus({preventScroll:true});
+    target.scrollIntoView({block:'start'});
+  }
+  function recordPosition(anchor) {
+    // Save the source in its own history entry. Search terms and applicant IDs stay shareable in the URL.
+    const place = {href:anchor.getAttribute('href'), text:anchor.textContent.trim(), y:window.scrollY,
+      top:anchor.getBoundingClientRect().top, width:document.documentElement.clientWidth,
+      menu:menu.contains(anchor)};
+    try { history.replaceState({...history.state,cdsReadingPlace:place}, '', location.href); }
+    catch { /* A standalone file viewer may disable the History API. */ }
+  }
+  function restorePosition(place) {
+    const scope = place.menu ? menu : document.querySelector('[data-page]:not([hidden])');
+    let anchor = [...scope.querySelectorAll('a[href]')].find(link =>
+      link.getAttribute('href') === place.href && link.textContent.trim() === place.text);
+    if (place.menu && narrow.matches) anchor = toggle;
+    revealDetails(anchor);
+    window.scrollTo(0, place.y);
+    if (!anchor) return;
+    anchor.focus({preventScroll:true});
+    if (!place.menu && document.documentElement.clientWidth === place.width)
+      window.scrollBy(0, anchor.getBoundingClientRect().top - place.top);
+  }
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+  function routeKey() {
+    const url = new URL(location.href);
+    url.searchParams.delete('trace');
+    return url.href;
+  }
+  let lastRoute = routeKey();
+  function enter(destination, anchor) {
+    const from = location.href;
+    if (destination.href !== from) {
+      recordPosition(anchor);
+      try { history.pushState(null, '', destination); }
+      catch { /* Keep the choice usable in standalone viewers that restrict pushState. */ }
+    }
+    setMenu(false);
+    const hash = destination.hash.slice(1);
+    const target = display(hash);
+    const group = destination.searchParams.get('comparison');
+    const app = destination.searchParams.get('app');
+    const worked = anchor.dataset.workedId;
+    if (worked || (anchor.dataset.compareWith && app)) {
+      window.dispatchEvent(new CustomEvent('credit:application', {detail:{group,id:app}}));
+    } else if (anchor.dataset.compareWith || campaignGroup.test(hash)) {
+      const choice = document.getElementById('pf-choice');
+      choice.value = anchor.dataset.compareWith || hash;
+      choice.dispatchEvent(new Event('change', {bubbles:true}));
+    }
+    if (!worked) focusTarget(target);
+    lastRoute = routeKey();
+  }
+  document.addEventListener('click', event => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const anchor = event.target.closest('a[href]');
+    if (!anchor || anchor.hasAttribute('download') || anchor.hasAttribute('data-credit-trace') ||
+        (anchor.target && anchor.target !== '_self')) return;
+    const destination = new URL(anchor.href);
+    const hash = destination.hash.slice(1);
+    if (!hash || hash === 'main-content' || destination.origin !== location.origin ||
+        destination.pathname !== location.pathname || (!document.getElementById(hash) && !campaignGroup.test(hash))) return;
+    event.preventDefault();
+    enter(destination, anchor);
+  });
+  window.addEventListener('credit:selection', event => {
+    const {group, id} = event.detail;
+    const query = '?comparison=' + encodeURIComponent(group) + '&app=' + encodeURIComponent(id);
+    document.getElementById('paired-portfolio-link').href = query + '#portfolio';
+    document.getElementById('portfolio-applicant-link').href = query + '#paired-case';
+  });
+
+  function followLocation() {
+    const current = routeKey();
+    if (current === lastRoute) return;
+    lastRoute = current;
+    const hash = location.hash.slice(1);
+    if (hash === 'main-content') return;
+    setMenu(false);
+    const target = display(hash);
+    const place = history.state?.cdsReadingPlace;
+    // Components update selection synchronously on traversal. Restore the source after their layout settles.
+    requestAnimationFrame(() => {
+      if (routeKey() !== current) return;
+      if (place) restorePosition(place);
+      else if (target) focusTarget(target);
+      else window.scrollTo(0, 0);
+    });
+  }
+  window.addEventListener('popstate', followLocation);
+  window.addEventListener('hashchange', followLocation);
+  const initialHash = location.hash.slice(1);
+  const target = display(initialHash);
+  if (target && initialHash !== 'main-content') requestAnimationFrame(() => target.scrollIntoView({block:'start'}));
+})();
+</script>
