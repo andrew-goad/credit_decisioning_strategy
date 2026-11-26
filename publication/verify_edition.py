@@ -140,6 +140,9 @@ def full_archive(doc, data):
     totals = [Counter() for _ in runs]
     transitions = {g: Counter() for g in groups}
     changes = {g: Counter() for g in ("CG18", "CG20")}
+    growth_reviews = Counter()
+    growth_auto = None
+    growth_pair = groups["CG02"]
     sample_count = case_count = 0
     require(len(manifest["shards"]) == 500, "500 shards required")
     require({p.relative_to(data).as_posix() for p in (data / "shards").iterdir()} ==
@@ -162,6 +165,11 @@ def full_archive(doc, data):
             for source in by_source:
                 estimate = Decimal(source["request"]) * source["pd"] * source["lgd"]
                 require(estimate.quantize(CENT, rounding=ROUND_HALF_UP) == source["requestEL"], f"{app} requested loss differs")
+            baseline, growth = (decisions[i] for i in growth_pair)
+            if baseline["outcome"] in OFFER and growth["outcome"] not in OFFER:
+                growth_reviews[baseline["outcome"], growth["outcome"], growth["primary"]] += 1
+            if app == "APP-00024462":
+                growth_auto = (by_source[manifest["runSource"][growth_pair[0]]], baseline, growth)
             for i, row in enumerate(decisions):
                 counts = totals[i]
                 counts[row["outcome"]] += 1
@@ -214,7 +222,46 @@ def full_archive(doc, data):
                 f"{group} matched offer movements")
     print("PASS 500 compressed and uncompressed shards; 50,000 IDs; 1,950,000 decisions; 950,000 requested loss estimates.")
     print("PASS 13,583 original sample rows × 21 fields; 940 teaching pairs; 39 run summaries and 20 matched portfolio comparisons.")
+    validate_growth_reviews(doc, growth_reviews, growth_auto)
     return transitions, changes
+
+
+def validate_growth_reviews(doc, routes, auto):
+    expected = {("COUNTEROFFER", "MANUAL_REVIEW", "MANUAL_REVIEW_BORDERLINE_PROFILE"): 1021,
+                ("COUNTEROFFER", "MANUAL_REVIEW", "MANUAL_REVIEW_DTI_REVIEW"): 455}
+    require(routes == expected, f"CG02 lost offer count, outcome or primary reason differs: {routes}")
+    require(auto is not None, "Opening comparison auto applicant absent")
+    source, old, new = auto
+    require(source["product"] == "AUTO_LOAN" and old["outcome"] == "COUNTEROFFER"
+            and old["primary"] == "COUNTEROFFER_PRODUCT_EXPOSURE_LIMIT"
+            and new["outcome"] == "MANUAL_REVIEW" and new["primary"] == "MANUAL_REVIEW_BORDERLINE_PROFILE"
+            and new["approved"] is None, "Featured Growth review differs from the archived route")
+    settings = {}
+    for r in export("strategy_run_parameter_snapshot"):
+        if r["module2_run_id"] in ("M2-01", "M2-03"):
+            strategy = json.loads(r["strategy_params_jsonb"], parse_float=Decimal)
+            products = json.loads(r["product_policy_params_jsonb"], parse_float=Decimal)
+            amount = next(p["product_max_approved_amount"] for p in products if p["product_type"] == "AUTO_LOAN")
+            settings[r["module2_run_id"]] = (amount, strategy["approve_max_dti"], strategy["borderline_threshold_buffer_pct"])
+    old_limit = settings["M2-01"][0]
+    new_limit, dti, buffer = settings["M2-03"]
+    require(old["approved"] == old_limit < source["request"] <= new_limit and
+            abs(source["dti"] - dti) <= dti * buffer, "Featured auto policy limits or DTI band differ")
+    portfolio = find_one(doc, '//*[@id="growth-review-routes"]')
+    opening = find_one(doc, '//*[@id="growth-auto-counterpart"]')
+    money = f'${source["request"]:,.2f}'
+    cap = f'${old_limit:,.0f}'
+    for section in (opening, portfolio):
+        link = find_one(section, './/a[@data-worked-id]')
+        require(link.get("href") == "?comparison=CG02&app=APP-00024462#paired-case"
+                and link.get("data-worked-group") == "CG02" and link.get("data-worked-id") == "APP-00024462"
+                and all(token in section.text_content() for token in (money, cap)), "Featured Growth case link or amounts differ")
+    values = [f"{n:,}" for n in routes.values()] + [f"{sum(routes.values()):,}", f'${new_limit:,.0f}',
+                                                       f'{source["dti"]:.2%}', f'{dti:.0%}']
+    values.extend(f"{point:.2%}" for point in (dti * (1-buffer), dti * (1+buffer)))
+    require(all(v in portfolio.text_content() for v in values), "CG02 teaching paragraph differs from archived values")
+    find_one(portfolio, './/a[@data-credit-trace="sql.11377-11378"]')
+    print("PASS all 1,476 CG02 lost offers became manual reviews, both primary reasons, featured auto limits and two case links.")
 
 
 def signed_amount(amount):
@@ -234,6 +281,18 @@ def validate_findings(doc, movements, changes):
         net = counts["gained"] - counts["lost"]
         require(tuple(s.text_content().strip() for s in td.xpath('./span')) == (f"{net:+,}", signed_amount(sum(amounts.values()))),
                 f"{group} net counts or offered exposure differ")
+        plotted = {key: amounts[key] for key in ("gained", "lost", "both")}
+        plotted["net"] = sum(amounts.values())
+        for key, dollars in plotted.items():
+            label = find_one(doc, '//*[@class="exposure-group" and @data-group=$key]'
+                             '/*[@data-comparison=$group]/*[@class="exposure-value"]', key=key, group=group)
+            require(label.text_content() == signed_amount(dollars), f"{group} {key} chart differs from archived dollars")
+        summary = find_one(doc, '//*[@class="exposure-summary"]/*[@data-comparison=$group]/dd', group=group)
+        count_word = "more" if net > 0 else "fewer"
+        dollars_word = "more" if plotted["net"] > 0 else "less"
+        require(summary.text_content() == f"{abs(net):,} {count_word} offers, "
+                f"{signed_amount(plotted['net']).lstrip('+−')} {dollars_word} credit", f"{group} headline differs")
+    print("PASS eight chart values and both Findings headlines against the matched archive.")
     example = find_one(doc, '//*[@id="growth-offer-example"]').text_content()
     for quantity in ("gained", "lost"):
         require(f'{movements["CG02"][quantity]:,}' in example, f"Opening CG02 {quantity} omitted")

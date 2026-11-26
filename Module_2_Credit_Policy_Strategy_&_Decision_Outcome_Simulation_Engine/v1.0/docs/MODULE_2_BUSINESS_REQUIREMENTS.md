@@ -2,9 +2,17 @@
 
 **Module 2 v1.0 · Retrospective business requirements · Historical DBeaver campaign**
 
+Andrew R. Goad · Credit strategy, simulator design and analysis · Teaching edition, November 26, 2026
+
 **Business decision.** When a lender changes its credit policy, which synthetic applicants receive an offer, what size offer can the policy support, and how much exposure, modeled loss and manual review accompany that access? A useful comparison lets a reviewer trace an aggregate difference back to a decision, its inputs and the exact policy settings that produced it.
 
 This document describes the PostgreSQL program used in the historical DBeaver campaign. It reconstructs requirements from the released implementation, its parameter snapshots and its retained campaign outputs at Git commit `65e7cc84528008ea40c6f9bb70a02745df592f4c`. The requirement identifiers below are retrospective reference labels. The research uses synthetic applicants. Funding, repayment, realized losses, profitability, fair-lending conclusions and customer-facing adverse-action notices fall outside the model. [Release scope][scope]
+
+## Contents
+
+[Readers](#who-uses-the-results) · [Execution and handoff](#execution-and-handoff) · [Requirements and acceptance](#requirements-and-acceptance-evidence) ·
+[Operator controls](#what-an-operator-controls) · [Application decisions](#what-happens-to-an-application) · [Worked example](#a-worked-requirement-trace) ·
+[SQL implementation map](#sql-implementation-map) · [Evidence and limits](#evidence-handoff-and-limits) · [Source excerpts](#source-excerpts)
 
 ## Who uses the results
 

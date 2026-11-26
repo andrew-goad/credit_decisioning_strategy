@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import textwrap
+from urllib.parse import urlsplit
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE = next(REPO.glob("Module_2*/v1.0"))
@@ -23,13 +24,17 @@ h1,h2,h3 { color: #113c40; line-height:1.17; break-after: avoid; }
 h1 { font: bold 26pt/1.15 Georgia, serif; border-bottom:2pt solid #2d6967; padding-bottom: 8pt; margin:0 0 8pt; }
 h2 { font: bold 17pt/1.15 Georgia, serif; margin:19pt 0 7pt; }
 h3 { font-size: 12pt; margin:14pt 0 5pt; }
+h4 { font-size:11pt; margin:12pt 0 5pt; break-after:avoid; }
 p { margin: 5pt 0 8pt; }
 a { color: #135d66; text-decoration: underline; }
+#contents + p { padding:6pt 9pt; background:#edf3f1; line-height:1.7; }
+#contents + p a { white-space:nowrap; }
 table { width:100%; border-collapse:collapse; font-size:9pt; line-height:1.33; margin:8pt 0; }
 th,td { text-align:left; padding:4pt; border-bottom:.55pt solid #b5c7c5; vertical-align:top; overflow-wrap:anywhere; }
 th { background:#e4f0ed; color: #173d40; }
 thead { display:table-header-group; }
 tr { break-inside:avoid; }
+.keep-table { break-inside:avoid; }
 code { overflow-wrap:anywhere; font-family:"Liberation Mono",monospace; font-size:.9em; }
 pre { white-space:pre-wrap; overflow-wrap:anywhere; font:8pt/1.35 "Liberation Mono",monospace; padding:5pt 7pt; color:#173940; background:#f1f5f4; border-left:2pt solid #4c7a76; margin:3pt 0 6pt; }
 pre code { font:inherit; }
@@ -72,15 +77,24 @@ def render_pdf(document, anchors, chromium, temp):
     )
     with sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=chromium)
-        page = browser.new_page()
+        page = browser.new_page(viewport={"width": 697, "height": 900})
+        page.emulate_media(media="print")
         page.goto(webpage.as_uri())
-        page.evaluate("""() => document.querySelectorAll('th').forEach(th => {
-            if (['ID', 'Count'].includes(th.textContent.trim())) th.classList.add('short-label');
-        })""")
+        page.evaluate("""() => {
+            for (const th of document.querySelectorAll('th')) {
+                if (['ID', 'Count'].includes(th.textContent.trim())) th.classList.add('short-label');
+            }
+            for (const table of document.querySelectorAll('table')) {
+                if (table.offsetHeight < 250) table.classList.add('keep-table');
+            }
+        }""")
         for line in anchors:
             if page.locator("#sql-" + line).count() != 1:
                 raise ValueError(f"{document.name}: missing printed anchor {line}")
-        page.pdf(path=temp / "printed.pdf", prefer_css_page_size=True, print_background=True,
+        contents = page.locator('#contents + p a').evaluate_all('(links) => links.map(link => link.hash.slice(1))')
+        if document == DOCUMENTS[0] and len(contents) != 9:
+            raise ValueError("The requirements contents must link each principal section.")
+        page.pdf(path=temp / "printed.pdf", prefer_css_page_size=True, print_background=True, outline=True, tagged=True,
                  display_header_footer=True, header_template="<span></span>",
                  footer_template='<div style="width:100%;text-align:center;font:8px Arial;color:#576e6c;">Credit Decisioning Strategy Simulator &nbsp; · &nbsp; Module 2 v1.0 &nbsp; · &nbsp; <span class="pageNumber"></span></div>')
         browser.close()
@@ -89,10 +103,33 @@ def render_pdf(document, anchors, chromium, temp):
         metadata = pdf.metadata
         for field in ("creationDate", "modDate"):
             metadata[field] = ""
+        metadata["author"] = "Andrew R. Goad"
+        metadata["subject"] = "CDS teaching edition, November 26, 2026. Historical Module 2 v1.0 DBeaver campaign."
         pdf.set_metadata(metadata)
         named = pdf.resolve_names()
         if any("sql-" + line not in named for line in anchors):
             raise ValueError(f"{document.name}: printed PDF is missing a SQL destination")
+        if not pdf.get_toc() or any(target not in named for target in contents):
+            raise ValueError(f"{document.name}: missing PDF bookmarks or a contents destination")
+        if document == DOCUMENTS[1]:
+            verifier = document.with_name("verify_campaign_exports.py")
+            attachment = verifier.name + ".txt"
+            source = verifier.read_bytes().replace(b"\r\n", b"\n")
+            xref = pdf.embfile_add(attachment, source, filename=attachment,
+                                   desc="Companion verifier, Python source")
+            for field in ("CreationDate", "ModDate"):
+                pdf.xref_set_key(xref, f"Params/{field}", "null")
+            # Preserve the sibling link for PDF readers that resolve relative URIs.
+            # Attach the same passive text for readers opening a detached copy.
+            matched = 0
+            for sheet in pdf:
+                for link in sheet.get_links():
+                    target = link.get("uri", "") or link.get("file", "")
+                    if Path(urlsplit(target).path).name == verifier.name:
+                        sheet.update_link(dict(link, kind=fitz.LINK_URI, uri=verifier.name))
+                        matched += 1
+            if matched != 1 or pdf.embfile_get(attachment) != source:
+                raise ValueError("The validation PDF must identify the exact companion verifier.")
         pdf.save(dest, garbage=4, deflate=True, no_new_id=True)
         print(f"  {dest.name}: {len(pdf)} pages")
 

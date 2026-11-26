@@ -62,7 +62,7 @@ function run(mode,liveManifest=manifest,startUrl,initialGroup='CG02') {
    if(mode==='delayed'&&file===shardMeta[0].file){await new Promise(r=>waiting.set('first',r));}
    return new Response(damaged?Buffer.from('bad bytes'):raw);
  }
- const document={baseURI:protocol==='file:'?'file:///tmp/explorer.html':'https://example.test/portal/',getElementById:el,createElement:()=>new Element(),createTextNode:t=>t};
+ const document={baseURI:startUrl || (protocol==='file:'?'file:///tmp/explorer.html':'https://example.test/portal/'),getElementById:el,createElement:()=>new Element(),createTextNode:t=>t};
  const location={protocol,href:startUrl || (mode==='file'?'file:///tmp/explorer.html':'https://example.test/portal/')};
  const history={state:{view:'applicants'},replaceState(state,_,uri){this.state=state;location.href=uri.href;}};
  const context={document,window:win,location,history,Option:class{constructor(text,value){this.textContent=text;this.value=value;}},Event,URL,Response,TextDecoder,crypto:webcrypto,AbortController,Uint8Array,Blob,DecompressionStream,fetch:fetcher,setTimeout,clearTimeout};
@@ -114,11 +114,34 @@ function run(mode,liveManifest=manifest,startUrl,initialGroup='CG02') {
  local.group('CG20');await tick();assert.equal(local.el('pair-search-id').value,'APP-00000001');assert(local.el('pair-result').hidden);
  local.search(all.CG20.cases[0].id);await tick();assert.equal(local.tracks.at(-1)[1].id,all.CG20.cases[0].id);
  const missing=run('404');await tick();missing.search('49999');await tick();assert.equal(missing.req.length,1);assert.match(missing.el('pair-feedback').textContent,/49999.*no paired example/);
+ // A valid ID outside the guided collection gets the exact group and canonical applicant
+ // in both the online route and offline launcher. A private review stays on its own port.
+ const standalone=run('file');await tick();
+ assert.match(standalone.el('pair-search-help').textContent,new RegExp(membership.size+' applicants saved'));
+ standalone.group('CG20');standalone.search('49999');await tick();
+ assert(!standalone.el('pair-handoff').hidden);
+ assert.equal(standalone.el('pair-handoff-link').href,'https://andrew-goad.github.io/credit_decisioning_strategy/?comparison=CG20&app=APP-00049999#paired-case');
+ assert.equal(standalone.el('pair-handoff-command').textContent,'.\\Open_Preview.cmd --app APP-00049999 --comparison CG20');
+ standalone.group('CG03');await tick();assert(standalone.el('pair-handoff-link').href.includes('CG03&app=APP-00049999'));
+ standalone.search('bad');await tick();assert(standalone.el('pair-handoff').hidden);
+ standalone.search(all.CG03.cases[0].id);await tick();assert(standalone.el('pair-handoff').hidden);
+ const privateFile='http://127.0.0.1:8100/downloads/Credit_Strategy_Explorer.html';
+ const privateReview=run('live',manifest,privateFile+'?comparison=CG17&app=49999#paired-case','CG17');
+ await tick();assert.equal(privateReview.req.length,0);assert(!privateReview.el('pair-handoff').hidden);
+ assert.equal(privateReview.el('pair-handoff-link').href,'http://127.0.0.1:8100/site/?comparison=CG17&app=APP-00049999#paired-case');
+ assert.match(privateReview.el('pair-search-help').textContent,new RegExp(membership.size+' applicants saved'));
+ const incomplete=run('404',manifest,'https://andrew-goad.github.io/credit_decisioning_strategy/');
+ await tick();incomplete.search('49999');await tick();assert(!incomplete.el('pair-retry').hidden);
+ assert(incomplete.el('pair-handoff').hidden); // A damaged canonical site must not link to itself.
  // Inspecting all 39 is opt-in. The sample download explains its bound without rows.
  const openRuns=view=>{view.el('pair-all-runs').open=true;view.el('pair-all-runs').dispatchEvent(new Event('toggle'));};
  openRuns(local);await tick();assert.equal(local.el('pair-run-rows').children.length,0);
  assert(local.el('pair-run-table').hidden);assert.match(local.el('pair-run-status').textContent,/complete campaign has 39/);
+ const allRunsLink=new URL(local.el('pair-run-status').children.at(-1).href);
+ assert.equal(allRunsLink.searchParams.get('app'),local.el('pair-search-id').value);
+ assert.equal(allRunsLink.searchParams.get('comparison'),'CG20');assert.equal(allRunsLink.hash,'#pair-all-runs');
  const live=run('live');await tick();assert.match(live.el('pair-release-status').textContent,/50,000/);
+ assert.match(live.el('pair-search-help').textContent,/any ID from 1 to 50,000/);assert(live.el('pair-handoff').hidden);
  assert.throws(()=>live.api.verifyManifest({...manifest,kind:'untrusted'},all));
  assert.throws(()=>live.api.verifyManifest({...manifest,groups:{...groups,CG02:[0,0]}},all));
  for(const evidence of [null,{}, {...originalExecutions,'M2-02':refreshedExecution},

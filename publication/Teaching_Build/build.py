@@ -13,6 +13,7 @@ from bridge_intake import add_returned_cases
 from bridge_june import add_june
 from lookup_integration import integrate_lookup
 from evidence_trace import integrate_evidence
+from findings_chart import draw_findings
 
 WORK = Path(__file__).resolve().parent
 COMMIT = '65e7cc84528008ea40c6f9bb70a02745df592f4c'
@@ -122,8 +123,10 @@ def build(repo, june_dir, returned_dir, evidence_folders=()):
         'LINKS':evidence_links, 'BI':links('Preview the Module 1 report (image)','Download Module 1 Power BI report · Windows, 15.49 MiB'),
         'RELEASE':links('v2.0 requirements','v2.0 validation','Mortgage baseline source note'),
     }
-    styles = '\n'.join(text(WORK/name) for name in ('borrower_math.css', 'artifacts.css', 'code-flows.css'))
-    result = replace_one(text(WORK/'base.html'), '</head>', '<style>'+styles+'</style></head>')
+    template = text(WORK/'base.html')
+    parts.update(draw_findings(template))
+    styles = '\n'.join(text(WORK/name) for name in ('borrower_math.css', 'artifacts.css', 'code-flows.css', 'findings_chart.css'))
+    result = replace_one(template, '</head>', '<style>'+styles+'</style></head>')
     for key,value in parts.items():
         result = replace_one(result,'@@'+key+'@@',value)
     if '@@' in result:

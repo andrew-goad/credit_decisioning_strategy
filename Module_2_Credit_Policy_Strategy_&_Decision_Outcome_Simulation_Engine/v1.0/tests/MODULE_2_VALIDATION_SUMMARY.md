@@ -1,7 +1,9 @@
 # Credit Decisioning Strategy Simulator
 ## Module 2 v1.0 | Retrospective validation summary
 
-**Historical DBeaver campaign · PostgreSQL · Evidence edition `65e7cc8`**
+**Historical DBeaver campaign · PostgreSQL · Historical evidence revision `65e7cc8`**
+
+Andrew R. Goad · Credit strategy, simulator design and analysis · Teaching edition, November 26, 2026
 
 The historical campaign evaluated 39 policy and scenario combinations of 50,000 synthetic applications each. Its final PostgreSQL acceptance record reported **10 of 10 gates ready for analysis**. For this review, the accompanying Python program independently recalculated the published outcome rates, segment totals and selected strategy differences. The exported evidence supports analysis of how a configured credit policy changes simulated decisions and exposure. The effects on actual originations, borrower behavior, defaults and profit remain open. [Final campaign acceptance][accept] · [Complete SQL (raw source)][sql]
 
@@ -67,7 +69,13 @@ The ten historical readiness gates cover the campaign registry, comparison regis
 
 The original SQL ran from DBeaver. The teaching explorer uses a separate full-campaign extract for applicant transitions. Replaying a historical run would require its PostgreSQL environment and inputs. The current review does not establish live underwriting suitability, validated adverse-action reasons, model calibration against observed defaults or realized business benefits.
 
-With the teaching repository checked out, open PowerShell in this document’s `tests` folder. Run the companion verifier with Python 3.9 or later. It reads the historical CSVs included in the checkout and uses only the standard library.
+#### Run the companion verifier
+
+Use a full teaching checkout containing the [companion verification program](verify_campaign_exports.py). Teaching revision `566e47805488526b63a90dbc0e92f6357f66ce6f` introduced this copy of the verifier. It reads the original campaign CSVs from historical revision `65e7cc8`.
+
+Open PowerShell in the Module 2 v1.0 `tests` folder beside the program and run the following command with Python 3.9 or later. The final argument points to the repository root. The verifier uses the Python standard library.
+
+The PDF also includes a plain-text copy under **Attachments**, named `verify_campaign_exports.py.txt`. If you received the PDF separately, that copy lets you inspect the code. Running it requires the campaign CSVs in the teaching checkout.
 
 ```powershell
 python .\verify_campaign_exports.py ..\..\..

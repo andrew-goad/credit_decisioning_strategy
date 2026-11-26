@@ -17,6 +17,7 @@
   function render() {
     const group = data.groups[select.value];
     panel.hidden = !group;
+    document.getElementById('growth-review-routes').hidden = select.value !== 'CG02';
     if (!group) return;
     const {counts, denominator} = group;
     const gain = counts[1], loss = counts[2], delta = gain - loss;

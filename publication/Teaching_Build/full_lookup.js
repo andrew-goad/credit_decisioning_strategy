@@ -98,9 +98,24 @@
       return new Uint8Array(await res.arrayBuffer());
     } finally {clearTimeout(timer);}
   }
+  const publishedExplorer='https://andrew-goad.github.io/credit_decisioning_strategy/';
+  function isGuidedFile(url) {
+    return url.protocol==='file:' || url.pathname.endsWith('/Credit_Strategy_Explorer.html');
+  }
+  function fullExplorerRoute(id, group, section, page) {
+    // The private review serves the unchanged release download beside its verified full site.
+    const reviewDownload=['127.0.0.1','localhost','[::1]'].includes(page.hostname) &&
+      page.pathname==='/downloads/Credit_Strategy_Explorer.html';
+    const url=new URL(reviewDownload?'/site/':publishedExplorer, page);
+    url.searchParams.set('comparison',group);
+    url.searchParams.set('app',id);
+    url.hash=section;
+    return url.href;
+  }
   function store(groups,manifestPath) {
-    const uri=new URL(manifestPath,document.baseURI);
-    let state=location.protocol==='file:'?'absent':'unknown', manifest=null, pending=null;
+    const page=new URL(document.baseURI), uri=new URL(manifestPath,page);
+    const canonicalDirectory=new URL('.',page).href===publishedExplorer;
+    let state=isGuidedFile(page)?'absent':'unknown', manifest=null, pending=null;
     const cache=new Map();
     async function getManifest() {
       if(state==='ready')return manifest;
@@ -108,7 +123,7 @@
       if(!pending)pending=download(uri).then(bytes=>{
         manifest=verifyManifest(JSON.parse(new TextDecoder().decode(bytes)),groups);state='ready';return manifest;
       }).catch(err=>{
-        if(err.status===404 || err.status===410){state='absent';return null;}
+        if(!canonicalDirectory && (err.status===404 || err.status===410)){state='absent';return null;}
         state='error';throw err;
       }).finally(()=>{pending=null;});
       return pending;
@@ -155,12 +170,21 @@
         history.replaceState(history.state,'',url);
       } catch { /* File viewers may restrict local history. The in-page selection remains active. */ }
     }
-    const fallbackText='Teaching edition · '+membership.size+' saved applicants. The complete campaign evaluated 50,000 IDs in all 39 runs.';
+    const searchHelp=el('pair-search-help'), handoff=el('pair-handoff'), handoffLink=el('pair-handoff-link');
+    const pageUrl=new URL(document.baseURI);
+    function showHandoff(id,key) {
+      handoffLink.href=fullExplorerRoute(id,key,'paired-case',pageUrl);
+      el('pair-handoff-command').textContent='.\\Open_Preview.cmd --app '+id+' --comparison '+key;
+      handoff.hidden=false;
+    }
     const coverage=()=>{
       const state=data.state();
+      searchHelp.textContent=state==='ready'?'Search any ID from 1 to 50,000. Choose a saved example to explore the risk math and counteroffer tests.':
+        state==='absent'?'Search the '+membership.size+' applicants saved in this guided edition, or choose a worked example below.':
+        'Choose a saved example below, or look it up by application ID.';
       el('pair-release-status').textContent=state==='ready'?'Full campaign · 50,000 IDs across 39 runs and '+groupKeys.length+' policy comparisons.':
         state==='error'?'The full archive could not be verified. Saved examples are available below.':
-        state==='unknown'?'Checking availability of the full campaign…':fallbackText;
+        state==='unknown'?'Checking availability of the full campaign…':'The complete explorer covers all 50,000 applicants across 39 runs.';
     };
     let selected=urlApplicant() || defaultApplicant();
     let epoch=0;
@@ -179,7 +203,11 @@
         const rows=await data.allDecisions(id);
         if(token!==runRequest || !runPanel.open)return;
         if(!rows){
-          runMessage.textContent='The complete campaign has 39 decisions for '+id+'. Open the full archive to see them together, including the eight runs outside the registered policy comparisons.';
+          runMessage.textContent='The complete campaign has 39 decisions for '+id+', including eight runs outside the registered policy comparisons. ';
+          const link=document.createElement('a');
+          link.href=fullExplorerRoute(id,choice.value,'pair-all-runs',pageUrl);
+          link.textContent='See all 39 decisions in the full explorer';
+          runMessage.append(link);
           return;
         }
         const nodes=rows.map(({run,source,request,decision})=>{
@@ -233,7 +261,7 @@
       const sample=g.cases.find(c=>c.id===id);
       showRuns();
       if(typeof CustomEvent==='function')window.dispatchEvent(new CustomEvent('credit:selection',{detail:{group:key,id}}));
-      retry.hidden=true;result.hidden=true;feedback.textContent='';input.value=id;input.removeAttribute('aria-invalid');
+      handoff.hidden=true;retry.hidden=true;result.hidden=true;feedback.textContent='';input.value=id;input.removeAttribute('aria-invalid');
       controls();
       if(sample)paint(g,sample,null);
       if(!sample)feedback.textContent='Looking for '+id+' in '+key+'…';
@@ -244,7 +272,8 @@
         if(!m) {
           if(!sample){
             const available=membership.get(id)||[];
-            feedback.textContent=id+' has no paired example in '+key+' in this download. Both policies evaluated this ID. Open the complete campaign to see their recorded decisions here.';
+            feedback.textContent=id+' has no paired example in '+key+' in this guided edition. Both policies evaluated this application in the complete campaign.';
+            showHandoff(id,key);
             returnButton.hidden=false;
             returnButton.textContent=available.length?'Show '+id+' in '+available[0]:'Show a saved applicant in '+key;
           }
@@ -283,7 +312,7 @@
     }
     function select(id) {selected=id;rememberApplicant();return update();}
     form.addEventListener('submit',e=>{e.preventDefault();const id=normalize(input.value);
-      if(!id){epoch++;retry.hidden=true;input.setAttribute('aria-invalid','true');feedback.textContent='Enter a whole application number from 1 to 50,000, such as 32476 or APP-00032476.';input.focus();return;}
+      if(!id){epoch++;retry.hidden=true;handoff.hidden=true;input.setAttribute('aria-invalid','true');feedback.textContent='Enter a whole application number from 1 to 50,000, such as 32476 or APP-00032476.';input.focus();return;}
       select(id);
     });
     examples.addEventListener('change',()=>{if(examples.value)select(examples.value);});
