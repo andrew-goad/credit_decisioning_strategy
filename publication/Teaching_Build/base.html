@@ -59,15 +59,115 @@ html{scroll-padding-top:calc(var(--study-header-height, 4rem) + .5rem)}
 @media(max-width:720px){body>header{display:block}header nav{gap:.1rem .4rem}header nav a{font-size:.92rem;padding:.35rem .12rem}.hero{gap:1.25rem}.hero-actions{margin-top:.7rem}.hero .lede{font-size:1.05rem}.lesson-wrap h1{font-size:2.35rem}}
 
 #pair-codes,#pair-settings,#pair-proof{overflow-wrap:anywhere}
-#study-menu[hidden],#study-menu-toggle[hidden]{display:none}
-#study-menu-toggle{min-height:44px;background:transparent;border:1px solid #8da9a3;border-radius:4px;color:var(--ink);font-weight:650;padding:.3rem .8rem;white-space:nowrap}
-#study-menu-toggle::after{content:"";display:inline-block;width:.41em;height:.41em;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-.16em) rotate(45deg);margin-left:.55em}
-#study-menu-toggle[aria-expanded="true"]::after{transform:translateY(.1em) rotate(225deg)}
-@media screen and (max-width:980px){
-  body>header.compact-menu{display:flex;min-height:3.5rem;flex-wrap:nowrap}
-  .compact-menu #study-menu:not([hidden]){position:absolute;z-index:1;top:100%;left:0;right:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.15rem .6rem;max-height:calc(100dvh - var(--study-header-height,4rem));overflow:auto;background:#fbfcfa;border-block:1px solid var(--line);padding:.55rem 5vw;box-shadow:0 .45rem .8rem #153a3d16}
-  .compact-menu #study-menu a{display:flex;align-items:center;min-height:44px;padding:.4rem;font-size:.95rem}
+body>header.contents-bar {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: #132d38;
+  color: white;
+  font: 400 15px/1.35 system-ui, sans-serif;
 }
+.contents-bar .contents-inner {
+  position: relative;
+  max-width: 1200px;
+  min-height: 56px;
+  margin-inline: auto;
+  padding-inline: clamp(16px, 4vw, 48px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 12px;
+}
+.contents-bar .byline {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: white;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+.contents-bar .monogram {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+  border: 1px solid #8ba5ac;
+  background: #203f4d;
+  color: white;
+  font: normal 16px/1 Georgia, serif;
+  letter-spacing: -.08em;
+}
+.contents-bar .subject {
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid #82949b;
+  color: #d4e2e4;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: normal;
+}
+@media (max-width: 599px) { .contents-bar .subject { display: none; } }
+#study-menu[hidden], #study-menu-toggle[hidden] { display: none; }
+#study-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: white;
+  font: 650 15px/1.35 system-ui, sans-serif;
+  white-space: nowrap;
+}
+#study-menu-toggle::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+#study-menu-toggle[aria-expanded="true"]::after { transform: translateY(2px) rotate(225deg); }
+#study-menu-toggle:hover { background: #25414c; border-radius: 6px; }
+.contents-bar .byline:focus-visible, #study-menu-toggle:focus-visible { outline: 2px solid white; outline-offset: 1px; }
+#study-menu { width: 100%; padding-block: 0 6px; }
+#study-menu a { display: flex; align-items: center; min-height: 44px; color: white; }
+#study-menu a[aria-current="page"] { border-color: #95cfca; }
+.contents-bar.has-contents .contents-inner { flex-wrap: nowrap; }
+.has-contents #study-menu:not([hidden]) {
+  position: absolute;
+  top: 100%;
+  right: clamp(16px, 4vw, 48px);
+  z-index: 1;
+  display: grid;
+  gap: 0;
+  width: min(20rem, calc(100% - 2 * clamp(16px, 4vw, 48px)));
+  max-height: calc(100vh - var(--study-header-height, 56px) - 8px);
+  max-height: calc(100dvh - var(--study-header-height, 56px) - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid #cad6d7;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 6px 20px #132d3826;
+}
+.has-contents #study-menu a {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  color: #132d38;
+  font-size: 15px;
+}
+.has-contents #study-menu a:hover, .has-contents #study-menu a[aria-current="page"] { background: #edf4f3; }
+.has-contents #study-menu a:focus-visible { outline: 2px solid #17645e; outline-offset: -2px; }
 @media(min-width:761px){
   .hero{grid-template-rows:1fr auto auto 1fr;row-gap:0}
   .hero-intro{grid-area:2 / 1;align-self:end}
@@ -84,7 +184,7 @@ html{scroll-padding-top:calc(var(--study-header-height, 4rem) + .5rem)}
 @media print{body>header{position:static}[data-page][hidden]{display:block!important}header nav,.next-lesson{display:none}}
 </style></head><body>
 <a class="skip" href="#main-content">Skip to content</a>
-<header><a class="byline" href="#start">Credit portfolio analytics</a><button type="button" id="study-menu-toggle" aria-controls="study-menu" aria-expanded="false" hidden>Sections</button><nav id="study-menu" aria-label="Explore the study"><a href="#start" data-page-nav="start">Start here</a><a href="#applicants" data-page-nav="applicants">Explore applicants</a><a href="#portfolio" data-page-nav="portfolio">Compare portfolios</a><a href="#findings" data-page-nav="findings">Findings and insights</a><a href="#evidence" data-page-nav="evidence">Evidence</a><a href="#artifacts" data-page-nav="artifacts">Project artifacts</a></nav></header>
+<header class="contents-bar"><div class="contents-inner"><a class="byline" href="#start"><span class="monogram" aria-hidden="true">AG</span><span>Andrew R. Goad</span><span class="subject">Credit decisioning</span></a><button type="button" id="study-menu-toggle" aria-controls="study-menu" aria-expanded="false" hidden>Contents</button><nav id="study-menu" aria-label="Contents"><a href="#start" data-page-nav="start">Start here</a><a href="#applicants" data-page-nav="applicants">Explore applicants</a><a href="#portfolio" data-page-nav="portfolio">Compare portfolios</a><a href="#findings" data-page-nav="findings">Findings and insights</a><a href="#evidence" data-page-nav="evidence">Evidence</a><a href="#artifacts" data-page-nav="artifacts">Project artifacts</a></nav></div></header>
 <main id="main-content" tabindex="-1">
 <div id="start" data-page="start">
 <section class="campaign-intro" aria-labelledby="campaign-title"><div><h1 id="campaign-title">Credit Decisioning Strategy Simulator</h1><p class="project-credit"><strong>Andrew R. Goad</strong> · Credit strategy, simulator design and analysis</p></div><p>Follow one synthetic borrower from a credit decision to its modeled loss. Compare recorded policies across 50,000 applicants, or <a href="#parameter-guides">run a new experiment in PostgreSQL with DBeaver</a>.</p></section>

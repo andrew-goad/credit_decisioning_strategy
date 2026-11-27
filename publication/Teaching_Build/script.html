@@ -28,34 +28,29 @@
   const header = document.querySelector('body > header');
   const menu = document.getElementById('study-menu');
   const toggle = document.getElementById('study-menu-toggle');
-  const narrow = window.matchMedia('(max-width:980px)');
 
   function setMenu(open) {
-    menu.hidden = narrow.matches && !open;
-    toggle.setAttribute('aria-expanded', String(narrow.matches && open));
+    menu.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
   }
   function sizeHeader() {
     document.documentElement.style.setProperty('--study-header-height', header.offsetHeight + 'px');
   }
-  function arrangeMenu() {
-    toggle.hidden = !narrow.matches;
-    header.classList.toggle('compact-menu', narrow.matches);
-    setMenu(false);
-    sizeHeader();
-  }
-  arrangeMenu();
-  narrow.addEventListener('change', arrangeMenu);
+  header.classList.add('has-contents');
+  toggle.hidden = false;
+  setMenu(false);
+  sizeHeader();
   if ('ResizeObserver' in window) new ResizeObserver(sizeHeader).observe(header);
   else window.addEventListener('resize', sizeHeader);
   toggle.addEventListener('click', () => setMenu(menu.hidden));
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && narrow.matches && !menu.hidden) {
+    if (event.key === 'Escape' && !menu.hidden) {
       setMenu(false);
       toggle.focus();
     }
   });
   document.addEventListener('click', event => {
-    if (narrow.matches && !menu.hidden && !header.contains(event.target)) setMenu(false);
+    if (!menu.hidden && !header.contains(event.target)) setMenu(false);
   });
   header.addEventListener('focusout', event => {
     if (event.relatedTarget && !header.contains(event.relatedTarget)) setMenu(false);
@@ -97,7 +92,7 @@
     const scope = place.menu ? menu : document.querySelector('[data-page]:not([hidden])');
     let anchor = [...scope.querySelectorAll('a[href]')].find(link =>
       link.getAttribute('href') === place.href && link.textContent.trim() === place.text);
-    if (place.menu && narrow.matches) anchor = toggle;
+    if (place.menu) anchor = toggle;
     revealDetails(anchor);
     window.scrollTo(0, place.y);
     if (!anchor) return;
